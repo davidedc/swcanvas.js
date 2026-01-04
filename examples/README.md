@@ -1,4 +1,4 @@
-# SWCanvas Examples
+# SWCanvas.js Examples
 
 This directory contains examples demonstrating SWCanvas features and capabilities.
 

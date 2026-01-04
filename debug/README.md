@@ -1,4 +1,4 @@
-# SWCanvas Debug Utilities
+# SWCanvas.js Debug Utilities
 
 This directory contains **debugging scripts and utilities** for analyzing SWCanvas rendering behavior, investigating issues, and validating implementations against HTML5 Canvas.
 

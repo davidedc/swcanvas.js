@@ -2,6 +2,14 @@
   "name": "swcanvas",
   "version": "1.0.0",
   "description": "Deterministic 2D raster engine with Canvas-like API",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davidedc/swcanvas.js.git"
+  },
+  "homepage": "https://davidedc.github.io/swcanvas.js/",
+  "bugs": {
+    "url": "https://github.com/davidedc/swcanvas.js/issues"
+  },
   "main": "dist/swcanvas.js",
   "scripts": {
     "build": "./build.sh",

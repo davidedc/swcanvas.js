@@ -1,4 +1,4 @@
-# SWCanvas Direct Renderings - Comprehensive Analysis & Summary
+# SWCanvas.js Direct Renderings - Comprehensive Analysis & Summary
 
 ## Executive Summary
 

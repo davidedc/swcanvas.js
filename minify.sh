@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# SWCanvas Minification Script
-# Creates a minified version of the SWCanvas library using Terser
+# SWCanvas.js Minification Script
+# Creates a minified version of the SWCanvas.js library using Terser
 
 set -e
 
-echo "SWCanvas Minification Script"
+echo "SWCanvas.js Minification Script"
 echo "============================"
 
 # Check if dist/swcanvas.js exists

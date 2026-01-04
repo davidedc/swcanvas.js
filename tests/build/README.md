@@ -1,6 +1,6 @@
-# SWCanvas Test Build Utilities
+# SWCanvas.js Test Build Utilities
 
-This directory contains utility scripts for managing the SWCanvas test system.
+This directory contains utility scripts for managing the SWCanvas.js test system.
 
 ## Scripts Overview
 

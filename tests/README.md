@@ -1,4 +1,4 @@
-# SWCanvas Test Suite
+# SWCanvas.js Test Suite
 
 This directory contains the comprehensive **modular test infrastructure** for SWCanvas, with 36 core tests + 140 visual tests + 79 direct rendering tests and cross-platform compatibility.
 

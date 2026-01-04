@@ -1,4 +1,4 @@
-# SWCanvas Architecture
+# SWCanvas.js Architecture
 
 SWCanvas implements a sophisticated **multi-paradigm design pattern** that resolves fundamental impedance mismatches in graphics programming through a layered architecture with progressive disclosure.
 

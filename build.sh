@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# SWCanvas Build Script
+# SWCanvas.js Build Script
 # Concatenates source files into a single global script
 
 set -e
 
-echo "Building SWCanvas..."
+echo "Building SWCanvas.js..."
 
 # Step 1: Build modular tests (if directories exist)
 if [ -d "tests/core" ] || [ -d "tests/visual" ]; then

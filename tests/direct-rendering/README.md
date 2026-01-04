@@ -1,6 +1,6 @@
 # Direct Rendering Tests
 
-Comprehensive documentation for SWCanvas direct rendering tests. These tests verify the correctness of direct shape APIs (`fillCircle`, `strokeLine`, etc.) that bypass the general polygon pipeline for optimized rendering.
+Comprehensive documentation for SWCanvas.js direct rendering tests. These tests verify the correctness of direct shape APIs (`fillCircle`, `strokeLine`, etc.) that bypass the general polygon pipeline for optimized rendering.
 
 For an overview of how direct rendering works internally, see [DIRECT-RENDERING-SUMMARY.MD](../../DIRECT-RENDERING-SUMMARY.MD).
 

@@ -1,4 +1,4 @@
-# SWCanvas
+# SWCanvas.js
 
 A deterministic 2D Javascript raster engine with Canvas-like API, cross-browser and Node.js.
 

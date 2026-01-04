@@ -1,6 +1,6 @@
-# Claude Code Context - SWCanvas
+# Claude Code Context - SWCanvas.js
 
-This file provides Claude with essential context about the SWCanvas project for efficient collaboration and development.
+This file provides Claude with essential context about the SWCanvas.js project for efficient collaboration and development.
 
 ## Project Overview
 
