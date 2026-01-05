@@ -1243,7 +1243,8 @@ function validateTransitionPattern(transitionPattern, isHorizontal) {
                 if (pattern === 'solid') {
                     currentState = 'firstCap';
                 } else if (pattern === 'sides') {
-                    return { valid: false, issue: `Missing first cap at ${directionLabel} ${pos}` };
+                    // Large shapes may start with sides when first cap is outside canvas
+                    currentState = 'sides';
                 } else if (pattern === 'fragmented') {
                     return { valid: false, issue: `Fragmented pattern (${groupCount} groups) at ${directionLabel} ${pos}` };
                 }
@@ -1288,6 +1289,8 @@ function validateTransitionPattern(transitionPattern, isHorizontal) {
                     currentState = 'finalCap';
                 } else if (pattern === 'fragmented') {
                     return { valid: false, issue: `Fragmented pattern (${groupCount} groups) after second cap at ${directionLabel} ${pos}` };
+                } else if (pattern === 'empty') {
+                    return { valid: false, issue: `Unexpected empty ${directionLabel} at ${pos}` };
                 }
                 // sides continues
                 break;
@@ -1298,14 +1301,18 @@ function validateTransitionPattern(transitionPattern, isHorizontal) {
                     currentState = 'sidesAfterSecondCap';
                 } else if (pattern === 'fragmented') {
                     return { valid: false, issue: `Fragmented pattern (${groupCount} groups) in final cap at ${directionLabel} ${pos}` };
+                } else if (pattern === 'empty') {
+                    return { valid: false, issue: `Unexpected empty ${directionLabel} at ${pos}` };
                 }
                 // solid continues in finalCap
                 break;
         }
     }
 
-    // Check final state - must end in firstCap (small shape), secondCap (normal shape), or finalCap (arc with gap)
-    if (currentState !== 'firstCap' && currentState !== 'secondCap' && currentState !== 'finalCap') {
+    // Check final state - must end in firstCap (small shape), sides (large shape clipped),
+    // secondCap (normal shape), or finalCap (arc with gap)
+    if (currentState !== 'firstCap' && currentState !== 'sides' &&
+        currentState !== 'secondCap' && currentState !== 'finalCap') {
         return { valid: false, issue: 'Incomplete stroke pattern' };
     }
 
