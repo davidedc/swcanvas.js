@@ -118,6 +118,34 @@ class DirectRenderingTestRunner {
         progressDiv.style.display = 'none';
         controls.appendChild(progressDiv);
 
+        // Add transparency pattern checkbox
+        const transparencyControl = document.createElement('div');
+        transparencyControl.className = 'transparency-control';
+
+        const transparencyCheckbox = document.createElement('input');
+        transparencyCheckbox.type = 'checkbox';
+        transparencyCheckbox.id = 'showTransparencyPatternBackground';
+        transparencyCheckbox.checked = true; // Default: show transparency pattern
+
+        const transparencyLabel = document.createElement('label');
+        transparencyLabel.htmlFor = 'showTransparencyPatternBackground';
+        transparencyLabel.textContent = 'Show transparency pattern';
+
+        transparencyCheckbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                document.body.classList.add('transparency-pattern');
+            } else {
+                document.body.classList.remove('transparency-pattern');
+            }
+        });
+
+        transparencyControl.appendChild(transparencyCheckbox);
+        transparencyControl.appendChild(transparencyLabel);
+        controls.appendChild(transparencyControl);
+
+        // Apply default transparency pattern on load
+        document.body.classList.add('transparency-pattern');
+
         header.appendChild(controls);
     }
 
@@ -555,10 +583,6 @@ class DirectRenderingTestRunner {
         // Seed random for reproducibility - different seed per iteration
         SeededRandom.seedWithInteger(12345 + iterationNumber - 1);
 
-        // White background
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
         // Run the test draw function
         const result = test.drawFunction(ctx, iterationNumber, null);
 
@@ -583,10 +607,8 @@ class DirectRenderingTestRunner {
         // Seed random with same seed for reproducibility - different seed per iteration
         SeededRandom.seedWithInteger(12345 + iterationNumber - 1);
 
-        // Clear and white background
+        // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // Run the test draw function
         const result = test.drawFunction(ctx, iterationNumber, null);
@@ -717,7 +739,7 @@ class DirectRenderingTestRunner {
 
         // Middle row unique colors check (both SW and HTML5 Canvas for comparison)
         if (checks.uniqueColors && checks.uniqueColors.middleRow) {
-            const expected = checks.uniqueColors.middleRow.count;
+            const expected = getAdjustedExpectedColorCount(checks.uniqueColors.middleRow.count, swSurface);
             const canvasSurface = createSurface(html5Canvas);
             const swCount = countUniqueColorsInMiddleRow(swSurface);
             const canvasCount = countUniqueColorsInMiddleRow(canvasSurface);
@@ -731,7 +753,7 @@ class DirectRenderingTestRunner {
 
         // Middle column unique colors check (both SW and HTML5 Canvas for comparison)
         if (checks.uniqueColors && checks.uniqueColors.middleColumn) {
-            const expected = checks.uniqueColors.middleColumn.count;
+            const expected = getAdjustedExpectedColorCount(checks.uniqueColors.middleColumn.count, swSurface);
             const canvasSurface = createSurface(html5Canvas);
             const swCount = countUniqueColorsInMiddleColumn(swSurface);
             const canvasCount = countUniqueColorsInMiddleColumn(canvasSurface);

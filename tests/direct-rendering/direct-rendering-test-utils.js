@@ -927,6 +927,58 @@ function countUniqueColorsInMiddleColumn(surface) {
 }
 
 /**
+ * Detect background color by sampling all 4 corners of the surface.
+ * This handles cases where shapes cover some corners (e.g., shapes with negative coordinates).
+ * @param {Object} surface - Surface with data, width, height, stride
+ * @returns {Object} Background color {r, g, b, a}
+ */
+function detectBackgroundColor(surface) {
+    const data = surface.data;
+    const width = surface.width;
+    const height = surface.height;
+    const stride = surface.stride || width * 4;
+
+    // Sample all 4 corners
+    const corners = [
+        0,                                          // top-left
+        (width - 1) * 4,                            // top-right
+        (height - 1) * stride,                      // bottom-left
+        (height - 1) * stride + (width - 1) * 4    // bottom-right
+    ];
+
+    // Look for a corner that represents actual background
+    for (const offset of corners) {
+        const r = data[offset], g = data[offset + 1], b = data[offset + 2], a = data[offset + 3];
+
+        if (a === 0) {
+            // Found transparent corner - background is transparent
+            return { r: 0, g: 0, b: 0, a: 0 };
+        }
+        if (r === 255 && g === 255 && b === 255 && a === 255) {
+            // Found white corner - background is white
+            return { r: 255, g: 255, b: 255, a: 255 };
+        }
+    }
+
+    // Default to white if no definitive background found
+    return { r: 255, g: 255, b: 255, a: 255 };
+}
+
+/**
+ * Get adjusted expected color count based on background transparency.
+ * If background is transparent, reduces expected count by 1 since transparent
+ * pixels are not counted by countUniqueColors functions.
+ * @param {number} configuredCount - The expected count from test config
+ * @param {Object} surface - Surface with data array
+ * @returns {number} Adjusted expected count
+ */
+function getAdjustedExpectedColorCount(configuredCount, surface) {
+    const backgroundColor = detectBackgroundColor(surface);
+    const backgroundIsTransparent = backgroundColor.a === 0;
+    return configuredCount - (backgroundIsTransparent ? 1 : 0);
+}
+
+/**
  * Count speckles in the surface
  * A speckle is a pixel that differs from its neighbors when those neighbors match each other
  * @param {Object} surface - Surface with data, width, height, stride
@@ -1220,16 +1272,40 @@ function validateTransitionPattern(transitionPattern, isHorizontal) {
                 break;
 
             case 'secondCap':
-                if (pattern !== 'solid') {
+                if (pattern === 'sides') {
+                    // Arc gap can create sides pattern in second cap - allow transition back to sides
+                    currentState = 'sidesAfterSecondCap';
+                } else if (pattern === 'fragmented') {
+                    return { valid: false, issue: `Fragmented pattern (${groupCount} groups) in second cap at ${directionLabel} ${pos}` };
+                } else if (pattern !== 'solid') {
                     return { valid: false, issue: `Expected solid pattern for second cap, got ${pattern} at ${directionLabel} ${pos}` };
                 }
                 // solid continues in secondCap
                 break;
+
+            case 'sidesAfterSecondCap':
+                if (pattern === 'solid') {
+                    currentState = 'finalCap';
+                } else if (pattern === 'fragmented') {
+                    return { valid: false, issue: `Fragmented pattern (${groupCount} groups) after second cap at ${directionLabel} ${pos}` };
+                }
+                // sides continues
+                break;
+
+            case 'finalCap':
+                if (pattern === 'sides') {
+                    // Can have multiple gap crossings
+                    currentState = 'sidesAfterSecondCap';
+                } else if (pattern === 'fragmented') {
+                    return { valid: false, issue: `Fragmented pattern (${groupCount} groups) in final cap at ${directionLabel} ${pos}` };
+                }
+                // solid continues in finalCap
+                break;
         }
     }
 
-    // Check final state - must end in firstCap (small shape) or secondCap (normal shape)
-    if (currentState !== 'firstCap' && currentState !== 'secondCap') {
+    // Check final state - must end in firstCap (small shape), secondCap (normal shape), or finalCap (arc with gap)
+    if (currentState !== 'firstCap' && currentState !== 'secondCap' && currentState !== 'finalCap') {
         return { valid: false, issue: 'Incomplete stroke pattern' };
     }
 
@@ -1259,8 +1335,11 @@ function checkStrokePatternContinuity(surface, options = {}) {
     const { verticalScan = true, horizontalScan = true } = options;
     const issues = [];
 
-    // Get shape bounds
-    const extremes = analyzeExtremes(surface);
+    // Auto-detect background color by sampling all corners
+    const backgroundColor = detectBackgroundColor(surface);
+
+    // Get shape bounds using detected background
+    const extremes = analyzeExtremes(surface, backgroundColor);
 
     // If no non-background pixels found
     if (extremes.leftX >= surface.width || extremes.rightX < 0 ||
@@ -1331,7 +1410,7 @@ function runValidationChecks(surface, checks) {
 
     // Middle row unique colors
     if (checks.uniqueColors && checks.uniqueColors.middleRow) {
-        const expected = checks.uniqueColors.middleRow.count;
+        const expected = getAdjustedExpectedColorCount(checks.uniqueColors.middleRow.count, surface);
         const actual = countUniqueColorsInMiddleRow(surface);
         if (actual !== expected) {
             issues.push(`Middle row unique colors: ${actual} (expected ${expected})`);
@@ -1340,7 +1419,7 @@ function runValidationChecks(surface, checks) {
 
     // Middle column unique colors
     if (checks.uniqueColors && checks.uniqueColors.middleColumn) {
-        const expected = checks.uniqueColors.middleColumn.count;
+        const expected = getAdjustedExpectedColorCount(checks.uniqueColors.middleColumn.count, surface);
         const actual = countUniqueColorsInMiddleColumn(surface);
         if (actual !== expected) {
             issues.push(`Middle column unique colors: ${actual} (expected ${expected})`);
@@ -1474,6 +1553,8 @@ if (typeof module !== 'undefined' && module.exports) {
         countUniqueColors,
         countUniqueColorsInMiddleRow,
         countUniqueColorsInMiddleColumn,
+        detectBackgroundColor,
+        getAdjustedExpectedColorCount,
         countSpeckles,
         hasSpeckles,
         check1pxClosedStrokeContinuity,
@@ -1509,6 +1590,8 @@ if (typeof window !== 'undefined') {
     window.countUniqueColors = countUniqueColors;
     window.countUniqueColorsInMiddleRow = countUniqueColorsInMiddleRow;
     window.countUniqueColorsInMiddleColumn = countUniqueColorsInMiddleColumn;
+    window.detectBackgroundColor = detectBackgroundColor;
+    window.getAdjustedExpectedColorCount = getAdjustedExpectedColorCount;
     window.countSpeckles = countSpeckles;
     window.hasSpeckles = hasSpeckles;
     window.check1pxClosedStrokeContinuity = check1pxClosedStrokeContinuity;
