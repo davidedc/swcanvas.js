@@ -5986,20 +5986,16 @@ class RoundedRectOpsRot {
             const edgeLength = Math.sqrt(dx * dx + dy * dy);
             if (edgeLength < MIN_EDGE_LENGTH) continue;
 
-            let x1i = Math.floor(edge.start.x);
-            let y1i = Math.floor(edge.start.y);
-            let x2i = Math.floor(edge.end.x);
-            let y2i = Math.floor(edge.end.y);
+            const x1i = Math.floor(edge.start.x);
+            const y1i = Math.floor(edge.start.y);
+            const x2i = Math.floor(edge.end.x);
+            const y2i = Math.floor(edge.end.y);
 
-            // Shorten horizontal/vertical lines by 1 pixel to match HTML5 Canvas
-            if (x1i === x2i) {
-                if (y2i > y1i) y2i--; else y1i--;
-            }
-            if (y1i === y2i) {
-                if (x2i > x1i) x2i--; else x1i--;
-            }
+            // NOTE: No line shortening here! Unlike standalone lines, rounded rectangle
+            // edges must draw their full length to meet corner arcs at junction points.
+            // The Set handles any overdraw for correct alpha blending.
 
-            let dxAbs = Math.abs(x2i - x1i);
+            const dxAbs = Math.abs(x2i - x1i);
             let dyAbs = Math.abs(y2i - y1i);
             const sx = x1i < x2i ? 1 : -1;
             const sy = y1i < y2i ? 1 : -1;
