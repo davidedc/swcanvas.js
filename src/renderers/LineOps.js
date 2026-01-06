@@ -115,7 +115,7 @@ class LineOps {
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 for (let y = topY; y < bottomY; y++) {
-                    SpanOps.fill_Opaq(data32, width, height, leftX, y, rightX - leftX, packedColor, clipBuffer);
+                    SpanOps.fill_Opaq(data32, width, height, leftX, y, rightX - leftX + 1, packedColor, clipBuffer);
                 }
                 return true;
             } else if (x1i === x2i) {

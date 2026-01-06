@@ -136,11 +136,12 @@ class RectOpsRot {
         const hh = height / 2;
 
         // Calculate 4 corners of the rotated rectangle
+        // Floor coordinates to match Bresenham rasterization used by stroke rendering
         const corners = [
-            { x: centerX + hw * cos - hh * sin, y: centerY + hw * sin + hh * cos },
-            { x: centerX + hw * cos + hh * sin, y: centerY + hw * sin - hh * cos },
-            { x: centerX - hw * cos + hh * sin, y: centerY - hw * sin - hh * cos },
-            { x: centerX - hw * cos - hh * sin, y: centerY - hw * sin + hh * cos }
+            { x: Math.floor(centerX + hw * cos - hh * sin), y: Math.floor(centerY + hw * sin + hh * cos) },
+            { x: Math.floor(centerX + hw * cos + hh * sin), y: Math.floor(centerY + hw * sin - hh * cos) },
+            { x: Math.floor(centerX - hw * cos + hh * sin), y: Math.floor(centerY - hw * sin - hh * cos) },
+            { x: Math.floor(centerX - hw * cos - hh * sin), y: Math.floor(centerY - hw * sin + hh * cos) }
         ];
 
         // Delegate to optimized scanline algorithm
@@ -311,48 +312,45 @@ class RectOpsRot {
             return;
         }
 
-        // Handle thick strokes with extend/shorten for proper miter corners
+        // Handle thick opaque strokes using QuadScanOps directly for consistent rasterization.
+        // This avoids axis-aligned detection in LineOps.stroke_Any which uses different
+        // algorithms causing 1-pixel gaps at edge joints for nearly-axis-aligned rotations.
         const halfStroke = lineWidth / 2;
+        const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
 
-        // Draw even-indexed edges (0→1, 2→3) with EXTENDED lines
-        // These extended edges form the corner regions
-        for (let i = 0; i < 4; i += 2) {
-            const p1 = corners[i];
-            const p2 = corners[(i + 1) % 4];
-            const line = RectOpsRot._extendLine(p1, p2, halfStroke);
+        const params = {
+            surface,
+            r: color.r, g: color.g, b: color.b,
+            isOpaque: true,
+            packedColor,
+            incomingAlpha: 0,
+            inverseIncomingAlpha: 0,
+            clipBuffer
+        };
 
-            LineOps.stroke_Any(
-                surface,
-                line.start.x, line.start.y,
-                line.end.x, line.end.y,
-                lineWidth,
-                color,
-                globalAlpha,
-                clipBuffer,
-                isOpaqueColor,
-                isSemiTransparentColor
+        const renderEdge = (p1, p2, extend) => {
+            const line = extend
+                ? RectOpsRot._extendLine(p1, p2, halfStroke)
+                : RectOpsRot._shortenLine(p1, p2, halfStroke);
+
+            const quadCorners = QuadScanOps.lineToQuad(
+                line.start.x, line.start.y, line.end.x, line.end.y, halfStroke
             );
-        }
 
-        // Draw odd-indexed edges (1→2, 3→0) with SHORTENED lines
-        // These shortened edges fit between the extended edges without overlap
-        for (let i = 1; i < 4; i += 2) {
-            const p1 = corners[i];
-            const p2 = corners[(i + 1) % 4];
-            const line = RectOpsRot._shortenLine(p1, p2, halfStroke);
+            if (quadCorners === null) {
+                QuadScanOps.fillSquare(line.start.x, line.start.y, halfStroke, params);
+            } else {
+                QuadScanOps.fillQuad(quadCorners, params);
+            }
+        };
 
-            LineOps.stroke_Any(
-                surface,
-                line.start.x, line.start.y,
-                line.end.x, line.end.y,
-                lineWidth,
-                color,
-                globalAlpha,
-                clipBuffer,
-                isOpaqueColor,
-                isSemiTransparentColor
-            );
-        }
+        // Extended edges (0→1, 2→3) form corner regions
+        renderEdge(corners[0], corners[1], true);
+        renderEdge(corners[2], corners[3], true);
+
+        // Shortened edges (1→2, 3→0) fit between extended edges
+        renderEdge(corners[1], corners[2], false);
+        renderEdge(corners[3], corners[0], false);
     }
 
     // ========================================================================
