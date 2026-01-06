@@ -162,8 +162,9 @@ Context2D ───────────────────────�
                                    ► RectOpsAA.*_AA_*() for axis-aligned rectangles
                                    ► RoundedRectOpsAA.*_AA_*() for axis-aligned rounded rects
 
-RectOpsRot.stroke_Rot_Any() ─────► LineOps.stroke_Any()
-   (draws each edge as thick line)
+RectOpsRot.stroke_Rot_Any() ─────► _stroke_Rot_1px_DDA (for 1px strokes)
+                            ─────► QuadScanOps.fillQuad (for thick opaque strokes)
+                            ─────► _stroke_Rot_Alpha (for thick semi-transparent)
 
 RoundedRectOpsRot.stroke_Rot_Any() ► LineOps.stroke_Any() + ArcOps.stroke1px_Opaq_Exact()
    (4 edges + 4 corner arcs, 1px opaque only)
@@ -316,6 +317,7 @@ if (clipBuffer[byteIndex] === 0) {
 | Dual Edge Buffer    | RoundedRectOpsRot.stroke_Rot_Any (thick)   | Outer+inner perimeters, fill annulus   |
 | Span-based fill-first | RectOpsAA.fillStroke                  | Correct semi-transparent stroke blending |
 | Incremental DDA     | QuadScanOps.fillQuad                     | 4x faster scanline traversal (1 add vs 2 muls) |
+| Edge-based DDA      | RectOpsRot._stroke_Rot_1px_DDA           | 1px rotated rect stroke aligned with fill |
 
 ### 6.4 Special Optimizations
 
@@ -388,7 +390,7 @@ Note: Context2D calls *OpsAA classes for axis-aligned operations and *OpsRot cla
 
 | Class              | Private/Internal Methods                                                                    |
 |--------------------|--------------------------------------------------------------------------------------------|
-| RectOpsRot        | _stroke_Rot_Alpha, _extendLine, _shortenLine, _blendPixelAlpha, _renderAndCollectLinePixels, _renderLinePixelsWithCheck |
+| RectOpsRot        | _stroke_Rot_1px_DDA, _stroke_Rot_Alpha, _extendLine, _shortenLine, _blendPixelAlpha |
 | RoundedRectOpsRot | _fill_Rot_Opaq, _fill_Rot_Alpha, _stroke1px_Rot_Opaq, _stroke1px_Rot_Alpha, _strokeThick_Rot_Opaq, _strokeThick_Rot_Alpha, _transform, _generateEdgePixels, _generateArcPixels, _generatePerimeter |
 | LineOps            | _strokeThick_PolyScan                                                                      |
 | SpanOps            | blendPixel_Alpha                                                                           |
