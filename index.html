@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>swcanvas.js Tests & Demos</title>
+    <style>
+        body {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.5;
+        }
+
+        .demo-link {
+            margin-bottom: 30px;
+        }
+
+        .demo-link h2 {
+            margin-bottom: 10px;
+        }
+
+        .demo-link p {
+            margin-top: 0;
+            color: #444;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .section-header {
+            margin-top: 50px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+            color: #333;
+        }
+
+        .section-header:first-of-type {
+            margin-top: 30px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>swcanvas.js Tests & Demos</h1>
+
+    <p>A deterministic 2D Javascript raster engine with Canvas-like API, cross-browser and Node.js compatible.</p>
+
+    <h3 class="section-header">Examples & Demos</h3>
+
+    <div class="demo-link">
+        <h2><a href="examples/showcase.html">Feature Showcase</a></h2>
+        <p>
+            Comprehensive demonstration of swcanvas.js capabilities on a single 800x600 canvas. Features interactive
+            redraw button, animation demo, PNG download functionality, and real-time performance metrics.
+            Demonstrates basic shapes, gradients, patterns, transformations, clipping, stroke styles, line dashing,
+            alpha blending, complex paths, and sub-pixel rendering.
+        </p>
+    </div>
+
+    <div class="demo-link">
+        <h2><a href="tests/browser/minimal-example.html">Minimal Example</a></h2>
+        <p>
+            A minimal example showing basic swcanvas.js usage - creates a red square in the center of a canvas
+            using the HTML5-compatible API. Perfect starting point for understanding swcanvas.js integration.
+        </p>
+    </div>
+
+    <h3 class="section-header">Browser Tests</h3>
+
+    <div class="demo-link">
+        <h2><a href="tests/browser/index.html">Visual Rendering Tests</a></h2>
+        <p>
+            Main browser test interface with side-by-side HTML5 Canvas vs swcanvas.js comparisons.
+            Automatically runs 36 core functionality tests and 140 visual rendering tests on page load.
+            Includes interactive visual comparison tools and PNG/BMP download functionality.
+        </p>
+    </div>
+
+    <div class="demo-link">
+        <h2><a href="tests/direct-rendering/index.html">Direct Rendering Tests</a></h2>
+        <p>
+            Tests for the direct rendering path - 79 individual parametrized test cases comparing swcanvas.js
+            direct rendering against native HTML5 Canvas. Verifies optimized code paths for basic shapes
+            including circles, lines, rectangles, and rounded rectangles.
+        </p>
+    </div>
+
+    <div class="demo-link">
+        <h2><a href="tests/direct-rendering/performance-tests.html">Performance Benchmarking</a></h2>
+        <p>
+            Comparative benchmarking between swcanvas.js direct rendering and native HTML5 Canvas. Uses
+            ramp-up methodology measuring maximum shapes per frame within a 16.7ms budget (60fps target).
+            Shows visual results and comparative charts for various shape types.
+        </p>
+    </div>
+
+    <h3 class="section-header">Debug Tools</h3>
+
+    <div class="demo-link">
+        <h2><a href="debug/xor-step-by-step.html">XOR Composite Step-by-Step Debugger</a></h2>
+        <p>
+            Interactive step-by-step debugger for XOR composite operations. Click through each rendering
+            step to watch for differences between HTML5 Canvas and swcanvas.js panels. Includes detailed
+            pixel analysis and navigation controls for thorough investigation.
+        </p>
+    </div>
+
+    <div class="demo-link">
+        <h2><a href="debug/html5-vs-sw-clearrect.html">clearRect Comparison</a></h2>
+        <p>
+            Side-by-side comparison of HTML5 Canvas vs swcanvas.js clearRect behavior. Validates that
+            clearRect properly clears pixels to transparent while preserving surrounding content.
+            Includes pixel-level analysis output.
+        </p>
+    </div>
+
+    <div class="demo-link">
+        <h2><a href="debug/debug-browser-xor.html">XOR Browser Comparison</a></h2>
+        <p>
+            Step-by-step analysis of HTML5 Canvas XOR composite operation behavior. Shows progression
+            from white background through shape additions with XOR blending, with pixel analysis at
+            each step.
+        </p>
+    </div>
+
+    <h3 class="section-header">Documentation</h3>
+
+    <div class="demo-link">
+        <h2><a href="https://github.com/davidedc/swcanvas.js/blob/main/README.md">README</a></h2>
+        <p>
+            Main project documentation with features overview, quick start guide, API documentation
+            (both HTML5-compatible and Core APIs), usage examples for Node.js and browser, and
+            build/test instructions.
+        </p>
+    </div>
+
+    <div class="demo-link">
+        <h2><a href="https://github.com/davidedc/swcanvas.js/blob/main/ARCHITECTURE.md">Architecture Guide</a></h2>
+        <p>
+            Detailed architecture documentation covering design patterns, component organization,
+            the dual API architecture, and OO principles used throughout the codebase.
+        </p>
+    </div>
+
+    <div class="demo-link">
+        <h2><a href="https://github.com/davidedc/swcanvas.js/blob/main/DIRECT-RENDERING-SUMMARY.MD">Direct Rendering Summary</a></h2>
+        <p>
+            Documentation for the direct rendering system including RectOps, CircleOps, LineOps,
+            ArcOps, and RoundedRectOps classes. Covers optimized rendering paths and implementation details.
+        </p>
+    </div>
+
+</body>
+
+</html>
