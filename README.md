@@ -2,7 +2,7 @@
 
 A deterministic 2D Javascript raster engine with Canvas-like API, cross-browser and Node.js.
 
-**[Demo](examples/showcase.html)** • **[Tests](tests/browser/index.html)** • **[Minimal Example](tests/browser/minimal-example.html)**
+**[Demo](https://davidedc.github.io/swcanvas.js/examples/showcase.html)** • **[Tests](https://davidedc.github.io/swcanvas.js/tests/browser/index.html)** • **[Minimal Example](https://davidedc.github.io/swcanvas.js/tests/browser/minimal-example.html)**
 
 See [index page](https://davidedc.github.io/swcanvas.js/) for link to all browser tests, demos, and documentation.
 
