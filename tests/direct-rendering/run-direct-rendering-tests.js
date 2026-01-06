@@ -153,7 +153,7 @@ function runTest(test, iterationNumber = 1) {
     // In Node.js, there's no HTML5 Canvas to compare against, so skip this check.
 
     // Run shared validation checks (color counts, speckles, etc.)
-    const validationResult = runValidationChecks(surface, checks);
+    const validationResult = runValidationChecks(surface, checks, iterationNumber);
     if (!validationResult.passed) {
         testPassed = false;
         issues.push(...validationResult.issues);

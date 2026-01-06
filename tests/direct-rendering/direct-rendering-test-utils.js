@@ -1386,9 +1386,10 @@ function checkStrokePatternContinuity(surface, options = {}) {
  * Shared between Node.js and browser test runners for consistency.
  * @param {Object} surface - Surface with data, width, height, stride
  * @param {Object} checks - Checks configuration from test
+ * @param {number} iterationNumber - Current iteration number (for skipOnIterations support)
  * @returns {Object} { passed: boolean, issues: string[], knownFailureIssues: string[] }
  */
-function runValidationChecks(surface, checks) {
+function runValidationChecks(surface, checks, iterationNumber = 0) {
     const issues = [];
     const knownFailureIssues = [];
 
@@ -1417,19 +1418,25 @@ function runValidationChecks(surface, checks) {
 
     // Middle row unique colors
     if (checks.uniqueColors && checks.uniqueColors.middleRow) {
-        const expected = getAdjustedExpectedColorCount(checks.uniqueColors.middleRow.count, surface);
-        const actual = countUniqueColorsInMiddleRow(surface);
-        if (actual !== expected) {
-            issues.push(`Middle row unique colors: ${actual} (expected ${expected})`);
+        const skipIterations = checks.uniqueColors.middleRow.skipOnIterations || [];
+        if (!skipIterations.includes(iterationNumber)) {
+            const expected = getAdjustedExpectedColorCount(checks.uniqueColors.middleRow.count, surface);
+            const actual = countUniqueColorsInMiddleRow(surface);
+            if (actual !== expected) {
+                issues.push(`Middle row unique colors: ${actual} (expected ${expected})`);
+            }
         }
     }
 
     // Middle column unique colors
     if (checks.uniqueColors && checks.uniqueColors.middleColumn) {
-        const expected = getAdjustedExpectedColorCount(checks.uniqueColors.middleColumn.count, surface);
-        const actual = countUniqueColorsInMiddleColumn(surface);
-        if (actual !== expected) {
-            issues.push(`Middle column unique colors: ${actual} (expected ${expected})`);
+        const skipIterations = checks.uniqueColors.middleColumn.skipOnIterations || [];
+        if (!skipIterations.includes(iterationNumber)) {
+            const expected = getAdjustedExpectedColorCount(checks.uniqueColors.middleColumn.count, surface);
+            const actual = countUniqueColorsInMiddleColumn(surface);
+            if (actual !== expected) {
+                issues.push(`Middle column unique colors: ${actual} (expected ${expected})`);
+            }
         }
     }
 
