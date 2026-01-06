@@ -100,9 +100,9 @@ function runTest(test, iterationNumber = 1) {
     // Add canvas reference for drawFunction
     ctx.canvas = canvas;
 
-    // Clear to white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, 400, 300);
+    // NOTE: No background fill - canvas starts transparent (alpha=0)
+    // This matches browser test runner behavior for consistent gap detection.
+    // The validation checks alpha=0 to detect gaps between fill and stroke.
 
     // Seed random for reproducibility - different seed per iteration
     SeededRandom.seedWithInteger(12345 + iterationNumber - 1);
