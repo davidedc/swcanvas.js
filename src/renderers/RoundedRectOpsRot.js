@@ -19,15 +19,17 @@
  *
  * Layer 3 (Dispatchers):
  *   fill_Rot_Any       → _fill_Rot_Opaq / _fill_Rot_Alpha
- *   stroke_Rot_Any     → _stroke1px_Rot_* / _strokeThick_Rot_* + LineOps.stroke_Any
+ *   stroke_Rot_Any     → _stroke1px_Rot_* / _strokeThick_Rot_*
  *   fillStroke_Rot_Any → fill_Rot_Any + stroke_Rot_Any
  *
  * External dependencies:
  *   - RectOpsRot.fill_Rot_Any (fallback when radius=0)
  *   - RectOpsRot.stroke_Rot_Any (fallback when radius=0)
- *   - LineOps.stroke_Any (for straight edge strokes)
  *   - ArcOps.stroke1px_Opaq_Exact (for corner arc strokes)
  *   - SpanOps.fill_Opaq, SpanOps.fill_Alpha (for thick stroke fills)
+ *
+ * Note: 1px stroke edges use inline Bresenham (no LineOps) to avoid line-shortening
+ * that would create gaps at edge-arc junctions.
  */
 class RoundedRectOpsRot {
     // =========================================================================
@@ -517,9 +519,10 @@ class RoundedRectOpsRot {
 
     /**
      * Internal: 1px opaque stroke for rotated rounded rectangle.
-     * Uses hybrid approach: 4 straight edges via LineOps + 4 corner arcs via ArcOps.
+     * Uses hybrid approach: 4 straight edges via inline Bresenham + 4 corner arcs via ArcOps.
      *
-     * Since the stroke is opaque, overdraw at edge-arc junctions doesn't affect the result.
+     * Edges use inline Bresenham (not LineOps) to avoid line-shortening that would
+     * create gaps at edge-arc junctions. Since stroke is opaque, overdraw is fine.
      *
      * @param {Surface} surface - Target surface
      * @param {number} centerX - Center X coordinate
@@ -556,26 +559,43 @@ class RoundedRectOpsRot {
             { start: RoundedRectOpsRot._transform(-hw, hh - radius, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(-hw, -hh + radius, centerX, centerY, cos, sin) }
         ];
 
-        // Draw 4 straight edges via LineOps.stroke_Any
+        const surfaceWidth = surface.width;
+        const surfaceHeight = surface.height;
+        const data32 = surface.data32;
+        const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Draw 4 straight edges via inline Bresenham (no shortening for perimeter edges)
         for (const edge of edgeEndpoints) {
-            // Skip zero-length edges (occurs when radius = half width or half height)
-            // This prevents extra pixels at arc junction points
             const dx = edge.end.x - edge.start.x;
             const dy = edge.end.y - edge.start.y;
-            const edgeLength = Math.sqrt(dx * dx + dy * dy);
-            if (edgeLength < MIN_EDGE_LENGTH) continue;
+            if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
 
-            LineOps.stroke_Any(
-                surface,
-                edge.start.x, edge.start.y,
-                edge.end.x, edge.end.y,
-                1,              // lineWidth
-                color,
-                1.0,            // globalAlpha (already opaque)
-                clipBuffer,
-                true,           // isOpaqueColor
-                false           // isSemiTransparentColor
-            );
+            const x1i = Math.floor(edge.start.x);
+            const y1i = Math.floor(edge.start.y);
+            const x2i = Math.floor(edge.end.x);
+            const y2i = Math.floor(edge.end.y);
+
+            // NOTE: No line shortening! Perimeter edges must meet arcs exactly.
+
+            const dxAbs = Math.abs(x2i - x1i);
+            const dyAbs = Math.abs(y2i - y1i);
+            const sx = x1i < x2i ? 1 : -1;
+            const sy = y1i < y2i ? 1 : -1;
+            let err = dxAbs - dyAbs;
+            let x = x1i, y = y1i;
+
+            while (true) {
+                if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
+                    const pixelIndex = y * surfaceWidth + x;
+                    if (!clipBuffer || (clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7)))) {
+                        data32[pixelIndex] = packedColor;
+                    }
+                }
+                if (x === x2i && y === y2i) break;
+                const e2 = 2 * err;
+                if (e2 > -dyAbs) { err -= dyAbs; x += sx; }
+                if (e2 < dxAbs) { err += dxAbs; y += sy; }
+            }
         }
 
         // Calculate 4 corner arc centers in local space, then transform to screen space

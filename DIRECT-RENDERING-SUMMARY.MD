@@ -74,8 +74,8 @@ Notes:
 - Context2D calls RoundedRectOpsAA for axis-aligned (AA) operations and RoundedRectOpsRot directly for rotated operations.
 - RoundedRectOpsRot falls back to RectOpsRot (not RectOpsAA) when radius=0 for consistency.
 - Axis-aligned rounded rectangle **stroke** (1px alpha) uses Set deduplication to prevent overdraw at edge-arc junctions.
-- Rotated rounded rectangle **stroke** (1px opaque) uses hybrid algorithm: 4 edges via LineOps + 4 corner arcs via ArcOps.stroke1px_Opaq_Exact().
-- Rotated rounded rectangle **stroke** (1px alpha) uses hybrid algorithm + Set deduplication to prevent overdraw at edge-arc junctions.
+- Rotated rounded rectangle **stroke** (1px opaque) uses hybrid algorithm: 4 edges via inline Bresenham + 4 corner arcs via ArcOps.stroke1px_Opaq_Exact().
+- Rotated rounded rectangle **stroke** (1px alpha) uses hybrid algorithm (inline Bresenham edges + arcs) + Set deduplication to prevent overdraw at edge-arc junctions.
 - Rotated rounded rectangle **stroke** (thick) uses Dual Edge Buffer algorithm: generates outer and inner perimeters, fills annulus per scanline.
 - Rotated rounded rectangle **fill** uses Edge Buffer Rasterization: O(H + P + A) optimal complexity.
 - **fillStroke_Rot_Any()** combines fill with epsilon contraction + stroke on top.
@@ -166,8 +166,8 @@ RectOpsRot.stroke_Rot_Any() ─────► _stroke_Rot_1px_DDA (for 1px stro
                             ─────► QuadScanOps.fillQuad (for thick opaque strokes)
                             ─────► _stroke_Rot_Alpha (for thick semi-transparent)
 
-RoundedRectOpsRot.stroke_Rot_Any() ► LineOps.stroke_Any() + ArcOps.stroke1px_Opaq_Exact()
-   (4 edges + 4 corner arcs, 1px opaque only)
+RoundedRectOpsRot.stroke_Rot_Any() ► Inline Bresenham edges + ArcOps.stroke1px_Opaq_Exact()
+   (4 edges + 4 corner arcs; inline Bresenham avoids LineOps line-shortening)
 
 RoundedRectOpsRot.fill_Rot_Any() ─► Edge Buffer Rasterization (self-contained)
    (perimeter via Bresenham lines + angle-based arcs → scanline fill)
@@ -312,7 +312,7 @@ if (clipBuffer[byteIndex] === 0) {
 | Angle filtering     | ArcOps.*                                 | Filter Bresenham points by angle range |
 | Angle-based iterate | ArcOps.stroke1pxOpaqueExactEndpoints     | Exact start/end pixels for junctions   |
 | Set deduplication   | CircleOps.stroke1pxAlpha, ArcOps         | Prevent overdraw for alpha blending    |
-| Hybrid edges+arcs   | RoundedRectOpsRot.stroke_Rot_Any (1px)     | 4 lines + 4 arcs for rotated rrect     |
+| Hybrid edges+arcs   | RoundedRectOpsRot._stroke1px_Rot_* (1px)   | 4 inline Bresenham edges + 4 arcs (no LineOps) |
 | Edge Buffer Raster  | RoundedRectOpsRot.fill_Rot_Any             | O(H+P+A) optimal rotated fill          |
 | Dual Edge Buffer    | RoundedRectOpsRot.stroke_Rot_Any (thick)   | Outer+inner perimeters, fill annulus   |
 | Span-based fill-first | RectOpsAA.fillStroke                  | Correct semi-transparent stroke blending |
