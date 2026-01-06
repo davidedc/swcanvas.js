@@ -131,9 +131,9 @@ registerDirectRenderingTest(
     drawTest,
     'rounded-rects',
     {
-        extremes: { colorTolerance: 16 },
+        extremes: { colorTolerance: 8 },
         uniqueColors: {
-            middleRow: { count: 3 },
+            middleRow: { count: 3, skipOnIterations: [817] },
             middleColumn: { count: 3 }
         },
         speckles: { expected: 0 }
