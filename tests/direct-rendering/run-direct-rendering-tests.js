@@ -66,6 +66,7 @@ global.countSpeckles = countSpeckles;
 // Parse command line arguments
 const args = process.argv.slice(2);
 let numIterations = 1;
+let testFilter = null;
 
 for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -73,6 +74,12 @@ for (let i = 0; i < args.length; i++) {
         numIterations = parseInt(arg.split('=')[1], 10);
     } else if (arg === '-i' && args[i + 1]) {
         numIterations = parseInt(args[i + 1], 10);
+        i++; // Skip next arg
+    } else if (arg.startsWith('--test=')) {
+        testFilter = arg.split('=')[1];
+    } else if (arg === '-t' && args[i + 1]) {
+        testFilter = args[i + 1];
+        i++; // Skip next arg
     }
 }
 
@@ -113,7 +120,7 @@ function runTest(test, iterationNumber = 1) {
     // Run the test's draw function
     let result;
     try {
-        result = drawFunction(ctx, 1, null);
+        result = drawFunction(ctx, iterationNumber, null);
     } catch (e) {
         failed++;
         failures.push({
@@ -210,12 +217,27 @@ function main() {
         return;
     }
 
-    const totalRuns = DIRECT_RENDERING_TESTS.length * numIterations;
-    console.log(`Running ${DIRECT_RENDERING_TESTS.length} tests x ${numIterations} iteration${numIterations > 1 ? 's' : ''} = ${totalRuns} total runs...\n`);
+    // Filter tests if -t specified
+    let testsToRun = DIRECT_RENDERING_TESTS;
+    if (testFilter) {
+        testsToRun = DIRECT_RENDERING_TESTS.filter(test =>
+            test.name.includes(testFilter)
+        );
+        if (testsToRun.length === 0) {
+            console.log(`No tests match filter: "${testFilter}"`);
+            console.log('Available tests:');
+            DIRECT_RENDERING_TESTS.forEach(t => console.log(`  - ${t.name}`));
+            process.exit(1);
+        }
+        console.log(`Filter "${testFilter}" matched ${testsToRun.length} test(s)\n`);
+    }
+
+    const totalRuns = testsToRun.length * numIterations;
+    console.log(`Running ${testsToRun.length} tests x ${numIterations} iteration${numIterations > 1 ? 's' : ''} = ${totalRuns} total runs...\n`);
 
     // Group by category
     const categories = {};
-    for (const test of DIRECT_RENDERING_TESTS) {
+    for (const test of testsToRun) {
         const cat = test.category || 'uncategorized';
         if (!categories[cat]) categories[cat] = [];
         categories[cat].push(test);
