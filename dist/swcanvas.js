@@ -2323,6 +2323,110 @@ class RectOpsRot {
         }
     }
 
+    /**
+     * 1px stroke drawing each edge individually using DDA.
+     * Uses edge-based DDA that matches fill boundary computation:
+     * - Y-major edges (|dy| >= |dx|): step Y, compute X, floor
+     * - X-major edges (|dx| > |dy|): step X, compute Y, floor
+     * - Horizontal edges (dy=0): draw all pixels at floor(y)
+     * @param {Surface} surface - Target surface
+     * @param {Array} corners - 4 corner points [{x, y}, ...]
+     * @param {Color} color - Stroke color
+     * @param {number} globalAlpha - Context global alpha (0-1)
+     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {boolean} isOpaqueColor - True if color is fully opaque
+     * @private
+     */
+    static _stroke_Rot_1px_DDA(surface, corners, color, globalAlpha, clipBuffer, isOpaqueColor) {
+        const width = surface.width;
+        const height = surface.height;
+        const data32 = surface.data32;
+        const data = surface.data;
+
+        const packedColor = isOpaqueColor ? Surface.packColor(color.r, color.g, color.b, 255) : 0;
+        const r = color.r, g = color.g, b = color.b;
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        const invAlpha = 1 - effectiveAlpha;
+
+        // Draw each of the 4 edges
+        for (let i = 0; i < 4; i++) {
+            const p1 = corners[i];
+            const p2 = corners[(i + 1) % 4];
+
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+
+            if (dy === 0) {
+                // Horizontal edge: draw all pixels at floor(y)
+                const y = p1.y | 0;
+                if (y < 0 || y >= height) continue;
+                const xStart = Math.ceil(Math.min(p1.x, p2.x));
+                const xEnd = Math.floor(Math.max(p1.x, p2.x));
+
+                for (let x = xStart; x <= xEnd; x++) {
+                    if (x < 0 || x >= width) continue;
+                    const pixelIndex = y * width + x;
+                    if (clipBuffer) {
+                        const byteIndex = pixelIndex >> 3;
+                        const bitIndex = pixelIndex & 7;
+                        if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
+                    }
+                    if (isOpaqueColor) {
+                        data32[pixelIndex] = packedColor;
+                    } else {
+                        RectOpsRot._blendPixelAlpha(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha, null);
+                    }
+                }
+            } else if (Math.abs(dy) >= Math.abs(dx)) {
+                // Y-major edge: step Y, compute X (matches fill DDA)
+                const yStart = Math.ceil(Math.min(p1.y, p2.y));
+                const yEnd = Math.floor(Math.max(p1.y, p2.y));
+                const slope = dx / dy;  // dX/dY
+
+                for (let y = yStart; y <= yEnd; y++) {
+                    if (y < 0 || y >= height) continue;
+                    const x = (p1.x + (y - p1.y) * slope) | 0;  // floor
+                    if (x < 0 || x >= width) continue;
+
+                    const pixelIndex = y * width + x;
+                    if (clipBuffer) {
+                        const byteIndex = pixelIndex >> 3;
+                        const bitIndex = pixelIndex & 7;
+                        if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
+                    }
+                    if (isOpaqueColor) {
+                        data32[pixelIndex] = packedColor;
+                    } else {
+                        RectOpsRot._blendPixelAlpha(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha, null);
+                    }
+                }
+            } else {
+                // X-major edge: step X, compute Y
+                const xStart = Math.ceil(Math.min(p1.x, p2.x));
+                const xEnd = Math.floor(Math.max(p1.x, p2.x));
+                const slope = dy / dx;  // dY/dX
+
+                for (let x = xStart; x <= xEnd; x++) {
+                    if (x < 0 || x >= width) continue;
+                    const y = (p1.y + (x - p1.x) * slope) | 0;  // floor
+                    if (y < 0 || y >= height) continue;
+
+                    const pixelIndex = y * width + x;
+                    if (clipBuffer) {
+                        const byteIndex = pixelIndex >> 3;
+                        const bitIndex = pixelIndex & 7;
+                        if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
+                    }
+                    if (isOpaqueColor) {
+                        data32[pixelIndex] = packedColor;
+                    } else {
+                        RectOpsRot._blendPixelAlpha(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha, null);
+                    }
+                }
+            }
+        }
+    }
+
     // ========================================================================
     // ROTATED FILL IMPLEMENTATION
     // ========================================================================
@@ -2353,12 +2457,13 @@ class RectOpsRot {
         const hh = height / 2;
 
         // Calculate 4 corners of the rotated rectangle
-        // Floor coordinates to match Bresenham rasterization used by stroke rendering
+        // Use sub-pixel coordinates - QuadScanOps handles discretization via DDA
+        // Edge-based DDA stroke uses same corner coordinates for consistent boundaries
         const corners = [
-            { x: Math.floor(centerX + hw * cos - hh * sin), y: Math.floor(centerY + hw * sin + hh * cos) },
-            { x: Math.floor(centerX + hw * cos + hh * sin), y: Math.floor(centerY + hw * sin - hh * cos) },
-            { x: Math.floor(centerX - hw * cos + hh * sin), y: Math.floor(centerY - hw * sin - hh * cos) },
-            { x: Math.floor(centerX - hw * cos - hh * sin), y: Math.floor(centerY - hw * sin + hh * cos) }
+            { x: centerX + hw * cos - hh * sin, y: centerY + hw * sin + hh * cos },
+            { x: centerX + hw * cos + hh * sin, y: centerY + hw * sin - hh * cos },
+            { x: centerX - hw * cos + hh * sin, y: centerY - hw * sin - hh * cos },
+            { x: centerX - hw * cos - hh * sin, y: centerY - hw * sin + hh * cos }
         ];
 
         // Delegate to optimized scanline algorithm
@@ -2502,31 +2607,23 @@ class RectOpsRot {
         const isOpaqueColor = color.a === 255 && globalAlpha >= 1.0;
         const isSemiTransparentColor = !isOpaqueColor && color.a > 0;
 
-        // For thick semitransparent strokes, use Set-based approach to prevent overdraw
-        if (lineWidth > 1 && isSemiTransparentColor) {
-            return RectOpsRot._stroke_Rot_Alpha(surface, centerX, centerY, width, height,
-                rotation, lineWidth, color, globalAlpha, clipBuffer);
+        // Handle 1px strokes - use edge-based DDA that matches fill boundaries
+        if (lineWidth <= 1) {
+            // Use same corner order as fill_Rot_Any for consistent DDA processing
+            const fillCorners = [
+                { x: centerX + hw * cos - hh * sin, y: centerY + hw * sin + hh * cos },
+                { x: centerX + hw * cos + hh * sin, y: centerY + hw * sin - hh * cos },
+                { x: centerX - hw * cos + hh * sin, y: centerY - hw * sin - hh * cos },
+                { x: centerX - hw * cos - hh * sin, y: centerY - hw * sin + hh * cos }
+            ];
+            RectOpsRot._stroke_Rot_1px_DDA(surface, fillCorners, color, globalAlpha, clipBuffer, isOpaqueColor);
+            return;
         }
 
-        // Handle 1px strokes (no corner adjustment needed - minimal overlap issue)
-        if (lineWidth <= 1) {
-            for (let i = 0; i < 4; i++) {
-                const p1 = corners[i];
-                const p2 = corners[(i + 1) % 4];
-
-                LineOps.stroke_Any(
-                    surface,
-                    p1.x, p1.y,
-                    p2.x, p2.y,
-                    lineWidth,
-                    color,
-                    globalAlpha,
-                    clipBuffer,
-                    isOpaqueColor,
-                    isSemiTransparentColor
-                );
-            }
-            return;
+        // For thick semitransparent strokes, use Set-based approach to prevent overdraw
+        if (isSemiTransparentColor) {
+            return RectOpsRot._stroke_Rot_Alpha(surface, centerX, centerY, width, height,
+                rotation, lineWidth, color, globalAlpha, clipBuffer);
         }
 
         // Handle thick opaque strokes using QuadScanOps directly for consistent rasterization.
