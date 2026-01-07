@@ -356,6 +356,42 @@ Returns opaque color guaranteed visible on white background (at least one dark c
 ctx.strokeStyle = getRandomOpaqueVisibleColor();
 ```
 
+### Color Standardization Guidelines
+
+While random colors look visually appealing, they can cause problems with certain checks (e.g., `totalUniqueColors`, color separation analysis). When random colors aren't strictly necessary for test validity, prefer standardized colors:
+
+#### Standardized Color Scheme
+
+| Purpose | Opaque | 50% Transparent |
+|---------|--------|-----------------|
+| **Fills** (Blue) | `rgb(0, 0, 255)` | `rgba(0, 0, 255, 0.49)` |
+| **Strokes** (Red) | `rgb(255, 0, 0)` | `rgba(255, 0, 0, 0.49)` |
+
+#### Guidelines
+
+1. **Strokes**: Always red (`rgb(255, 0, 0)` or `rgba(255, 0, 0, 0.49)`)
+2. **Fills**: Always blue (`rgb(0, 0, 255)` or `rgba(0, 0, 255, 0.49)`)
+3. **"Semitransparent"**: Always 50% transparency (alpha ≈ 0.49, which is 125/255)
+4. **"Mixed/Random transparency"**: Simplify to 50/50 choice between fully opaque and 50% transparent:
+   ```javascript
+   const fillIsOpaque = SeededRandom.getRandom() < 0.5;
+   ctx.fillStyle = fillIsOpaque ? 'rgb(0, 0, 255)' : 'rgba(0, 0, 255, 0.49)';
+   ```
+
+#### When to Use Random Colors
+
+Use `getRandomColor()` and `getRandomOpaqueColor()` only when:
+- Testing color handling across the full spectrum is the actual test purpose
+- Verifying gradient or pattern rendering
+- Testing anti-aliasing with various color combinations
+
+#### Benefits of Standardized Colors
+
+- **Predictable `totalUniqueColors`**: Easier to calculate expected color counts
+- **Clear color separation**: Fill (blue) and stroke (red) are easily distinguishable
+- **Consistent test behavior**: Same visual output across iterations
+- **Simpler debugging**: Easy to identify which pixels are fill vs stroke
+
 #### `getRandomPoint(decimalPlaces, canvasWidth, canvasHeight, margin)`
 
 Returns random point within canvas bounds.
