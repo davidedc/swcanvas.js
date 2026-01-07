@@ -21,7 +21,7 @@ registerDirectRenderingTest(
 
         for (let i = 0; i < numToDraw; i++) {
             // Use opaque fill color (required for direct rendering)
-            const fillColor = getRandomOpaqueColor();
+            const fillColor = 'rgb(0, 0, 255)';
 
             let centerX, centerY, radius;
 

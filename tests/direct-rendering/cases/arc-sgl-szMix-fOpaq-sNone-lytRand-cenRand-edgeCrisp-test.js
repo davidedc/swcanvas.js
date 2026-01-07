@@ -60,8 +60,8 @@ registerDirectRenderingTest(
 
         const { centerX, centerY, radius, startAngle, endAngle, gapSizeDeg } = params;
 
-        // Get random opaque color
-        const fillColor = 'rgba(255, 0, 0)';
+        // Opaque blue fill
+        const fillColor = 'rgb(0, 0, 255)';
 
         // Draw filled arc (no stroke)
         ctx.fillStyle = fillColor;

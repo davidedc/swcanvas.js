@@ -12,7 +12,7 @@ registerDirectRenderingTest(
         const canvasHeight = ctx.canvas.height;
 
         // Use SEMI-TRANSPARENT fill color (uses direct rendering with alpha blending)
-        ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.fillStyle = 'rgba(0, 0, 255, 0.49)';
 
         const centerX = canvasWidth / 2;
         const centerY = canvasHeight / 2;

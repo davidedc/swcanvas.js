@@ -11,8 +11,8 @@ registerDirectRenderingTest(
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 
-        // Use semi-transparent fill color (visible mode ensures color is distinguishable from white)
-        const fillColor = getRandomColor('semitransparent-visible');
+        // Use semi-transparent blue fill color
+        const fillColor = 'rgba(0, 0, 255, 0.49)';
 
         // Calculate arc parameters
         const params = calculateArcTestParameters({

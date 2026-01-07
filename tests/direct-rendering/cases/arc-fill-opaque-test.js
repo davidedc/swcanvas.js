@@ -12,8 +12,8 @@ registerDirectRenderingTest(
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 
-        // Use opaque fill color (required for direct rendering)
-        const fillColor = getRandomOpaqueVisibleColor();
+        // Use opaque blue fill color (required for direct rendering)
+        const fillColor = 'rgb(0, 0, 255)';
 
         // Calculate arc parameters
         const params = calculateArcTestParameters({

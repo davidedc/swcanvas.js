@@ -2,7 +2,7 @@
  * TEST SUMMARY:
  * =================
  *
- * Description: Tests rendering of 20 black, 1px-thick lines. Each line has a randomly chosen start and end point, resulting in random positions, lengths, and orientations.
+ * Description: Tests rendering of 20 red, 1px-thick lines. Each line has a randomly chosen start and end point, resulting in random positions, lengths, and orientations.
  *
  *
  * ---
@@ -13,7 +13,7 @@
  * | Count                        | multi-20       | In its default visual test mode (`instances` is null), the script draws 20 lines in a loop.
  * | SizeCategory                 | mixed          | Line endpoints are randomized across the canvas, resulting in lengths that span multiple size categories.
  * | FillStyle                    | none           | The code sets `ctx.fillStyle` to be fully transparent `rgba(0, 0, 0, 0)` and no fill is applied.
- * | StrokeStyle                  | opaque         | `ctx.strokeStyle` is set to `'rgb(0, 0, 0)'`, which is a fully opaque black color.
+ * | StrokeStyle                  | opaque         | `ctx.strokeStyle` is set to `'rgb(255, 0, 0)'`, which is a fully opaque red color.
  * | StrokeThickness              | 1px            | `ctx.lineWidth` is hardcoded to `1`.
  * | Layout                       | spread         | The test draws 20 lines with randomized start/end points, distributing them across the canvas.
  * | CenteredAt                   | N/A            | This facet is not applicable for line primitives.
@@ -40,7 +40,7 @@
  */
 
 /**
- * @fileoverview Test definition for rendering multiple (20 by default) 1px thick, black, opaque
+ * @fileoverview Test definition for rendering multiple (20 by default) 1px thick, red, opaque
  * lines with random start/end points. Supports a parameter to vary the number of instances.
  *
  * Guiding Principles for this function:
@@ -60,7 +60,7 @@
  */
 
 /**
- * Draws a specified number of 1px thick, black, opaque lines with random start/end points.
+ * Draws a specified number of 1px thick, red, opaque lines with random start/end points.
  *
  * @param {CanvasRenderingContext2D | CrispSwContext} ctx - The rendering context.
  * @param {number} currentIterationNumber - The current test iteration.
@@ -95,7 +95,7 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
 
     // Set fixed drawing properties
     ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgb(0, 0, 0)'; // Black
+    ctx.strokeStyle = 'rgb(255, 0, 0)'; // Red
     ctx.fillStyle = 'rgba(0, 0, 0, 0)'; // No fill
 
     for (let i = 0; i < numIterations; i++) {
@@ -118,7 +118,7 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
         ctx.strokeLine(start.x, start.y, end.x, end.y);
 
         if (!isTrueMultiInstance) {
-            logs.push(`─ 1px Black line from (${start.x.toFixed(1)}, ${start.y.toFixed(1)}) to (${end.x.toFixed(1)}, ${end.y.toFixed(1)}) color: ${ctx.strokeStyle} thickness: ${ctx.lineWidth}`);
+            logs.push(`─ 1px Red line from (${start.x.toFixed(1)}, ${start.y.toFixed(1)}) to (${end.x.toFixed(1)}, ${end.y.toFixed(1)}) color: ${ctx.strokeStyle} thickness: ${ctx.lineWidth}`);
         }
     }
 
@@ -139,8 +139,8 @@ registerDirectRenderingTest(
         // No drawFunctionArgs needed as the draw function handles null instances to draw 20 lines.
     },
     {
-        title: 'Lines: Multi-20 No-Fill 1px-Black-Opaque-Stroke Random-Pos Random-Orient',
-        description: 'Tests rendering of 20 black lines (1px width) with random positions/orientations using canvas code.',
+        title: 'Lines: Multi-20 No-Fill 1px-Red-Opaque-Stroke Random-Pos Random-Orient',
+        description: 'Tests rendering of 20 red lines (1px width) with random positions/orientations using canvas code.',
         displayName: 'Perf: Lines Multi-20 1px Random'
         // The description above will also be used for the performance test registry entry.
     }

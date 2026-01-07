@@ -86,10 +86,9 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
         const finalRectHeight = placement.adjustedDimensions.height;
         const strokeWidth = placement.strokeWidth;
 
-        // SeededRandom Call 5: strokeColor (semi-transparent light)
-        const strokeColorStr = getRandomColor("semitransparent-light");
-        // SeededRandom Call 6: fillColor (semi-transparent light)
-        const fillColorStr = getRandomColor("semitransparent-light");
+        // Standardized colors: semi-transparent red stroke, semi-transparent blue fill
+        const strokeColorStr = 'rgba(255, 0, 0, 0.49)';
+        const fillColorStr = 'rgba(0, 0, 255, 0.49)';
         // SeededRandom Call 7: radius
         const radius = Math.round(SeededRandom.getRandom() * Math.min(finalRectWidth, finalRectHeight) * 0.2);
 

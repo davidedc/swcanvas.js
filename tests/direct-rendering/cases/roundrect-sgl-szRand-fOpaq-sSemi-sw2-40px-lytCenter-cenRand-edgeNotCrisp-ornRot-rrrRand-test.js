@@ -50,9 +50,9 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
     const cx = canvasWidth / 2 + (SeededRandom.getRandom() - 0.5) * 40;
     const cy = canvasHeight / 2 + (SeededRandom.getRandom() - 0.5) * 40;
 
-    const fillColor = { r: 0, g: 180, b: 0 };
-    const strokeColor = { r: 255, g: 0, b: 128 };
-    const strokeAlpha = 0.6;
+    const fillColor = { r: 0, g: 0, b: 255 };
+    const strokeColor = { r: 255, g: 0, b: 0 };
+    const strokeAlpha = 0.49;
 
     // Helper function to draw a single rotated rounded rect
     function drawRotatedRoundRect(context, centerX, centerY, w, h, r, angle, lw, fillRgb, strokeRgba) {

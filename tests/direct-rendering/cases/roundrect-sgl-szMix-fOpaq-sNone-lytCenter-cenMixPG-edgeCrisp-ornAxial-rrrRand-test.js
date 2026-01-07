@@ -2,7 +2,7 @@
  * TEST SUMMARY:
  * =================
  *
- * Description: Tests crisp rendering of a single opaque red filled rounded rectangle with no stroke, centered on canvas with independently randomized X/Y centering (pixel or grid).
+ * Description: Tests crisp rendering of a single opaque blue filled rounded rectangle with no stroke, centered on canvas with independently randomized X/Y centering (pixel or grid).
  *
  *
  * ---
@@ -12,7 +12,7 @@
  * | Shape category         | rounded-rects  | The test draws a rounded rectangle using ctx.fillRoundRect().
  * | Count                  | single         | The test draws one rounded rectangle instance.
  * | SizeCategory           | mixed          | Width/height randomized in [40, 149], spanning S, M, L categories.
- * | FillStyle              | opaque         | Fill color is rgb(255, 0, 0), fully opaque.
+ * | FillStyle              | opaque         | Fill color is rgb(0, 0, 255), fully opaque.
  * | StrokeStyle            | none           | No stroke is applied.
  * | StrokeThickness        | N/A            | No stroke applied.
  * | Layout                 | centered       | Shape is positioned relative to canvas center.
@@ -34,7 +34,7 @@
  *
  * UNCAPTURED ASPECTS IN FILENAME / FACETS ABOVE:
  * ----------------------------------------------
- * - Fill color is fixed opaque red (rgb(255, 0, 0)).
+ * - Fill color is fixed opaque blue (rgb(0, 0, 255)).
  * - Tests direct RoundedRectOps.fillOpaque() rendering path.
  * - Dimension parity adjusted: pixel center needs ODD width, grid center needs EVEN width.
  *
@@ -84,7 +84,7 @@ registerDirectRenderingTest(
         const y = centerY - rectHeight / 2;
 
         // Opaque fill color (uses direct rendering)
-        ctx.fillStyle = 'rgb(255, 0, 0)';
+        ctx.fillStyle = 'rgb(0, 0, 255)';
 
         // Use direct rendering method
         ctx.fillRoundRect(x, y, rectWidth, rectHeight, radius);
@@ -102,11 +102,11 @@ registerDirectRenderingTest(
     'rounded-rects',
     {
         extremes: true,
-        totalUniqueColors: 2  // White background + opaque red
+        totalUniqueColors: 2  // White background + opaque blue
     },
     {
         title: 'Single Opaque Filled Rounded Rectangle (Crisp, Mixed P/G Centering)',
-        description: 'Tests crisp rendering of a single opaque red filled rounded rectangle with no stroke.',
+        description: 'Tests crisp rendering of a single opaque blue filled rounded rectangle with no stroke.',
         displayName: 'Perf: RRect Opaque Fill Crisp MixPG'
     }
 );

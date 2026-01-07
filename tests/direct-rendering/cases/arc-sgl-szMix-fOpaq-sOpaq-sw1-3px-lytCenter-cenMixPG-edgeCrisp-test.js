@@ -62,9 +62,9 @@ registerDirectRenderingTest(
 
         const { centerX, centerY, radius, strokeWidth, finalDiameter, atPixel, startAngle, endAngle, gapSizeDeg } = params;
 
-        // TODO in case we use this for the performance tests, this might not be good for the performance as there is some parsing 
-        const strokeColor = 'rgba(255, 0, 0, 0.5)';  // red at 50% alpha
-        const fillColor = 'rgba(0, 255, 0, 0.5)';    // green at 50% alpha
+        // Semitransparent blue fill and red stroke (50% - original behavior)
+        const fillColor = 'rgba(0, 0, 255, 0.49)';
+        const strokeColor = 'rgba(255, 0, 0, 0.49)';
 
         // Draw filled and stroked arc using unified Direct API
         // Using fillOuterStrokeArc ensures no gaps between fill and stroke

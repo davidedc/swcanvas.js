@@ -2,7 +2,7 @@
 * TEST SUMMARY:
 * =================
 *
-* Description: Renders 20 lines with a 3px black opaque stroke. The position and orientation of each line are fully randomized.
+* Description: Renders 20 lines with a 3px red opaque stroke. The position and orientation of each line are fully randomized.
 *
 *
 * ---
@@ -13,7 +13,7 @@
 * | Count                  | multi-20       | The test is configured to draw 20 lines in a standard visual test run (initialCount = 20).
 * | SizeCategory           | mixed          | Line length is randomized from 0 to canvas diagonal, spanning multiple size categories (XS-XL).
 * | FillStyle              | none           | The code explicitly sets fillStyle to transparent ('rgba(0,0,0,0)') and does not call fill methods.
-* | StrokeStyle            | opaque         | The code sets strokeStyle to an opaque color ('rgb(0,0,0)').
+* | StrokeStyle            | opaque         | The code sets strokeStyle to an opaque color ('rgb(255,0,0)').
 * | StrokeThickness        | 3px            | The code hardcodes ctx.lineWidth = 3.
 * | Layout                 | spread         | Each of the 20 lines has its start/end points randomized, spreading them across the canvas.
 * | CenteredAt             | N/A            | This facet is not applicable to lines.
@@ -41,7 +41,7 @@
 */
 
 /**
- * Draws multiple 3px thick, black, opaque lines at random positions.
+ * Draws multiple 3px thick, red, opaque lines at random positions.
  * The number of lines drawn depends on whether 'instances' (for performance mode)
  * or 'initialCount' (for visual regression mode) is active.
  *
@@ -59,7 +59,7 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
 
     // Set constant drawing properties
     ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgb(0,0,0)'; // Opaque black in RGB format
+    ctx.strokeStyle = 'rgb(255,0,0)'; // Opaque red in RGB format
     ctx.fillStyle = 'rgba(0,0,0,0)'; // No fill for lines
 
     const canvasWidth = ctx.canvas.width;
@@ -74,12 +74,12 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
         ctx.strokeLine(start.x, start.y, end.x, end.y);
 
         if (!isPerformanceRun) {
-            logs.push(`─ 3px Black line from (${start.x.toFixed(1)}, ${start.y.toFixed(1)}) to (${end.x.toFixed(1)}, ${end.y.toFixed(1)})`);
+            logs.push(`─ 3px Red line from (${start.x.toFixed(1)}, ${start.y.toFixed(1)}) to (${end.x.toFixed(1)}, ${end.y.toFixed(1)})`);
         }
     }
 
     if (!isPerformanceRun && logs.length === 0) {
-        logs.push('No 3px black lines drawn.');
+        logs.push('No 3px red lines drawn.');
     }
 
     return logs && logs.length > 0 ? { logs } : null;
@@ -94,8 +94,8 @@ registerDirectRenderingTest(
         // Visual comparison only - no specific checks
     },
     {
-        title: 'Lines: Multi-20 No-Fill 3px-Black-Opaque-Stroke Random-Pos Random-Orient',
-        displayName: 'Perf: Lines Multi 3px Black Random',
-        description: 'Performance test for rendering multiple (default 20, or N from harness) 3px black lines at random positions.'
+        title: 'Lines: Multi-20 No-Fill 3px-Red-Opaque-Stroke Random-Pos Random-Orient',
+        displayName: 'Perf: Lines Multi 3px Red Random',
+        description: 'Performance test for rendering multiple (default 20, or N from harness) 3px red lines at random positions.'
     }
 );

@@ -62,9 +62,9 @@ registerDirectRenderingTest(
 
         const { centerX, centerY, radius, strokeWidth, finalDiameter, atPixel } = params;
 
-        // Get random colors
-        const strokeColor = getRandomColor('semitransparent');
-        const fillColor = getRandomColor('semitransparent');
+        // Use standardized colors: semi-transparent blue fill and red stroke
+        const strokeColor = 'rgba(255, 0, 0, 0.49)';
+        const fillColor = 'rgba(0, 0, 255, 0.49)';
 
         // Draw filled and stroked circle using unified Direct API
         // Using fillStrokeCircle ensures no gaps between fill and stroke

@@ -93,9 +93,9 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
     const cx = canvasWidth / 2 + (SeededRandom.getRandom() - 0.5) * 60;
     const cy = canvasHeight / 2 + (SeededRandom.getRandom() - 0.5) * 60;
 
-    // Semi-transparent green color for visual clarity
-    const fillColor = { r: 0, g: 180, b: 0 };
-    const fillAlpha = 0.6;
+    // Semi-transparent blue color for standardized testing
+    const fillColor = { r: 0, g: 0, b: 255 };
+    const fillAlpha = 0.49;
 
     if (isPerformanceRun) {
         // For performance runs, draw many shapes with varying parameters

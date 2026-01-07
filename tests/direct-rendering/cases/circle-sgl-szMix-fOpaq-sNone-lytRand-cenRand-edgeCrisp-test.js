@@ -60,8 +60,8 @@ registerDirectRenderingTest(
 
         const { centerX, centerY, radius, finalDiameter, atPixel } = params;
 
-        // Get random fill color
-        const fillColor = getRandomColor('semitransparent');
+        // Use standardized color: semitransparent blue fill (50% - original behavior)
+        const fillColor = 'rgba(0, 0, 255, 0.49)';
 
         // Draw filled circle (no stroke) using Direct API for direct rendering
         ctx.fillStyle = fillColor;

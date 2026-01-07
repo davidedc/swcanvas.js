@@ -56,9 +56,9 @@ registerDirectRenderingTest(
         // Random stroke width (1-11px)
         const strokeWidth = SeededRandom.getRandom() * 10 + 1;
 
-        // Get random colors (semitransparent)
-        const strokeColor = getRandomColor('semitransparent');
-        const fillColor = getRandomColor('semitransparent');
+        // Use standardized colors: blue fill, red stroke (50% semitransparent - original behavior)
+        const strokeColor = 'rgba(255, 0, 0, 0.49)';
+        const fillColor = 'rgba(0, 0, 255, 0.49)';
 
         // Draw filled and stroked circle using Direct API
         // Note: strokeCircle direct rendering supports all stroke widths

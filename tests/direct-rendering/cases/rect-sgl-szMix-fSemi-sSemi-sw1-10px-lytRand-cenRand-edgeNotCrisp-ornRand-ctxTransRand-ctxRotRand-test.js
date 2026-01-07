@@ -78,10 +78,10 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
         // 5. strokeWidth
         const strokeWidth = SeededRandom.getRandom() * 10 + 1;
 
-        // 6. strokeColor (getRandomColor uses SeededRandom) - SWCanvas returns CSS strings directly
-        const strokeColorStr = getRandomColor("semitransparent"); // Semi-transparent stroke
-        // 7. fillColor (getRandomColor uses SeededRandom)
-        const fillColorStr = getRandomColor("semitransparent");   // Semi-transparent fill
+        // 6. Standardized colors: semi-transparent red stroke, semi-transparent blue fill
+        const strokeColorStr = 'rgba(255, 0, 0, 0.49)'; // Semi-transparent red stroke
+        // 7. fillColor
+        const fillColorStr = 'rgba(0, 0, 255, 0.49)';   // Semi-transparent blue fill
 
         let drawAtX = center.x;
         let drawAtY = center.y;

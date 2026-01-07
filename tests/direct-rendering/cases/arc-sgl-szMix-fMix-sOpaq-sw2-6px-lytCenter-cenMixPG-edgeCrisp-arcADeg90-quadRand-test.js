@@ -62,12 +62,13 @@ registerDirectRenderingTest(
 
         const { centerX, centerY, radius, atPixel, quadrant, startAngle, endAngle, checkData } = params;
 
-        // Generate random fill style (opaque or semitransparent)
-        const fillType = SeededRandom.getRandom() < 0.5 ? 'opaque' : 'semitransparent';
-        const fillColor = getRandomColor(fillType);
+        // Generate mixed fill style (50/50 opaque vs semitransparent blue)
+        const fillIsOpaque = SeededRandom.getRandom() < 0.5;
+        const fillColor = fillIsOpaque ? 'rgb(0, 0, 255)' : 'rgba(0, 0, 255, 0.49)';
+        const fillType = fillIsOpaque ? 'opaque' : 'semitransparent';
 
-        // Fixed opaque stroke
-        const strokeColor = getRandomOpaqueColor();
+        // Fixed opaque red stroke
+        const strokeColor = 'rgb(255, 0, 0)';
 
         // Draw filled and stroked arc using unified Direct API
         ctx.fillStyle = fillColor;

@@ -62,9 +62,9 @@ registerDirectRenderingTest(
 
         const { centerX, centerY, radius, strokeWidth, startAngle, endAngle, gapSizeDeg } = params;
 
-        // Get random semi-transparent colors
-        const strokeColor = 'rgba(255, 0, 0, 0.5)';
-        const fillColor = 'rgba(0, 255, 0, 0.5)';
+        // Semi-transparent blue fill and red stroke
+        const fillColor = 'rgba(0, 0, 255, 0.49)';
+        const strokeColor = 'rgba(255, 0, 0, 0.49)';
 
         // Draw filled and stroked arc
         ctx.fillStyle = fillColor;

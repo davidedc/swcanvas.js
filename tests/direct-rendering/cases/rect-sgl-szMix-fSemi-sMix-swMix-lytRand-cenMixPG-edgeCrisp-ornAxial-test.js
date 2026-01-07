@@ -101,9 +101,10 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
         currentCenter.x += xOffset;
         currentCenter.y += yOffset;
 
-        // SWCanvas's getRandomColor returns CSS string directly (no .toCSS() method)
-        const currentFillColor = getRandomColor("semitransparent");
-        const currentStrokeColor = getRandomColor("mixed");
+        // Standardized colors: semi-transparent blue fill, mixed (50/50) red stroke
+        const currentFillColor = 'rgba(0, 0, 255, 0.49)';
+        const strokeIsOpaque = SeededRandom.getRandom() < 0.5;
+        const currentStrokeColor = strokeIsOpaque ? 'rgb(255, 0, 0)' : 'rgba(255, 0, 0, 0.49)';
         // --- End property generation for this instance ---
 
         let finalDrawX = currentCenter.x - currentDrawWidth / 2;

@@ -2,7 +2,7 @@
  * TEST SUMMARY:
  * =================
  *
- * Description: Renders 20 lines with 10px black opaque strokes at random positions and orientations. This test is used for both visual regression and performance measurement.
+ * Description: Renders 20 lines with 10px red opaque strokes at random positions and orientations. This test is used for both visual regression and performance measurement.
  *
  *
  * ---
@@ -13,7 +13,7 @@
  * | Count                  | multi-20       | The test is configured to draw 20 lines in its standard visual regression mode.
  * | SizeCategory           | mixed          | Line length is determined by two random points, resulting in a variable length that spans multiple size categories.
  * | FillStyle              | none           | `ctx.fillStyle` is set to `rgba(0,0,0,0)`, meaning no fill is applied.
- * | StrokeStyle            | opaque         | `ctx.strokeStyle` is set to `rgb(0,0,0)`, which is fully opaque.
+ * | StrokeStyle            | opaque         | `ctx.strokeStyle` is set to `rgb(255,0,0)`, which is fully opaque.
  * | StrokeThickness        | 10px           | `ctx.lineWidth` is explicitly set to the constant value `10`.
  * | Layout                 | spread         | 20 lines are drawn, each with independently randomized start/end points, distributing them across the canvas.
  * | CenteredAt             | N/A            | This facet is not applicable for lines, which are defined by endpoints, not a geometric center.
@@ -35,11 +35,11 @@
  * UNCAPTURED ASPECTS IN FILENAME / FACETS ABOVE:
  * ----------------------------------------------
  * The line length is randomized between 1 and ~301 pixels, which spans the XS, S, M, L, and XL size categories.
- * The position and orientation are fully randomized within the canvas bounds. The stroke color is fixed black.
+ * The position and orientation are fully randomized within the canvas bounds. The stroke color is fixed red.
  */
 
 /**
- * Draws multiple 10px thick, black, opaque lines at random positions.
+ * Draws multiple 10px thick, red, opaque lines at random positions.
  */
 function drawTest(ctx, currentIterationNumber, instances = null) {
     const initialCount = 20;
@@ -50,7 +50,7 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
 
     // Set constant drawing properties
     ctx.lineWidth = 10;
-    ctx.strokeStyle = 'rgb(0,0,0)';
+    ctx.strokeStyle = 'rgb(255,0,0)';
     ctx.fillStyle = 'rgba(0,0,0,0)';
 
     const canvasWidth = ctx.canvas.width;
@@ -63,12 +63,12 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
         ctx.strokeLine(start.x, start.y, end.x, end.y);
 
         if (!isPerformanceRun) {
-            logs.push(`─ 10px Black line from (${start.x}, ${start.y}) to (${end.x}, ${end.y})`);
+            logs.push(`─ 10px Red line from (${start.x}, ${start.y}) to (${end.x}, ${end.y})`);
         }
     }
 
     if (!isPerformanceRun && logs.length === 0) {
-        logs.push('No 10px black lines drawn.');
+        logs.push('No 10px red lines drawn.');
     }
 
     return logs && logs.length > 0 ? { logs } : null;
@@ -81,8 +81,8 @@ registerDirectRenderingTest(
     {
     },
     {
-        title: 'Lines: Multi-20 No-Fill 10px-Black-Opaque-Stroke Random-Pos Random-Orient',
-        displayName: 'Perf: Lines Multi 10px Black Random',
-        description: 'Performance test for rendering multiple (default 20, or N from harness) 10px black lines at random positions.'
+        title: 'Lines: Multi-20 No-Fill 10px-Red-Opaque-Stroke Random-Pos Random-Orient',
+        displayName: 'Perf: Lines Multi 10px Red Random',
+        description: 'Performance test for rendering multiple (default 20, or N from harness) 10px red lines at random positions.'
     }
 );

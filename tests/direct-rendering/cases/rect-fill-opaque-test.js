@@ -21,8 +21,8 @@ registerDirectRenderingTest(
         let checkData = null;
 
         for (let i = 0; i < numToDraw; i++) {
-            // Use opaque fill color
-            ctx.fillStyle = getRandomOpaqueColor();
+            // Use opaque blue fill color (standardized)
+            ctx.fillStyle = 'rgb(0, 0, 255)';
 
             let rectWidth, rectHeight, x, y;
 

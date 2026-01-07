@@ -67,7 +67,7 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
         const strokeSizes = [1, 2, 3, 4];
         const radii = [20, 40, 60];
         let xOffset = 50;
-        const fixedStrokeColorStr = 'rgba(200, 100, 100, 255)';
+        const fixedStrokeColorStr = 'rgb(255, 0, 0)';
 
         for (const strokeWidth of strokeSizes) {
             let yOffset = 40;
@@ -103,8 +103,9 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
             const startAngleRad = quadrants[Math.floor(SeededRandom.getRandom() * 4)];
             const endAngleRad = startAngleRad + Math.PI / 2;
 
-            const strokeColorObj = getRandomColor("mixed"); // Opaque or semi-transparent random color
-            const strokeColorStr = strokeColorObj ? strokeColorObj.toCSS() : 'rgba(0,0,0,0)';
+            // Mixed transparency for stroke (50/50 opaque vs semi-transparent)
+            const strokeIsOpaque = SeededRandom.getRandom() < 0.5;
+            const strokeColorStr = strokeIsOpaque ? 'rgb(255, 0, 0)' : 'rgba(255, 0, 0, 0.49)';
 
             // Base position from SeededRandom
             let drawCenterX = SeededRandom.getRandom() * canvasWidth;

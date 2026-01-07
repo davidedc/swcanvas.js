@@ -60,9 +60,9 @@ registerDirectRenderingTest(
         // Generate arc angles with gap constrained to single quadrant
         const { startAngle, endAngle, gapSizeDeg } = generateConstrainedArcAngles();
 
-        // Get random opaque colors
-        const fillColor = getRandomOpaqueColor();
-        const strokeColor = getRandomOpaqueColor();
+        // Opaque blue fill and opaque red stroke
+        const fillColor = 'rgb(0, 0, 255)';
+        const strokeColor = 'rgb(255, 0, 0)';
 
         // Draw filled and stroked arc (no crisp adjustment)
         ctx.fillStyle = fillColor;

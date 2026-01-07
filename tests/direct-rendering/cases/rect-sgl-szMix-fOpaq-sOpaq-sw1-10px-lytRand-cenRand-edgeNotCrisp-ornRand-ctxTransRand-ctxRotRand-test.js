@@ -78,10 +78,10 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
         // 5. strokeWidth
         const strokeWidth = SeededRandom.getRandom() * 10 + 1;
 
-        // 6. fillColor (getRandomColor uses SeededRandom) - OPAQUE fill
-        const fillColorStr = getRandomColor("opaque");
-        // 7. strokeColor (getRandomColor uses SeededRandom) - OPAQUE stroke
-        const strokeColorStr = getRandomColor("opaque");
+        // 6. Standardized colors: opaque blue fill
+        const fillColorStr = 'rgb(0, 0, 255)';
+        // 7. Standardized colors: opaque red stroke
+        const strokeColorStr = 'rgb(255, 0, 0)';
 
         let drawAtX = center.x;
         let drawAtY = center.y;

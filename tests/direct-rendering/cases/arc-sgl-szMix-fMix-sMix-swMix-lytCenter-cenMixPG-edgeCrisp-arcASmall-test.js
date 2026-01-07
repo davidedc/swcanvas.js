@@ -84,20 +84,24 @@ registerDirectRenderingTest(
             hasFill = true;
         }
 
-        // Generate colors
+        // Generate colors (standardized blue fill, red stroke)
         let fillColor = null;
         let strokeColor = null;
         let fillType = 'none';
         let strokeType = 'none';
 
         if (hasFill) {
-            fillType = fillMode > 0.66 ? 'opaque' : 'semitransparent';
-            fillColor = getRandomColor(fillType);
+            // Independent 50/50 choice for fill transparency
+            const fillIsOpaque = SeededRandom.getRandom() < 0.5;
+            fillType = fillIsOpaque ? 'opaque' : 'semitransparent';
+            fillColor = fillIsOpaque ? 'rgb(0, 0, 255)' : 'rgba(0, 0, 255, 0.49)';
         }
 
         if (hasStroke) {
-            strokeType = strokeMode > 0.66 ? 'opaque' : 'semitransparent';
-            strokeColor = getRandomColor(strokeType);
+            // Independent 50/50 choice for stroke transparency
+            const strokeIsOpaque = SeededRandom.getRandom() < 0.5;
+            strokeType = strokeIsOpaque ? 'opaque' : 'semitransparent';
+            strokeColor = strokeIsOpaque ? 'rgb(255, 0, 0)' : 'rgba(255, 0, 0, 0.49)';
         }
 
         // Draw the arc
