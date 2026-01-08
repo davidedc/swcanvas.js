@@ -1,14 +1,47 @@
 /**
- * Test: Filled Circle with Opaque Color (Direct Rendering)
+ * TEST SUMMARY:
+ * =================
  *
- * Tests that fillCircle with an opaque color uses direct rendering
- * (32-bit packed writes, no path system).
+ * Description: Tests fillCircle with opaque color uses direct rendering (32-bit packed writes).
  *
- * Supports dual-mode: visual testing (instances=null) and performance testing (instances>0).
+ *
+ * ---
+ *
+ * | Facet                  | Value          | Reason
+ * |------------------------|----------------|-----------------------------------------------------------------------------------------------------
+ * | Shape category         | circles        | The test draws a circle using ctx.fillCircle().
+ * | Count                  | single         | The test draws one circle instance in visual mode.
+ * | SizeCategory           | mixed          | Radius is randomized 30-80px, spanning S (16-39) and M (40-79) categories.
+ * | FillStyle              | opaque         | Fill color is 'rgb(0, 0, 255)' with full opacity.
+ * | StrokeStyle            | none           | No stroke operation is performed.
+ * | StrokeThickness        | N/A            | Not applicable as there is no stroke.
+ * | Layout                 | centered       | The shape is positioned at the canvas center (randomPosition: false).
+ * | CenteredAt             | random         | Center position is calculated by helper function with some randomization.
+ * | EdgeAlignment          | crisp          | Integer coordinates used for center position.
+ * | Orientation            | N/A            | Circles are rotationally symmetric.
+ * | ArcAngleExtent         | N/A            | Not applicable to full circles.
+ * | RoundRectRadius        | N/A            | Not applicable to circle shapes.
+ * | ContextTranslation     | none           | The test does not use ctx.translate().
+ * | ContextRotation        | none           | The test does not use ctx.rotate().
+ * | ContextScaling         | none           | The test does not use ctx.scale().
+ * | Clipped on shape       | none           | The test does not apply any clipping.
+ * | Clipped on shape count | n/a            | Not applicable as there is no clipping.
+ * | Clipped on shape arrangement | n/a      | Not applicable as there is no clipping.
+ * | Clipped on shape size  | n/a            | Not applicable as there is no clipping.
+ * | Clipped on shape edge alignment | n/a   | Not applicable as there is no clipping.
+ *
+ * ---
+ *
+ * UNCAPTURED ASPECTS IN FILENAME / FACETS ABOVE:
+ * ----------------------------------------------
+ * - Fill color is fixed opaque blue (rgb(0, 0, 255)).
+ * - Supports dual-mode: visual testing (instances=null) and performance testing (instances>0).
+ * - Uses calculateCircleTestParameters helper for position/size calculation.
+ *
  */
 
 registerDirectRenderingTest(
-    'circle-fill-opaque',
+    'circle-sgl-szMix-fOpaq-sNone-lytCenter-cenRand-edgeCrisp',
     function drawTest(ctx, iterationNumber, instances = null) {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;

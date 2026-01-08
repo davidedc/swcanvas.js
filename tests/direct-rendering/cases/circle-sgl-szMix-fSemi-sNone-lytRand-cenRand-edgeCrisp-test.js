@@ -41,7 +41,7 @@
  */
 
 registerDirectRenderingTest(
-    'circle-sgl-szMix-fOpaq-sNone-lytRand-cenRand-edgeCrisp-test',
+    'circle-sgl-szMix-fSemi-sNone-lytRand-cenRand-edgeCrisp',
     function drawTest(ctx, iterationNumber, instances) {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;

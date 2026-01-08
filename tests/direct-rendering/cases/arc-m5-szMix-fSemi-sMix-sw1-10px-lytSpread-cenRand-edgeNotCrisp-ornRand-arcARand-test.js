@@ -104,7 +104,7 @@ function drawTest(ctx, currentIterationNumber, instances = null) {
 
 // Register the test
 registerDirectRenderingTest(
-    'arc-m5-szMix-fOpaq-sOpaq-sw1-10px-lytSpread-cenRand-edgeNotCrisp-ornRand-arcARand-test',
+    'arc-m5-szMix-fSemi-sMix-sw1-10px-lytSpread-cenRand-edgeNotCrisp-ornRand-arcARand',
     drawTest,
     'arcs',
     {
