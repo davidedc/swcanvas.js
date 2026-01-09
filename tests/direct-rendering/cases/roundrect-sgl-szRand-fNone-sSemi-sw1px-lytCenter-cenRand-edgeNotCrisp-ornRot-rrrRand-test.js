@@ -42,12 +42,12 @@
  * Draws a single rotated rounded rectangle with 1px semi-transparent stroke and random parameters.
  *
  * @param {CanvasRenderingContext2D | SWCanvasContext} ctx The rendering context.
- * @param {number} currentIterationNumber The current test iteration (for seeding via RenderTest).
+ * @param {number} iterationNumber The current test iteration (for seeding via RenderTest).
  * @param {?number} instances Optional: Number of instances to draw. Passed by the performance
  *                  testing harness. For visual regression (instances is null/0), 1 rectangle is drawn.
  * @returns {?{logs: string[], checkData: object}} Logs and data for checks.
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const isPerformanceRun = instances !== null && instances > 0;
 
     let logs = [];

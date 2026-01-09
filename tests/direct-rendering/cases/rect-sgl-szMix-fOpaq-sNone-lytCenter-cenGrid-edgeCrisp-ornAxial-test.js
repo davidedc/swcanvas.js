@@ -42,7 +42,7 @@
 
 registerDirectRenderingTest(
     'rect-sgl-szMix-fOpaq-sNone-lytCenter-cenGrid-edgeCrisp-ornAxial',
-    function drawTest(ctx, iterationNumber, instances = null) {
+    function drawTest(ctx, iterationNumber, instances) {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 

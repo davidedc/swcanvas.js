@@ -46,11 +46,11 @@
  * or 'initialCount' (for visual regression mode) is active.
  *
  * @param {CanvasRenderingContext2D | SWContext} ctx - The rendering context.
- * @param {number} currentIterationNumber - The current test iteration (used by RenderTest for seeding).
+ * @param {number} iterationNumber - The current test iteration (used by RenderTest for seeding).
  * @param {?number} instances - Optional. If provided and > 0, this many lines are drawn for performance testing.
  * @returns {?{ logs: string[] }} An object with logs, or null (especially in performance mode).
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const initialCount = 20; // number of lines to draw for visual regression mode (i.e. not in performance mode)
     const isPerformanceRun = instances !== null && instances > 0;
     const lineCount = isPerformanceRun ? instances : initialCount;

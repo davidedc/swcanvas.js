@@ -57,12 +57,12 @@
  * Draws a single axis-aligned rectangle based on original low-level test logic, or multiple for performance.
  *
  * @param {CanvasRenderingContext2D | CrispSwContext} ctx - The rendering context.
- * @param {number} currentIterationNumber - The current test iteration.
+ * @param {number} iterationNumber - The current test iteration.
  * @param {?number} instances - Optional. If > 0, draws multiple instances for performance.
  * @returns {?{ logs: string[], checkData: object }} 
  *          Log entries and data for checks, or null if in multi-instance mode.
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const canvasWidth = ctx.canvas.width;
     const canvasHeight = ctx.canvas.height;
 

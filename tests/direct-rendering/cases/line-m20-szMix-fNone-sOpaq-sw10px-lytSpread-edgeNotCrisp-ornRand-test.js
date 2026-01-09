@@ -41,7 +41,7 @@
 /**
  * Draws multiple 10px thick, red, opaque lines at random positions.
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const initialCount = 20;
     const isPerformanceRun = instances !== null && instances > 0;
     const lineCount = isPerformanceRun ? instances : initialCount;

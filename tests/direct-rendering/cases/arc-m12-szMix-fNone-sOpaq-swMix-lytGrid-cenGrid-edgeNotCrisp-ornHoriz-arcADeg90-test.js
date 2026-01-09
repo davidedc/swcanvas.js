@@ -49,12 +49,12 @@
  * In performance mode, it draws `instances` number of fully randomized 90-degree arcs.
  *
  * @param {CanvasRenderingContext2D | Context2D} ctx The rendering context.
- * @param {number} currentIterationNumber The current test iteration (for seeding via RenderTest).
+ * @param {number} iterationNumber The current test iteration (for seeding via RenderTest).
  * @param {?number} instances Optional: Number of instances to draw. For this test, it always draws
  *                  the predefined set of 12 arcs for visual regression. For performance, it draws `instances` arcs.
  * @returns {?{logs: string[]}} Logs for the visual regression run.
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const isPerformanceRun = instances !== null && instances > 0;
     const numToDrawForPerf = isPerformanceRun ? instances : 0;
     let logs = [];

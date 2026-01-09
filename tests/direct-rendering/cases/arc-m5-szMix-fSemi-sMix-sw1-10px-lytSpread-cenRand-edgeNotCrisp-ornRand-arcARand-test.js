@@ -45,11 +45,11 @@
  * Draws multiple arcs with fully random parameters.
  *
  * @param {CanvasRenderingContext2D | Context2D} ctx The rendering context.
- * @param {number} currentIterationNumber The current test iteration (for seeding via RenderTest).
+ * @param {number} iterationNumber The current test iteration (for seeding via RenderTest).
  * @param {?number} instances Optional: Number of instances to draw. For visual regression (instances is null/0), 5 arcs are drawn.
  * @returns {?{logs: string[]}} Logs for single-instance mode, or null for performance mode.
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const isPerformanceRun = instances !== null && instances > 0;
     const numToDraw = isPerformanceRun ? instances : 5; // Original test draws 5
 

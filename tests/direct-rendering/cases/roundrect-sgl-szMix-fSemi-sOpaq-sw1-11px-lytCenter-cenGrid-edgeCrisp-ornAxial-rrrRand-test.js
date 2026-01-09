@@ -10,7 +10,7 @@
  * | Facet                  | Value          | Reason
  * |------------------------|----------------|-----------------------------------------------------------------------------------------------------
  * | Shape category         | rounded-rects  | The test draws using `ctx.fillStrokeRoundRect()` (unified method to prevent speckles).
- * | Count                  | single         | The test is designed to draw one shape in its visual regression mode (`instances = null`).
+ * | Count                  | single         | The test is designed to draw one shape in its visual regression mode (`instances`).
  * | SizeCategory           | mixed          | `baseRectWidth` is randomized in `[50, 50 + 0.6 * canvasWidth]`. With a typical 800px canvas, this spans M, L, and XL size categories.
  * | FillStyle              | semitransparent| Fill color alpha is randomized in `[100, 200]` via `getRandomColor("semitransparent")`.
  * | StrokeStyle            | opaque         | Stroke color alpha is fixed at 255 via `getRandomColor("opaque")`.
@@ -46,13 +46,13 @@
  * Draws a single centered rounded rectangle with random opaque stroke and random fill.
  *
  * @param {CanvasRenderingContext2D | SWCanvasContext} ctx The rendering context.
- * @param {number} currentIterationNumber The current test iteration (for seeding via RenderTest).
+ * @param {number} iterationNumber The current test iteration (for seeding via RenderTest).
  * @param {?number} instances Optional: Number of instances to draw. Passed by the performance
  *                  testing harness. For this test, it should draw one primary shape for visual
  *                  regression, and `instances` count for performance, each with unique properties based on SeededRandom.
  * @returns {?{logs: string[]}} Logs for single-instance mode, or null for performance mode.
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const isPerformanceRun = instances !== null && instances > 0;
     const numToDraw = isPerformanceRun ? instances : 1;
 

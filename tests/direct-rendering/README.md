@@ -13,6 +13,7 @@ For an overview of how direct rendering works internally, see [DIRECT-RENDERING-
 5. [File Naming Convention](#5-file-naming-convention)
 6. [Categories](#6-categories)
 7. [Performance Testing](#7-performance-testing)
+8. [Test Metadata Validation](#8-test-metadata-validation)
 
 ---
 
@@ -768,6 +769,54 @@ open tests/direct-rendering/index.html
 ```bash
 open tests/direct-rendering/performance-tests.html
 ```
+
+---
+
+## 8. Test Metadata Validation
+
+Validation tools ensure test files follow naming conventions and include required metadata.
+
+### Validation Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run check:test-metadata` | Full validation (metadata, signatures, filename parsing) |
+| `npm run check:register-consistency` | Quick check that registered names match filenames |
+
+### What Gets Validated
+
+#### `check:test-metadata` validates:
+1. **registerDirectRenderingTest call** - Must be present
+2. **Required metadata** - `title:` and `description:` must exist
+3. **Filename parameter** - Must match actual filename (with or without `-test` suffix)
+4. **drawTest signature** - Must be `function drawTest(ctx, iterationNumber, instances)`
+5. **Filename parsing** - Must follow naming convention (see Section 5)
+
+#### `check:register-consistency` validates:
+- Registered test name matches actual filename
+
+### Browser Facet Display
+
+When viewing tests in `tests/direct-rendering/index.html`, each test shows a parsed breakdown of its filename facets:
+
+- **Basic**: Shape, Count, Size, Orientation
+- **Fill & Stroke**: Fill Style, Stroke Style, Stroke Thickness
+- **Layout & Position**: Layout, Centered At, Edge Alignment
+- **Shape-Specific**: Arc Angle, Quadrant, Round Rect Radius
+- **Context Transforms**: Translation, Rotation, Scaling
+- **Modifiers**: Special Modifiers
+- **Clipping**: Clip Shape, Count, Arrangement, Size, Edge Alignment
+
+Parsing errors are displayed in red below the test description.
+
+### Validation Files
+
+| File | Purpose |
+|------|---------|
+| `tests/direct-rendering/test-name-parser.js` | Core parser class with facet mappings |
+| `tests/direct-rendering/test-facet-display.js` | Browser integration for facet tables |
+| `build-scripts/check-test-metadata.js` | Node.js build validation script |
+| `build-scripts/check-register-consistency.sh` | Shell script for consistency check |
 
 ---
 

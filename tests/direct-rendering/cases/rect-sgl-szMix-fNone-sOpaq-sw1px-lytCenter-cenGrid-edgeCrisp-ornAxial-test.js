@@ -54,12 +54,12 @@
  * Draws a single 1px red-stroked rectangle, centered at a grid crossing.
  *
  * @param {CanvasRenderingContext2D | CrispSwContext} ctx - The rendering context.
- * @param {number} currentIterationNumber - The current test iteration (used by RenderTest for seeding).
+ * @param {number} iterationNumber - The current test iteration (used by RenderTest for seeding).
  * @param {?number} instances - Optional. If > 0, draws multiple instances for performance (not primary use here).
  * @returns {?{ logs: string[], checkData: {leftX: number, rightX: number, topY: number, bottomY: number} }}
  *          Log entries and expected pixel extremes, or null if in multi-instance mode.
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const canvasWidth = ctx.canvas.width;
     const canvasHeight = ctx.canvas.height;
 

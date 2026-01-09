@@ -17,6 +17,8 @@
     "build:prod": "npm run build && npm run minify",
     "test": "node tests/run-tests.js",
     "test:direct-rendering": "node tests/direct-rendering/run-direct-rendering-tests.js",
+    "check:test-metadata": "node build-scripts/check-test-metadata.js",
+    "check:register-consistency": "sh build-scripts/check-register-consistency.sh",
     "update-test-counts": "node tests/build/update-test-counts.js",
     "debug:source-out": "npm run build && node debug-composite-source-out.js",
     "debug:xor": "npm run build && node debug-composite-xor.js",

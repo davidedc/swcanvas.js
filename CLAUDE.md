@@ -43,6 +43,10 @@ See README.md for complete build commands and test instructions.
 
 **Quick reference**: `npm run build` → `npm test` for development cycle.
 
+**Validation commands**:
+- `npm run check:test-metadata` - Validate test metadata, signatures, filename parsing
+- `npm run check:register-consistency` - Quick filename/registration check
+
 ## Common Tasks
 
 ### Adding New Tests

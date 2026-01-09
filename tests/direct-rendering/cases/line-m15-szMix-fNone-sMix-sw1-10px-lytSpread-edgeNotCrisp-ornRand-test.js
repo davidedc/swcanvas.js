@@ -41,7 +41,7 @@
 /**
  * Draws multiple lines with random properties (position, thickness, color).
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const initialCount = 15;
     const isPerformanceRun = instances !== null && instances > 0;
     const lineCount = isPerformanceRun ? instances : initialCount;

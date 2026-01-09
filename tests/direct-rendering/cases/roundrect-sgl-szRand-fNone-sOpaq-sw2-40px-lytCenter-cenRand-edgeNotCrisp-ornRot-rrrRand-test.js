@@ -23,7 +23,7 @@
  * | RoundRectRadius        | random         | Radius randomly generated (8 to min(w,h)/2).
  */
 
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const isPerformanceRun = instances !== null && instances > 0;
 
     let logs = [];

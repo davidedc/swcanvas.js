@@ -60,13 +60,13 @@
  * Draws a specified number of 2px thick, red, opaque lines with random start/end points.
  *
  * @param {CanvasRenderingContext2D | SWContext} ctx - The rendering context.
- * @param {number} currentIterationNumber - The current test iteration.
+ * @param {number} iterationNumber - The current test iteration.
  * @param {?number} instances - Number of lines to draw. If null, defaults to 20.
  *                              If > 0, this many lines are drawn without logging.
  *                              If 0 or negative, 1 line is drawn with logging.
  * @returns {?{ logs: string[] }} Log entries if not in multi-instance mode (instances > 0), otherwise null.
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const currentCanvasWidth = ctx.canvas.width;
     const currentCanvasHeight = ctx.canvas.height;
 

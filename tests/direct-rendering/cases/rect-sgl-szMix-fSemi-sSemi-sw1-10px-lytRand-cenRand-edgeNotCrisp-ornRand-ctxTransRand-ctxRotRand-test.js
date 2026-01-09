@@ -49,14 +49,14 @@
  * Draws a single rotated rectangle with random parameters.
  *
  * @param {CanvasRenderingContext2D} ctx The rendering context.
- * @param {number} currentIterationNumber The current test iteration (for seeding via RenderTest).
+ * @param {number} iterationNumber The current test iteration (for seeding via RenderTest).
  * @param {?number} instances Optional: Number of instances to draw. Passed by the performance
  *                  testing harness. For this test, it dictates the number of rectangles drawn.
  *                  For visual regression (instances is null/0), 1 rectangle is drawn.
  * @returns {?{logs: string[]}} Logs for single-instance mode, or null for performance mode.
  *                   (No checkData as original test had no withExtremesCheck).
  */
-function drawTest(ctx, currentIterationNumber, instances = null) {
+function drawTest(ctx, iterationNumber, instances) {
     const isPerformanceRun = instances !== null && instances > 0;
     const numToDraw = isPerformanceRun ? instances : 1; // Single rectangle for visual regression
 
