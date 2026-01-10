@@ -83,7 +83,7 @@ registerDirectRenderingTest(
     {
         extremes: { colorTolerance: 77, tolerance: 0.03 }, // HTML5Canvas arc draw is pretty bad, so we need to be lenient
         totalUniqueColors: 2,
-        strokePatternContinuity: true
+        shapeIntegrity: true
     },
     {
         title: 'Single 1px Stroked Arc (Crisp, Centered at Pixel)',

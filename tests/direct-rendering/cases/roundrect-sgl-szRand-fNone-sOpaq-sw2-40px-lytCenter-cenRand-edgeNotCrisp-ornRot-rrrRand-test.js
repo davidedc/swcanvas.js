@@ -127,7 +127,7 @@ registerDirectRenderingTest(
     'roundrect-sgl-szRand-fNone-sOpaq-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand',
     drawTest,
     'rounded-rects',
-    { extremes: false, strokePatternContinuity: true },
+    { extremes: false, shapeIntegrity: true },
     {
         title: 'Single Rotated Rounded Rectangle - 2-40px Opaque Stroke (Random)',
         description: 'Tests high-level API rendering of random 2-40px opaque stroke on a single rotated rounded rectangle using transforms and strokeRoundRect.',

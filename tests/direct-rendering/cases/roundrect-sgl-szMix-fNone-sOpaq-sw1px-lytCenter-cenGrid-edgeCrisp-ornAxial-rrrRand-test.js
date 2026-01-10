@@ -136,7 +136,7 @@ registerDirectRenderingTest(
     {
         extremes: true,
         stroke8Connectivity: { color: [255, 0, 0] },
-        strokePatternContinuity: true
+        shapeIntegrity: true
     },
     {
         title: 'Single 1px Stroked Rounded Rectangle (Crisp, Centered at Grid)',

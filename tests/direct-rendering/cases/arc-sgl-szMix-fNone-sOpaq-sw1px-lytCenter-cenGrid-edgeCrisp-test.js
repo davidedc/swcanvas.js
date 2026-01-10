@@ -83,7 +83,7 @@ registerDirectRenderingTest(
     {
         extremes: { colorTolerance: 129, tolerance: 0.03 }, // HTML5Canvas drawing is actually quite suspicious for 1px arcs, hence the higher tolerance
         totalUniqueColors: 2,
-        strokePatternContinuity: true
+        shapeIntegrity: true
     },
     {
         title: 'Single 1px Stroked Arc (Crisp, Centered at Grid)',

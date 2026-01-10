@@ -79,7 +79,7 @@ registerDirectRenderingTest(
     {
         extremes: { colorTolerance: 8, tolerance: 0.03 },
         totalUniqueColors: 2,
-        strokePatternContinuity: true,
+        shapeIntegrity: true,
         stroke8Connectivity: { color: [255, 0, 0] }
     },
     {

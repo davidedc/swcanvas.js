@@ -154,7 +154,7 @@ registerDirectRenderingTest(
     {
         extremes: false,  // Rotated shapes have complex bounds, skip strict extremes check
         stroke8Connectivity: { color: [255, 0, 0] },  // Verify 1px stroke has no gaps (red stroke)
-        strokePatternContinuity: true
+        shapeIntegrity: true
     },
     {
         title: 'Single Rotated Rounded Rectangle - 1px Opaque Stroke (Random)',

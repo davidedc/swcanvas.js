@@ -83,7 +83,7 @@ registerDirectRenderingTest(
     {
         extremes: true,
         totalUniqueColors: 2,
-        strokePatternContinuity: true
+        shapeIntegrity: true
     },
     {
         title: 'Single 1px Semi-Transparent Stroked Rounded Rectangle (Crisp, Mixed P/G Centering)',

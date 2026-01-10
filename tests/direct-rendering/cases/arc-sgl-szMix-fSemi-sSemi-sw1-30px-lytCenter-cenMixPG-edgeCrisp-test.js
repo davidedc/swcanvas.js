@@ -90,7 +90,7 @@ registerDirectRenderingTest(
         noGapsInStrokeEdges: true,
         totalUniqueColors: 4,
         speckles: { maxSpeckles: 4 },
-        strokePatternContinuity: true
+        shapeIntegrity: true
     },
     {
         title: 'Single Random Arc (Crisp, Random Center Type)',

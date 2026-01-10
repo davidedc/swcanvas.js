@@ -132,7 +132,7 @@ registerDirectRenderingTest(
         // No extremes check - original test had none
         // allowPathBasedRendering: false is the default - test MUST use direct rendering
         totalUniqueColors: 3,  // background + fill + stroke (opaque stroke overwrites, no blend color)
-        strokePatternContinuity: true
+        shapeIntegrity: true
     },
     {
         title: 'Rectangle: Rotated, Single, Opaque Stroke, Random Position & Rotation',

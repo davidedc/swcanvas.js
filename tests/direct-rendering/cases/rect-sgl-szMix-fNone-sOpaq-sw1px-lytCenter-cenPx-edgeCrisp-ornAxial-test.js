@@ -143,7 +143,7 @@ registerDirectRenderingTest(
     {
         extremes: true,
         stroke8Connectivity: { color: [255, 0, 0] },
-        strokePatternContinuity: true
+        shapeIntegrity: true
     },
     {
         title: 'Rectangles: S-Size No-Fill 1px-Red-Opaque-Stroke Centered-At-Pixel No-Rotation',
