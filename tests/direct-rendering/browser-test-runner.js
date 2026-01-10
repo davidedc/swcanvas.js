@@ -863,26 +863,47 @@ class DirectRenderingTestRunner {
             });
         }
 
-        // Stroke pattern continuity check (scanline-based, works for any stroke width)
+        // Shape integrity check (universal: stroke-only, fill-only, or fill+stroke)
         // NOTE: Only works for closed convex shapes (circles, rectangles, rounded rects)
-        if (checks.strokePatternContinuity) {
-            const config = typeof checks.strokePatternContinuity === 'object'
-                ? checks.strokePatternContinuity
+        if (checks.shapeIntegrity) {
+            const config = typeof checks.shapeIntegrity === 'object'
+                ? checks.shapeIntegrity
                 : {};
             const isKnownFailure = config.knownFailure === true;
 
-            const result = checkStrokePatternContinuity(swSurface, {
+            const result = checkShapeIntegrity(swSurface, {
+                hasStroke: config.hasStroke !== false,
+                hasFill: config.hasFill === true,
                 verticalScan: config.verticalScan !== false,
-                horizontalScan: config.horizontalScan !== false
+                horizontalScan: config.horizontalScan !== false,
+                strokeColor: config.strokeColor,
+                fillColor: config.fillColor,
+                colorTolerance: config.colorTolerance
             });
-            const passed = result.continuous;
+            const passed = result.valid;
+
+            // Determine display name and success message based on mode
+            const hasStroke = config.hasStroke !== false;
+            const hasFill = config.hasFill === true;
+
+            let checkName, successMsg;
+            if (hasStroke && hasFill) {
+                checkName = 'Shape Boundary';
+                successMsg = 'No gaps, fill contained';
+            } else if (hasStroke) {
+                checkName = 'Stroke Continuity';
+                successMsg = 'Continuous (no holes)';
+            } else {
+                checkName = 'Fill Continuity';
+                successMsg = 'Solid (no gaps)';
+            }
 
             results.push({
-                name: 'Stroke Pattern',
+                name: checkName,
                 passed,
                 knownFailure: isKnownFailure && !passed,
                 details: passed
-                    ? 'No holes detected'
+                    ? successMsg
                     : result.issues.join('; ') + (isKnownFailure ? ' [KNOWN]' : '')
             });
         }

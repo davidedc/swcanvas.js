@@ -964,6 +964,44 @@ function detectBackgroundColor(surface) {
     return { r: 255, g: 255, b: 255, a: 255 };
 }
 
+// Standard colors for fill+stroke tests (from Color Standardization Guidelines)
+const STANDARD_STROKE_COLOR = [255, 0, 0];  // Red
+const STANDARD_FILL_COLOR = [0, 0, 255];    // Blue
+
+/**
+ * Compare two colors with tolerance.
+ * For semi-transparent colors blended on transparent background,
+ * use higher tolerance (30+) since RGB values shift during alpha blending.
+ * @param {number[]} color1 - [r, g, b]
+ * @param {number[]} color2 - [r, g, b]
+ * @param {number} tolerance - Maximum allowed difference per channel (default: 30)
+ * @returns {boolean} True if colors are within tolerance
+ */
+function colorsMatch(color1, color2, tolerance = 30) {
+    const r1 = color1[0], g1 = color1[1], b1 = color1[2];
+    const r2 = color2[0], g2 = color2[1], b2 = color2[2];
+    return Math.abs(r1 - r2) <= tolerance &&
+           Math.abs(g1 - g2) <= tolerance &&
+           Math.abs(b1 - b2) <= tolerance;
+}
+
+/**
+ * Classify a pixel as 'stroke', 'fill', or 'unknown' based on standard colors.
+ * Works with both opaque and semi-transparent versions.
+ * @param {number} r - Red component
+ * @param {number} g - Green component
+ * @param {number} b - Blue component
+ * @param {number[]} strokeColor - [r, g, b] stroke color
+ * @param {number[]} fillColor - [r, g, b] fill color
+ * @param {number} tolerance - Color matching tolerance
+ * @returns {string} 'stroke', 'fill', or 'unknown'
+ */
+function classifyPixel(r, g, b, strokeColor, fillColor, tolerance) {
+    if (colorsMatch([r, g, b], strokeColor, tolerance)) return 'stroke';
+    if (colorsMatch([r, g, b], fillColor, tolerance)) return 'fill';
+    return 'unknown';
+}
+
 /**
  * Get adjusted expected color count based on background transparency.
  * If background is transparent, reduces expected count by 1 since transparent
@@ -1224,6 +1262,179 @@ function scanHorizontally(surface, extremes, transitionPattern) {
 }
 
 /**
+ * Scans rows for fill+stroke shapes, checking for:
+ * 1. All rows should be solid (no transparent gaps within shape)
+ * 2. Outermost pixels should be stroke color (not fill)
+ * @private
+ */
+function scanVerticallyWithFill(surface, extremes, strokeColor, fillColor, colorTolerance, issues) {
+    const { leftX, rightX, topY, bottomY } = extremes;
+    const data = surface.data;
+    const stride = surface.stride || surface.width * 4;
+
+    for (let y = topY; y <= bottomY; y++) {
+        let firstX = -1, lastX = -1;
+
+        // Find extent of non-transparent pixels
+        for (let x = leftX; x <= rightX; x++) {
+            const idx = y * stride + x * 4;
+            if (data[idx + 3] > 0) {
+                if (firstX === -1) firstX = x;
+                lastX = x;
+            }
+        }
+
+        if (firstX === -1) continue; // Skip empty rows
+
+        // Check for gaps (transparent pixels within shape)
+        for (let x = firstX + 1; x < lastX; x++) {
+            const idx = y * stride + x * 4;
+            if (data[idx + 3] === 0) {
+                issues.push(`Gap: transparent pixel at (${x}, ${y})`);
+                break;
+            }
+        }
+
+        // Check outermost pixels are stroke color (fill must not overspill)
+        const leftIdx = y * stride + firstX * 4;
+        const leftClass = classifyPixel(data[leftIdx], data[leftIdx + 1], data[leftIdx + 2],
+                                        strokeColor, fillColor, colorTolerance);
+        if (leftClass === 'fill') {
+            issues.push(`Fill overspill: extends past stroke at (${firstX}, ${y})`);
+        }
+
+        const rightIdx = y * stride + lastX * 4;
+        const rightClass = classifyPixel(data[rightIdx], data[rightIdx + 1], data[rightIdx + 2],
+                                         strokeColor, fillColor, colorTolerance);
+        if (rightClass === 'fill') {
+            issues.push(`Fill overspill: extends past stroke at (${lastX}, ${y})`);
+        }
+    }
+}
+
+/**
+ * Scans columns for fill+stroke shapes, checking for:
+ * 1. All columns should be solid (no transparent gaps within shape)
+ * 2. Outermost pixels should be stroke color (not fill)
+ * @private
+ */
+function scanHorizontallyWithFill(surface, extremes, strokeColor, fillColor, colorTolerance, issues) {
+    const { leftX, rightX, topY, bottomY } = extremes;
+    const data = surface.data;
+    const stride = surface.stride || surface.width * 4;
+
+    for (let x = leftX; x <= rightX; x++) {
+        let firstY = -1, lastY = -1;
+
+        // Find extent of non-transparent pixels
+        for (let y = topY; y <= bottomY; y++) {
+            const idx = y * stride + x * 4;
+            if (data[idx + 3] > 0) {
+                if (firstY === -1) firstY = y;
+                lastY = y;
+            }
+        }
+
+        if (firstY === -1) continue; // Skip empty columns
+
+        // Check for gaps (transparent pixels within shape)
+        for (let y = firstY + 1; y < lastY; y++) {
+            const idx = y * stride + x * 4;
+            if (data[idx + 3] === 0) {
+                issues.push(`Gap: transparent pixel at (${x}, ${y})`);
+                break;
+            }
+        }
+
+        // Check outermost pixels are stroke color (fill must not overspill)
+        const topIdx = firstY * stride + x * 4;
+        const topClass = classifyPixel(data[topIdx], data[topIdx + 1], data[topIdx + 2],
+                                       strokeColor, fillColor, colorTolerance);
+        if (topClass === 'fill') {
+            issues.push(`Fill overspill: extends past stroke at (${x}, ${firstY})`);
+        }
+
+        const bottomIdx = lastY * stride + x * 4;
+        const bottomClass = classifyPixel(data[bottomIdx], data[bottomIdx + 1], data[bottomIdx + 2],
+                                          strokeColor, fillColor, colorTolerance);
+        if (bottomClass === 'fill') {
+            issues.push(`Fill overspill: extends past stroke at (${x}, ${lastY})`);
+        }
+    }
+}
+
+/**
+ * Scans rows for fill-only shapes, checking for transparent gaps.
+ * Unlike scanVerticallyWithFill, does NOT check edge colors.
+ * @private
+ */
+function scanVerticallyForGaps(surface, extremes, issues) {
+    const { leftX, rightX, topY, bottomY } = extremes;
+    const data = surface.data;
+    const stride = surface.stride || surface.width * 4;
+
+    for (let y = topY; y <= bottomY; y++) {
+        let firstX = -1, lastX = -1;
+
+        // Find extent of non-transparent pixels
+        for (let x = leftX; x <= rightX; x++) {
+            const idx = y * stride + x * 4;
+            if (data[idx + 3] > 0) {
+                if (firstX === -1) firstX = x;
+                lastX = x;
+            }
+        }
+
+        if (firstX === -1) continue; // Skip empty rows
+
+        // Check for gaps (transparent pixels within shape)
+        for (let x = firstX + 1; x < lastX; x++) {
+            const idx = y * stride + x * 4;
+            if (data[idx + 3] === 0) {
+                issues.push(`Gap: transparent pixel at (${x}, ${y})`);
+                break; // One gap per row is enough
+            }
+        }
+        // NO edge color check - this is fill-only
+    }
+}
+
+/**
+ * Scans columns for fill-only shapes, checking for transparent gaps.
+ * Unlike scanHorizontallyWithFill, does NOT check edge colors.
+ * @private
+ */
+function scanHorizontallyForGaps(surface, extremes, issues) {
+    const { leftX, rightX, topY, bottomY } = extremes;
+    const data = surface.data;
+    const stride = surface.stride || surface.width * 4;
+
+    for (let x = leftX; x <= rightX; x++) {
+        let firstY = -1, lastY = -1;
+
+        for (let y = topY; y <= bottomY; y++) {
+            const idx = y * stride + x * 4;
+            if (data[idx + 3] > 0) {
+                if (firstY === -1) firstY = y;
+                lastY = y;
+            }
+        }
+
+        if (firstY === -1) continue;
+
+        // Check for gaps only
+        for (let y = firstY + 1; y < lastY; y++) {
+            const idx = y * stride + x * 4;
+            if (data[idx + 3] === 0) {
+                issues.push(`Gap: transparent pixel at (${x}, ${y})`);
+                break;
+            }
+        }
+        // NO edge color check - this is fill-only
+    }
+}
+
+/**
  * Validates the transition pattern sequence for stroke continuity.
  * Valid sequences are:
  * - solid only (small shape)
@@ -1320,27 +1531,56 @@ function validateTransitionPattern(transitionPattern, isHorizontal) {
 }
 
 /**
- * Checks if a stroke forms a continuous loop without holes using scanline pattern analysis.
- * Works for any stroke width.
+ * Universal shape integrity check that works for:
+ * - Stroke-only shapes (hasStroke: true, hasFill: false): checks for holes using pattern analysis
+ * - Fill-only shapes (hasStroke: false, hasFill: true): checks for transparent gaps
+ * - Fill+Stroke shapes (hasStroke: true, hasFill: true): checks for gaps AND verifies fill is contained within stroke
  *
- * Algorithm:
+ * Algorithm (stroke-only):
  * 1. Scans each row/column within shape extremes
  * 2. Categorizes each as: empty, solid (1 group), sides (2 groups), fragmented (3+ groups)
  * 3. Validates sequence: start → firstCap (solid) → sides → secondCap (solid)
  * 4. 'fragmented' pattern indicates gaps/holes
  *
- * LIMITATIONS: Only works for closed convex shapes (circles, rectangles,
- * rounded rects) with no fill or same-color fill.
+ * Algorithm (fill-only):
+ * 1. Scans each row/column within shape extremes
+ * 2. Checks for transparent pixels within shape (gaps in fill)
+ *
+ * Algorithm (fill+stroke):
+ * 1. Scans each row/column within shape extremes
+ * 2. Checks for transparent pixels within shape (gaps between fill and stroke)
+ * 3. Verifies outermost pixels are stroke color (fill must not overspill)
+ *
+ * LIMITATIONS: Only works for closed convex shapes (circles, rectangles, rounded rects).
  *
  * @param {Object} surface - Surface with data, width, height, stride
  * @param {Object} options - Configuration
- * @param {boolean} options.verticalScan - Scan rows (default: true)
- * @param {boolean} options.horizontalScan - Scan columns (default: true)
- * @returns {{continuous: boolean, issues: string[]}}
+ * @param {boolean} [options.hasStroke=true] - Whether shape has a stroke
+ * @param {boolean} [options.hasFill=false] - Whether shape has a fill
+ * @param {boolean} [options.verticalScan=true] - Scan rows
+ * @param {boolean} [options.horizontalScan=true] - Scan columns
+ * @param {number[]} [options.strokeColor] - [r, g, b] stroke color (default: standard red)
+ * @param {number[]} [options.fillColor] - [r, g, b] fill color (default: standard blue)
+ * @param {number} [options.colorTolerance=30] - Max color difference
+ * @returns {{valid: boolean, issues: string[]}}
  */
-function checkStrokePatternContinuity(surface, options = {}) {
-    const { verticalScan = true, horizontalScan = true } = options;
+function checkShapeIntegrity(surface, options = {}) {
+    const {
+        hasStroke = true,
+        hasFill = false,
+        strokeColor = STANDARD_STROKE_COLOR,
+        fillColor = STANDARD_FILL_COLOR,
+        colorTolerance = 30,
+        verticalScan = true,
+        horizontalScan = true
+    } = options;
     const issues = [];
+
+    // Validate configuration
+    if (!hasStroke && !hasFill) {
+        issues.push('Invalid config: at least one of hasStroke or hasFill must be true');
+        return { valid: false, issues };
+    }
 
     // Auto-detect background color by sampling all corners
     const backgroundColor = detectBackgroundColor(surface);
@@ -1352,31 +1592,47 @@ function checkStrokePatternContinuity(surface, options = {}) {
     if (extremes.leftX >= surface.width || extremes.rightX < 0 ||
         extremes.topY >= surface.height || extremes.bottomY < 0) {
         issues.push('No non-background pixels found');
-        return { continuous: false, issues };
+        return { valid: false, issues };
     }
 
-    // Perform vertical scan (row by row)
-    if (verticalScan) {
-        const verticalPattern = [];
-        scanVertically(surface, extremes, verticalPattern);
-        const verticalResult = validateTransitionPattern(verticalPattern, false);
-        if (!verticalResult.valid) {
-            issues.push(`Vertical scan: ${verticalResult.issue}`);
+    if (hasStroke && hasFill) {
+        // Fill+Stroke mode: check for gaps AND verify edges are stroke color
+        if (verticalScan) {
+            scanVerticallyWithFill(surface, extremes, strokeColor, fillColor, colorTolerance, issues);
         }
-    }
-
-    // Perform horizontal scan (column by column)
-    if (horizontalScan) {
-        const horizontalPattern = [];
-        scanHorizontally(surface, extremes, horizontalPattern);
-        const horizontalResult = validateTransitionPattern(horizontalPattern, true);
-        if (!horizontalResult.valid) {
-            issues.push(`Horizontal scan: ${horizontalResult.issue}`);
+        if (horizontalScan) {
+            scanHorizontallyWithFill(surface, extremes, strokeColor, fillColor, colorTolerance, issues);
+        }
+    } else if (hasStroke && !hasFill) {
+        // Stroke-only mode: check for pattern fragmentation (holes)
+        if (verticalScan) {
+            const verticalPattern = [];
+            scanVertically(surface, extremes, verticalPattern);
+            const verticalResult = validateTransitionPattern(verticalPattern, false);
+            if (!verticalResult.valid) {
+                issues.push(`Vertical: ${verticalResult.issue}`);
+            }
+        }
+        if (horizontalScan) {
+            const horizontalPattern = [];
+            scanHorizontally(surface, extremes, horizontalPattern);
+            const horizontalResult = validateTransitionPattern(horizontalPattern, true);
+            if (!horizontalResult.valid) {
+                issues.push(`Horizontal: ${horizontalResult.issue}`);
+            }
+        }
+    } else if (!hasStroke && hasFill) {
+        // Fill-only mode: check for gaps only (no edge color check)
+        if (verticalScan) {
+            scanVerticallyForGaps(surface, extremes, issues);
+        }
+        if (horizontalScan) {
+            scanHorizontallyForGaps(surface, extremes, issues);
         }
     }
 
     return {
-        continuous: issues.length === 0,
+        valid: issues.length === 0,
         issues
     };
 }
@@ -1506,28 +1762,48 @@ function runValidationChecks(surface, checks, iterationNumber = 0) {
         }
     }
 
-    // Stroke pattern continuity check (scanline-based, works for any stroke width)
-    // Config: strokePatternContinuity: true | { verticalScan?: boolean, horizontalScan?: boolean, knownFailure?: boolean }
-    // Uses scanline pattern analysis to detect holes in closed shape strokes
+    // Shape integrity check (universal: stroke-only, fill-only, or fill+stroke)
+    // Config: shapeIntegrity: true | { hasStroke?, hasFill?, verticalScan?, horizontalScan?,
+    //         strokeColor?, fillColor?, colorTolerance?, knownFailure?, skipOnIterations? }
     // NOTE: Only works for closed convex shapes (circles, rectangles, rounded rects)
-    if (checks.strokePatternContinuity) {
-        const config = typeof checks.strokePatternContinuity === 'object'
-            ? checks.strokePatternContinuity
+    if (checks.shapeIntegrity) {
+        const config = typeof checks.shapeIntegrity === 'object'
+            ? checks.shapeIntegrity
             : {};
         const isKnownFailure = config.knownFailure === true;
+        const skipIterations = config.skipOnIterations || [];
 
-        const result = checkStrokePatternContinuity(surface, {
-            verticalScan: config.verticalScan !== false,
-            horizontalScan: config.horizontalScan !== false
-        });
+        if (!skipIterations.includes(iterationNumber)) {
+            const result = checkShapeIntegrity(surface, {
+                hasStroke: config.hasStroke !== false,
+                hasFill: config.hasFill === true,
+                verticalScan: config.verticalScan !== false,
+                horizontalScan: config.horizontalScan !== false,
+                strokeColor: config.strokeColor,
+                fillColor: config.fillColor,
+                colorTolerance: config.colorTolerance
+            });
 
-        if (!result.continuous) {
-            for (const issue of result.issues) {
-                const message = `Stroke pattern: ${issue}`;
-                if (isKnownFailure) {
-                    knownFailureIssues.push(message + ' [KNOWN]');
+            if (!result.valid) {
+                // Use appropriate label based on mode
+                const hasStroke = config.hasStroke !== false;
+                const hasFill = config.hasFill === true;
+                let label;
+                if (hasStroke && hasFill) {
+                    label = 'Shape Boundary';
+                } else if (hasStroke) {
+                    label = 'Stroke Continuity';
                 } else {
-                    issues.push(message);
+                    label = 'Fill Continuity';
+                }
+
+                for (const issue of result.issues) {
+                    const message = `${label}: ${issue}`;
+                    if (isKnownFailure) {
+                        knownFailureIssues.push(message + ' [KNOWN]');
+                    } else {
+                        issues.push(message);
+                    }
                 }
             }
         }
@@ -1573,8 +1849,13 @@ if (typeof module !== 'undefined' && module.exports) {
         hasSpeckles,
         check1pxClosedStrokeContinuity,
         checkStroke8Connectivity: check1pxClosedStrokeContinuity, // Alias for renamed check
-        checkStrokePatternContinuity,
-        runValidationChecks
+        checkShapeIntegrity,
+        runValidationChecks,
+        // Shape integrity check utilities
+        STANDARD_STROKE_COLOR,
+        STANDARD_FILL_COLOR,
+        colorsMatch,
+        classifyPixel
     };
 }
 
@@ -1610,6 +1891,11 @@ if (typeof window !== 'undefined') {
     window.hasSpeckles = hasSpeckles;
     window.check1pxClosedStrokeContinuity = check1pxClosedStrokeContinuity;
     window.checkStroke8Connectivity = check1pxClosedStrokeContinuity; // Alias for renamed check
-    window.checkStrokePatternContinuity = checkStrokePatternContinuity;
+    window.checkShapeIntegrity = checkShapeIntegrity;
     window.runValidationChecks = runValidationChecks;
+    // Shape integrity check utilities
+    window.STANDARD_STROKE_COLOR = STANDARD_STROKE_COLOR;
+    window.STANDARD_FILL_COLOR = STANDARD_FILL_COLOR;
+    window.colorsMatch = colorsMatch;
+    window.classifyPixel = classifyPixel;
 }
