@@ -1262,175 +1262,90 @@ function scanHorizontally(surface, extremes, transitionPattern) {
 }
 
 /**
- * Scans rows for fill+stroke shapes, checking for:
- * 1. All rows should be solid (no transparent gaps within shape)
- * 2. Outermost pixels should be stroke color (not fill)
+ * Finds the extent (first and last non-transparent pixel) on a scanline.
+ * @param {Object} surface - Surface with data, width, height, stride
+ * @param {number} fixedCoord - The fixed coordinate (y for row scan, x for column scan)
+ * @param {boolean} isVertical - true = scan row (varying x), false = scan column (varying y)
+ * @param {Object} extremes - {leftX, rightX, topY, bottomY}
+ * @returns {{first: number, last: number}} first/last index, or {-1, -1} if empty
  * @private
  */
-function scanVerticallyWithFill(surface, extremes, strokeColor, fillColor, colorTolerance, issues) {
+function scanLineExtent(surface, fixedCoord, isVertical, extremes) {
     const { leftX, rightX, topY, bottomY } = extremes;
     const data = surface.data;
     const stride = surface.stride || surface.width * 4;
 
-    for (let y = topY; y <= bottomY; y++) {
-        let firstX = -1, lastX = -1;
+    const start = isVertical ? leftX : topY;
+    const end = isVertical ? rightX : bottomY;
 
-        // Find extent of non-transparent pixels
-        for (let x = leftX; x <= rightX; x++) {
-            const idx = y * stride + x * 4;
-            if (data[idx + 3] > 0) {
-                if (firstX === -1) firstX = x;
-                lastX = x;
-            }
-        }
+    let first = -1, last = -1;
 
-        if (firstX === -1) continue; // Skip empty rows
+    for (let i = start; i <= end; i++) {
+        const x = isVertical ? i : fixedCoord;
+        const y = isVertical ? fixedCoord : i;
+        const idx = y * stride + x * 4;
 
-        // Check for gaps (transparent pixels within shape)
-        for (let x = firstX + 1; x < lastX; x++) {
-            const idx = y * stride + x * 4;
-            if (data[idx + 3] === 0) {
-                issues.push(`Gap: transparent pixel at (${x}, ${y})`);
-                break;
-            }
-        }
-
-        // Check outermost pixels are stroke color (fill must not overspill)
-        const leftIdx = y * stride + firstX * 4;
-        const leftClass = classifyPixel(data[leftIdx], data[leftIdx + 1], data[leftIdx + 2],
-                                        strokeColor, fillColor, colorTolerance);
-        if (leftClass === 'fill') {
-            issues.push(`Fill overspill: extends past stroke at (${firstX}, ${y})`);
-        }
-
-        const rightIdx = y * stride + lastX * 4;
-        const rightClass = classifyPixel(data[rightIdx], data[rightIdx + 1], data[rightIdx + 2],
-                                         strokeColor, fillColor, colorTolerance);
-        if (rightClass === 'fill') {
-            issues.push(`Fill overspill: extends past stroke at (${lastX}, ${y})`);
+        if (data[idx + 3] > 0) {
+            if (first === -1) first = i;
+            last = i;
         }
     }
+
+    return { first, last };
 }
 
 /**
- * Scans columns for fill+stroke shapes, checking for:
- * 1. All columns should be solid (no transparent gaps within shape)
- * 2. Outermost pixels should be stroke color (not fill)
+ * Verifies a scanline for gaps and optionally edge colors.
+ * Used for fill-only and fill+stroke shape integrity checks.
+ * @param {Object} surface - Surface with data, width, height, stride
+ * @param {number} fixedCoord - The fixed coordinate (y for row scan, x for column scan)
+ * @param {boolean} isVertical - true = scan row (varying x), false = scan column (varying y)
+ * @param {Object} extremes - {leftX, rightX, topY, bottomY}
+ * @param {Object} options - {checkEdges, strokeColor, fillColor, colorTolerance}
+ * @param {string[]} issues - Array to push issues to
  * @private
  */
-function scanHorizontallyWithFill(surface, extremes, strokeColor, fillColor, colorTolerance, issues) {
-    const { leftX, rightX, topY, bottomY } = extremes;
+function verifyScanLine(surface, fixedCoord, isVertical, extremes, options, issues) {
+    const { first, last } = scanLineExtent(surface, fixedCoord, isVertical, extremes);
+    if (first === -1) return; // Empty scanline
+
     const data = surface.data;
     const stride = surface.stride || surface.width * 4;
 
-    for (let x = leftX; x <= rightX; x++) {
-        let firstY = -1, lastY = -1;
+    // Helper to get coordinates from index
+    const getCoords = (i) => isVertical ? { x: i, y: fixedCoord } : { x: fixedCoord, y: i };
 
-        // Find extent of non-transparent pixels
-        for (let y = topY; y <= bottomY; y++) {
-            const idx = y * stride + x * 4;
-            if (data[idx + 3] > 0) {
-                if (firstY === -1) firstY = y;
-                lastY = y;
-            }
-        }
+    // 1. Check for internal gaps (transparent pixels within shape)
+    for (let i = first + 1; i < last; i++) {
+        const { x, y } = getCoords(i);
+        const idx = y * stride + x * 4;
 
-        if (firstY === -1) continue; // Skip empty columns
-
-        // Check for gaps (transparent pixels within shape)
-        for (let y = firstY + 1; y < lastY; y++) {
-            const idx = y * stride + x * 4;
-            if (data[idx + 3] === 0) {
-                issues.push(`Gap: transparent pixel at (${x}, ${y})`);
-                break;
-            }
-        }
-
-        // Check outermost pixels are stroke color (fill must not overspill)
-        const topIdx = firstY * stride + x * 4;
-        const topClass = classifyPixel(data[topIdx], data[topIdx + 1], data[topIdx + 2],
-                                       strokeColor, fillColor, colorTolerance);
-        if (topClass === 'fill') {
-            issues.push(`Fill overspill: extends past stroke at (${x}, ${firstY})`);
-        }
-
-        const bottomIdx = lastY * stride + x * 4;
-        const bottomClass = classifyPixel(data[bottomIdx], data[bottomIdx + 1], data[bottomIdx + 2],
-                                          strokeColor, fillColor, colorTolerance);
-        if (bottomClass === 'fill') {
-            issues.push(`Fill overspill: extends past stroke at (${x}, ${lastY})`);
+        if (data[idx + 3] === 0) {
+            issues.push(`Gap: transparent pixel at (${x}, ${y})`);
+            return; // Fail fast - one gap per scanline is enough
         }
     }
-}
 
-/**
- * Scans rows for fill-only shapes, checking for transparent gaps.
- * Unlike scanVerticallyWithFill, does NOT check edge colors.
- * @private
- */
-function scanVerticallyForGaps(surface, extremes, issues) {
-    const { leftX, rightX, topY, bottomY } = extremes;
-    const data = surface.data;
-    const stride = surface.stride || surface.width * 4;
+    // 2. Check edge colors (if fill+stroke mode)
+    if (options.checkEdges) {
+        const { strokeColor, fillColor, colorTolerance } = options;
 
-    for (let y = topY; y <= bottomY; y++) {
-        let firstX = -1, lastX = -1;
-
-        // Find extent of non-transparent pixels
-        for (let x = leftX; x <= rightX; x++) {
+        const checkEdge = (i) => {
+            const { x, y } = getCoords(i);
             const idx = y * stride + x * 4;
-            if (data[idx + 3] > 0) {
-                if (firstX === -1) firstX = x;
-                lastX = x;
+            const pixelType = classifyPixel(
+                data[idx], data[idx + 1], data[idx + 2],
+                strokeColor, fillColor, colorTolerance
+            );
+
+            // Edge must be stroke or unknown (blend). Cannot be fill.
+            if (pixelType === 'fill') {
+                issues.push(`Fill overspill: extends past stroke at (${x}, ${y})`);
             }
-        }
+        };
 
-        if (firstX === -1) continue; // Skip empty rows
-
-        // Check for gaps (transparent pixels within shape)
-        for (let x = firstX + 1; x < lastX; x++) {
-            const idx = y * stride + x * 4;
-            if (data[idx + 3] === 0) {
-                issues.push(`Gap: transparent pixel at (${x}, ${y})`);
-                break; // One gap per row is enough
-            }
-        }
-        // NO edge color check - this is fill-only
-    }
-}
-
-/**
- * Scans columns for fill-only shapes, checking for transparent gaps.
- * Unlike scanHorizontallyWithFill, does NOT check edge colors.
- * @private
- */
-function scanHorizontallyForGaps(surface, extremes, issues) {
-    const { leftX, rightX, topY, bottomY } = extremes;
-    const data = surface.data;
-    const stride = surface.stride || surface.width * 4;
-
-    for (let x = leftX; x <= rightX; x++) {
-        let firstY = -1, lastY = -1;
-
-        for (let y = topY; y <= bottomY; y++) {
-            const idx = y * stride + x * 4;
-            if (data[idx + 3] > 0) {
-                if (firstY === -1) firstY = y;
-                lastY = y;
-            }
-        }
-
-        if (firstY === -1) continue;
-
-        // Check for gaps only
-        for (let y = firstY + 1; y < lastY; y++) {
-            const idx = y * stride + x * 4;
-            if (data[idx + 3] === 0) {
-                issues.push(`Gap: transparent pixel at (${x}, ${y})`);
-                break;
-            }
-        }
-        // NO edge color check - this is fill-only
+        checkEdge(first);
+        checkEdge(last);
     }
 }
 
@@ -1597,11 +1512,16 @@ function checkShapeIntegrity(surface, options = {}) {
 
     if (hasStroke && hasFill) {
         // Fill+Stroke mode: check for gaps AND verify edges are stroke color
+        const options = { checkEdges: true, strokeColor, fillColor, colorTolerance };
         if (verticalScan) {
-            scanVerticallyWithFill(surface, extremes, strokeColor, fillColor, colorTolerance, issues);
+            for (let y = extremes.topY; y <= extremes.bottomY; y++) {
+                verifyScanLine(surface, y, true, extremes, options, issues);
+            }
         }
         if (horizontalScan) {
-            scanHorizontallyWithFill(surface, extremes, strokeColor, fillColor, colorTolerance, issues);
+            for (let x = extremes.leftX; x <= extremes.rightX; x++) {
+                verifyScanLine(surface, x, false, extremes, options, issues);
+            }
         }
     } else if (hasStroke && !hasFill) {
         // Stroke-only mode: check for pattern fragmentation (holes)
@@ -1623,11 +1543,16 @@ function checkShapeIntegrity(surface, options = {}) {
         }
     } else if (!hasStroke && hasFill) {
         // Fill-only mode: check for gaps only (no edge color check)
+        const options = { checkEdges: false };
         if (verticalScan) {
-            scanVerticallyForGaps(surface, extremes, issues);
+            for (let y = extremes.topY; y <= extremes.bottomY; y++) {
+                verifyScanLine(surface, y, true, extremes, options, issues);
+            }
         }
         if (horizontalScan) {
-            scanHorizontallyForGaps(surface, extremes, issues);
+            for (let x = extremes.leftX; x <= extremes.rightX; x++) {
+                verifyScanLine(surface, x, false, extremes, options, issues);
+            }
         }
     }
 
