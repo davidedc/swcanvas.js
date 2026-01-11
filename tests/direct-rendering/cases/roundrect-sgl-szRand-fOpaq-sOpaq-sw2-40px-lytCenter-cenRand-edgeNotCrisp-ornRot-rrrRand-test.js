@@ -137,7 +137,10 @@ registerDirectRenderingTest(
     'roundrect-sgl-szRand-fOpaq-sOpaq-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand',
     drawTest,
     'rounded-rects',
-    { extremes: false },
+    {
+        extremes: false,
+        shapeIntegrity: { hasFill: true, hasStroke: true }
+    },
     {
         title: 'Single Rotated Rounded Rectangle - Fill + 2-40px Stroke (Random)',
         description: 'Tests high-level API rendering of opaque fill and random 2-40px opaque stroke on a single rotated rounded rectangle using transforms and fillStrokeRoundRect.',

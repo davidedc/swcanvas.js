@@ -843,13 +843,17 @@ class RoundedRectOpsAA {
                     const strokeIsSemiTransparent = strokeEffectiveAlpha < 1.0;
 
                     if (strokeIsSemiTransparent) {
-                        // Semi-transparent stroke: fill uses PATH extent for proper overlap blending
-                        // Stroke will render on top and blend in the overlap region
-                        fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, fillRadius, FILL_EPSILON);
-                        // Clamp fill to outer boundary to prevent speckles at the edge
-                        if (fillExtent.leftX >= 0 && outerExtent.leftX >= 0) {
-                            fillExtent.leftX = Math.max(fillExtent.leftX, outerExtent.leftX);
-                            fillExtent.rightX = Math.min(fillExtent.rightX, outerExtent.rightX);
+                        if (lineWidth > 1) {
+                            // Thick semi-transparent stroke: fill to PATH extent
+                            // Stroke will blend ON TOP of this fill for correct alpha overlap color
+                            fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, fillRadius, FILL_EPSILON);
+                        } else {
+                            // 1px semi-transparent stroke: use inner extent (like opaque)
+                            // No meaningful overlap area at 1px; prevents overspill/gaps from discrete pixel mismatch
+                            if (innerExtent.leftX >= 0 && innerExtent.rightX >= innerExtent.leftX) {
+                                fillExtent.leftX = innerExtent.leftX;
+                                fillExtent.rightX = innerExtent.rightX;
+                            }
                         }
                     } else {
                         // Opaque stroke: fill uses inner extent (no overlap needed, prevents speckles)

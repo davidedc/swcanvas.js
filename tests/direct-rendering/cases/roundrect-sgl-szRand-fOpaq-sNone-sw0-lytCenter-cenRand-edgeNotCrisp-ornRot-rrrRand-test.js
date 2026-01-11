@@ -152,7 +152,8 @@ registerDirectRenderingTest(
     drawTest,
     'rounded-rects',
     {
-        extremes: false  // Rotated shapes have complex bounds, skip strict extremes check
+        extremes: false,  // Rotated shapes have complex bounds, skip strict extremes check
+        shapeIntegrity: { hasFill: true, hasStroke: false }
     },
     {
         title: 'Single Rotated Rounded Rectangle - Opaque Fill (Random)',

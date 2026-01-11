@@ -135,7 +135,8 @@ registerDirectRenderingTest(
             middleRow: { count: 3, skipOnIterations: [817] },
             middleColumn: { count: 3 }
         },
-        speckles: { expected: 0 }
+        speckles: { expected: 0 },
+        shapeIntegrity: { hasFill: true, hasStroke: true }
     },
     {
         title: 'Single Centered Rounded Rectangle (Random Opaque Stroke, Random Fill, Grid Center)',

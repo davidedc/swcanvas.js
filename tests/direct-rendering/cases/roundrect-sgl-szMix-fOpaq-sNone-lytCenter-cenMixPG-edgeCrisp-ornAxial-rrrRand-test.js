@@ -102,7 +102,8 @@ registerDirectRenderingTest(
     'rounded-rects',
     {
         extremes: true,
-        totalUniqueColors: 2  // White background + opaque blue
+        totalUniqueColors: 2,  // White background + opaque blue
+        shapeIntegrity: { hasFill: true, hasStroke: false }
     },
     {
         title: 'Single Opaque Filled Rounded Rectangle (Crisp, Mixed P/G Centering)',

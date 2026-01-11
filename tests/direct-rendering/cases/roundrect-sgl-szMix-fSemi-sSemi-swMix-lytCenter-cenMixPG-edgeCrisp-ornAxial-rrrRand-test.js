@@ -132,7 +132,8 @@ registerDirectRenderingTest(
             middleRow: { count: 4 },
             middleColumn: { count: 4 }
         },
-        speckles: { expected: 0 }
+        speckles: { expected: 0 },
+        shapeIntegrity: { hasFill: true, hasStroke: true }
     },
     {
         title: 'Single Centered Rounded Rectangle (Semi-Transparent Stroke & Fill, Crisp Center)',
