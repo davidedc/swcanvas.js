@@ -1224,7 +1224,7 @@ class RoundedRectOpsRot {
             );
         }
 
-        // Now render fill, excluding stroke pixels
+        // Now render fill (stroke will render on top)
         // Use edge buffer rasterization for fill
         const boundingHeight = Math.abs(width * sin) + Math.abs(height * cos);
         const yMin = Math.max(0, Math.floor(centerY - boundingHeight / 2));
@@ -1432,10 +1432,8 @@ class RoundedRectOpsRot {
         const innerRadius = Math.max(0, radius - halfStroke);
         const hasInnerRect = innerWidth > 0 && innerHeight > 0;
 
-        // Fill dimensions - use path dimensions, clamping to outer enforces boundary
-        const fillHW = width / 2;
-        const fillHH = height / 2;
-        const fillRadius = radius;
+        // Check if stroke is opaque - determines if we need fill perimeter
+        const strokeIsOpaque = strokeColor.a === 255 && globalAlpha >= 1.0;
 
         // Compute AABB height based on outer bounds (largest boundary)
         const outerWidth = outerHW * 2;
@@ -1462,10 +1460,20 @@ class RoundedRectOpsRot {
             innerMaxX.fill(-1);
         }
 
-        const fillMinX = new Int16Array(spanCount);
-        const fillMaxX = new Int16Array(spanCount);
-        fillMinX.fill(surfaceWidth);
-        fillMaxX.fill(-1);
+        // For opaque strokes, reuse inner bounds for fill (stroke covers overlap region)
+        // For semi-transparent strokes, need path boundary for correct 3-color overlap
+        let fillMinX, fillMaxX;
+        if (strokeIsOpaque) {
+            // Opaque stroke: fill to inner boundary - stroke covers the rest
+            fillMinX = hasInnerRect ? innerMinX : null;
+            fillMaxX = hasInnerRect ? innerMaxX : null;
+        } else {
+            // Semi-transparent stroke: need separate fill bounds at path boundary
+            fillMinX = new Int16Array(spanCount);
+            fillMaxX = new Int16Array(spanCount);
+            fillMinX.fill(surfaceWidth);
+            fillMaxX.fill(-1);
+        }
 
         // Create recorders for each perimeter
         const recordOuter = (x, y) => {
@@ -1482,26 +1490,30 @@ class RoundedRectOpsRot {
             if (x > innerMaxX[row]) innerMaxX[row] = x;
         } : null;
 
-        const recordFill = (x, y) => {
-            if (y < yMin || y > yMax) return;
-            const row = y - yMin;
-            if (x < fillMinX[row]) fillMinX[row] = x;
-            if (x > fillMaxX[row]) fillMaxX[row] = x;
-        };
-
-        // Generate all three perimeters using the same algorithm
+        // Generate outer and inner perimeters
         RoundedRectOpsRot._generatePerimeter(outerHW, outerHH, outerRadius, recordOuter, centerX, centerY, cos, sin, rotation);
         if (hasInnerRect) {
             RoundedRectOpsRot._generatePerimeter(innerHW, innerHH, innerRadius, recordInner, centerX, centerY, cos, sin, rotation);
         }
-        RoundedRectOpsRot._generatePerimeter(fillHW, fillHH, fillRadius, recordFill, centerX, centerY, cos, sin, rotation);
+
+        // Generate fill perimeter only for semi-transparent strokes
+        if (!strokeIsOpaque) {
+            const fillHW = width / 2;
+            const fillHH = height / 2;
+            const fillRadius = radius;
+            const recordFill = (x, y) => {
+                if (y < yMin || y > yMax) return;
+                const row = y - yMin;
+                if (x < fillMinX[row]) fillMinX[row] = x;
+                if (x > fillMaxX[row]) fillMaxX[row] = x;
+            };
+            RoundedRectOpsRot._generatePerimeter(fillHW, fillHH, fillRadius, recordFill, centerX, centerY, cos, sin, rotation);
+        }
 
         // Determine rendering modes
         const fillIsOpaque = fillColor.a === 255 && globalAlpha >= 1.0;
         const fillEffectiveAlpha = (fillColor.a / 255) * globalAlpha;
         const fillInvAlpha = 1 - fillEffectiveAlpha;
-
-        const strokeIsOpaque = strokeColor.a === 255 && globalAlpha >= 1.0;
         const strokeEffectiveAlpha = (strokeColor.a / 255) * globalAlpha;
         const strokeInvAlpha = 1 - strokeEffectiveAlpha;
 
@@ -1524,8 +1536,9 @@ class RoundedRectOpsRot {
             const hasInnerRegion = innerLeft <= innerRight;
 
             // Get fill extent - clamp to outer boundary to prevent overspill
-            let fillLeft = fillMinX[row];
-            let fillRight = fillMaxX[row];
+            // For opaque stroke with no inner rect, fillMinX/fillMaxX are null (stroke covers everything)
+            let fillLeft = fillMinX ? fillMinX[row] : surfaceWidth;
+            let fillRight = fillMaxX ? fillMaxX[row] : -1;
             if (fillLeft <= fillRight) {
                 // Clamp fill to stay within outer stroke boundary
                 fillLeft = Math.max(fillLeft, outerLeft);
