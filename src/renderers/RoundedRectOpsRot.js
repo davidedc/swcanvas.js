@@ -1241,8 +1241,10 @@ class RoundedRectOpsRot {
             // This avoids gaps from discrete arc sampling with fractional centers
             const isAxisAligned = Math.abs(sin) < 0.001;
 
+            // Generate fill bounds - method depends on axis alignment
             if (isAxisAligned) {
                 // Geometric calculation: compute exact X bounds for each Y row
+                // This avoids gaps from discrete arc sampling with fractional centers
                 const r2 = radius * radius;
                 const topCornerY = centerY - hh + radius;      // Y of top corner centers
                 const bottomCornerY = centerY + hh - radius;   // Y of bottom corner centers
@@ -1284,31 +1286,8 @@ class RoundedRectOpsRot {
                     fillMinX[row] = minX;
                     fillMaxX[row] = maxX;
                 }
-
-                // Calculate stroke bounds per row, then CLAMP fill (don't extend)
-                // This prevents fill overspill when geometric calculation exceeds discrete stroke pixels
-                const strokeMinX = new Int16Array(spanCount).fill(surfaceWidth);
-                const strokeMaxX = new Int16Array(spanCount).fill(-1);
-                for (const pos of strokePixels) {
-                    const x = pos % surfaceWidth;
-                    const y = Math.floor(pos / surfaceWidth);
-                    if (y >= yMin && y <= yMax) {
-                        const row = y - yMin;
-                        if (x < strokeMinX[row]) strokeMinX[row] = x;
-                        if (x > strokeMaxX[row]) strokeMaxX[row] = x;
-                    }
-                }
-
-                // Clamp fill to stroke bounds to prevent overspill
-                for (let row = 0; row < spanCount; row++) {
-                    if (strokeMaxX[row] >= 0) {
-                        if (fillMaxX[row] > strokeMaxX[row]) fillMaxX[row] = strokeMaxX[row];
-                        if (fillMinX[row] < strokeMinX[row]) fillMinX[row] = strokeMinX[row];
-                    }
-                }
             } else {
-                // For rotated shapes, use perimeter-based approach with CLAMPING
-                // Generate fill at path boundary, then clamp to stroke bounds to prevent overspill
+                // For rotated shapes, use perimeter-based approach
                 const recordFill = (x, y) => {
                     if (y < yMin || y > yMax) return;
                     const row = y - yMin;
@@ -1317,27 +1296,27 @@ class RoundedRectOpsRot {
                 };
 
                 RoundedRectOpsRot._generatePerimeter(hw, hh, radius, recordFill, centerX, centerY, cos, sin, rotation);
+            }
 
-                // Calculate stroke bounds per row from discrete stroke pixels
-                const strokeMinX = new Int16Array(spanCount).fill(surfaceWidth);
-                const strokeMaxX = new Int16Array(spanCount).fill(-1);
-                for (const pos of strokePixels) {
-                    const x = pos % surfaceWidth;
-                    const y = Math.floor(pos / surfaceWidth);
-                    if (y >= yMin && y <= yMax) {
-                        const row = y - yMin;
-                        if (x < strokeMinX[row]) strokeMinX[row] = x;
-                        if (x > strokeMaxX[row]) strokeMaxX[row] = x;
-                    }
+            // Calculate stroke bounds per row from discrete stroke pixels
+            // Then clamp fill to stroke bounds to prevent overspill
+            const strokeMinX = new Int16Array(spanCount).fill(surfaceWidth);
+            const strokeMaxX = new Int16Array(spanCount).fill(-1);
+            for (const pos of strokePixels) {
+                const x = pos % surfaceWidth;
+                const y = Math.floor(pos / surfaceWidth);
+                if (y >= yMin && y <= yMax) {
+                    const row = y - yMin;
+                    if (x < strokeMinX[row]) strokeMinX[row] = x;
+                    if (x > strokeMaxX[row]) strokeMaxX[row] = x;
                 }
+            }
 
-                // Clamp fill to stroke bounds to prevent overspill
-                // Only clamp rows that have stroke pixels; rows without keep fill perimeter
-                for (let row = 0; row < spanCount; row++) {
-                    if (strokeMaxX[row] >= 0) {
-                        if (fillMaxX[row] > strokeMaxX[row]) fillMaxX[row] = strokeMaxX[row];
-                        if (fillMinX[row] < strokeMinX[row]) fillMinX[row] = strokeMinX[row];
-                    }
+            // Clamp fill to stroke bounds to prevent overspill
+            for (let row = 0; row < spanCount; row++) {
+                if (strokeMaxX[row] >= 0) {
+                    if (fillMaxX[row] > strokeMaxX[row]) fillMaxX[row] = strokeMaxX[row];
+                    if (fillMinX[row] < strokeMinX[row]) fillMinX[row] = strokeMinX[row];
                 }
             }
 
@@ -1440,25 +1419,18 @@ class RoundedRectOpsRot {
         const sin = Math.sin(rotation);
         const halfStroke = lineWidth / 2;
 
-        // For 1px strokes, the stroke is rendered at the PATH boundary (not expanded)
-        // For thick strokes, the stroke spans from path-halfStroke to path+halfStroke
-        const is1pxStroke = lineWidth <= 1;
+        // Stroke outer dimensions (path expanded by halfStroke)
+        const outerHW = (width + lineWidth) / 2;
+        const outerHH = (height + lineWidth) / 2;
+        const outerRadius = Math.min(radius + halfStroke, Math.min(width + lineWidth, height + lineWidth) / 2);
 
-        // Stroke outer dimensions
-        // For 1px: path boundary (the stroke pixels are AT the path)
-        // For thick: path expanded by halfStroke
-        const outerHW = is1pxStroke ? width / 2 : (width + lineWidth) / 2;
-        const outerHH = is1pxStroke ? height / 2 : (height + lineWidth) / 2;
-        const outerRadius = is1pxStroke ? radius : Math.min(radius + halfStroke, Math.min(width + lineWidth, height + lineWidth) / 2);
-
-        // Stroke inner dimensions (for thick strokes only)
-        // For 1px: no inner region (the stroke is just the perimeter pixels)
+        // Stroke inner dimensions
         const innerWidth = width - lineWidth;
         const innerHeight = height - lineWidth;
         const innerHW = innerWidth / 2;
         const innerHH = innerHeight / 2;
         const innerRadius = Math.max(0, radius - halfStroke);
-        const hasInnerRect = !is1pxStroke && innerWidth > 0 && innerHeight > 0;
+        const hasInnerRect = innerWidth > 0 && innerHeight > 0;
 
         // Fill dimensions - contract slightly to generate a fill perimeter smaller than stroke
         // The actual boundary enforcement comes from clamping fill to outer boundary
