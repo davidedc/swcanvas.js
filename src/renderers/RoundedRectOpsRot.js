@@ -1432,15 +1432,10 @@ class RoundedRectOpsRot {
         const innerRadius = Math.max(0, radius - halfStroke);
         const hasInnerRect = innerWidth > 0 && innerHeight > 0;
 
-        // Fill dimensions - contract slightly to generate a fill perimeter smaller than stroke
-        // The actual boundary enforcement comes from clamping fill to outer boundary
-        // Use small contraction to avoid fill perimeter == stroke perimeter edge cases
-        const fillContraction = 0.25;
-        const fillWidth = width - fillContraction * 2;
-        const fillHeight = height - fillContraction * 2;
-        const fillHW = fillWidth / 2;
-        const fillHH = fillHeight / 2;
-        const fillRadius = Math.max(0, radius - fillContraction);
+        // Fill dimensions - use path dimensions, clamping to outer enforces boundary
+        const fillHW = width / 2;
+        const fillHH = height / 2;
+        const fillRadius = radius;
 
         // Compute AABB height based on outer bounds (largest boundary)
         const outerWidth = outerHW * 2;
