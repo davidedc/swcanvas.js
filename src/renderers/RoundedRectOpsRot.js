@@ -1239,7 +1239,8 @@ class RoundedRectOpsRot {
 
             // For axis-aligned shapes (angle ≈ 0 or π), use geometric calculation
             // This avoids gaps from discrete arc sampling with fractional centers
-            const isAxisAligned = Math.abs(sin) < 0.001;
+            // Use same threshold as Transform2D for consistency
+            const isAxisAligned = Math.abs(sin) < TRANSFORM_EPSILON;
 
             // Generate fill bounds - method depends on axis alignment
             if (isAxisAligned) {
@@ -1497,6 +1498,11 @@ class RoundedRectOpsRot {
         }
 
         // Generate fill perimeter only for semi-transparent strokes
+        // Fill uses path dimensions directly (no contraction needed).
+        // Since lineWidth > 1 (this method only handles thick strokes), stroke outer
+        // extends by at least 0.5px beyond path on each side. Using the same
+        // _generatePerimeter algorithm for both guarantees fill stays inside
+        // outer bounds without explicit clamping.
         if (!strokeIsOpaque) {
             const fillHW = width / 2;
             const fillHH = height / 2;
