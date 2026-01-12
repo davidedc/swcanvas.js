@@ -1535,17 +1535,12 @@ class RoundedRectOpsRot {
             const innerRight = hasInnerRect ? innerMaxX[row] : -1;
             const hasInnerRegion = innerLeft <= innerRight;
 
-            // Get fill extent - clamp to outer boundary to prevent overspill
+            // Get fill extent
             // For opaque stroke with no inner rect, fillMinX/fillMaxX are null (stroke covers everything)
-            let fillLeft = fillMinX ? fillMinX[row] : surfaceWidth;
-            let fillRight = fillMaxX ? fillMaxX[row] : -1;
-            if (fillLeft <= fillRight) {
-                // Clamp fill to stay within outer stroke boundary
-                fillLeft = Math.max(fillLeft, outerLeft);
-                fillRight = Math.min(fillRight, outerRight);
-            }
+            const fillLeft = fillMinX ? fillMinX[row] : surfaceWidth;
+            const fillRight = fillMaxX ? fillMaxX[row] : -1;
 
-            // STEP 1: Render fill first (clamped to outer boundary)
+            // STEP 1: Render fill first
             if (fillLeft <= fillRight) {
                 const x0 = Math.max(0, fillLeft);
                 const x1 = Math.min(surfaceWidth - 1, fillRight);
