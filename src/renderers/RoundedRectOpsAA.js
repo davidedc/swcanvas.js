@@ -684,7 +684,7 @@ class RoundedRectOpsAA {
 
         // Check what we need to draw
         const hasFill = fillColor && fillColor.a > 0;
-        const hasStroke = strokeColor && strokeColor.a > 0;
+        const hasStroke = strokeColor && strokeColor.a > 0 && lineWidth > 0;
 
         if (!hasFill && !hasStroke) return;
 
@@ -727,8 +727,6 @@ class RoundedRectOpsAA {
         // Calculate scan bounds - use original coordinates (not floored pathX/pathY)
         const scanMinY = Math.floor(y - halfStroke);
         const scanMaxY = Math.ceil(y + height + halfStroke);
-        const scanMinX = Math.floor(x - halfStroke);
-        const scanMaxX = Math.ceil(x + width + halfStroke);
 
         // Determine rendering modes
         const fillIsOpaque = hasFill && fillColor.a === 255 && globalAlpha >= 1.0;
@@ -829,10 +827,10 @@ class RoundedRectOpsAA {
         for (let py = scanMinY; py < scanMaxY; py++) {
             if (py < 0 || py >= surfaceHeight) continue;
 
-            // Get outer stroke extent - uses pre-calculated bounds from original coordinates
+            // Get outer stroke extent - uses calculated bounds from original coordinates
             const outerExtent = hasStroke ? RoundedRectOpsAA._getXExtent(py, outerRectX, outerRectW, outerRectY, outerRectH, outerRadius, 0) : { leftX: -1, rightX: -1 };
 
-            // Get inner stroke extent - uses pre-calculated bounds from original coordinates
+            // Get inner stroke extent - uses calculated bounds from original coordinates
             const innerExtent = (hasStroke && innerRectH > 0) ? RoundedRectOpsAA._getXExtent(py, innerRectX, innerRectW, innerRectY, innerRectH, innerRadius, 0) : { leftX: -1, rightX: -1 };
 
             // Determine fill extent based on stroke transparency

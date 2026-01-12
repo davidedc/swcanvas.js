@@ -697,7 +697,7 @@ class RoundedRectOpsRot {
             // The Set handles any overdraw for correct alpha blending.
 
             const dxAbs = Math.abs(x2i - x1i);
-            let dyAbs = Math.abs(y2i - y1i);
+            const dyAbs = Math.abs(y2i - y1i);
             const sx = x1i < x2i ? 1 : -1;
             const sy = y1i < y2i ? 1 : -1;
             let err = dxAbs - dyAbs;
@@ -1285,7 +1285,7 @@ class RoundedRectOpsRot {
             const fillPacked = fillIsOpaque ? Surface.packColor(fillColor.r, fillColor.g, fillColor.b, 255) : 0;
             const fr = fillColor.r, fg = fillColor.g, fb = fillColor.b;
 
-            // Render fill scanlines using expanded fill boundary (fill entire interior)
+            // Render fill scanlines (fill clamped to stroke bounds to prevent overspill)
             for (let row = 0; row < spanCount; row++) {
                 const y = yMin + row;
                 const fillLeft = fillMinX[row];
