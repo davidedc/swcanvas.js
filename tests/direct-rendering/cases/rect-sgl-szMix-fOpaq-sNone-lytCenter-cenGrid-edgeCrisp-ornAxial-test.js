@@ -96,7 +96,8 @@ registerDirectRenderingTest(
     'rects',
     {
         extremes: true,
-        totalUniqueColors: 2
+        totalUniqueColors: 2,
+        shapeIntegrity: { hasFill: true, hasStroke: false }
     },
     {
         title: 'Filled Rectangle - Opaque Color',

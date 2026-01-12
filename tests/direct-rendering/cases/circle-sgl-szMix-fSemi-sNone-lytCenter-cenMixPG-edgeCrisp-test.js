@@ -80,7 +80,8 @@ registerDirectRenderingTest(
         extremes: { colorTolerance: 8, tolerance: 0.03 },
         noGapsInFillEdges: true,
         totalUniqueColors: 2,
-        speckles: true
+        speckles: true,
+        shapeIntegrity: { hasFill: true, hasStroke: false }
     },
     {
         title: 'Single Circle Without Stroke (Crisp, Random Center Type)',

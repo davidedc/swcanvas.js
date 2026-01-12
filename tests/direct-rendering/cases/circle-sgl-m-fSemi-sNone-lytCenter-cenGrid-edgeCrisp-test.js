@@ -69,6 +69,7 @@ registerDirectRenderingTest(
     {
         extremes: { tolerance: 0.05 },
         totalUniqueColors: 2,  // Exactly 2 colors: white background + one blended red (no overdraw)
+        shapeIntegrity: { hasFill: true, hasStroke: false }
         // Semi-transparent colors now use direct rendering with Bresenham + alpha blending
     },
     {
