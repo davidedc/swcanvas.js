@@ -30,6 +30,10 @@
  *
  * Note: 1px stroke edges use inline Bresenham (no LineOps) to avoid line-shortening
  * that would create gaps at edge-arc junctions.
+ *
+ * Note: _fillStroke_Rot_1px includes assertion to catch axis-aligned cases that should
+ * have been routed to RoundedRectOpsAA. Uses TRANSFORM_EPSILON (0.0001) aligned with
+ * Transform2D.isAxisAligned for consistent threshold.
  */
 class RoundedRectOpsRot {
     // =========================================================================
@@ -1149,6 +1153,10 @@ class RoundedRectOpsRot {
     /**
      * Internal: Fill+stroke for 1px stroke on rotated rounded rectangle.
      * Uses perimeter-clamped fill + Set-based stroke rendering.
+     *
+     * IMPORTANT: This method only handles non-axis-aligned (rotated) cases.
+     * Includes assertion to catch routing errors - axis-aligned shapes should
+     * use RoundedRectOpsAA.fillStroke_AA_Any() instead.
      *
      * For 1px stroke, the stroke is only the perimeter pixels (not a filled annulus).
      * We generate the stroke perimeter, use it to clamp fill, then render stroke pixels.

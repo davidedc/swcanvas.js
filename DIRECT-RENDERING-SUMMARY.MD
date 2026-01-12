@@ -79,6 +79,7 @@ Notes:
 - Rotated rounded rectangle **stroke** (thick) uses Dual Edge Buffer algorithm: generates outer and inner perimeters, fills annulus per scanline.
 - Rotated rounded rectangle **fill** uses Edge Buffer Rasterization: O(H + P + A) optimal complexity.
 - **fillStroke_Rot_Any()** combines fill with epsilon contraction + stroke on top.
+- **fillStroke_AA_Any()** fill extent: thick semi-transparent strokes use PATH extent (for proper overlap blending), while 1px and opaque strokes use INNER extent (no meaningful overlap area).
 
 ### 2.3 CIRCLES (CircleOps.js)
 
@@ -146,7 +147,8 @@ Note: Arc uses Bresenham + angle filtering. 1px paths skip Set overhead for opaq
 |-------------|---------------------------------------------------------------------------|
 | Rectangle   | Transform: isAxisAligned OR isUniformScale                                |
 |             | Non-uniform scale + rotation → path-based rendering (produces parallelogram)         |
-| RoundedRect | Transform: noTransform = this._transform.isIdentity (stricter than Rect!) |
+| RoundedRect | Transform: isIdentity for axis-aligned; rotated uses TRANSFORM_EPSILON (0.0001) |
+|             | threshold matching Transform2D.isAxisAligned for consistent detection          |
 | Circle      | Transform: noTransform = this._transform.isIdentity                       |
 | Line        | lineCap === 'butt' (required for direct rendering)                               |
 | Arc         | lineCap === 'butt' (required for direct rendering)                               |

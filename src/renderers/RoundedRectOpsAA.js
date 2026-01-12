@@ -659,7 +659,13 @@ class RoundedRectOpsAA {
     /**
      * Unified fill and stroke rendering for rounded rectangles.
      * Draws both in a single coordinated pass to prevent fill/stroke gaps (speckles).
-     * Fill is rendered first with epsilon contraction, then stroke is rendered on top.
+     * Fill is rendered first, then stroke is rendered on top.
+     *
+     * Fill extent strategy (per scanline):
+     * - Thick semi-transparent stroke (lineWidth > 1): Fill to PATH extent so stroke
+     *   can blend on top, creating proper 3-color overlap (background, fill, fill+stroke)
+     * - 1px or opaque stroke: Fill to INNER extent (no meaningful overlap area for 1px;
+     *   opaque stroke covers fill anyway)
      *
      * Key insight: All corner arcs (fill, outer stroke, inner stroke) must use the SAME
      * corner center point, just with different radii. This ensures pixel-perfect alignment.
