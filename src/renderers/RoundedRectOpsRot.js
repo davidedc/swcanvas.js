@@ -1174,6 +1174,14 @@ class RoundedRectOpsRot {
         // Pre-compute rotation
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
+
+        // Assertion: This method should only be called for non-axis-aligned shapes.
+        // If |sin| < TRANSFORM_EPSILON, the shape should have been routed to RoundedRectOpsAA.
+        if (Math.abs(sin) < TRANSFORM_EPSILON) {
+            throw new Error(`_fillStroke_Rot_1px called with axis-aligned rotation (sin=${sin}). ` +
+                            `This should have been routed to RoundedRectOpsAA.`);
+        }
+
         const hw = width / 2;
         const hh = height / 2;
 
@@ -1237,67 +1245,16 @@ class RoundedRectOpsRot {
             fillMinX.fill(surfaceWidth);
             fillMaxX.fill(-1);
 
-            // For axis-aligned shapes (angle ≈ 0 or π), use geometric calculation
-            // This avoids gaps from discrete arc sampling with fractional centers
-            // Use same threshold as Transform2D for consistency
-            const isAxisAligned = Math.abs(sin) < TRANSFORM_EPSILON;
+            // Generate fill bounds using perimeter-based approach
+            // The clamping to stroke bounds afterwards handles any discrete pixel mismatches
+            const recordFill = (x, y) => {
+                if (y < yMin || y > yMax) return;
+                const row = y - yMin;
+                if (x < fillMinX[row]) fillMinX[row] = x;
+                if (x > fillMaxX[row]) fillMaxX[row] = x;
+            };
 
-            // Generate fill bounds - method depends on axis alignment
-            if (isAxisAligned) {
-                // Geometric calculation: compute exact X bounds for each Y row
-                // This avoids gaps from discrete arc sampling with fractional centers
-                const r2 = radius * radius;
-                const topCornerY = centerY - hh + radius;      // Y of top corner centers
-                const bottomCornerY = centerY + hh - radius;   // Y of bottom corner centers
-                const leftCornerX = centerX - hw + radius;     // X of left corner centers
-                const rightCornerX = centerX + hw - radius;    // X of right corner centers
-
-                for (let row = 0; row < spanCount; row++) {
-                    const y = yMin + row;
-                    let minX, maxX;
-
-                    if (y < topCornerY) {
-                        // Top corner region
-                        const dy = y - topCornerY;
-                        const dy2 = dy * dy;
-                        if (dy2 <= r2) {
-                            const dx = Math.sqrt(r2 - dy2);
-                            minX = Math.floor(leftCornerX - dx);
-                            maxX = Math.floor(rightCornerX + dx);
-                        } else {
-                            continue; // Outside shape
-                        }
-                    } else if (y > bottomCornerY) {
-                        // Bottom corner region
-                        const dy = y - bottomCornerY;
-                        const dy2 = dy * dy;
-                        if (dy2 <= r2) {
-                            const dx = Math.sqrt(r2 - dy2);
-                            minX = Math.floor(leftCornerX - dx);
-                            maxX = Math.floor(rightCornerX + dx);
-                        } else {
-                            continue; // Outside shape
-                        }
-                    } else {
-                        // Middle region (straight edges)
-                        minX = Math.floor(centerX - hw);
-                        maxX = Math.floor(centerX + hw);
-                    }
-
-                    fillMinX[row] = minX;
-                    fillMaxX[row] = maxX;
-                }
-            } else {
-                // For rotated shapes, use perimeter-based approach
-                const recordFill = (x, y) => {
-                    if (y < yMin || y > yMax) return;
-                    const row = y - yMin;
-                    if (x < fillMinX[row]) fillMinX[row] = x;
-                    if (x > fillMaxX[row]) fillMaxX[row] = x;
-                };
-
-                RoundedRectOpsRot._generatePerimeter(hw, hh, radius, recordFill, centerX, centerY, cos, sin, rotation);
-            }
+            RoundedRectOpsRot._generatePerimeter(hw, hh, radius, recordFill, centerX, centerY, cos, sin, rotation);
 
             // Calculate stroke bounds per row from discrete stroke pixels
             // Then clamp fill to stroke bounds to prevent overspill
