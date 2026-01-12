@@ -720,7 +720,6 @@ class RoundedRectOpsAA {
         const pathRadius = radius;
 
         // Radii for different boundaries
-        const fillRadius = pathRadius;  // Fill extends to path boundary
         const outerRadius = pathRadius + halfStroke;  // Stroke outer edge
         const innerRadius = Math.max(0, pathRadius - halfStroke);  // Stroke inner edge
 
@@ -843,7 +842,7 @@ class RoundedRectOpsAA {
                     if (strokeIsSemiTransparent && lineWidth > 1) {
                         // Thick semi-transparent stroke: fill to PATH extent
                         // Stroke will blend ON TOP of this fill for correct alpha overlap color
-                        fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, fillRadius, FILL_EPSILON);
+                        fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, pathRadius, FILL_EPSILON);
                     } else {
                         // Opaque OR 1px semi-transparent: fill to inner extent
                         // (1px has no visible overlap area; opaque stroke covers fill anyway)
@@ -854,11 +853,11 @@ class RoundedRectOpsAA {
                     }
                 } else {
                     // Fill-only: use standard fill extent calculation
-                    fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, fillRadius, FILL_EPSILON);
+                    fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, pathRadius, FILL_EPSILON);
                 }
             }
 
-            // STEP 1: Render fill first (with epsilon contraction, clamped to stroke boundary)
+            // STEP 1: Render fill first (uses path extent or inner extent based on stroke type)
             if (hasFill && fillExtent.leftX >= 0 && fillExtent.leftX <= fillExtent.rightX) {
                 renderFillSpan(fillExtent.leftX, fillExtent.rightX, py);
             }
