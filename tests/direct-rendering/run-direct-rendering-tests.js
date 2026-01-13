@@ -66,7 +66,39 @@ global.countSpeckles = countSpeckles;
 // Parse command line arguments
 const args = process.argv.slice(2);
 let numIterations = 1;
+let startIteration = 1;
 let testFilter = null;
+let showLogs = false;
+
+// Help text
+if (args.includes('--help') || args.includes('-h')) {
+    console.log(`
+Direct Rendering Test Runner
+
+Usage: npm run test:direct-rendering -- [options]
+
+Options:
+  -t, --test=<filter>     Filter tests by name substring
+  -i, --iterations=<N>    Number of iterations to run (default: 1)
+  -s, --start=<N>         Starting iteration number (default: 1)
+  -l, --logs              Show test logs (verbose output)
+  -h, --help              Show this help message
+
+Examples:
+  npm run test:direct-rendering -- -t roundrect -i 1
+    Run 1 iteration of all roundrect tests
+
+  npm run test:direct-rendering -- -t circle -s 10 -i 1
+    Run only iteration 10 of circle tests
+
+  npm run test:direct-rendering -- -t circle -s 10 -i 1 -l
+    Run only iteration 10 of circle tests with logs
+
+  npm run test:direct-rendering -- -s 100 -i 5
+    Run iterations 100-104 of all tests
+`);
+    process.exit(0);
+}
 
 for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -80,11 +112,21 @@ for (let i = 0; i < args.length; i++) {
     } else if (arg === '-t' && args[i + 1]) {
         testFilter = args[i + 1];
         i++; // Skip next arg
+    } else if (arg.startsWith('--start=')) {
+        startIteration = parseInt(arg.split('=')[1], 10);
+    } else if (arg === '-s' && args[i + 1]) {
+        startIteration = parseInt(args[i + 1], 10);
+        i++; // Skip next arg
+    } else if (arg === '--logs' || arg === '-l') {
+        showLogs = true;
     }
 }
 
 if (isNaN(numIterations) || numIterations < 1) {
     numIterations = 1;
+}
+if (isNaN(startIteration) || startIteration < 1) {
+    startIteration = 1;
 }
 
 // Test results
@@ -129,6 +171,12 @@ function runTest(test, iterationNumber = 1) {
             reason: `Exception during draw: ${e.message}`
         });
         return false;
+    }
+
+    // Display test logs if enabled
+    if (showLogs && result && result.logs && result.logs.length > 0) {
+        console.log('  Test Logs:');
+        result.logs.forEach(log => console.log(`    ${log}`));
     }
 
     // Check if direct rendering was used (this is the critical check)
@@ -233,7 +281,12 @@ function main() {
     }
 
     const totalRuns = testsToRun.length * numIterations;
-    console.log(`Running ${testsToRun.length} tests x ${numIterations} iteration${numIterations > 1 ? 's' : ''} = ${totalRuns} total runs...\n`);
+    const endIteration = startIteration + numIterations - 1;
+    if (startIteration > 1) {
+        console.log(`Running ${testsToRun.length} tests x ${numIterations} iteration${numIterations > 1 ? 's' : ''} (${startIteration}-${endIteration}) = ${totalRuns} total runs...\n`);
+    } else {
+        console.log(`Running ${testsToRun.length} tests x ${numIterations} iteration${numIterations > 1 ? 's' : ''} = ${totalRuns} total runs...\n`);
+    }
 
     // Group by category
     const categories = {};
@@ -244,9 +297,9 @@ function main() {
     }
 
     // Run tests by category for each iteration
-    for (let iter = 1; iter <= numIterations; iter++) {
+    for (let iter = startIteration; iter <= endIteration; iter++) {
         if (numIterations > 1) {
-            console.log(`\n--- Iteration ${iter}/${numIterations} ---`);
+            console.log(`\n--- Iteration ${iter}/${endIteration} ---`);
         }
 
         for (const [category, tests] of Object.entries(categories)) {

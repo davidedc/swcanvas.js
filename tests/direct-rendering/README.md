@@ -752,10 +752,42 @@ Click "Enable Profiling Mode" to:
 
 ## Running Tests
 
-### Node.js (All Tests)
+### Node.js Test Runner
+
+Run direct rendering tests from command line:
 
 ```bash
-npm test
+# Run all tests (1 iteration each)
+npm run test:direct-rendering
+
+# Show help
+npm run test:direct-rendering -- -h
+```
+
+#### CLI Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-t, --test=<filter>` | Filter tests by name substring | (all tests) |
+| `-i, --iterations=<N>` | Number of iterations to run | 1 |
+| `-s, --start=<N>` | Starting iteration number | 1 |
+| `-l, --logs` | Show verbose test logs | off |
+| `-h, --help` | Show help message | - |
+
+#### Examples
+
+```bash
+# Run only roundrect tests
+npm run test:direct-rendering -- -t roundrect
+
+# Run only iteration 10 of circle tests
+npm run test:direct-rendering -- -t circle -s 10 -i 1
+
+# Run iterations 100-104 with verbose logs
+npm run test:direct-rendering -- -s 100 -i 5 -l
+
+# Run a specific test at a specific iteration with logs
+npm run test:direct-rendering -- -t circle-m5 -s 10 -i 1 -l
 ```
 
 ### Browser Visual Tests
