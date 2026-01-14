@@ -181,6 +181,12 @@ class DirectRenderingTestRunner {
         title.textContent = test.metadata.title || test.name;
         titleDiv.appendChild(title);
 
+        // Test name (technical identifier)
+        const testNameEl = document.createElement('p');
+        testNameEl.className = 'test-name';
+        testNameEl.textContent = test.name;
+        titleDiv.appendChild(testNameEl);
+
         if (test.metadata.description) {
             const desc = document.createElement('p');
             desc.className = 'test-description';
