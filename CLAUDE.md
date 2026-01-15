@@ -46,6 +46,7 @@ See README.md for complete build commands and test instructions.
 **Validation commands**:
 - `npm run check:test-metadata` - Validate test metadata, signatures, filename parsing
 - `npm run check:register-consistency` - Quick filename/registration check
+- `npm run test:direct-rendering:perf` - Performance benchmarking for direct rendering (Node.js)
 
 ## Common Tasks
 

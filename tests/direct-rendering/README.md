@@ -802,6 +802,30 @@ open tests/direct-rendering/index.html
 open tests/direct-rendering/performance-tests.html
 ```
 
+### Node.js Performance Tests
+
+```bash
+npm run test:direct-rendering:perf
+```
+
+The Node.js runner uses fixed-iteration timing (simpler than browser's adaptive ramp-up since SWCanvas is synchronous):
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-t, --test=<filter>` | Filter tests by name or displayName | (all tests) |
+| `-s, --shapes=<N>` | Shapes per measurement run | 1000 |
+| `-w, --warmup=<N>` | Warmup iterations | 100 |
+| `-r, --runs=<N>` | Measurement runs to average | 5 |
+| `-q, --quiet` | Summary only | off |
+| `-h, --help` | Show help | - |
+
+**Examples:**
+```bash
+npm run test:direct-rendering:perf -- -t line         # Filter to line tests
+npm run test:direct-rendering:perf -- -s 5000 -r 10   # Custom config
+npm run test:direct-rendering:perf -- -q              # Quiet mode
+```
+
 ---
 
 ## 8. Test Metadata Validation
