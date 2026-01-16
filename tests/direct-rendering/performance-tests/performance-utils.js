@@ -7,6 +7,15 @@ let FRAME_BUDGET = 16.7; // Default milliseconds (60fps), will be updated after 
 let DETECTED_FPS = 60; // Default, will be updated after detection
 const STARTING_SHAPE_COUNT = 10;
 
+// Browser detection for timing diagnostics
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const isChrome = /chrome/i.test(navigator.userAgent) && !/edge/i.test(navigator.userAgent);
+const browserName = isSafari ? 'Safari' : (isChrome ? 'Chrome' : 'Other');
+console.log(`[PERF] Browser detected: ${browserName}`);
+
+// Debug flag for timing diagnostics (set to true to diagnose timing issues)
+const DEBUG_TIMING = false;
+
 // Set up test state
 let currentTest = null;
 let abortRequested = false;
@@ -384,7 +393,12 @@ function runAdaptiveHTML5CanvasRampTest(testType, startCount, precision, growthF
       const DROP_THRESHOLD_MS = FRAME_BUDGET * 1.5;
 
       let frameCount = 0;
-      let startTime = 0;
+      let rafStartTime = 0;      // RAF timestamp-based timing
+      let perfStartTime = 0;     // performance.now() timing for diagnostics
+
+      // Frame-by-frame diagnostics for Safari timing investigation
+      let rafTimestamps = [];
+      let perfTimestamps = [];
 
       // Seed random once per measurement for reproducibility
       SeededRandom.seedWithInteger(iteration);
@@ -392,7 +406,7 @@ function runAdaptiveHTML5CanvasRampTest(testType, startCount, precision, growthF
       function runFrame(timestamp) {
         // Handle abort
         if (abortRequested) {
-          measuredCallback(false, FRAME_BUDGET * 2);
+          measuredCallback(false, FRAME_BUDGET * 2, null);
           return;
         }
 
@@ -407,7 +421,14 @@ function runAdaptiveHTML5CanvasRampTest(testType, startCount, precision, growthF
 
         // Start timing at beginning of measurement phase
         if (frameCount === WARMUP_FRAMES) {
-          startTime = timestamp;
+          rafStartTime = timestamp;
+          perfStartTime = performance.now();
+        }
+
+        // Record frame-by-frame timing for diagnostics
+        if (frameCount >= WARMUP_FRAMES) {
+          rafTimestamps.push(timestamp);
+          perfTimestamps.push(performance.now());
         }
 
         // Measurement Phase: Render and continue
@@ -420,15 +441,32 @@ function runAdaptiveHTML5CanvasRampTest(testType, startCount, precision, growthF
         }
 
         // Calculation Phase
-        const endTime = timestamp;
-        const totalTime = endTime - startTime;
-        const avgFrameTime = totalTime / MEASURE_FRAMES;
+        const rafEndTime = timestamp;
+        const perfEndTime = performance.now();
+
+        const rafTotalTime = rafEndTime - rafStartTime;
+        const perfTotalTime = perfEndTime - perfStartTime;
+
+        const rafAvgFrameTime = rafTotalTime / MEASURE_FRAMES;
+        const perfAvgFrameTime = perfTotalTime / MEASURE_FRAMES;
+
+        // Diagnostic data for timing investigation
+        const diagnostics = {
+          rafAvgFrameTime,
+          perfAvgFrameTime,
+          rafTotalTime,
+          perfTotalTime,
+          rafTimestamps,
+          perfTimestamps,
+          timingDivergence: Math.abs(rafAvgFrameTime - perfAvgFrameTime),
+          browser: browserName
+        };
 
         // VSync Cliff Detection:
         // PASS: avgFrameTime < threshold → GPU keeping up
         // FAIL: avgFrameTime >= threshold → frames dropping
-        const passed = avgFrameTime < DROP_THRESHOLD_MS;
-        measuredCallback(passed, avgFrameTime);
+        const passed = rafAvgFrameTime < DROP_THRESHOLD_MS;
+        measuredCallback(passed, rafAvgFrameTime, diagnostics);
       }
 
       animationFrameId = requestAnimationFrame(runFrame);
@@ -505,10 +543,36 @@ function runAdaptiveHTML5CanvasRampTest(testType, startCount, precision, growthF
       currentTestProgressBar.textContent = `${progress}%`;
       if (progress > 0) currentTestProgressBar.style.color = 'white';
 
-      measureAtCount(count, (passed, actualTime) => {
+      measureAtCount(count, (passed, actualTime, diagnostics) => {
         // Record actual time for chart
         testData.canvasShapeCounts.push(count);
         testData.canvasTimings.push(actualTime);
+
+        // Timing diagnostics (enable with DEBUG_TIMING = true)
+        // Logs every 5th iteration to diagnose Safari vs Chrome timing differences
+        if (DEBUG_TIMING && diagnostics && iteration % 5 === 0) {
+          console.log(`[TIMING] ${diagnostics.browser} | iter:${iteration} | shapes:${count} | RAF:${diagnostics.rafAvgFrameTime.toFixed(2)}ms | perf:${diagnostics.perfAvgFrameTime.toFixed(2)}ms | div:${diagnostics.timingDivergence.toFixed(2)}ms`);
+        }
+
+        // Log detailed timing diagnostics when there's significant divergence (>2ms)
+        // Enable with DEBUG_TIMING = true
+        if (DEBUG_TIMING && diagnostics && diagnostics.timingDivergence > 2) {
+          console.warn(`[TIMING DIAGNOSTIC] Shape count: ${count}`);
+          console.warn(`  Browser: ${diagnostics.browser}`);
+          console.warn(`  RAF avg: ${diagnostics.rafAvgFrameTime.toFixed(2)}ms`);
+          console.warn(`  perf.now() avg: ${diagnostics.perfAvgFrameTime.toFixed(2)}ms`);
+          console.warn(`  Divergence: ${diagnostics.timingDivergence.toFixed(2)}ms`);
+
+          // Log frame intervals for detailed analysis
+          const rafIntervals = [];
+          const perfIntervals = [];
+          for (let i = 1; i < diagnostics.rafTimestamps.length; i++) {
+            rafIntervals.push(diagnostics.rafTimestamps[i] - diagnostics.rafTimestamps[i-1]);
+            perfIntervals.push(diagnostics.perfTimestamps[i] - diagnostics.perfTimestamps[i-1]);
+          }
+          console.warn(`  RAF intervals: [${rafIntervals.map(x => x.toFixed(1)).join(', ')}]`);
+          console.warn(`  perf intervals: [${perfIntervals.map(x => x.toFixed(1)).join(', ')}]`);
+        }
 
         const status = passed ? 'PASS' : 'FAIL';
 
