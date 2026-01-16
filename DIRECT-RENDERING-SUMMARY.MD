@@ -587,7 +587,7 @@ The performance testing page provides ramp-up comparison between SWCanvas Direct
 
 ### 12.2 Dual-Mode Test Pattern
 
-Tests registered with `displayName` metadata support both visual and performance testing:
+Tests registered with `perfName` metadata support both visual and performance testing:
 
 ```javascript
 registerDirectRenderingTest(
@@ -608,20 +608,20 @@ registerDirectRenderingTest(
     { /* visual test checks */ },
     {
         title: 'Test Title',
-        displayName: 'Perf: Circle Fill'  // Enables performance registration
+        perfName: 'Perf: Circle Fill'  // Enables performance registration
     }
 );
 ```
 
 ### 12.3 Performance Registry
 
-Tests with `displayName` in metadata are automatically registered in `DIRECT_RENDERING_PERF_REGISTRY`:
+Tests with `perfName` in metadata are automatically registered in `DIRECT_RENDERING_PERF_REGISTRY`:
 
 | Field | Description |
 |-------|-------------|
 | `id` | Test identifier (e.g., 'circle-fill-opaque') |
 | `drawFunction` | The drawing function supporting dual-mode |
-| `displayName` | Display name for UI (e.g., 'Perf: Circle Fill Opaque') |
+| `perfName` | Display name for UI (e.g., 'Perf: Circle Fill Opaque') |
 | `description` | Test description |
 | `category` | Shape category ('circles', 'rects', 'lines', 'arcs', 'rounded-rects') |
 

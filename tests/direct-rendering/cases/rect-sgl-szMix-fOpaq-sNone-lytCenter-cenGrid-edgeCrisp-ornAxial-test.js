@@ -102,6 +102,6 @@ registerDirectRenderingTest(
     {
         title: 'Filled Rectangle - Opaque Color',
         description: 'Tests fillRect with opaque color',
-        displayName: 'Perf: Rect Fill Opaque'
+        perfName: 'Perf: Rect Fill Opaque'
     }
 );

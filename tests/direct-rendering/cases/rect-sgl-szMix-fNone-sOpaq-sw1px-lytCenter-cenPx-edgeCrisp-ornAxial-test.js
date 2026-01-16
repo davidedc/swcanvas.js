@@ -148,6 +148,6 @@ registerDirectRenderingTest(
     {
         title: 'Rectangles: S-Size No-Fill 1px-Red-Opaque-Stroke Centered-At-Pixel No-Rotation',
         description: 'Tests a single 1px red stroked rectangle, centered at pixel centers (X.5,Y.5), with adjusted even dimensions.',
-        displayName: 'Perf: Rect S 1px Red Centered Pixel'
+        perfName: 'Perf: Rect S 1px Red Centered Pixel'
     }
 );

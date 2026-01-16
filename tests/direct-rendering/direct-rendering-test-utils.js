@@ -8,7 +8,7 @@
 // Test registry - stores all registered tests
 const DIRECT_RENDERING_TESTS = [];
 
-// Performance test registry - stores tests with displayName for performance testing
+// Performance test registry - stores tests with perfName for performance testing
 const DIRECT_RENDERING_PERF_REGISTRY = [];
 
 /**
@@ -673,7 +673,7 @@ function calculate90DegQuadrantArcParams(options) {
  * @param {function} drawFunction - Function that draws the test
  * @param {string} category - Test category
  * @param {object} checks - Validation checks to perform
- * @param {object} metadata - Test metadata (include displayName for performance testing)
+ * @param {object} metadata - Test metadata (include perfName for performance testing)
  */
 function registerDirectRenderingTest(name, drawFunction, category, checks, metadata = {}) {
     DIRECT_RENDERING_TESTS.push({
@@ -684,14 +684,14 @@ function registerDirectRenderingTest(name, drawFunction, category, checks, metad
         metadata
     });
 
-    // Also register for performance tests if both displayName AND performanceTestSupported are present
-    // - displayName: provides human-readable name for UI display
+    // Also register for performance tests if both perfName AND performanceTestSupported are present
+    // - perfName: provides human-readable name for UI display
     // - performanceTestSupported: confirms test implements dual-mode pattern (instances parameter)
-    if (metadata.displayName && metadata.performanceTestSupported) {
+    if (metadata.perfName && metadata.performanceTestSupported) {
         DIRECT_RENDERING_PERF_REGISTRY.push({
             id: name,
             drawFunction: drawFunction,
-            displayName: metadata.displayName,
+            perfName: metadata.perfName,
             description: metadata.description || '',
             category: category,
             performanceTestSupported: true

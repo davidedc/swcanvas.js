@@ -135,6 +135,6 @@ registerDirectRenderingTest(
     {
         title: 'Rectangle: Rotated, Single, Opaque Fill + Opaque Stroke, Random Position & Rotation',
         description: 'Tests rendering of a single rotated rectangle with opaque fill and opaque stroke (exercises fillRotated and strokeRotated with opaque colors).',
-        displayName: 'Perf: Rect Rotated Single Opaq Fill+Stroke'
+        perfName: 'Perf: Rect Rotated Single Opaq Fill+Stroke'
     }
 );

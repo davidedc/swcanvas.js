@@ -33,7 +33,7 @@ registerDirectRenderingTest(name, drawFunction, category, checks, metadata)
 | `drawFunction` | `function` | Yes | Function that draws the test: `(ctx, iterationNumber, instances) => result` |
 | `category` | `string` | Yes | Test category: `'lines'`, `'circles'`, `'arcs'`, `'rects'`, `'rounded-rects'` |
 | `checks` | `object` | Yes | Validation checks to perform (see [Check Options](#3-check-options)) |
-| `metadata` | `object` | No | Test metadata including `title`, `description`, `displayName` |
+| `metadata` | `object` | No | Test metadata including `title`, `description`, `perfName` |
 
 ### Complete Example
 
@@ -94,7 +94,7 @@ registerDirectRenderingTest(
     {
         title: 'Filled Circle - Opaque Color',
         description: 'Tests fillCircle with opaque color',
-        displayName: 'Perf: Circle Fill Opaque'  // Enables performance testing
+        perfName: 'Perf: Circle Fill Opaque'  // Enables performance testing
     }
 );
 ```
@@ -105,7 +105,7 @@ registerDirectRenderingTest(
 |----------|------|-------------|
 | `title` | `string` | Human-readable test title for reports |
 | `description` | `string` | Detailed test description |
-| `displayName` | `string` | Human-readable name for performance UI display |
+| `perfName` | `string` | Human-readable name for performance UI display |
 | `performanceTestSupported` | `boolean` | **Required for performance tests** - confirms test implements dual-mode pattern |
 
 ---
@@ -675,14 +675,14 @@ For a detailed explanation of why this is necessary and how it works, see [PERFO
 ### Performance Test Eligibility
 
 To be eligible for performance testing, a test must have BOTH:
-1. `displayName` in metadata - provides human-readable name for performance UI
+1. `perfName` in metadata - provides human-readable name for performance UI
 2. `performanceTestSupported: true` in metadata - confirms the test properly implements the dual-mode pattern (handling the `instances` parameter)
 
 The `performanceTestSupported` flag is necessary (but not sufficient by itself) - tests must actually implement the dual-mode pattern in their `drawFunction` for correct performance measurement.
 
 ### Enabling Performance Testing
 
-Add both `displayName` AND `performanceTestSupported` to test metadata:
+Add both `perfName` AND `performanceTestSupported` to test metadata:
 
 ```javascript
 registerDirectRenderingTest(
@@ -693,15 +693,15 @@ registerDirectRenderingTest(
     {
         title: 'Test Title',
         description: 'Test description',
-        displayName: 'Perf: Short Name',        // Required for performance UI
-        // Performance test eligibility requires: (1) displayName in metadata, and
+        perfName: 'Perf: Short Name',        // Required for performance UI
+        // Performance test eligibility requires: (1) perfName in metadata, and
         // (2) proper instances parameter handling in drawFunction (dual-mode pattern)
         performanceTestSupported: true          // Required - confirms dual-mode support
     }
 );
 ```
 
-Tests with both `displayName` AND `performanceTestSupported: true` are automatically added to `DIRECT_RENDERING_PERF_REGISTRY`.
+Tests with both `perfName` AND `performanceTestSupported: true` are automatically added to `DIRECT_RENDERING_PERF_REGISTRY`.
 
 ### Running Performance Tests
 
@@ -833,7 +833,7 @@ The Node.js runner uses fixed-iteration timing (simpler than browser's adaptive 
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-t, --test=<filter>` | Filter tests by name or displayName | (all tests) |
+| `-t, --test=<filter>` | Filter tests by name or perfName | (all tests) |
 | `-s, --shapes=<N>` | Shapes per measurement run | 1000 |
 | `-w, --warmup=<N>` | Warmup iterations | 100 |
 | `-r, --runs=<N>` | Measurement runs to average | 5 |

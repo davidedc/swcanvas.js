@@ -86,6 +86,6 @@ registerDirectRenderingTest(
     {
         title: 'Single Circle Without Stroke (Crisp, Random Center Type)',
         description: 'Tests rendering of a single circle with no stroke, only fill, random params, and crisp center (grid or pixel).',
-        displayName: 'Perf: Circle NoStroke Crisp RandCenterType'
+        perfName: 'Perf: Circle NoStroke Crisp RandCenterType'
     }
 );

@@ -162,6 +162,6 @@ registerDirectRenderingTest(
     {
         title: 'Single Rotated Rounded Rectangle - Semi-Transparent Fill (Random)',
         description: 'Tests high-level API rendering of semi-transparent fill on a single rotated rounded rectangle using transforms and fillRoundRect.',
-        displayName: 'Perf: Single Rotated RRect Alpha Fill (Random)'
+        perfName: 'Perf: Single Rotated RRect Alpha Fill (Random)'
     }
 );

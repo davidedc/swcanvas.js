@@ -135,6 +135,6 @@ registerDirectRenderingTest(
     {
         title: 'Lines: Multi-20 No-Fill 2px-Red-Opaque-Stroke Random-Pos Random-Orient',
         description: 'Tests rendering of 20 red lines (2px width) with random positions/orientations using canvas code.',
-        displayName: 'Perf: Lines Multi-20 2px Random'
+        perfName: 'Perf: Lines Multi-20 2px Random'
     }
 );

@@ -134,6 +134,6 @@ registerDirectRenderingTest(
     {
         title: 'Large Transparent-Stroke Rounded Rectangles (Multiple, Random Params)',
         description: 'Tests rendering of multiple large rounded rectangles with transparent strokes, random fills, and fixed large radius.',
-        displayName: 'Perf: 6 Large TranspStroke RRects'
+        perfName: 'Perf: 6 Large TranspStroke RRects'
     }
 );

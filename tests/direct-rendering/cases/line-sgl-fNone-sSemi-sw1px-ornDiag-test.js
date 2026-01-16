@@ -76,6 +76,6 @@ registerDirectRenderingTest(
     {
         title: 'Single 1px Semi-Transparent Diagonal Line (Bresenham Alpha)',
         description: 'Tests rendering of a single 1px semi-transparent red diagonal line using Bresenham algorithm.',
-        displayName: 'Perf: Line 1px Semi-Trans Diagonal'
+        perfName: 'Perf: Line 1px Semi-Trans Diagonal'
     }
 );

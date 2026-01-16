@@ -118,6 +118,6 @@ registerDirectRenderingTest(
     {
         title: 'Rounded Rectangles Without Stroke (Multiple, Fixed Size, Random Pos)',
         description: 'Tests rendering of 8 rounded rectangles with no stroke, only fill, fixed size/radius, and random positions.',
-        displayName: 'Perf: 8 NoStroke RRects FixedSize RandPos'
+        perfName: 'Perf: 8 NoStroke RRects FixedSize RandPos'
     }
 );

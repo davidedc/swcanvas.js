@@ -110,6 +110,6 @@ registerDirectRenderingTest(
     {
         title: 'Filled Circle - Opaque Color (Direct Rendering)',
         description: 'Tests fillCircle with opaque color uses direct 32-bit writes',
-        displayName: 'Perf: Circle Fill Opaque'
+        perfName: 'Perf: Circle Fill Opaque'
     }
 );

@@ -83,7 +83,7 @@ Measures SWCanvas direct rendering performance using fixed iteration timing.
 Usage: npm run test:direct-rendering:perf -- [options]
 
 Options:
-  -t, --test=<filter>     Filter tests by name or displayName substring
+  -t, --test=<filter>     Filter tests by name or perfName substring
   -s, --shapes=<N>        Number of shapes per measurement run (default: ${DEFAULT_SHAPES})
   -w, --warmup=<N>        Warmup iterations (default: ${DEFAULT_WARMUP})
   -r, --runs=<N>          Number of measurement runs to average (default: ${DEFAULT_RUNS})
@@ -253,7 +253,7 @@ function runPerformanceTest(test) {
  * Print results for a single test
  */
 function printTestResult(result) {
-    console.log(`\nTest: ${result.test.displayName}`);
+    console.log(`\nTest: ${result.test.perfName}`);
     console.log(`  Category: ${result.test.category}`);
     console.log(`  Warmup: ${warmupIterations} iterations`);
     console.log(`  Measurement: ${formatNumber(shapesPerRun)} shapes x ${numRuns} runs`);
@@ -276,7 +276,7 @@ function printSummary(results) {
     // Calculate column widths
     const maxNameLen = Math.max(
         'Test Name'.length,
-        ...results.map(r => r.test.displayName.length)
+        ...results.map(r => r.test.perfName.length)
     );
 
     // Header
@@ -288,7 +288,7 @@ function printSummary(results) {
     const sorted = [...results].sort((a, b) => b.shapesPerSecond - a.shapesPerSecond);
 
     for (const r of sorted) {
-        const name = r.test.displayName.padEnd(maxNameLen);
+        const name = r.test.perfName.padEnd(maxNameLen);
         const shapesPerSec = formatNumber(r.shapesPerSecond).padStart(10);
         const usPerShape = r.microsecondsPerShape.toFixed(1).padStart(9);
         const stddev = (r.stats.stddevPercent.toFixed(1) + '%').padStart(6);
@@ -314,7 +314,7 @@ function main() {
 
     if (DIRECT_RENDERING_PERF_REGISTRY.length === 0) {
         console.log('\nNo performance tests registered.');
-        console.log('Performance tests require displayName in metadata.');
+        console.log('Performance tests require perfName in metadata.');
         console.log('See tests/direct-rendering/README.md for details.');
         return;
     }
@@ -325,13 +325,13 @@ function main() {
         const filterLower = testFilter.toLowerCase();
         testsToRun = DIRECT_RENDERING_PERF_REGISTRY.filter(test =>
             test.id.toLowerCase().includes(filterLower) ||
-            test.displayName.toLowerCase().includes(filterLower)
+            test.perfName.toLowerCase().includes(filterLower)
         );
         if (testsToRun.length === 0) {
             console.log(`\nNo tests match filter: "${testFilter}"`);
             console.log('Available performance tests:');
             DIRECT_RENDERING_PERF_REGISTRY.forEach(t =>
-                console.log(`  - ${t.displayName} (${t.id})`)
+                console.log(`  - ${t.perfName} (${t.id})`)
             );
             process.exit(1);
         }
@@ -345,7 +345,7 @@ function main() {
 
     for (const test of testsToRun) {
         if (!quietMode) {
-            process.stdout.write(`Running: ${test.displayName}... `);
+            process.stdout.write(`Running: ${test.perfName}... `);
         }
 
         const result = runPerformanceTest(test);

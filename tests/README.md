@@ -270,7 +270,7 @@ For comprehensive documentation on direct rendering tests (registration API, dua
 open tests/direct-rendering/performance-tests.html
 ```
 
-Tests with `displayName` in metadata are available for performance benchmarking. The benchmarking system uses different measurement strategies for SWCanvas (direct timing) vs HTML5 Canvas (VSync cliff detection with scaling correction).
+Tests with `perfName` in metadata are available for performance benchmarking. The benchmarking system uses different measurement strategies for SWCanvas (direct timing) vs HTML5 Canvas (VSync cliff detection with scaling correction).
 
 - **Usage and configuration**: [direct-rendering/README.md](direct-rendering/README.md#7-performance-testing)
 - **Benchmarking mechanics**: [direct-rendering/PERFORMANCE-BENCHMARKING.md](direct-rendering/PERFORMANCE-BENCHMARKING.md)

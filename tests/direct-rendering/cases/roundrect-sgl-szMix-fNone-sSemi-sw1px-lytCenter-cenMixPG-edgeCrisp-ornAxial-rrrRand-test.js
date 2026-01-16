@@ -88,6 +88,6 @@ registerDirectRenderingTest(
     {
         title: 'Single 1px Semi-Transparent Stroked Rounded Rectangle (Crisp, Mixed P/G Centering)',
         description: 'Tests crisp rendering of a single 1px semi-transparent red stroked rounded rectangle with no fill.',
-        displayName: 'Perf: RRect 1px Semi-Trans Crisp MixPG'
+        perfName: 'Perf: RRect 1px Semi-Trans Crisp MixPG'
     }
 );

@@ -91,6 +91,6 @@ registerDirectRenderingTest(
     {
         title: 'Lines: M-Size No-Fill 2px-Opaque-Stroke Centered-At-Grid Vertical',
         description: 'Tests crisp rendering of a vertical 2px line centered at grid crossing.',
-        displayName: 'Perf: Lines M 2px Grid Vertical'
+        perfName: 'Perf: Lines M 2px Grid Vertical'
     }
 );

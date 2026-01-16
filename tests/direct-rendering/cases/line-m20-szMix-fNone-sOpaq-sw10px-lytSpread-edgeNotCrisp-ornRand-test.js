@@ -82,7 +82,7 @@ registerDirectRenderingTest(
     },
     {
         title: 'Lines: Multi-20 No-Fill 10px-Red-Opaque-Stroke Random-Pos Random-Orient',
-        displayName: 'Perf: Lines Multi 10px Red Random',
+        perfName: 'Perf: Lines Multi 10px Red Random',
         description: 'Performance test for rendering multiple (default 20, or N from harness) 10px red lines at random positions.'
     }
 );

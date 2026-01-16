@@ -137,6 +137,6 @@ registerDirectRenderingTest(
     {
         title: 'Rectangle: Rotated, Single, Semitransparent Stroke, Random Position & Rotation',
         description: 'Tests rendering of a single rotated rectangle with semitransparent stroke (exercises strokeRotatedAlpha code path).',
-        displayName: 'Perf: Rect Rotated Single Semi Stroke'
+        perfName: 'Perf: Rect Rotated Single Semi Stroke'
     }
 );

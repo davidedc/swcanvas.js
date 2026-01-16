@@ -141,6 +141,6 @@ registerDirectRenderingTest(
     {
         title: 'Single Centered Rounded Rectangle (Random Opaque Stroke, Random Fill, Grid Center)',
         description: 'Tests a single rounded rectangle with random stroke widths (opaque), random fills, centered at a grid crossing.',
-        displayName: 'Perf: RRect RandStroke Opaque Grid Fill'
+        perfName: 'Perf: RRect RandStroke Opaque Grid Fill'
     }
 );

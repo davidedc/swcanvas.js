@@ -141,8 +141,8 @@ registerDirectRenderingTest(
     {
         title: 'Single 1px Stroked Rounded Rectangle (Crisp, Centered at Grid)',
         description: 'Tests crisp rendering of a single 1px red stroked rounded rectangle, centered at a grid crossing.',
-        displayName: 'Perf: RRect 1px Crisp Grid Center',
-        // Performance test eligibility requires: (1) displayName in metadata, and
+        perfName: 'Perf: RRect 1px Crisp Grid Center',
+        // Performance test eligibility requires: (1) perfName in metadata, and
         // (2) proper instances parameter handling in drawFunction (dual-mode pattern)
         performanceTestSupported: true
     }

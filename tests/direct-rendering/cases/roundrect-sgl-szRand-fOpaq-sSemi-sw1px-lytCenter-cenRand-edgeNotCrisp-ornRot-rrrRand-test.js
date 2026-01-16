@@ -146,6 +146,6 @@ registerDirectRenderingTest(
     {
         title: 'Single Rotated Rounded Rectangle - Fill + 1px Semi-Transparent Stroke (Random)',
         description: 'Tests high-level API rendering of opaque fill and 1px semi-transparent stroke on a single rotated rounded rectangle using transforms and fillStrokeRoundRect.',
-        displayName: 'Perf: Single Rotated RRect Fill+1px Alpha Stroke (Random)'
+        perfName: 'Perf: Single Rotated RRect Fill+1px Alpha Stroke (Random)'
     }
 );

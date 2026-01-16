@@ -136,6 +136,6 @@ registerDirectRenderingTest(
     {
         title: 'Single Rotated Rounded Rectangle - 2-40px Semi-Transparent Stroke (Random)',
         description: 'Tests high-level API rendering of random 2-40px semi-transparent stroke on a single rotated rounded rectangle using transforms and strokeRoundRect.',
-        displayName: 'Perf: Single Rotated RRect 2-40px Alpha Stroke (Random)'
+        perfName: 'Perf: Single Rotated RRect 2-40px Alpha Stroke (Random)'
     }
 );

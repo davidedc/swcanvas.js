@@ -138,6 +138,6 @@ registerDirectRenderingTest(
     {
         title: 'Axis-Aligned Rounded Rectangles (Multiple, Random Params)',
         description: 'Tests rendering of multiple axis-aligned rounded rectangles with random positions, sizes, strokes, fills, and corner radii.',
-        displayName: 'Perf: 8 AxAlign RRects RandParams'
+        perfName: 'Perf: 8 AxAlign RRects RandParams'
     }
 );

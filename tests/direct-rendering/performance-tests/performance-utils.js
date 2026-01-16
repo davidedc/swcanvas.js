@@ -640,7 +640,7 @@ function runHTML5CanvasRampTest(testType, startCount, incrementSize, requiredExc
 // Results display functions
 function displayRampTestResults(testData) {
   let results = "";
-  results += `\n=== ${testData.testDisplayName.toUpperCase()} TEST RESULTS ===\n`;
+  results += `\n=== ${testData.testPerfName.toUpperCase()} TEST RESULTS ===\n`;
   if (testData.numRuns && testData.numRuns > 1) {
     results += `(Averaged over ${testData.numRuns} runs)\n`;
   }
@@ -781,8 +781,8 @@ function generatePerformanceChart(testData) {
   chartCtx.font = '16px Arial';
   chartCtx.textAlign = 'center';
   const chartTitle = testData.numRuns && testData.numRuns > 1
-    ? `${testData.testDisplayName} Test: Render Time vs. Shape Count (Last Run Data)`
-    : `${testData.testDisplayName} Test: Render Time vs. Shape Count`;
+    ? `${testData.testPerfName} Test: Render Time vs. Shape Count (Last Run Data)`
+    : `${testData.testPerfName} Test: Render Time vs. Shape Count`;
   chartCtx.fillText(chartTitle, chartPadding.left + chartWidth / 2, 20);
 
   // Draw SWCanvas data points

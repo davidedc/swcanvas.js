@@ -96,7 +96,7 @@ Uses object-oriented ES6 class design throughout. See ARCHITECTURE.md for comple
 - **Coordinate expectations** - test pixel positions are carefully calculated
 - **ImageData API available** - use `ctx.getImageData()` for pixel analysis (works on both APIs)
 - **Image creation helpers** - use `createCompatibleImage()` for unified image handling in tests
-- **Dual-mode direct rendering tests** - tests with `displayName` metadata support both visual testing (`instances=null` → return `{logs, checkData}`) and performance testing (`instances>0` → return `null`). See DIRECT-RENDERING-SUMMARY.MD Section 12.
+- **Dual-mode direct rendering tests** - tests with `perfName` metadata support both visual testing (`instances=null` → return `{logs, checkData}`) and performance testing (`instances>0` → return `null`). See DIRECT-RENDERING-SUMMARY.MD Section 12.
 
 ### When Making Changes  
 - **Update both paths** - SWCanvas and HTML5Canvas implementations in visual tests

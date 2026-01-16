@@ -54,7 +54,7 @@ function generateTestButtons() {
     } else {
       if (test && test.category &&
         !['lines', 'rects', 'circles', 'rounded-rects', 'arcs'].includes(test.category)) {
-        console.warn(`[UI] Test "${test.displayName}" has unhandled category: ${test.category}`);
+        console.warn(`[UI] Test "${test.perfName}" has unhandled category: ${test.category}`);
       }
     }
   });
@@ -125,7 +125,7 @@ function createTestEntry(test, actualListElement) {
 
   const label = document.createElement('label');
   label.className = 'test-label';
-  label.textContent = test.displayName;
+  label.textContent = test.perfName;
 
   const runButton = document.createElement('button');
   runButton.textContent = 'Run';
@@ -274,7 +274,7 @@ function runTestSeries(testsToRun, statusMessage) {
         `Overall progress (${currentIndex + 1}/${testsToRun.length}):`;
 
       runTest(testsToRun[currentIndex], (testResults) => {
-        allResults.tests.push(testsToRun[currentIndex].displayName);
+        allResults.tests.push(testsToRun[currentIndex].perfName);
         allResults.swMaxShapes.push(testResults.swMaxShapes);
         allResults.canvasMaxShapes.push(testResults.canvasMaxShapes);
         allResults.ratios.push(testResults.ratio);
@@ -368,22 +368,22 @@ function runTest(testType, callback = null, clearResults = true) {
   const isQuietMode = quietModeCheckbox.checked;
   const numRuns = parseInt(numRunsInput.value) || 3;
 
-  const testDisplayName = testType.displayName;
+  const testPerfName = testType.perfName;
 
   if (clearResults) {
-    let header = `Running ${testDisplayName} test (averaging ${numRuns} runs) with adaptive algorithm`;
+    let header = `Running ${testPerfName} test (averaging ${numRuns} runs) with adaptive algorithm`;
     header += `${includeBlitting ? ' (including blitting time)' : ' (excluding blitting time)'}`;
     header += `${isQuietMode ? ' in quieter mode' : ''}...\n\n`;
     resultsContainer.innerHTML = header;
   } else {
-    let header = `\nRunning ${testDisplayName} test (averaging ${numRuns} runs) with adaptive algorithm`;
+    let header = `\nRunning ${testPerfName} test (averaging ${numRuns} runs) with adaptive algorithm`;
     header += `${includeBlitting ? ' (including blitting time)' : ' (excluding blitting time)'}`;
     header += `${isQuietMode ? ' in quieter mode' : ''}...\n\n`;
     resultsContainer.innerHTML += header;
   }
 
   document.querySelector('#current-test-progress-container .progress-label').textContent =
-    `Current test progress (${testDisplayName}, ${numRuns} runs):`;
+    `Current test progress (${testPerfName}, ${numRuns} runs):`;
 
   currentTestProgressContainer.style.display = 'block';
   currentTestProgressBar.style.width = '0%';
@@ -402,7 +402,7 @@ function runTest(testType, callback = null, clearResults = true) {
   function runSingleIteration(iterationCallback) {
     const singleRunData = {
       testType: testType,
-      testDisplayName: testDisplayName,
+      testPerfName: testPerfName,
       precision,
       growthFactor,
       includeBlitting,
@@ -486,7 +486,7 @@ function runTest(testType, callback = null, clearResults = true) {
 
     const finalResultsData = {
       testType: testType,
-      testDisplayName: testDisplayName,
+      testPerfName: testPerfName,
       precision,
       growthFactor,
       swStartCount,

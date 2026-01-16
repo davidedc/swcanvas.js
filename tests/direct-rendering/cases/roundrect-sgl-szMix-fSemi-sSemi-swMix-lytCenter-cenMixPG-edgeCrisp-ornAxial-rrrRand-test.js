@@ -138,6 +138,6 @@ registerDirectRenderingTest(
     {
         title: 'Single Centered Rounded Rectangle (Semi-Transparent Stroke & Fill, Crisp Center)',
         description: 'Tests a single rounded rectangle with random stroke widths and semi-transparent colors, centered crisply (grid or pixel).',
-        displayName: 'Perf: RRect RandTrans Stroke/Fill CrispCenter'
+        perfName: 'Perf: RRect RandTrans Stroke/Fill CrispCenter'
     }
 );

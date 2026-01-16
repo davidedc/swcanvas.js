@@ -139,6 +139,6 @@ registerDirectRenderingTest(
     {
         title: 'Single 1px Stroked Rounded Rectangle (Crisp, Centered at Pixel)',
         description: 'Tests crisp rendering of a single 1px red stroked rounded rectangle, centered at a pixel center.',
-        displayName: 'Perf: RRect 1px Crisp Pixel Center'
+        perfName: 'Perf: RRect 1px Crisp Pixel Center'
     }
 );
