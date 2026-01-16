@@ -472,14 +472,99 @@
     const btnAbort = document.getElementById('btn-abort');
   </script>
 
-  <!-- Load pilot test cases -->
+  <!-- Load ALL test cases - only those with performanceTestSupported flag will appear in performance registry -->
+  <!-- Basic shape tests -->
+  <script src="cases/circle-sgl-szMix-fOpaq-sNone-lytCenter-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/circle-sgl-m-fSemi-sNone-lytCenter-cenGrid-edgeCrisp-test.js"></script>
+  <script src="cases/circle-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-test.js"></script>
+  <script src="cases/line-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-edgeCrisp-ornHoriz-test.js"></script>
+  <script src="cases/line-sgl-fNone-sSemi-sw1px-ornDiag-test.js"></script>
+  <script src="cases/circle-m5-szMix-fOpaq-sNone-lytSpread-cenRand-edgeNotCrisp-test.js"></script>
+  <script src="cases/scene-m5-fOpaq-sNone-lytSpread-cenPx-edgeCrisp-test.js"></script>
+  <script src="cases/rect-sgl-szMix-fOpaq-sNone-lytCenter-cenGrid-edgeCrisp-ornAxial-test.js"></script>
+  <script src="cases/rect-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-ornAxial-test.js"></script>
+  <script src="cases/roundrect-sgl-szMix-fOpaq-sNone-lytCenter-cenMixPG-edgeCrisp-ornAxial-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-ornAxial-rrrRand-test.js"></script>
+
+  <!-- Parametrized test cases -->
+  <script src="cases/circle-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenGrid-edgeCrisp-test.js"></script>
+  <script src="cases/circle-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenPx-edgeCrisp-test.js"></script>
+  <script src="cases/circle-sgl-szMix-fSemi-sSemi-sw1-30px-lytCenter-cenMixPG-edgeCrisp-test.js"></script>
+  <script src="cases/circle-sgl-szMix-fSemi-sNone-lytCenter-cenMixPG-edgeCrisp-test.js"></script>
+  <script src="cases/circle-sgl-szMix-fSemi-sSemi-sw1-30px-lytRand-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/circle-sgl-szMix-fSemi-sNone-lytRand-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/circle-m12-szMix-fSemi-sMix-sw1-4px-lytSpread-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/circle-m12-szMix-fMix-sNone-lytSpread-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/circle-sgl-szMix-fSemi-sSemi-sw1-11px-lytRand-cenRand-edgeNotCrisp-test.js"></script>
+  <script src="cases/circle-m8-szMix-fSemi-sMix-sw1-11px-lytRand-cenRand-edgeNotCrisp-test.js"></script>
+  <script src="cases/line-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-edgeCrisp-ornVert-test.js"></script>
+  <script src="cases/line-sgl-szMix-fNone-sOpaq-sw2px-lytCenter-edgeCrisp-ornHoriz-test.js"></script>
+  <script src="cases/line-sgl-szMix-fNone-sOpaq-sw2px-lytCenter-edgeCrisp-ornVert-test.js"></script>
   <script src="cases/line-m20-szMix-fNone-sOpaq-sw1px-lytSpread-edgeNotCrisp-ornRand-test.js"></script>
-  <script src="cases/circle-fill-opaque-test.js"></script>
-  <script src="cases/rect-fill-opaque-test.js"></script>
-  <script
-    src="cases/arc-m5-szMix-fOpaq-sOpaq-sw1-10px-lytSpread-cenRand-edgeNotCrisp-ornRand-arcARand-test.js"></script>
-  <script
-    src="cases/roundrect-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenGrid-edgeCrisp-ornAxial-rrrRand-test.js"></script>
+  <script src="cases/line-m20-szMix-fNone-sOpaq-sw2px-lytSpread-edgeNotCrisp-ornRand-test.js"></script>
+  <script src="cases/line-m20-szMix-fNone-sOpaq-sw3px-lytSpread-edgeNotCrisp-ornRand-test.js"></script>
+  <script src="cases/line-m20-szMix-fNone-sOpaq-sw5px-lytSpread-edgeNotCrisp-ornRand-test.js"></script>
+  <script src="cases/line-m20-szMix-fNone-sOpaq-sw10px-lytSpread-edgeNotCrisp-ornRand-test.js"></script>
+  <script src="cases/line-m15-szMix-fNone-sMix-sw1-10px-lytSpread-edgeNotCrisp-ornRand-test.js"></script>
+  <script src="cases/rect-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenGrid-edgeCrisp-ornAxial-test.js"></script>
+  <script src="cases/rect-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenPx-edgeCrisp-ornAxial-test.js"></script>
+  <script src="cases/rect-sgl-szMix-fSemi-sMix-swMix-lytRand-cenMixPG-edgeCrisp-ornAxial-test.js"></script>
+  <script src="cases/rect-m10-szMix-fSemi-sMix-swMix-lytSpread-cenMixPG-edgeCrisp-ornAxial-test.js"></script>
+  <script src="cases/rect-sgl-szMix-fSemi-sSemi-swMix-lytSpread-cenRand-edgeNotCrisp-ornAxial-nonInt-test.js"></script>
+  <script src="cases/rect-m5-szMix-fSemi-sMix-sw1-10px-lytSpread-cenRand-edgeNotCrisp-ornRand-ctxTransRand-ctxRotRand-test.js"></script>
+  <script src="cases/rect-sgl-szMix-fSemi-sOpaq-sw1-10px-lytRand-cenRand-edgeNotCrisp-ornRand-ctxTransRand-ctxRotRand-test.js"></script>
+  <script src="cases/rect-sgl-szMix-fSemi-sSemi-sw1-10px-lytRand-cenRand-edgeNotCrisp-ornRand-ctxTransRand-ctxRotRand-test.js"></script>
+  <script src="cases/rect-sgl-szMix-fOpaq-sOpaq-sw1-10px-lytRand-cenRand-edgeNotCrisp-ornRand-ctxTransRand-ctxRotRand-test.js"></script>
+
+  <!-- Rounded Rectangle Test Cases -->
+  <script src="cases/roundrect-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenGrid-edgeCrisp-ornAxial-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenPx-edgeCrisp-ornAxial-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szMix-fSemi-sOpaq-sw1-11px-lytCenter-cenGrid-edgeCrisp-ornAxial-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szMix-fSemi-sSemi-swMix-lytCenter-cenMixPG-edgeCrisp-ornAxial-rrrRand-test.js"></script>
+  <script src="cases/roundrect-m10-szMix-fSemi-sOpaq-sw1px-lytSpread-cenMixPG-edgeCrisp-ornAxial-rrrRand-test.js"></script>
+  <script src="cases/roundrect-m8-szMix-fSemi-sMix-swMix-lytSpread-cenMixPG-edgeCrisp-ornAxial-rrrMix-test.js"></script>
+  <script src="cases/roundrect-m6-szMix-fSemi-sSemi-swMix-lytSpread-cenMixPG-edgeCrisp-ornAxial-rrrLrg-test.js"></script>
+  <script src="cases/roundrect-m8-xl-fSemi-sNone-lytSpread-cenGrid-edgeCrisp-ornAxial-rrrLrg-test.js"></script>
+  <script src="cases/roundrect-m12-szMix-fNone-sOpaq-sw1px-lytSpread-cenMix-edgeNotCrisp-ornRot-rrrMix-test.js"></script>
+  <script src="cases/roundrect-sgl-szRand-fNone-sOpaq-sw1px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szRand-fOpaq-sNone-sw0-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szRand-fSemi-sNone-sw0-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szRand-fNone-sSemi-sw1px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szRand-fNone-sOpaq-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szRand-fNone-sSemi-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szRand-fOpaq-sOpaq-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szRand-fOpaq-sSemi-sw1px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js"></script>
+  <script src="cases/roundrect-sgl-szRand-fOpaq-sSemi-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js"></script>
+
+  <!-- Arc Test Cases -->
+  <script src="cases/arc-m5-szMix-fSemi-sMix-sw1-10px-lytSpread-cenRand-edgeNotCrisp-ornRand-arcARand-test.js"></script>
+  <script src="cases/arc-m12-szMix-fNone-sOpaq-swMix-lytGrid-cenGrid-edgeNotCrisp-ornHoriz-arcADeg90-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fMix-sOpaq-sw1px-lytCenter-cenMixPG-edgeCrisp-arcADeg90-quadRand-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fMix-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-arcADeg90-quadRand-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fMix-sOpaq-sw2-6px-lytCenter-cenMixPG-edgeCrisp-arcADeg90-quadRand-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fMix-sSemi-sw2-6px-lytCenter-cenMixPG-edgeCrisp-arcADeg90-quadRand-test.js"></script>
+
+  <!-- Arc Test Cases (Circle Equivalents) -->
+  <script src="cases/arc-sgl-szMix-fOpaq-sNone-lytCenter-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fSemi-sNone-lytCenter-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenGrid-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenPx-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fSemi-sSemi-sw1-30px-lytCenter-cenMixPG-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fOpaq-sNone-lytCenter-cenMixPG-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fSemi-sSemi-sw1-30px-lytRand-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fOpaq-sNone-lytRand-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/arc-m12-szMix-fSemi-sMix-sw1-4px-lytSpread-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/arc-m12-szMix-fOpaq-sNone-lytSpread-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fOpaq-sOpaq-sw1-10px-lytRand-cenRand-edgeNotCrisp-test.js"></script>
+  <script src="cases/arc-m8-szMix-fOpaq-sOpaq-sw1-10px-lytSpread-cenRand-edgeNotCrisp-test.js"></script>
+
+  <!-- Arc Thin Stroke Tests -->
+  <script src="cases/arc-sgl-szMix-fSemi-sSemi-sw1-3px-lytCenter-cenMixPG-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fSemi-sSemi-sw1-3px-lytRand-cenRand-edgeCrisp-test.js"></script>
+  <script src="cases/arc-sgl-szMix-fOpaq-sOpaq-sw1-3px-lytRand-cenRand-edgeNotCrisp-test.js"></script>
+
+  <!-- Arc Small Angle Tests -->
+  <script src="cases/arc-sgl-szMix-fMix-sMix-swMix-lytCenter-cenMixPG-edgeCrisp-arcASmall-test.js"></script>
 
   <!-- Load performance UI (must be last) -->
   <script src="performance-tests/performance-ui.js"></script>

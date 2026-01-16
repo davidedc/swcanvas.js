@@ -141,7 +141,9 @@ registerDirectRenderingTest(
     {
         title: 'Lines: Multi-20 No-Fill 1px-Red-Opaque-Stroke Random-Pos Random-Orient',
         description: 'Tests rendering of 20 red lines (1px width) with random positions/orientations using canvas code.',
-        displayName: 'Perf: Lines Multi-20 1px Random'
-        // The description above will also be used for the performance test registry entry.
+        displayName: 'Perf: Lines Multi-20 1px Random',
+        // Performance test eligibility requires: (1) displayName in metadata, and
+        // (2) proper instances parameter handling in drawFunction (dual-mode pattern)
+        performanceTestSupported: true
     }
 );

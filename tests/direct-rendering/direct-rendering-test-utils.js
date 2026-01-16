@@ -684,14 +684,17 @@ function registerDirectRenderingTest(name, drawFunction, category, checks, metad
         metadata
     });
 
-    // Also register for performance tests if displayName is present
-    if (metadata.displayName) {
+    // Also register for performance tests if both displayName AND performanceTestSupported are present
+    // - displayName: provides human-readable name for UI display
+    // - performanceTestSupported: confirms test implements dual-mode pattern (instances parameter)
+    if (metadata.displayName && metadata.performanceTestSupported) {
         DIRECT_RENDERING_PERF_REGISTRY.push({
             id: name,
             drawFunction: drawFunction,
             displayName: metadata.displayName,
             description: metadata.description || '',
-            category: category
+            category: category,
+            performanceTestSupported: true
         });
     }
 }

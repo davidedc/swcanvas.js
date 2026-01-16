@@ -35,8 +35,15 @@
             descElement.insertAdjacentHTML('afterend', errorHtml);
           }
 
+          // Check if test supports performance testing
+          const isPerfTest = test.metadata && test.metadata.performanceTestSupported === true;
+          const perfIndicatorHtml = `<div style="margin-top: 8px; padding: 6px 10px; background-color: ${isPerfTest ? '#e8f5e9' : '#fafafa'}; border-left: 3px solid ${isPerfTest ? '#4caf50' : '#bdbdbd'}; font-size: 13px; display: inline-block;">
+            <strong>Also a performance test:</strong> ${isPerfTest ? '<span style="color: #2e7d32;">Yes</span>' : '<span style="color: #757575;">No</span>'}
+          </div>`;
+
           const facetHtml = testNameParser.formatFacets(parseResult);
           descElement.insertAdjacentHTML('afterend', facetHtml);
+          descElement.insertAdjacentHTML('afterend', perfIndicatorHtml);
         }
       }
     });

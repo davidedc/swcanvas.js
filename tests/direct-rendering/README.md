@@ -105,7 +105,8 @@ registerDirectRenderingTest(
 |----------|------|-------------|
 | `title` | `string` | Human-readable test title for reports |
 | `description` | `string` | Detailed test description |
-| `displayName` | `string` | **Enables performance testing** - shown in performance UI |
+| `displayName` | `string` | Human-readable name for performance UI display |
+| `performanceTestSupported` | `boolean` | **Required for performance tests** - confirms test implements dual-mode pattern |
 
 ---
 
@@ -671,9 +672,17 @@ Performance tests compare SWCanvas direct rendering against native HTML5 Canvas 
 
 For a detailed explanation of why this is necessary and how it works, see [PERFORMANCE-BENCHMARKING.md](PERFORMANCE-BENCHMARKING.md).
 
+### Performance Test Eligibility
+
+To be eligible for performance testing, a test must have BOTH:
+1. `displayName` in metadata - provides human-readable name for performance UI
+2. `performanceTestSupported: true` in metadata - confirms the test properly implements the dual-mode pattern (handling the `instances` parameter)
+
+The `performanceTestSupported` flag is necessary (but not sufficient by itself) - tests must actually implement the dual-mode pattern in their `drawFunction` for correct performance measurement.
+
 ### Enabling Performance Testing
 
-Add `displayName` to test metadata:
+Add both `displayName` AND `performanceTestSupported` to test metadata:
 
 ```javascript
 registerDirectRenderingTest(
@@ -684,18 +693,30 @@ registerDirectRenderingTest(
     {
         title: 'Test Title',
         description: 'Test description',
-        displayName: 'Perf: Short Name'  // <-- Enables performance testing
+        displayName: 'Perf: Short Name',        // Required for performance UI
+        // Performance test eligibility requires: (1) displayName in metadata, and
+        // (2) proper instances parameter handling in drawFunction (dual-mode pattern)
+        performanceTestSupported: true          // Required - confirms dual-mode support
     }
 );
 ```
 
-Tests with `displayName` are automatically added to `DIRECT_RENDERING_PERF_REGISTRY`.
+Tests with both `displayName` AND `performanceTestSupported: true` are automatically added to `DIRECT_RENDERING_PERF_REGISTRY`.
 
 ### Running Performance Tests
 
 ```bash
-# Open in browser
+# Browser (compares SWCanvas vs HTML5 Canvas with adaptive ramp-up)
 open tests/direct-rendering/performance-tests.html
+
+# Node.js (SWCanvas only, fixed iteration timing)
+npm run test:direct-rendering:perf
+
+# Node.js with options
+npm run test:direct-rendering:perf -- -t line    # Filter by test name
+npm run test:direct-rendering:perf -- -s 5000    # 5000 shapes per run
+npm run test:direct-rendering:perf -- -r 10      # 10 measurement runs
+npm run test:direct-rendering:perf -- -q         # Quiet mode
 ```
 
 ### Performance Test Configuration
