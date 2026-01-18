@@ -7,26 +7,30 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, SpanOps.blendPixel_Alpha
  *
  * Layer 1 (Helpers - used by rotated implementations):
  *   _normalizeRadius, _transform, _generateEdgePixels, _generateArcPixels, _generatePerimeter
  *
  * Layer 2 (Implementations - internal):
- *   _fill_Rot_Opaq, _fill_Rot_Alpha
- *   _stroke1px_Rot_Opaq, _stroke1px_Rot_Alpha
- *   _strokeThick_Rot_Opaq, _strokeThick_Rot_Alpha
+ *   _fill_Rot_Opaq                → SpanOps.fill_Opaq
+ *   _fill_Rot_Alpha               → SpanOps.fill_Alpha
+ *   _stroke1px_Rot_Opaq           → Direct pixel writes
+ *   _stroke1px_Rot_Alpha          → SpanOps.blendPixel_Alpha
+ *   _strokeThick_Rot_Opaq         → SpanOps.fill_Opaq
+ *   _strokeThick_Rot_Alpha        → SpanOps.fill_Alpha
+ *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + SpanOps.blendPixel_Alpha
+ *   _fillStroke_Rot_Unified       → SpanOps.fill_Opaq/fill_Alpha
  *
  * Layer 3 (Dispatchers):
  *   fill_Rot_Any       → _fill_Rot_Opaq / _fill_Rot_Alpha
  *   stroke_Rot_Any     → _stroke1px_Rot_* / _strokeThick_Rot_*
- *   fillStroke_Rot_Any → fill_Rot_Any + stroke_Rot_Any
+ *   fillStroke_Rot_Any → _fillStroke_Rot_1px / _fillStroke_Rot_Unified
  *
  * External dependencies:
  *   - RectOpsRot.fill_Rot_Any (fallback when radius=0)
  *   - RectOpsRot.stroke_Rot_Any (fallback when radius=0)
  *   - ArcOps.stroke1px_Opaq_Exact (for corner arc strokes)
- *   - SpanOps.fill_Opaq, SpanOps.fill_Alpha (for thick stroke fills)
  *
  * Note: 1px stroke edges use inline Bresenham (no LineOps) to avoid line-shortening
  * that would create gaps at edge-arc junctions.
@@ -428,7 +432,7 @@ class RoundedRectOpsRot {
             );
         }
 
-        // Fill with alpha blending
+        // Fill with alpha blending via SpanOps
         const r = color.r;
         const g = color.g;
         const b = color.b;
@@ -444,25 +448,9 @@ class RoundedRectOpsRot {
             const x0 = Math.max(0, left);
             const x1 = Math.min(surfaceWidth - 1, right);
 
-            for (let x = x0; x <= x1; x++) {
-                const pos = y * surfaceWidth + x;
-
-                if (clipBuffer && !(clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                    continue;
-                }
-
-                const idx = pos * 4;
-                const oldAlpha = data[idx + 3] / 255;
-                const oldAlphaScaled = oldAlpha * inverseIncomingAlpha;
-                const newAlpha = incomingAlpha + oldAlphaScaled;
-
-                if (newAlpha > 0) {
-                    const blendFactor = 1 / newAlpha;
-                    data[idx] = (r * incomingAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                    data[idx + 1] = (g * incomingAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                    data[idx + 2] = (b * incomingAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                    data[idx + 3] = newAlpha * 255;
-                }
+            if (x0 <= x1) {
+                const spanLength = x1 - x0 + 1;
+                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
             }
         }
     }
@@ -778,20 +766,10 @@ class RoundedRectOpsRot {
             }
         }
 
-        // Render all collected unique pixels with alpha blending
+        // Render all collected unique pixels with alpha blending via SpanOps
         for (const pos of strokePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                const idx = pos * 4;
-                const oldAlpha = data[idx + 3] / 255;
-                const oldAlphaScaled = oldAlpha * invAlpha;
-                const newAlpha = effectiveAlpha + oldAlphaScaled;
-                if (newAlpha > 0) {
-                    const blendFactor = 1 / newAlpha;
-                    data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                    data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                    data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                    data[idx + 3] = newAlpha * 255;
-                }
+                SpanOps.blendPixel_Alpha(data, pos * 4, r, g, b, effectiveAlpha, invAlpha);
             }
         }
     }
@@ -1026,7 +1004,7 @@ class RoundedRectOpsRot {
             RoundedRectOpsRot._generatePerimeter(innerHW, innerHH, innerRadius, recordInner, centerX, centerY, cos, sin, rotation);
         }
 
-        // Fill annulus per scanline with alpha blending
+        // Fill annulus per scanline with alpha blending via SpanOps
         for (let row = 0; row < spanCount; row++) {
             const outerLeft = outerMinX[row];
             const outerRight = outerMaxX[row];
@@ -1034,47 +1012,38 @@ class RoundedRectOpsRot {
 
             const y = yMin + row;
 
-            // Helper to blend a span with alpha
-            const blendSpan = (xStart, xEnd) => {
-                const x0 = Math.max(0, xStart);
-                const x1 = Math.min(surfaceWidth - 1, xEnd);
-                for (let x = x0; x <= x1; x++) {
-                    const pos = y * surfaceWidth + x;
-
-                    if (clipBuffer && !(clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        continue;
-                    }
-
-                    const idx = pos * 4;
-                    const oldAlpha = data[idx + 3] / 255;
-                    const oldAlphaScaled = oldAlpha * invAlpha;
-                    const newAlpha = effectiveAlpha + oldAlphaScaled;
-
-                    if (newAlpha > 0) {
-                        const blendFactor = 1 / newAlpha;
-                        data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                        data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                        data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                        data[idx + 3] = newAlpha * 255;
-                    }
-                }
-            };
-
             if (hasInnerRect) {
                 const innerLeft = innerMinX[row];
                 const innerRight = innerMaxX[row];
 
                 if (innerLeft <= innerRight) {
                     // Has inner hole: fill left span and right span
-                    blendSpan(outerLeft, innerLeft - 1);
-                    blendSpan(innerRight + 1, outerRight);
+                    const leftStart = Math.max(0, outerLeft);
+                    const leftEnd = Math.min(surfaceWidth - 1, innerLeft - 1);
+                    if (leftStart <= leftEnd) {
+                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, leftStart, y, leftEnd - leftStart + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    }
+
+                    const rightStart = Math.max(0, innerRight + 1);
+                    const rightEnd = Math.min(surfaceWidth - 1, outerRight);
+                    if (rightStart <= rightEnd) {
+                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, rightStart, y, rightEnd - rightStart + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    }
                 } else {
                     // No inner hole on this row: fill entire outer span
-                    blendSpan(outerLeft, outerRight);
+                    const x0 = Math.max(0, outerLeft);
+                    const x1 = Math.min(surfaceWidth - 1, outerRight);
+                    if (x0 <= x1) {
+                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, x1 - x0 + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    }
                 }
             } else {
                 // No inner rect: fill entire outer span
-                blendSpan(outerLeft, outerRight);
+                const x0 = Math.max(0, outerLeft);
+                const x1 = Math.min(surfaceWidth - 1, outerRight);
+                if (x0 <= x1) {
+                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, x1 - x0 + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                }
             }
         }
     }
@@ -1291,9 +1260,8 @@ class RoundedRectOpsRot {
             const fillEffectiveAlpha = (fillColor.a / 255) * globalAlpha;
             const fillInvAlpha = 1 - fillEffectiveAlpha;
             const fillPacked = fillIsOpaque ? Surface.packColor(fillColor.r, fillColor.g, fillColor.b, 255) : 0;
-            const fr = fillColor.r, fg = fillColor.g, fb = fillColor.b;
 
-            // Render fill scanlines (fill clamped to stroke bounds to prevent overspill)
+            // Render fill scanlines via SpanOps (fill clamped to stroke bounds to prevent overspill)
             for (let row = 0; row < spanCount; row++) {
                 const y = yMin + row;
                 const fillLeft = fillMinX[row];
@@ -1304,36 +1272,22 @@ class RoundedRectOpsRot {
                 const x0 = Math.max(0, fillLeft);
                 const x1 = Math.min(surfaceWidth - 1, fillRight);
 
-                for (let x = x0; x <= x1; x++) {
-                    const pos = y * surfaceWidth + x;
-
-                    if (clipBuffer && !(clipBuffer[pos >> 3] & (1 << (pos & 7)))) continue;
-
+                if (x0 <= x1) {
+                    const spanLength = x1 - x0 + 1;
                     if (fillIsOpaque) {
-                        data32[pos] = fillPacked;
+                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, spanLength, fillPacked, clipBuffer);
                     } else {
-                        const idx = pos * 4;
-                        const oldAlpha = data[idx + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * fillInvAlpha;
-                        const newAlpha = fillEffectiveAlpha + oldAlphaScaled;
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[idx] = (fr * fillEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                            data[idx + 1] = (fg * fillEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                            data[idx + 2] = (fb * fillEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                            data[idx + 3] = newAlpha * 255;
-                        }
+                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
                     }
                 }
             }
         }
 
-        // Render stroke pixels on top
+        // Render stroke pixels on top via SpanOps
         const strokeIsOpaque = strokeColor.a === 255 && globalAlpha >= 1.0;
         const strokeEffectiveAlpha = (strokeColor.a / 255) * globalAlpha;
         const strokeInvAlpha = 1 - strokeEffectiveAlpha;
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
-        const sr = strokeColor.r, sg = strokeColor.g, sb = strokeColor.b;
 
         for (const pos of strokePixels) {
             if (clipBuffer && !(clipBuffer[pos >> 3] & (1 << (pos & 7)))) continue;
@@ -1341,17 +1295,7 @@ class RoundedRectOpsRot {
             if (strokeIsOpaque) {
                 data32[pos] = strokePacked;
             } else {
-                const idx = pos * 4;
-                const oldAlpha = data[idx + 3] / 255;
-                const oldAlphaScaled = oldAlpha * strokeInvAlpha;
-                const newAlpha = strokeEffectiveAlpha + oldAlphaScaled;
-                if (newAlpha > 0) {
-                    const blendFactor = 1 / newAlpha;
-                    data[idx] = (sr * strokeEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                    data[idx + 1] = (sg * strokeEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                    data[idx + 2] = (sb * strokeEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                    data[idx + 3] = newAlpha * 255;
-                }
+                SpanOps.blendPixel_Alpha(data, pos * 4, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha);
             }
         }
     }
@@ -1511,77 +1455,33 @@ class RoundedRectOpsRot {
             const fillLeft = fillMinX ? fillMinX[row] : surfaceWidth;
             const fillRight = fillMaxX ? fillMaxX[row] : -1;
 
-            // STEP 1: Render fill first
+            // STEP 1: Render fill first via SpanOps
             if (fillLeft <= fillRight) {
                 const x0 = Math.max(0, fillLeft);
                 const x1 = Math.min(surfaceWidth - 1, fillRight);
 
                 if (x0 <= x1) {
+                    const spanLength = x1 - x0 + 1;
                     if (fillIsOpaque) {
-                        // Opaque fill
-                        for (let x = x0; x <= x1; x++) {
-                            const pos = y * surfaceWidth + x;
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                                data32[pos] = fillPacked;
-                            }
-                        }
+                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, spanLength, fillPacked, clipBuffer);
                     } else {
-                        // Alpha blended fill
-                        const fr = fillColor.r, fg = fillColor.g, fb = fillColor.b;
-                        for (let x = x0; x <= x1; x++) {
-                            const pos = y * surfaceWidth + x;
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                                const idx = pos * 4;
-                                const oldAlpha = data[idx + 3] / 255;
-                                const oldAlphaScaled = oldAlpha * fillInvAlpha;
-                                const newAlpha = fillEffectiveAlpha + oldAlphaScaled;
-                                if (newAlpha > 0) {
-                                    const blendFactor = 1 / newAlpha;
-                                    data[idx] = (fr * fillEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                                    data[idx + 1] = (fg * fillEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                                    data[idx + 2] = (fb * fillEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                                    data[idx + 3] = newAlpha * 255;
-                                }
-                            }
-                        }
+                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
                     }
                 }
             }
 
-            // STEP 2: Render stroke on top (outer minus inner)
+            // STEP 2: Render stroke on top (outer minus inner) via SpanOps
             const renderStrokeSegment = (startX, endX) => {
                 if (startX > endX) return;
                 const x0 = Math.max(0, startX);
                 const x1 = Math.min(surfaceWidth - 1, endX);
                 if (x0 > x1) return;
+                const spanLength = x1 - x0 + 1;
 
                 if (strokeIsOpaque) {
-                    // Opaque stroke
-                    for (let x = x0; x <= x1; x++) {
-                        const pos = y * surfaceWidth + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = strokePacked;
-                        }
-                    }
+                    SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, spanLength, strokePacked, clipBuffer);
                 } else {
-                    // Alpha blended stroke
-                    const sr = strokeColor.r, sg = strokeColor.g, sb = strokeColor.b;
-                    for (let x = x0; x <= x1; x++) {
-                        const pos = y * surfaceWidth + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const idx = pos * 4;
-                            const oldAlpha = data[idx + 3] / 255;
-                            const oldAlphaScaled = oldAlpha * strokeInvAlpha;
-                            const newAlpha = strokeEffectiveAlpha + oldAlphaScaled;
-                            if (newAlpha > 0) {
-                                const blendFactor = 1 / newAlpha;
-                                data[idx] = (sr * strokeEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                                data[idx + 1] = (sg * strokeEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                                data[idx + 2] = (sb * strokeEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                                data[idx + 3] = newAlpha * 255;
-                            }
-                        }
-                    }
+                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
                 }
             };
 

@@ -1,18 +1,19 @@
 /**
- * SpanOps - Static utility methods for horizontal span filling
- * Used by RectOps, CircleOps, and LineOps for optimized pixel rendering.
+ * SpanOps - Static utility methods for horizontal span filling and pixel blending
+ * Used by all shape *Ops classes for optimized pixel rendering.
  * Follows PolygonFiller pattern with static methods.
  *
  * CALL HIERARCHY:
  * ---------------
  * Layer 0 (Foundation): This class is the foundation layer.
  *   - No dependencies on other *Ops classes
- *   - Called by: RectOps, CircleOps, LineOps, ArcOps, RoundedRectOps
+ *   - Called by: RectOpsAA, RectOpsRot, CircleOps, LineOps, ArcOps,
+ *                RoundedRectOpsAA, RoundedRectOpsRot
  *
  * NAMING PATTERN: {operation}_{opacity}
  *   - fill_Opaq: Opaque span fill (32-bit writes)
  *   - fill_Alpha: Semi-transparent span fill (alpha blending)
- *   - blendPixel_Alpha: Single pixel alpha blending
+ *   - blendPixel_Alpha: Single pixel alpha blending (used by 1px alpha strokes)
  */
 class SpanOps {
     /**

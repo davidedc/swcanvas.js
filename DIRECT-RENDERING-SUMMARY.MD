@@ -204,8 +204,25 @@ CircleOps.fill_Alpha() ───────────► SpanOps.fill_Alpha()
 RoundedRectOpsAA.fill_AA_Opaq() ────► SpanOps.fill_Opaq()
    (each scanline)
 
+RoundedRectOpsAA.fillStroke_AA_Any() ─► SpanOps.fill_Opaq/fill_Alpha (via helper functions)
+
+RoundedRectOpsAA.stroke1px_AA_Alpha() ─► SpanOps.blendPixel_Alpha()
+   (1px alpha strokes)
+
+RoundedRectOpsRot._fill_Rot_Alpha() ──► SpanOps.fill_Alpha()
+
+RoundedRectOpsRot._strokeThick_Rot_Alpha() ► SpanOps.fill_Alpha()
+
+RoundedRectOpsRot._stroke1px_Rot_Alpha() ► SpanOps.blendPixel_Alpha()
+   (1px alpha strokes)
+
+RoundedRectOpsRot._fillStroke_Rot_*() ──► SpanOps.fill_Opaq/fill_Alpha + blendPixel_Alpha
+
 All *Ops.fill*() ─────────────────► SpanOps.fill_Opaq() or SpanOps.fill_Alpha()
-   (most shapes)                      (shared horizontal span utility)
+   (all shapes)                       (shared horizontal span utility)
+
+All *Ops.stroke1px*_Alpha() ──────► SpanOps.blendPixel_Alpha()
+   (1px alpha strokes)                (shared pixel blending utility)
 
 RectOpsRot.fill_Rot_Any() ────────► QuadScanOps.fillQuad
    (rotated rectangle fill)
@@ -217,7 +234,7 @@ QuadScanOps.fillQuad() ───────────► SpanOps.fill_Opaq / 
    (each scanline span)
 ```
 
-**SpanOps is the shared primitive** - used by RectOpsAA, RectOpsRot, CircleOps, LineOps, RoundedRectOpsAA, RoundedRectOpsRot
+**SpanOps is the shared primitive** - provides fill_Opaq, fill_Alpha, and blendPixel_Alpha used by all shape renderers: RectOpsAA, RectOpsRot, CircleOps, LineOps, RoundedRectOpsAA, RoundedRectOpsRot
 
 **QuadScanOps is the quad primitive** - used by LineOps (thick diagonal) and RectOpsRot (rotated fills/strokes)
 
@@ -373,7 +390,7 @@ Methods follow the dual-suffix pattern: `{operation}[Thickness]_{orientation}_{o
 | CircleOps          | fill_Opaq, fill_Alpha                             | stroke1px_Opaq, stroke1px_Alpha, strokeThick_Any, strokeThick_Alpha                                    |
 | LineOps            | N/A                                               | stroke_Any (public dispatcher)                                                                         |
 | ArcOps             | fill_Opaq, fill_Alpha                             | stroke1px_Opaq, stroke1px_Opaq_Exact, stroke1px_Alpha, strokeOuter_Opaq, strokeOuter_Alpha             |
-| SpanOps            | fill_Opaq, fill_Alpha                             | N/A                                                                                                    |
+| SpanOps            | fill_Opaq, fill_Alpha, blendPixel_Alpha           | N/A                                                                                                    |
 
 Note: Context2D calls *OpsAA classes for axis-aligned operations and *OpsRot classes directly for rotated operations.
 
