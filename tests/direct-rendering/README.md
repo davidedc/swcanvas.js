@@ -638,6 +638,8 @@ Performance tests compare SWCanvas direct rendering against native HTML5 Canvas 
 
 For a detailed explanation of why this is necessary and how it works, see [PERFORMANCE-BENCHMARKING.md](PERFORMANCE-BENCHMARKING.md).
 
+For a workflow guide on using performance tests to benchmark code changes, see [PERFORMANCE-TESTING-WORKFLOW.md](PERFORMANCE-TESTING-WORKFLOW.md).
+
 ### Performance Test Architecture
 
 Performance tests are **separate from visual regression tests**:

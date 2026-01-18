@@ -11,6 +11,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **tests/README.md**: Complete test system documentation, adding tests, build utilities
 - **tests/direct-rendering/README.md**: Direct rendering test API, dual-mode pattern, check options, utilities, naming conventions
 - **tests/direct-rendering/PERFORMANCE-BENCHMARKING.md**: Performance benchmarking mechanics (VSync cliff detection, scaling correction)
+- **tests/direct-rendering/PERFORMANCE-TESTING-WORKFLOW.md**: Workflow guide for benchmarking code changes (regressions, improvements, discovery)
 - **tests/build/README.md**: Build utility scripts documentation (concat-tests.js, renumber-tests.js)
 - **debug/README.md**: Debug utilities, investigation scripts, and debugging workflows
 - **examples/README.md**: Examples documentation and usage instructions
@@ -53,6 +54,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **Test documentation**: tests/README.md only
 - **Direct rendering tests**: tests/direct-rendering/README.md only
 - **Performance benchmarking mechanics**: tests/direct-rendering/PERFORMANCE-BENCHMARKING.md only
+- **Performance testing workflow**: tests/direct-rendering/PERFORMANCE-TESTING-WORKFLOW.md only
 - **Build utilities**: tests/build/README.md only
 - **Debug utilities**: debug/README.md only
 - **Direct rendering system**: DIRECT-RENDERING-SUMMARY.MD only
@@ -65,6 +67,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **Adding/running tests** → tests/README.md
 - **Direct rendering tests** → tests/direct-rendering/README.md
 - **Performance benchmarking** → tests/direct-rendering/PERFORMANCE-BENCHMARKING.md
+- **Performance testing workflow** → tests/direct-rendering/PERFORMANCE-TESTING-WORKFLOW.md
 - **Build utilities** → tests/build/README.md
 - **Debug utilities** → debug/README.md
 - **Examples and demos** → examples/README.md

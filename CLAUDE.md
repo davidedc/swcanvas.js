@@ -36,6 +36,7 @@ SWCanvas uses object-oriented ES6 class design organized into 7 semantic directo
 - **Key patterns**: Immutable value objects, static utility classes, composition over inheritance
 - **Direct rendering**: See DIRECT-RENDERING-SUMMARY.MD for optimized shape renderers
 - **Performance benchmarking**: Uses different strategies for SWCanvas (direct timing) vs HTML5 Canvas (VSync cliff detection). See tests/direct-rendering/PERFORMANCE-BENCHMARKING.md
+- **Performance testing workflow**: See tests/direct-rendering/PERFORMANCE-TESTING-WORKFLOW.md for workflow guide on benchmarking code changes
 
 ## Build & Test
 
