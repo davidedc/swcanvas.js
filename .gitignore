@@ -24,3 +24,6 @@ yarn-error.log*
 *.tmp
 *.temp
 tests/.DS_Store
+
+# Performance test baselines (session-specific data)
+perf-baselines/
