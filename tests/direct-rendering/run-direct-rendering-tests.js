@@ -69,6 +69,7 @@ let numIterations = 1;
 let startIteration = 1;
 let testFilter = null;
 let showLogs = false;
+let listOnly = false;
 
 // Help text
 if (args.includes('--help') || args.includes('-h')) {
@@ -82,6 +83,7 @@ Options:
   -i, --iterations=<N>    Number of iterations to run (default: 1)
   -s, --start=<N>         Starting iteration number (default: 1)
   -l, --logs              Show test logs (verbose output)
+  --list                  List matched tests without running them
   -h, --help              Show this help message
 
 Examples:
@@ -119,6 +121,8 @@ for (let i = 0; i < args.length; i++) {
         i++; // Skip next arg
     } else if (arg === '--logs' || arg === '-l') {
         showLogs = true;
+    } else if (arg === '--list') {
+        listOnly = true;
     }
 }
 
@@ -278,6 +282,16 @@ function main() {
             process.exit(1);
         }
         console.log(`Filter "${testFilter}" matched ${testsToRun.length} test(s)\n`);
+    }
+
+    // List mode - just show tests without running
+    if (listOnly) {
+        console.log(`\nMatched ${testsToRun.length} test(s):\n`);
+        testsToRun.forEach((test, i) => {
+            console.log(`  ${i + 1}. ${test.name}`);
+        });
+        console.log(`\nTotal: ${testsToRun.length} tests`);
+        process.exit(0);
     }
 
     const totalRuns = testsToRun.length * numIterations;

@@ -84,6 +84,5 @@ registerDirectRenderingTest(
     {
         title: 'Single 1px Semi-Transparent Stroked Circle (Crisp, Mixed P/G Centering)',
         description: 'Tests crisp rendering of a single 1px semi-transparent red stroked circle with no fill.',
-        perfName: 'Perf: Circle 1px Semi-Trans Crisp MixPG'
     }
 );

@@ -112,7 +112,6 @@ registerDirectRenderingTest(
     },
     {
         title: 'Perf: Arc 5 Fully Random',
-        perfName: 'Perf: Arc 5 Fully Random',
         description: 'Test with 5 arcs, all parameters fully randomized.'
     }
 );

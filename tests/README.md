@@ -261,7 +261,7 @@ open tests/direct-rendering/performance-tests.html
 
 For detailed documentation on the direct rendering system and APIs, see [DIRECT-RENDERING-SUMMARY.MD](../DIRECT-RENDERING-SUMMARY.MD).
 
-For comprehensive documentation on direct rendering tests (registration API, dual-mode pattern, check options, utility functions, naming conventions, and performance testing), see [tests/direct-rendering/README.md](direct-rendering/README.md).
+For comprehensive documentation on direct rendering tests (registration API, check options, utility functions, naming conventions, and performance testing), see [tests/direct-rendering/README.md](direct-rendering/README.md).
 
 ### Performance Testing
 
@@ -270,7 +270,7 @@ For comprehensive documentation on direct rendering tests (registration API, dua
 open tests/direct-rendering/performance-tests.html
 ```
 
-Tests with `perfName` in metadata are available for performance benchmarking. The benchmarking system uses different measurement strategies for SWCanvas (direct timing) vs HTML5 Canvas (VSync cliff detection with scaling correction).
+Parametric performance tests in `/perf-cases/` are available for benchmarking. The benchmarking system uses different measurement strategies for SWCanvas (direct timing) vs HTML5 Canvas (VSync cliff detection with scaling correction).
 
 - **Usage and configuration**: [direct-rendering/README.md](direct-rendering/README.md#7-performance-testing)
 - **Benchmarking mechanics**: [direct-rendering/PERFORMANCE-BENCHMARKING.md](direct-rendering/PERFORMANCE-BENCHMARKING.md)

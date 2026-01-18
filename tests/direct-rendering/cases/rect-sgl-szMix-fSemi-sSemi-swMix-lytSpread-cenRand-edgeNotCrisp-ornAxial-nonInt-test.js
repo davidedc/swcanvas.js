@@ -174,6 +174,5 @@ registerDirectRenderingTest(
     {
         title: 'Rectangle: Axis-aligned, Single, Variable Size, Semi-Transparent Fill & Stroke, Non-Integer Geometry',
         description: 'Tests rendering of a single axis-aligned rectangle with non-integer width, height, x and y positions.',
-        perfName: 'Perf: Rect AxAlign Single NonInt'
     }
 );

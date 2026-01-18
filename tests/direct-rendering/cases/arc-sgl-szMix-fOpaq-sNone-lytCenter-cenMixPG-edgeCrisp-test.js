@@ -85,6 +85,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Filled Arc (No Stroke, Crisp, Mixed Center)',
         description: 'Tests a single filled arc (no stroke) with random parameters and crisp center alignment.',
-        perfName: 'Perf: Arc Fill Only Crisp MixedCenter'
     }
 );

@@ -137,6 +137,5 @@ registerDirectRenderingTest(
     {
         title: 'Rectangle: Rotated, Single, Opaque Stroke, Random Position & Rotation',
         description: 'Tests rendering of a single rotated rectangle with opaque stroke (exercises strokeRotated code path).',
-        perfName: 'Perf: Rect Rotated Single Opaq Stroke'
     }
 );

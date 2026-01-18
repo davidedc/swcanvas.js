@@ -89,6 +89,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Thin Arc (Not Crisp, Random Position)',
         description: 'Tests a single arc with fill and thin stroke (1-3px), random position, and non-crisp edges.',
-        perfName: 'Perf: Arc Thin NotCrisp Random'
     }
 );

@@ -89,6 +89,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Arc (Not Crisp, Random Position)',
         description: 'Tests a single arc with fill and stroke, random position, and non-crisp edges.',
-        perfName: 'Perf: Arc NotCrisp Random'
     }
 );

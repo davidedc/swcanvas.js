@@ -85,6 +85,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Filled Arc (No Stroke, Random Position)',
         description: 'Tests a single filled arc (no stroke) with random position and opaque color.',
-        perfName: 'Perf: Arc Fill Only Random Pos'
     }
 );

@@ -147,6 +147,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Small Angle Arc (10-45°, Mixed Fill/Stroke)',
         description: 'Tests rendering of single arcs with small angles (10-45 degrees) to verify proper handling of minimal arc extents.',
-        perfName: 'Perf: Arc Small Angle 10-45deg'
     }
 );

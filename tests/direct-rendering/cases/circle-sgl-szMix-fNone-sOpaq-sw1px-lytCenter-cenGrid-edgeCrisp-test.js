@@ -85,6 +85,5 @@ registerDirectRenderingTest(
     {
         title: 'Single 1px Stroked Circle (Crisp, Centered at Grid)',
         description: 'Tests crisp rendering of a single 1px red stroked circle, centered at a grid crossing.',
-        perfName: 'Perf: Circle 1px Crisp Grid Center'
     }
 );

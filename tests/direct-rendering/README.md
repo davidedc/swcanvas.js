@@ -7,7 +7,7 @@ For an overview of how direct rendering works internally, see [DIRECT-RENDERING-
 ## Table of Contents
 
 1. [Test Registration API](#1-test-registration-api)
-2. [Dual-Mode Pattern](#2-dual-mode-pattern)
+2. [Draw Function Pattern](#2-draw-function-pattern)
 3. [Check Options](#3-check-options)
 4. [Utility Functions](#4-utility-functions)
 5. [File Naming Convention](#5-file-naming-convention)
@@ -30,61 +30,39 @@ registerDirectRenderingTest(name, drawFunction, category, checks, metadata)
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | `string` | Yes | Unique test identifier (typically matches filename without `.js`) |
-| `drawFunction` | `function` | Yes | Function that draws the test: `(ctx, iterationNumber, instances) => result` |
+| `drawFunction` | `function` | Yes | Function that draws the test: `(ctx, iterationNumber) => { logs, checkData }` |
 | `category` | `string` | Yes | Test category: `'lines'`, `'circles'`, `'arcs'`, `'rects'`, `'rounded-rects'` |
 | `checks` | `object` | Yes | Validation checks to perform (see [Check Options](#3-check-options)) |
-| `metadata` | `object` | No | Test metadata including `title`, `description`, `perfName` |
+| `metadata` | `object` | No | Test metadata including `title`, `description` |
 
 ### Complete Example
 
 ```javascript
 registerDirectRenderingTest(
     'circle-fill-opaque',
-    function drawTest(ctx, iterationNumber, instances = null) {
+    function drawTest(ctx, iterationNumber) {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 
-        const isPerformanceRun = instances !== null && instances > 0;
-        const numToDraw = isPerformanceRun ? instances : 1;
+        const fillColor = getRandomOpaqueColor();
+        const params = calculateCircleTestParameters({
+            canvasWidth, canvasHeight,
+            minRadius: 30, maxRadius: 80,
+            hasStroke: false, randomPosition: false
+        });
 
-        let logs = [];
-        let checkData = null;
+        ctx.fillStyle = fillColor;
+        ctx.fillCircle(params.centerX, params.centerY, params.radius);
 
-        for (let i = 0; i < numToDraw; i++) {
-            const fillColor = getRandomOpaqueColor();
-
-            // Use SeededRandom for visual tests, Math.random for performance
-            let centerX, centerY, radius;
-            if (isPerformanceRun && i > 0) {
-                radius = 30 + Math.random() * 50;
-                centerX = radius + Math.random() * (canvasWidth - 2 * radius);
-                centerY = radius + Math.random() * (canvasHeight - 2 * radius);
-            } else {
-                const params = calculateCircleTestParameters({
-                    canvasWidth, canvasHeight,
-                    minRadius: 30, maxRadius: 80,
-                    hasStroke: false, randomPosition: false
-                });
-                centerX = params.centerX;
-                centerY = params.centerY;
-                radius = params.radius;
+        return {
+            logs: [`Circle at (${params.centerX}, ${params.centerY}) radius ${params.radius}`],
+            checkData: {
+                topY: Math.floor(params.centerY - params.radius),
+                bottomY: Math.floor(params.centerY + params.radius),
+                leftX: Math.floor(params.centerX - params.radius),
+                rightX: Math.floor(params.centerX + params.radius)
             }
-
-            ctx.fillStyle = fillColor;
-            ctx.fillCircle(centerX, centerY, radius);
-
-            if (!isPerformanceRun && i === 0) {
-                logs.push(`Circle at (${centerX}, ${centerY}) radius ${radius}`);
-                checkData = {
-                    topY: Math.floor(centerY - radius),
-                    bottomY: Math.floor(centerY + radius),
-                    leftX: Math.floor(centerX - radius),
-                    rightX: Math.floor(centerX + radius)
-                };
-            }
-        }
-
-        return isPerformanceRun ? null : { logs, checkData };
+        };
     },
     'circles',
     {
@@ -93,8 +71,7 @@ registerDirectRenderingTest(
     },
     {
         title: 'Filled Circle - Opaque Color',
-        description: 'Tests fillCircle with opaque color',
-        perfName: 'Perf: Circle Fill Opaque'  // Enables performance testing
+        description: 'Tests fillCircle with opaque color'
     }
 );
 ```
@@ -105,56 +82,45 @@ registerDirectRenderingTest(
 |----------|------|-------------|
 | `title` | `string` | Human-readable test title for reports |
 | `description` | `string` | Detailed test description |
-| `perfName` | `string` | Human-readable name for performance UI display |
-| `performanceTestSupported` | `boolean` | **Required for performance tests** - confirms test implements dual-mode pattern |
 
 ---
 
-## 2. Dual-Mode Pattern
+## 2. Draw Function Pattern
 
-Tests support two execution modes:
+Visual tests use a simple function pattern that returns logs and check data.
 
-| Mode | `instances` Value | Return Value | Use Case |
-|------|-------------------|--------------|----------|
-| **Visual** | `null` | `{ logs, checkData }` | Node runner, browser visual tests |
-| **Performance** | `> 0` | `null` | Performance benchmarking |
-
-### Mode Detection
+### Function Signature
 
 ```javascript
-function drawTest(ctx, iterationNumber, instances = null) {
-    const isPerformanceRun = instances !== null && instances > 0;
-    const numToDraw = isPerformanceRun ? instances : 1;
+function drawTest(ctx, iterationNumber) {
+    // Draw shapes using direct rendering APIs
+    ctx.fillCircle(x, y, radius);
 
-    // ...drawing logic...
-
-    return isPerformanceRun ? null : { logs, checkData };
+    // Return logs and check data for validation
+    return {
+        logs: ['Description of what was drawn'],
+        checkData: { topY, bottomY, leftX, rightX }
+    };
 }
 ```
 
-### Key Differences by Mode
+### Return Value
 
-| Aspect | Visual Mode | Performance Mode |
-|--------|-------------|------------------|
-| Random source | `SeededRandom.getRandom()` | `Math.random()` |
-| Logging | Collect in `logs` array | Skip entirely |
-| Check data | Return `checkData` object | Skip entirely |
-| Shape count | Usually 1 (or fixed count) | Variable (ramp-up) |
-| Return value | `{ logs, checkData }` | `null` |
+| Field | Type | Description |
+|-------|------|-------------|
+| `logs` | `string[]` | Descriptive messages for debugging |
+| `checkData` | `object` | Bounds or validation data for automated checks |
 
-### Random Number Strategy
+### Randomization
+
+Use `SeededRandom.getRandom()` for all random values to ensure reproducible tests:
 
 ```javascript
-if (isPerformanceRun && i > 0) {
-    // Performance: use Math.random() for speed
-    x = Math.random() * canvasWidth;
-} else {
-    // Visual: use SeededRandom for reproducibility
-    x = SeededRandom.getRandom() * canvasWidth;
-}
+const radius = 30 + SeededRandom.getRandom() * 50;
+const centerX = SeededRandom.getRandom() * canvasWidth;
 ```
 
-**Important**: The first shape in performance mode should still use `SeededRandom` for consistent initial state, only subsequent shapes use `Math.random()`.
+**Never use `Math.random()`** in visual tests - it breaks reproducibility.
 
 ---
 
@@ -672,36 +638,39 @@ Performance tests compare SWCanvas direct rendering against native HTML5 Canvas 
 
 For a detailed explanation of why this is necessary and how it works, see [PERFORMANCE-BENCHMARKING.md](PERFORMANCE-BENCHMARKING.md).
 
-### Performance Test Eligibility
+### Performance Test Architecture
 
-To be eligible for performance testing, a test must have BOTH:
-1. `perfName` in metadata - provides human-readable name for performance UI
-2. `performanceTestSupported: true` in metadata - confirms the test properly implements the dual-mode pattern (handling the `instances` parameter)
+Performance tests are **separate from visual regression tests**:
 
-The `performanceTestSupported` flag is necessary (but not sufficient by itself) - tests must actually implement the dual-mode pattern in their `drawFunction` for correct performance measurement.
+- **Visual tests** (`/cases/`): Focus on pixel-accurate rendering verification
+- **Performance tests** (`/perf-cases/`): Focus on throughput benchmarking via parametric generation
 
-### Enabling Performance Testing
+Performance tests are generated using the parametric test generator (`performance-test-generator.js`), which creates comprehensive coverage across:
+- 9 stroke width categories (sw0, sw1px, swXXS, swXS, swS, swM, swL, swXL, swXXL)
+- 7 shape size categories (szXXS, szXS, szS, szM, szL, szXL, szXXL)
+- 8 operation combinations (stroke/fill × opaque/semi-transparent)
+- 4 arc angle categories (for arc tests only)
 
-Add both `perfName` AND `performanceTestSupported` to test metadata:
+### Adding Performance Tests
+
+To add new performance tests, create a generator file in `/perf-cases/`:
 
 ```javascript
-registerDirectRenderingTest(
-    'test-name',
-    drawFunction,
-    'category',
-    { /* checks */ },
-    {
-        title: 'Test Title',
-        description: 'Test description',
-        perfName: 'Perf: Short Name',        // Required for performance UI
-        // Performance test eligibility requires: (1) perfName in metadata, and
-        // (2) proper instances parameter handling in drawFunction (dual-mode pattern)
-        performanceTestSupported: true          // Required - confirms dual-mode support
+// perf-cases/my-shape-perf.js
+registerParametricPerfTests({
+    baseId: 'my-shape',
+    baseName: 'My Shape',
+    category: 'shapes',
+    operations: ['stroke-opaque', 'stroke-semi', 'fill-opaque', 'fill-semi'],
+    drawFunction: function(ctx, instances, params) {
+        // Draw `instances` shapes using params (strokeWidth, size, operation)
+        // ...
+        return null;
     }
-);
+});
 ```
 
-Tests with both `perfName` AND `performanceTestSupported: true` are automatically added to `DIRECT_RENDERING_PERF_REGISTRY`.
+Tests registered via `registerParametricPerfTests()` automatically set `performanceTestSupported: true` and are added to `DIRECT_RENDERING_PERF_REGISTRY`.
 
 ### Running Performance Tests
 

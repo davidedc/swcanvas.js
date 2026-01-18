@@ -88,6 +88,5 @@ registerDirectRenderingTest(
     {
         title: 'Single 1px Stroked Arc (Crisp, Centered at Pixel)',
         description: 'Tests crisp rendering of a single 1px red stroked arc, centered at a pixel center.',
-        perfName: 'Perf: Arc 1px Crisp Pixel Center'
     }
 );

@@ -95,6 +95,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Random Circle (Crisp, Random Center Type)',
         description: 'Tests a single random circle with random params, crisp center (grid or pixel), stroke, and fill.',
-        perfName: 'Perf: Circle SingleRand Crisp RandCenterType'
     }
 );

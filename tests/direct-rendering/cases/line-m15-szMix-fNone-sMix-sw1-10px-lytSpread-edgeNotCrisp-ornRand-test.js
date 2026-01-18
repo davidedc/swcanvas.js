@@ -84,7 +84,6 @@ registerDirectRenderingTest(
     },
     {
         title: 'Lines: Multi-15 No-Fill Random-Stroke Random-Pos Random-Orient',
-        perfName: 'Perf: Lines Multi Random Props',
         description: 'Performance test for rendering multiple (default 15, or N from harness) lines with random properties.'
     }
 );

@@ -160,6 +160,5 @@ registerDirectRenderingTest(
     {
         title: 'Rectangles: S-Size No-Fill 1px-Red-Opaque-Stroke Centered-At-Grid No-Rotation',
         description: 'Tests a single 1px red stroked rectangle, centered on grid lines, with even dimensions.',
-        perfName: 'Perf: Rect S 1px Red Centered Grid'
     }
 );

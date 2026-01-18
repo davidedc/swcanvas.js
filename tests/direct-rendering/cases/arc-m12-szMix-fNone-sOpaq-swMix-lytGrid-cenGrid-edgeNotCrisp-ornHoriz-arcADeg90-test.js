@@ -138,6 +138,5 @@ registerDirectRenderingTest(
     {
         title: '90\u00B0 Arcs (Multiple, Fixed Params, Grid Layout)',
         description: 'Tests rendering of 90\u00B0 arcs with various fixed radii and stroke widths in a grid.',
-        perfName: 'Perf: 12 90Deg Arcs FixedGrid'
     }
 );

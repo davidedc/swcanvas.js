@@ -166,6 +166,5 @@ registerDirectRenderingTest(
     {
         title: 'Rectangles: M-Size Semi-Transparent Fill, Random Semi-Transparent Stroke, Random Position, No Rotation',
         description: 'Tests a single axis-aligned rectangle with random dimensions, stroke width, and semi-transparent colors, mimicking original low-level logic including color generation.',
-        perfName: 'Perf: Rect M Axis-Aligned (Original Logic)'
     }
 ); 

@@ -88,6 +88,5 @@ registerDirectRenderingTest(
     {
         title: 'Single 90deg Arc (Crisp, Random Quadrant, Semi 1px Stroke)',
         description: 'Tests a single 90-degree arc spanning one random quadrant with crisp stroke ends, mixed fill (opaque or semitransparent), and semitransparent 1px stroke.',
-        perfName: 'Perf: Arc 90deg Crisp Semi1px'
     }
 );

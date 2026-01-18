@@ -84,6 +84,5 @@ registerDirectRenderingTest(
     {
         title: 'Lines: M-Size No-Fill 1px-Opaque-Stroke Crisp-Pixel-Pos Vertical',
         description: 'Tests crisp rendering of a vertical 1px line centered between pixels.',
-        perfName: 'Perf: Lines M 1px Crisp Vertical'
     }
 );

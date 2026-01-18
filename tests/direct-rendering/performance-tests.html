@@ -229,6 +229,22 @@
     .checkbox-label input {
       margin-right: 5px;
     }
+
+    .filter-group {
+      padding: 10px 15px;
+      background-color: #fafafa;
+      border-radius: 6px;
+      border: 1px solid #e0e0e0;
+    }
+
+    .filter-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
   </style>
 </head>
 
@@ -300,6 +316,108 @@
       </label>
     </div>
 
+    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+      <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #555;">Parametric Test Filters</h3>
+      <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+        <!-- GROUP: Dimensions -->
+        <div class="filter-group">
+          <div class="filter-group-label">Dimensions</div>
+          <div style="display: flex; gap: 15px;">
+            <div>
+              <label for="filter-stroke">Stroke Width:</label>
+              <select id="filter-stroke" style="padding: 4px; min-width: 150px;">
+                <option value="">All</option>
+                <option value="sw0">0px (No Stroke)</option>
+                <option value="sw1px">1px (Bresenham)</option>
+                <option value="swXXS">XXS (2-3px)</option>
+                <option value="swXS">XS (3-5px)</option>
+                <option value="swS">S (5-10px)</option>
+                <option value="swM">M (10-20px)</option>
+                <option value="swL">L (20-40px)</option>
+                <option value="swXL">XL (40-80px)</option>
+                <option value="swXXL">XXL (80-150px)</option>
+              </select>
+            </div>
+            <div>
+              <label for="filter-size">Shape Size:</label>
+              <select id="filter-size" style="padding: 4px; min-width: 150px;">
+                <option value="">All</option>
+                <option value="szXXS">XXS (2-8px)</option>
+                <option value="szXS">XS (5-15px)</option>
+                <option value="szS">S (16-39px)</option>
+                <option value="szM">M (40-79px)</option>
+                <option value="szL">L (80-159px)</option>
+                <option value="szXL">XL (160-300px)</option>
+                <option value="szXXL">XXL (300-500px)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- GROUP: Shape Variant -->
+        <div class="filter-group">
+          <div class="filter-group-label">Shape Variant</div>
+          <div style="display: flex; gap: 15px;">
+            <div>
+              <label for="filter-shape">Shape:</label>
+              <select id="filter-shape" style="padding: 4px; min-width: 130px;">
+                <option value="">All</option>
+                <option value="line">Lines</option>
+                <option value="rect">Rectangles</option>
+                <option value="circle">Circles</option>
+                <option value="roundrect">Rounded Rects</option>
+                <option value="arc">Arcs</option>
+              </select>
+            </div>
+            <div>
+              <label for="filter-orientation">Orientation:</label>
+              <select id="filter-orientation" style="padding: 4px; min-width: 130px;">
+                <option value="">All</option>
+                <option value="aa">Axis-Aligned</option>
+                <option value="rot">Rotated/Diagonal</option>
+                <option value="horiz">Horizontal Only</option>
+                <option value="vert">Vertical Only</option>
+              </select>
+            </div>
+            <div>
+              <label for="filter-angle">Arc Angle:</label>
+              <select id="filter-angle" style="padding: 4px; min-width: 150px;">
+                <option value="">All</option>
+                <option value="angS">Small (30-90°)</option>
+                <option value="angM">Medium (90-180°)</option>
+                <option value="angL">Large (180-270°)</option>
+                <option value="angXL">Nearly Full (270-350°)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- GROUP: Rendering -->
+        <div class="filter-group">
+          <div class="filter-group-label">Rendering</div>
+          <div style="display: flex; gap: 15px;">
+            <div>
+              <label for="filter-operation">Operation:</label>
+              <select id="filter-operation" style="padding: 4px; min-width: 180px;">
+                <option value="">All</option>
+                <option value="stroke-opaque">Stroke (Opaque)</option>
+                <option value="stroke-semi">Stroke (Semi)</option>
+                <option value="fill-opaque">Fill (Opaque)</option>
+                <option value="fill-semi">Fill (Semi)</option>
+                <option value="fill-opaque-stroke-opaque">Fill+Stroke (Both Opaque)</option>
+                <option value="fill-semi-stroke-opaque">Fill+Stroke (Fill Semi)</option>
+                <option value="fill-opaque-stroke-semi">Fill+Stroke (Stroke Semi)</option>
+                <option value="fill-semi-stroke-semi">Fill+Stroke (Both Semi)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 8px; font-size: 12px; color: #666;">
+        <span id="filtered-test-count">0</span> parametric tests match current filters
+      </div>
+    </div>
+
     <div class="test-buttons-container">
       <!-- Test lists will be generated dynamically -->
       <div id="line-tests" class="test-list-section">
@@ -360,6 +478,9 @@
 
   <!-- Load test utilities -->
   <script src="direct-rendering-test-utils.js"></script>
+
+  <!-- Load performance test generator -->
+  <script src="performance-test-generator.js"></script>
 
   <!-- Load performance infrastructure -->
   <script src="performance-tests/performance-utils.js"></script>
@@ -565,6 +686,17 @@
 
   <!-- Arc Small Angle Tests -->
   <script src="cases/arc-sgl-szMix-fMix-sMix-swMix-lytCenter-cenMixPG-edgeCrisp-arcASmall-test.js"></script>
+
+  <!-- Parametric Performance Tests -->
+  <script src="perf-cases/line-horiz-perf.js"></script>
+  <script src="perf-cases/line-vert-perf.js"></script>
+  <script src="perf-cases/line-diag-perf.js"></script>
+  <script src="perf-cases/rect-aa-perf.js"></script>
+  <script src="perf-cases/rect-rot-perf.js"></script>
+  <script src="perf-cases/circle-perf.js"></script>
+  <script src="perf-cases/roundrect-aa-perf.js"></script>
+  <script src="perf-cases/roundrect-rot-perf.js"></script>
+  <script src="perf-cases/arc-perf.js"></script>
 
   <!-- Load performance UI (must be last) -->
   <script src="performance-tests/performance-ui.js"></script>

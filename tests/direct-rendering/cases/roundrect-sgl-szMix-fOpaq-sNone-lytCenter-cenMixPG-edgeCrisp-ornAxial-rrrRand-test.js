@@ -108,6 +108,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Opaque Filled Rounded Rectangle (Crisp, Mixed P/G Centering)',
         description: 'Tests crisp rendering of a single opaque blue filled rounded rectangle with no stroke.',
-        perfName: 'Perf: RRect Opaque Fill Crisp MixPG'
     }
 );

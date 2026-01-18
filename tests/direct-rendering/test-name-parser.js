@@ -17,14 +17,25 @@ class TestNameParser {
       'sgl': 'Single',
       'multi': 'Multiple',
 
-      // Size
+      // Size (standard categories)
+      'xxs': 'Extra Extra Small (2-8px)',
       'xs': 'Extra Small (5-15px)',
       's': 'Small (16-39px)',
       'm': 'Medium (40-79px)',
       'l': 'Large (80-159px)',
-      'xl': 'Extra Large (160-400px)',
+      'xl': 'Extra Large (160-300px)',
+      'xxl': 'Extra Extra Large (300-500px)',
       'szMix': 'Mixed Sizes',
       'szRand': 'Random Sizes',
+
+      // Size categories for parametric perf tests
+      'szXXS': 'XXS (2-8px)',
+      'szXS': 'XS (5-15px)',
+      'szS': 'S (16-39px)',
+      'szM': 'M (40-79px)',
+      'szL': 'L (80-159px)',
+      'szXL': 'XL (160-300px)',
+      'szXXL': 'XXL (300-500px)',
 
       // Fill Style
       'fNone': 'No Fill',
@@ -37,6 +48,17 @@ class TestNameParser {
       'sOpaq': 'Opaque Stroke',
       'sSemi': 'Semitransparent Stroke',
       'sMix': 'Mixed Stroke',
+
+      // Stroke width categories for parametric perf tests
+      'sw0': '0px (No Stroke)',
+      'sw1px': '1px (Bresenham)',
+      'swXXS': 'XXS Thick (2-3px)',
+      'swXS': 'XS Thick (3-5px)',
+      'swS': 'S Thick (5-10px)',
+      'swM': 'M Thick (10-20px)',
+      'swL': 'L Thick (20-40px)',
+      'swXL': 'XL Thick (40-80px)',
+      'swXXL': 'XXL Thick (80-150px)',
 
       // Layout
       'lytSpread': 'Spread Layout',
@@ -67,11 +89,24 @@ class TestNameParser {
       'ornMix': 'Mixed Orientation',
       'ornRot': 'Rotated',
 
+      // Orientation (parametric perf tests)
+      'aa': 'Axis-Aligned',
+      'rot': 'Rotated',
+      'horiz': 'Horizontal',
+      'vert': 'Vertical',
+      'diag': 'Diagonal',
+
       // Arc Angle Extent
       'arcADeg90': '90-Degree Arc',
       'arcASmall': 'Small Arc Angle',
       'arcARand': 'Random Arc Angle',
       'arcAMix': 'Mixed Arc Angles',
+
+      // Arc angle categories for parametric perf tests
+      'angS': 'Small Arc (30-90 deg)',
+      'angM': 'Medium Arc (90-180 deg)',
+      'angL': 'Large Arc (180-270 deg)',
+      'angXL': 'Nearly Full Arc (270-350 deg)',
 
       // Quadrant (Arc-specific)
       'quadRand': 'Random Quadrant',
@@ -321,7 +356,8 @@ class TestNameParser {
   }
 
   isValidSize(value) {
-    return ['xs', 's', 'm', 'l', 'xl', 'szMix', 'szRand'].includes(value);
+    return ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'szMix', 'szRand',
+            'szXXS', 'szXS', 'szS', 'szM', 'szL', 'szXL', 'szXXL'].includes(value);
   }
 
   isValidFillStyle(value) {
@@ -337,6 +373,8 @@ class TestNameParser {
     if (value === 'sw0') return true;
     if (value.match(/^sw\d+px$/)) return true; // sw1px, sw10px, etc.
     if (value.match(/^sw\d+-\d+px$/)) return true; // sw1-10px, etc.
+    // Parametric perf test stroke categories
+    if (['sw1px', 'swXXS', 'swXS', 'swS', 'swM', 'swL', 'swXL', 'swXXL'].includes(value)) return true;
     return false;
   }
 
@@ -344,9 +382,22 @@ class TestNameParser {
     const knownPrefixes = [
       'lyt', 'cen', 'edge', 'orn', 'arcA', 'quad', 'rrr',
       'ctxTrans', 'ctxRot', 'ctxScale', 'nonInt',
-      'clpOn', 'clpCt', 'clpArr', 'clpSz', 'clpEdge'
+      'clpOn', 'clpCt', 'clpArr', 'clpSz', 'clpEdge',
+      'ang'  // arc angle categories for parametric perf tests
+    ];
+    // Known exact values for parametric perf tests
+    const knownExactValues = [
+      'aa', 'rot', 'horiz', 'vert', 'diag', 'perf',
+      // Legacy operation names
+      'fill', 'stroke',
+      // New operation names (8 combinations)
+      'stroke-opaque', 'stroke-semi',
+      'fill-opaque', 'fill-semi',
+      'fill-opaque-stroke-opaque', 'fill-semi-stroke-opaque',
+      'fill-opaque-stroke-semi', 'fill-semi-stroke-semi'
     ];
     return knownPrefixes.some(prefix => value.startsWith(prefix)) ||
+           knownExactValues.includes(value) ||
            this.isValidShape(value) || this.isValidCount(value) || this.isValidSize(value) ||
            this.isValidFillStyle(value) || this.isValidStrokeStyle(value) || this.isValidStrokeThickness(value);
   }

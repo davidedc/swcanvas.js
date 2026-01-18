@@ -88,6 +88,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Randomly Positioned Circle Without Stroke (Crisp)',
         description: 'Tests a single randomly positioned circle with no stroke, random fill, and crisp center.',
-        perfName: 'Perf: Circle RandPos NoStroke Crisp'
     }
 );

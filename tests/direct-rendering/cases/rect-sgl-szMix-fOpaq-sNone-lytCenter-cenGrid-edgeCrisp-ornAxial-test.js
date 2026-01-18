@@ -35,7 +35,6 @@
  * UNCAPTURED ASPECTS IN FILENAME / FACETS ABOVE:
  * ----------------------------------------------
  * - Fill color is fixed opaque blue (rgb(0, 0, 255)).
- * - Supports dual-mode: visual testing (instances=null) and performance testing (instances>0).
  * - Uses rasterizer path, not direct shape API.
  *
  */
@@ -102,6 +101,5 @@ registerDirectRenderingTest(
     {
         title: 'Filled Rectangle - Opaque Color',
         description: 'Tests fillRect with opaque color',
-        perfName: 'Perf: Rect Fill Opaque'
     }
 );

@@ -134,6 +134,5 @@ registerDirectRenderingTest(
     {
         title: 'Rectangles: Rotated, Multiple, Variable Size & Params, Random Position & Rotation',
         description: 'Tests rendering of multiple rotated rectangles with random positions, sizes, angles, strokes, and fills.',
-        perfName: 'Perf: Rects Rotated Multi Random'
     }
 );

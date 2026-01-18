@@ -95,6 +95,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Thin Stroked Arc (Crisp, Random Center Type)',
         description: 'Tests a single random arc with random params, crisp center (grid or pixel), thin stroke (1-3px), and fill.',
-        perfName: 'Perf: Arc Thin Crisp RandCenterType'
     }
 );

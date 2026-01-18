@@ -572,7 +572,7 @@ While core functions are fully covered, these edge cases could be added:
 
 ## 12. Performance Testing
 
-Direct rendering tests support **dual-mode execution**: visual testing for correctness verification and performance testing for comparative benchmarking.
+Performance testing uses **parametric test generation** in `/perf-cases/` for comprehensive benchmarking coverage.
 
 ### 12.1 Performance Testing Infrastructure
 
@@ -585,54 +585,36 @@ The performance testing page provides ramp-up comparison between SWCanvas Direct
 3. **Comparative metrics**: Reports maximum shapes per frame for both renderers
 4. **Performance ratio**: Calculates HTML5 Canvas / SWCanvas performance ratio
 
-### 12.2 Dual-Mode Test Pattern
+### 12.2 Parametric Test Generation
 
-Tests registered with `perfName` metadata support both visual and performance testing:
+Performance tests are generated using `performance-test-generator.js`:
 
 ```javascript
-registerDirectRenderingTest(
-    'test-name',
-    function drawTest(ctx, iterationNumber, instances = null) {
-        const isPerformanceRun = instances !== null && instances > 0;
-        const numToDraw = isPerformanceRun ? instances : 1;
-
-        for (let i = 0; i < numToDraw; i++) {
-            // Draw shape using direct rendering API
-            ctx.fillCircle(x, y, radius);
-        }
-
-        // Performance runs return null, visual tests return {logs, checkData}
-        return isPerformanceRun ? null : { logs, checkData };
-    },
-    'circles',
-    { /* visual test checks */ },
-    {
-        title: 'Test Title',
-        perfName: 'Perf: Circle Fill'  // Enables performance registration
+registerParametricPerfTests({
+    baseId: 'circle',
+    baseName: 'Circle',
+    category: 'circles',
+    operations: ['stroke-opaque', 'stroke-semi', 'fill-opaque', 'fill-semi', ...],
+    drawFunction: function(ctx, instances, params) {
+        // Draw `instances` shapes using params
+        return null;
     }
-);
+});
 ```
 
-### 12.3 Performance Registry
+### 12.3 Performance Test Coverage
 
-Tests with `perfName` in metadata are automatically registered in `DIRECT_RENDERING_PERF_REGISTRY`:
+Parametric tests cover all combinations of:
+- **9 stroke width categories**: sw0, sw1px, swXXS, swXS, swS, swM, swL, swXL, swXXL
+- **7 shape size categories**: szXXS, szXS, szS, szM, szL, szXL, szXXL
+- **8 operation combinations**: stroke/fill × opaque/semi-transparent
+- **4 arc angle categories** (arcs only): angS, angM, angL, angXL
 
-| Field | Description |
-|-------|-------------|
-| `id` | Test identifier (e.g., 'circle-fill-opaque') |
-| `drawFunction` | The drawing function supporting dual-mode |
-| `perfName` | Display name for UI (e.g., 'Perf: Circle Fill Opaque') |
-| `description` | Test description |
-| `category` | Shape category ('circles', 'rects', 'lines', 'arcs', 'rounded-rects') |
+### 12.4 Architecture Separation
 
-### 12.4 Backward Compatibility
+| Test Type | Location | Purpose | Registration |
+|-----------|----------|---------|--------------|
+| Visual tests | `/cases/` | Pixel-accurate rendering verification | `registerDirectRenderingTest()` |
+| Performance tests | `/perf-cases/` | Throughput benchmarking | `registerParametricPerfTests()` |
 
-The dual-mode pattern maintains full backward compatibility:
-
-| Runner | Call Signature | Expected Return |
-|--------|---------------|-----------------|
-| Node.js test runner | `drawFunction(ctx, iteration, null)` | `{logs, checkData}` |
-| Browser visual runner | `drawFunction(ctx, iteration, null)` | `{logs, checkData}` |
-| Performance runner | `drawFunction(ctx, 0, instanceCount)` | `null` |
-
-See `tests/README.md` for complete performance testing documentation.
+See `tests/direct-rendering/README.md` for CLI filtering options and `PERFORMANCE-BENCHMARKING.md` for measurement mechanics.

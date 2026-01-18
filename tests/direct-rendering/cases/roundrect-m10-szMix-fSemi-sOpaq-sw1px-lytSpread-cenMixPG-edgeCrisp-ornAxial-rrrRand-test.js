@@ -125,6 +125,5 @@ registerDirectRenderingTest(
     {
         title: '10 Thin Opaque-Stroke Rounded Rectangles (1px, Crisp Center Adj.)',
         description: 'Tests rendering of 10 rounded rectangles with 1px opaque strokes, random fills, and crisp center adjustment.',
-        perfName: 'Perf: 10 RRects ThinOpaque AdjCenter'
     }
 );

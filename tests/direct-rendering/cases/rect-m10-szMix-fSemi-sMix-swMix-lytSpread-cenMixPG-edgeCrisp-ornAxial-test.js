@@ -182,6 +182,5 @@ registerDirectRenderingTest(
     {
         title: 'Rectangles: Axis-aligned, Multiple, Variable Size, Random Fill & Stroke, Random Position, No Rotation',
         description: 'Tests rendering of multiple axis-aligned rectangles with random sizes, fills (variable alpha), strokes (opaque, even width), and positions. No rotation.',
-        perfName: 'Perf: Rects AxAlign Multi Random'
     }
 );

@@ -35,7 +35,6 @@
  * UNCAPTURED ASPECTS IN FILENAME / FACETS ABOVE:
  * ----------------------------------------------
  * - Fill color is fixed opaque blue (rgb(0, 0, 255)).
- * - Supports dual-mode: visual testing (instances=null) and performance testing (instances>0).
  * - Uses calculateCircleTestParameters helper for position/size calculation.
  *
  */
@@ -110,6 +109,5 @@ registerDirectRenderingTest(
     {
         title: 'Filled Circle - Opaque Color (Direct Rendering)',
         description: 'Tests fillCircle with opaque color uses direct 32-bit writes',
-        perfName: 'Perf: Circle Fill Opaque'
     }
 );

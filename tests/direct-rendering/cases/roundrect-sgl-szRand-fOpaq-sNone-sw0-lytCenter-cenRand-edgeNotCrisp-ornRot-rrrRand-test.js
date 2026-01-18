@@ -158,6 +158,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Rotated Rounded Rectangle - Opaque Fill (Random)',
         description: 'Tests high-level API rendering of opaque fill on a single rotated rounded rectangle using transforms and fillRoundRect.',
-        perfName: 'Perf: Single Rotated RRect Opaque Fill (Random)'
     }
 );

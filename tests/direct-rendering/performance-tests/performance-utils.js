@@ -1,8 +1,8 @@
 // Performance testing utilities for SWCanvas Direct Rendering
 
 // Constants
-const CANVAS_WIDTH = 400;
-const CANVAS_HEIGHT = 300;
+const CANVAS_WIDTH = 1024;
+const CANVAS_HEIGHT = 768;
 let FRAME_BUDGET = 16.7; // Default milliseconds (60fps), will be updated after detection
 let DETECTED_FPS = 60; // Default, will be updated after detection
 const STARTING_SHAPE_COUNT = 10;

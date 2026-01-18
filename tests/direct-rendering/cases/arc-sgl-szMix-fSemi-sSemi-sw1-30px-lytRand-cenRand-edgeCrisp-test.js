@@ -93,6 +93,5 @@ registerDirectRenderingTest(
     {
         title: 'Single Semi-transparent Arc (Random Position)',
         description: 'Tests a single semi-transparent filled and stroked arc with random position.',
-        perfName: 'Perf: Arc Semi Random Pos'
     }
 );

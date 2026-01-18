@@ -173,6 +173,5 @@ registerDirectRenderingTest(
     {
         title: '12 Rotated Rounded Rectangles - 1px Opaque Stroke',
         description: 'Tests high-level API rendering of 1px opaque stroke on rotated rounded rectangles using transforms and strokeRoundRect.',
-        perfName: 'Perf: 12 Rotated RRects 1px Opaque'
     }
 );

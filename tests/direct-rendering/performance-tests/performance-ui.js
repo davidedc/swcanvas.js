@@ -83,8 +83,14 @@ function createTestList(title, parentContainer) {
   listItemsDiv.className = 'test-list';
 
   checkAllBtn.addEventListener('click', () => {
-    listItemsDiv.querySelectorAll('.test-checkbox').forEach(checkbox => {
-      checkbox.checked = true;
+    listItemsDiv.querySelectorAll('.test-item').forEach(item => {
+      // Only check if the test item is visible
+      if (item.style.display !== 'none') {
+        const checkbox = item.querySelector('.test-checkbox');
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+      }
     });
   });
 
@@ -92,8 +98,14 @@ function createTestList(title, parentContainer) {
   uncheckAllBtn.textContent = 'Uncheck All';
   uncheckAllBtn.className = 'small-button';
   uncheckAllBtn.addEventListener('click', () => {
-    listItemsDiv.querySelectorAll('.test-checkbox').forEach(checkbox => {
-      checkbox.checked = false;
+    listItemsDiv.querySelectorAll('.test-item').forEach(item => {
+      // Only uncheck if the test item is visible
+      if (item.style.display !== 'none') {
+        const checkbox = item.querySelector('.test-checkbox');
+        if (checkbox) {
+          checkbox.checked = false;
+        }
+      }
     });
   });
 
@@ -174,19 +186,43 @@ function initializeUI() {
       resultsContainer.innerHTML = `Display refresh rate detected: ${DETECTED_FPS} fps (standard rate, raw detected: ${window.RAW_DETECTED_FPS || DETECTED_FPS} fps)\nFrame budget: ${FRAME_BUDGET.toFixed(2)}ms\nReady to run tests.\n`;
     });
   }
+
+  // Set up filter change listeners for dynamic test list filtering
+  ['filter-stroke', 'filter-size', 'filter-shape', 'filter-orientation', 'filter-angle', 'filter-operation']
+    .forEach(id => {
+      const element = document.getElementById(id);
+      if (element) {
+        element.addEventListener('change', applyFilters);
+      }
+    });
+
+  // Apply initial filter state to show correct count
+  applyFilters();
 }
 
-// Check all tests across all categories
+// Check all visible tests across all categories
 function checkAllTests() {
-  document.querySelectorAll('.test-checkbox').forEach(checkbox => {
-    checkbox.checked = true;
+  document.querySelectorAll('.test-item').forEach(item => {
+    // Only check if the test item is visible
+    if (item.style.display !== 'none') {
+      const checkbox = item.querySelector('.test-checkbox');
+      if (checkbox) {
+        checkbox.checked = true;
+      }
+    }
   });
 }
 
-// Uncheck all tests across all categories
+// Uncheck all visible tests across all categories
 function uncheckAllTests() {
-  document.querySelectorAll('.test-checkbox').forEach(checkbox => {
-    checkbox.checked = false;
+  document.querySelectorAll('.test-item').forEach(item => {
+    // Only uncheck if the test item is visible
+    if (item.style.display !== 'none') {
+      const checkbox = item.querySelector('.test-checkbox');
+      if (checkbox) {
+        checkbox.checked = false;
+      }
+    }
   });
 }
 
@@ -302,6 +338,110 @@ function runTestSeries(testsToRun, statusMessage) {
 // Find test by ID
 function findTestById(testId) {
   return window.DIRECT_RENDERING_PERF_REGISTRY.find(test => test.id === testId);
+}
+
+/**
+ * Check if a test ID matches the given orientation filter.
+ * Supports semantic grouping where:
+ * - 'aa' (Axis-Aligned) matches: horiz lines, vert lines, and -aa- rects
+ * - 'rot' (Rotated/Diagonal) matches: diag lines and -rot- rects
+ * - 'horiz' matches: only horizontal lines
+ * - 'vert' matches: only vertical lines
+ *
+ * @param {string} testId - Test ID to check
+ * @param {string} filter - Filter value ('aa', 'rot', 'horiz', 'vert')
+ * @returns {boolean} True if test matches the filter
+ */
+function matchesOrientation(testId, filter) {
+  switch (filter) {
+    case 'aa':
+      // Axis-aligned: horiz lines, vert lines, or -aa- rects/roundrects
+      return testId.includes('-horiz-') ||
+             testId.includes('-vert-') ||
+             testId.includes('-aa-');
+    case 'rot':
+      // Rotated/diagonal: diag lines or -rot- rects/roundrects
+      return testId.includes('-diag-') ||
+             testId.includes('-rot-');
+    case 'horiz':
+      // Horizontal lines only
+      return testId.includes('-horiz-');
+    case 'vert':
+      // Vertical lines only
+      return testId.includes('-vert-');
+    default:
+      return true;
+  }
+}
+
+// Apply parametric test filters and update visibility
+function applyFilters() {
+  const strokeFilter = document.getElementById('filter-stroke').value;
+  const sizeFilter = document.getElementById('filter-size').value;
+  const shapeFilter = document.getElementById('filter-shape').value;
+  const orientFilter = document.getElementById('filter-orientation').value;
+  const angleFilter = document.getElementById('filter-angle').value;
+  const opFilter = document.getElementById('filter-operation').value;
+
+  let visibleCount = 0;
+
+  // Track visible tests per category to hide empty sections
+  const visibleByCategory = {
+    lines: 0,
+    rects: 0,
+    'rounded-rects': 0,
+    circles: 0,
+    arcs: 0
+  };
+
+  document.querySelectorAll('.test-item').forEach(item => {
+    const testId = item.querySelector('.test-checkbox').dataset.testId;
+    const test = findTestById(testId);
+
+    // Skip non-parametric tests (no metadata) - always show them
+    if (!test || !test.metadata) {
+      item.style.display = '';
+      if (test && test.category) {
+        visibleByCategory[test.category] = (visibleByCategory[test.category] || 0) + 1;
+      }
+      return;
+    }
+
+    const matches =
+      (!strokeFilter || test.metadata.strokeCategory === strokeFilter) &&
+      (!sizeFilter || test.metadata.sizeCategory === sizeFilter) &&
+      (!shapeFilter || testId.startsWith(shapeFilter + '-')) &&
+      (!orientFilter || matchesOrientation(testId, orientFilter)) &&
+      (!angleFilter || test.metadata.angleCategory === angleFilter) &&
+      (!opFilter || test.metadata.operation === opFilter);
+
+    item.style.display = matches ? '' : 'none';
+    if (matches) {
+      visibleCount++;
+      if (test.category) {
+        visibleByCategory[test.category] = (visibleByCategory[test.category] || 0) + 1;
+      }
+    }
+  });
+
+  // Update the count display
+  document.getElementById('filtered-test-count').textContent = visibleCount;
+
+  // Hide/show category sections based on whether they have visible tests
+  const categoryContainers = {
+    lines: document.getElementById('line-tests'),
+    rects: document.getElementById('rectangle-tests'),
+    'rounded-rects': document.getElementById('rounded-rectangle-tests'),
+    circles: document.getElementById('circle-tests'),
+    arcs: document.getElementById('arc-tests')
+  };
+
+  for (const [category, container] of Object.entries(categoryContainers)) {
+    if (container) {
+      const hasVisibleTests = visibleByCategory[category] > 0;
+      container.style.display = hasVisibleTests ? '' : 'none';
+    }
+  }
 }
 
 function abortTests() {
