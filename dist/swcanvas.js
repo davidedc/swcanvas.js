@@ -99,6 +99,72 @@ const THIN_LINE_THRESHOLD = SWCanvasConstants.THIN_LINE_THRESHOLD;
 const DEFAULT_MITER_LIMIT = SWCanvasConstants.DEFAULT_MITER_LIMIT;
 
 /**
+ * Debug - Development utilities for SWCanvas
+ *
+ * These utilities are completely stripped in production builds by Terser.
+ * The build script uses: --compress drop_console=true,drop_debugger=true,dead_code=true
+ *
+ * Enable debug mode in development:
+ *   globalThis.__SWCANVAS_DEBUG__ = true;
+ *   // Then load SWCanvas
+ *
+ * Debug mode provides:
+ *   - Runtime assertions for contract verification
+ *   - Debug logging for tracing execution
+ *   - Clipping invariant validation
+ */
+
+/**
+ * Check if debug mode is enabled.
+ * @type {boolean}
+ */
+const IS_DEBUG = typeof globalThis !== 'undefined' &&
+                 globalThis.__SWCANVAS_DEBUG__ === true;
+
+/**
+ * Assert a condition is true (development only).
+ *
+ * In production builds, this function is completely stripped by Terser's
+ * dead code elimination since IS_DEBUG will be false and the early return
+ * makes the rest unreachable.
+ *
+ * @param {boolean} condition - Condition to check
+ * @param {string} message - Error message if condition fails
+ */
+function assertDebug(condition, message) {
+    if (!IS_DEBUG) return;
+    if (!condition) {
+        console.error(`[SWCanvas] Assertion failed: ${message}`);
+        debugger;
+        throw new Error(`Assertion failed: ${message}`);
+    }
+}
+
+/**
+ * Log a debug message (development only).
+ *
+ * Stripped in production builds.
+ *
+ * @param {string} message - Message to log
+ */
+function debugLog(message) {
+    if (!IS_DEBUG) return;
+    console.log(`[SWCanvas Debug] ${message}`);
+}
+
+/**
+ * Log a debug warning (development only).
+ *
+ * Stripped in production builds.
+ *
+ * @param {string} message - Warning message to log
+ */
+function debugWarn(message) {
+    if (!IS_DEBUG) return;
+    console.warn(`[SWCanvas Debug] ${message}`);
+}
+
+/**
  * Color class for SWCanvas
  *
  * Encapsulates color operations, conversions, and alpha blending math.
@@ -1494,6 +1560,15 @@ class PixelOps {
  *   - Called by: RectOpsAA, RectOpsRot, CircleOps, LineOps, ArcOps,
  *                RoundedRectOpsAA, RoundedRectOpsRot
  *
+ * CLIPPING CONTRACT:
+ * ------------------
+ * SpanOps IS RESPONSIBLE for clipping checks when clipBuffer is provided.
+ * Callers MUST NOT pre-check clipping before calling SpanOps methods.
+ * This is the PRIMARY clipping checkpoint for span-based rendering.
+ *
+ * Methods check each pixel against clipBuffer (with byte-skip optimization)
+ * before writing. Passing clipBuffer=null disables clipping checks.
+ *
  * NAMING PATTERN: {operation}_{opacity}
  *   - fill_Opaq: Opaque span fill (32-bit writes)
  *   - fill_Alpha: Semi-transparent span fill (calls PixelOps.blend_Alpha)
@@ -1508,7 +1583,7 @@ class SpanOps {
      * @param {number} y - Y coordinate of the span
      * @param {number} length - Length of the span in pixels
      * @param {number} packedColor - Pre-packed 32-bit RGBA color
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled here with byte-skip optimization)
      */
     static fill_Opaq(data32, surfaceWidth, surfaceHeight, startX, y, length, packedColor, clipBuffer) {
         // Y bounds check - use floor for consistent pixel alignment
@@ -1569,7 +1644,7 @@ class SpanOps {
      * @param {number} b - Blue component (0-255)
      * @param {number} alpha - Alpha as fraction (0-1)
      * @param {number} invAlpha - Inverse alpha (1 - alpha)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled here with byte-skip optimization)
      */
     static fill_Alpha(data, surfaceWidth, surfaceHeight, startX, y, length, r, g, b, alpha, invAlpha, clipBuffer) {
         // Y bounds check - use floor for consistent pixel alignment
@@ -1702,7 +1777,7 @@ class QuadScanOps {
      * @param {number} [params.packedColor] - Pre-packed color for opaque rendering
      * @param {number} [params.incomingAlpha] - Effective alpha (0-1) for blending
      * @param {number} [params.inverseIncomingAlpha] - 1 - incomingAlpha for blending
-     * @param {Uint8Array|null} params.clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} params.clipBuffer - Clip mask (CLIPPING: inline per-pixel or delegated to SpanOps depending on mode)
      * @param {Set|null} [params.collectTo] - Add rendered pixel positions to this Set
      * @param {Set|null} [params.skipFrom] - Skip pixels that are in this Set
      */
@@ -1843,7 +1918,7 @@ class QuadScanOps {
      * @param {number} centerX - Center X
      * @param {number} centerY - Center Y
      * @param {number} halfSize - Half the square size (typically lineWidth / 2)
-     * @param {Object} params - Same parameters as fillQuad
+     * @param {Object} params - Same parameters as fillQuad (CLIPPING: inline per-pixel or delegated to SpanOps)
      */
     static fillSquare(centerX, centerY, halfSize, params) {
         const { surface, r, g, b, isOpaque, clipBuffer } = params;
@@ -1990,7 +2065,7 @@ class RectOpsRot {
      * @param {number} b - Blue component (0-255)
      * @param {number} effectiveAlpha - Effective alpha (0-1)
      * @param {number} invAlpha - 1 - effectiveAlpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      * @private
      */
     static _blendPixelAlpha(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer) {
@@ -2022,7 +2097,7 @@ class RectOpsRot {
      * @param {Array} corners - 4 corner points [{x, y}, ...]
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      * @param {boolean} isOpaqueColor - True if color is fully opaque
      * @private
      */
@@ -2131,7 +2206,7 @@ class RectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
     static fill_Rot_Any(surface, centerX, centerY, width, height, rotation, color, globalAlpha, clipBuffer) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
@@ -2184,7 +2259,7 @@ class RectOpsRot {
      * @param {number} lineWidth - Stroke width in pixels
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
     static _stroke_Rot_Alpha(surface, centerX, centerY, width, height, rotation,
                               lineWidth, color, globalAlpha, clipBuffer) {
@@ -2277,7 +2352,7 @@ class RectOpsRot {
      * @param {number} lineWidth - Stroke width in pixels
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
     static stroke_Rot_Any(surface, centerX, centerY, width, height, rotation, lineWidth, color, globalAlpha, clipBuffer) {
         const cos = Math.cos(rotation);
@@ -2372,7 +2447,7 @@ class RectOpsRot {
      * @param {Color} fillColor - Fill color (may be null)
      * @param {Color} strokeColor - Stroke color (may be null)
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
     static fillStroke_Rot_Any(surface, centerX, centerY, width, height, rotation,
                                 lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
@@ -2427,7 +2502,7 @@ class RectOpsAA {
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -2495,7 +2570,7 @@ class RectOpsAA {
      * @param {number} height - Rectangle height
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -2566,7 +2641,7 @@ class RectOpsAA {
      * @param {number} height - Rectangle height
      * @param {number} lineWidth - Stroke width in pixels
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -2629,7 +2704,7 @@ class RectOpsAA {
      * @param {number} lineWidth - Stroke width in pixels
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -2750,7 +2825,7 @@ class RectOpsAA {
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
      * @param {Color} color - Fill color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -2787,7 +2862,7 @@ class RectOpsAA {
      * @param {number} height - Rectangle height
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -2848,7 +2923,7 @@ class RectOpsAA {
      * @param {Color} fillColor - Fill color (may be null)
      * @param {Color} strokeColor - Stroke color (may be null)
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fillStroke_AA_Any(surface, x, y, width, height, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -3070,7 +3145,7 @@ class CircleOps {
      * @param {number} cy - Center Y
      * @param {number} radius - Circle radius
      * @param {Color} color - Fill color (must be opaque, alpha=255)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fill_Opaq(surface, cx, cy, radius, color, clipBuffer) {
         const width = surface.width;
@@ -3122,7 +3197,7 @@ class CircleOps {
      * @param {number} radius - Circle radius
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fill_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -3181,7 +3256,7 @@ class CircleOps {
      * @param {number} cy - Center Y
      * @param {number} radius - Circle radius
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Opaq(surface, cx, cy, radius, color, clipBuffer) {
         const width = surface.width;
@@ -3305,7 +3380,7 @@ class CircleOps {
      * @param {number} radius - Circle radius
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -3411,7 +3486,7 @@ class CircleOps {
      * @param {Color} fillColor - Fill color
      * @param {Color} strokeColor - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fillStroke_Any(surface, cx, cy, radius, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -3544,7 +3619,7 @@ class CircleOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: inline per-pixel for opaque, delegated to SpanOps for alpha)
      */
     static strokeThick_Any(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -3633,7 +3708,7 @@ class CircleOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static strokeThick_Alpha(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -3781,7 +3856,7 @@ class ArcOps {
      * @param {number} startAngle - Start angle in radians
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Fill color
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static fill_Opaq(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer) {
         const width = surface.width;
@@ -3853,7 +3928,7 @@ class ArcOps {
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static fill_Alpha(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -3942,7 +4017,7 @@ class ArcOps {
      * @param {number} startAngle - Start angle in radians
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Opaq(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer) {
         const width = surface.width;
@@ -4038,7 +4113,7 @@ class ArcOps {
      * @param {number} startAngle - Start angle in radians
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Opaq_Exact(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer) {
         const width = surface.width;
@@ -4120,7 +4195,7 @@ class ArcOps {
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Alpha(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -4221,7 +4296,7 @@ class ArcOps {
      * @param {number} endAngle - End angle in radians
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static strokeOuter_Opaq(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, clipBuffer) {
         const width = surface.width;
@@ -4321,7 +4396,7 @@ class ArcOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static strokeOuter_Alpha(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -4451,7 +4526,7 @@ class ArcOps {
      * @param {Color} fillColor - Fill color (null/undefined for no fill)
      * @param {Color} strokeColor - Stroke color (null/undefined for no stroke)
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static fillStrokeOuter_Any(surface, cx, cy, radius, startAngle, endAngle, lineWidth,
         fillColor, strokeColor, globalAlpha, clipBuffer) {
@@ -4658,7 +4733,7 @@ class LineOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} paintSource - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: inline per-pixel for Bresenham, delegated to SpanOps/QuadScanOps for spans)
      * @param {boolean} isOpaqueColor - True if color is opaque with full alpha
      * @param {boolean} isSemiTransparentColor - True if color needs alpha blending
      * @returns {boolean} True if direct rendering was used, false if path-based rendering needed
@@ -4867,7 +4942,7 @@ class LineOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} paintSource - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps)
      * @param {boolean} useSemiTransparent - If true, use alpha blending
      */
     static _strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, useSemiTransparent = false) {
@@ -5095,7 +5170,7 @@ class RoundedRectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static fill_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, color, globalAlpha, clipBuffer = null) {
         // Normalize radius
@@ -5133,7 +5208,7 @@ class RoundedRectOpsRot {
      * @param {number} radius - Corner radius (already normalized)
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Fill color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _fill_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, color, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -5265,7 +5340,7 @@ class RoundedRectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _fill_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -5381,7 +5456,7 @@ class RoundedRectOpsRot {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static stroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, color, globalAlpha, clipBuffer = null) {
         // Normalize radius
@@ -5429,7 +5504,7 @@ class RoundedRectOpsRot {
      * @param {number} radius - Corner radius (already normalized)
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _stroke1px_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, color, clipBuffer) {
         // Pre-compute rotation
@@ -5542,7 +5617,7 @@ class RoundedRectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _stroke1px_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -5693,7 +5768,7 @@ class RoundedRectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _strokeThick_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -5829,7 +5904,7 @@ class RoundedRectOpsRot {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _strokeThick_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -5979,7 +6054,7 @@ class RoundedRectOpsRot {
      * @param {Color} fillColor - Fill color (null/undefined to skip fill)
      * @param {Color} strokeColor - Stroke color (null/undefined to skip stroke)
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static fillStroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
         // Normalize radius
@@ -6045,7 +6120,7 @@ class RoundedRectOpsRot {
      * @param {Color} fillColor - Fill color
      * @param {Color} strokeColor - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _fillStroke_Rot_1px(surface, centerX, centerY, width, height, radius, rotation, fillColor, strokeColor, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -6221,7 +6296,7 @@ class RoundedRectOpsRot {
      * @param {Color} fillColor - Fill color
      * @param {Color} strokeColor - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _fillStroke_Rot_Unified(surface, centerX, centerY, width, height, radius, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -6497,7 +6572,7 @@ class RoundedRectOpsAA {
      * @param {number} height - Rectangle height
      * @param {number|number[]} radii - Corner radius (single value or array)
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static stroke1px_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -6597,7 +6672,7 @@ class RoundedRectOpsAA {
      * @param {number|number[]} radii - Corner radius (single value or array)
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static stroke1px_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -6707,7 +6782,7 @@ class RoundedRectOpsAA {
      * @param {number} height - Rectangle height
      * @param {number|number[]} radii - Corner radius
      * @param {Color} color - Fill color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static fill_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -6793,7 +6868,7 @@ class RoundedRectOpsAA {
      * @param {number|number[]} radii - Corner radius
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static fill_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -6881,7 +6956,7 @@ class RoundedRectOpsAA {
      * @param {number|number[]} radii - Corner radius
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static strokeThick_AA_Opaq(surface, x, y, width, height, radii, lineWidth, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -6974,7 +7049,7 @@ class RoundedRectOpsAA {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static strokeThick_AA_Alpha(surface, x, y, width, height, radii, lineWidth, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -7074,7 +7149,7 @@ class RoundedRectOpsAA {
      * @param {Color|null} fillColor - Fill color (null to skip fill)
      * @param {Color|null} strokeColor - Stroke color (null to skip stroke)
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static fillStroke_AA_Any(surface, x, y, width, height, radii, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -16783,7 +16858,11 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             PixelOps: PixelOps,
-            RoundedRectOpsAA: RoundedRectOpsAA
+            RoundedRectOpsAA: RoundedRectOpsAA,
+            IS_DEBUG: IS_DEBUG,
+            assertDebug: assertDebug,
+            debugLog: debugLog,
+            debugWarn: debugWarn
         }
     };
 } else if (typeof module !== 'undefined' && module.exports) {
@@ -16825,7 +16904,11 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             PixelOps: PixelOps,
-            RoundedRectOpsAA: RoundedRectOpsAA
+            RoundedRectOpsAA: RoundedRectOpsAA,
+            IS_DEBUG: IS_DEBUG,
+            assertDebug: assertDebug,
+            debugLog: debugLog,
+            debugWarn: debugWarn
         }
     };
 }
