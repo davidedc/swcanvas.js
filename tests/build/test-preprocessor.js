@@ -186,6 +186,46 @@ test('TEMPLATES: SET_OPAQUE code has all placeholders', () => {
     }
 });
 
+test('TEMPLATES: SET_OPAQUE_CLIPPED has correct params', () => {
+    assert.deepStrictEqual(TEMPLATES.SET_OPAQUE_CLIPPED.params,
+        ['data32', 'pixelIndex', 'packedColor', 'clipBuffer']);
+});
+
+test('TEMPLATES: SET_OPAQUE_CLIPPED code has all placeholders', () => {
+    const code = TEMPLATES.SET_OPAQUE_CLIPPED.code;
+    for (const param of TEMPLATES.SET_OPAQUE_CLIPPED.params) {
+        assert(code.includes(`{{${param}}}`), `Missing placeholder for ${param}`);
+    }
+});
+
+test('TEMPLATES: BLEND_ALPHA_CLIPPED has correct params', () => {
+    assert.deepStrictEqual(TEMPLATES.BLEND_ALPHA_CLIPPED.params,
+        ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer']);
+});
+
+test('TEMPLATES: BLEND_ALPHA_CLIPPED code has all placeholders', () => {
+    const code = TEMPLATES.BLEND_ALPHA_CLIPPED.code;
+    for (const param of TEMPLATES.BLEND_ALPHA_CLIPPED.params) {
+        assert(code.includes(`{{${param}}}`), `Missing placeholder for ${param}`);
+    }
+});
+
+test('expandMarker: SET_OPAQUE_CLIPPED basic expansion', () => {
+    const result = expandMarker('SET_OPAQUE_CLIPPED', 'data32, pos, color, clip');
+    assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
+    assert(result.includes('clip[pos >> 3]'), 'Should check clipBuffer byte');
+    assert(result.includes('(1 << (pos & 7))'), 'Should check clipBuffer bit');
+    assert(result.includes('data32[pos] = color;'), 'Should write to data32');
+});
+
+test('expandMarker: BLEND_ALPHA_CLIPPED basic expansion', () => {
+    const result = expandMarker('BLEND_ALPHA_CLIPPED', 'd, i, r, g, b, a, inv, clip');
+    assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
+    assert(result.includes('clip[i >> 3]'), 'Should check clipBuffer byte');
+    assert(result.includes('const __off = i * 4;'), 'Should have offset calculation');
+    assert(result.includes('r * a'), 'Should use alpha directly in RGB blending');
+});
+
 // ============================================================================
 // Edge cases
 // ============================================================================

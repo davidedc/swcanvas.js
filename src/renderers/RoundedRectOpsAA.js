@@ -122,40 +122,50 @@ class RoundedRectOpsAA {
         const posW = width;
         const posH = height;
 
-        // Helper to set pixel with optional clipping
-        const setPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
-
-            if (clipBuffer) {
-                const pixelIndex = py * surfaceWidth + px;
-                const byteIndex = pixelIndex >> 3;
-                const bitIndex = pixelIndex & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-
-            data32[py * surfaceWidth + px] = packedColor;
-        };
-
         // Draw horizontal edges (top and bottom, excluding corners)
         const topY = Math.floor(posY);
         const bottomY = Math.floor(posY + posH - 0.5);
 
-        for (let xx = Math.floor(posX + radius); xx < posX + posW - radius; xx++) {
-            // Top edge
-            setPixel(xx, topY);
-            // Bottom edge
-            setPixel(xx, bottomY);
+        // Top edge
+        if (topY >= 0 && topY < surfaceHeight) {
+            for (let xx = Math.floor(posX + radius); xx < posX + posW - radius; xx++) {
+                if (xx >= 0 && xx < surfaceWidth) {
+                    const pos = topY * surfaceWidth + xx;
+                    /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
+                }
+            }
+        }
+        // Bottom edge
+        if (bottomY >= 0 && bottomY < surfaceHeight) {
+            for (let xx = Math.floor(posX + radius); xx < posX + posW - radius; xx++) {
+                if (xx >= 0 && xx < surfaceWidth) {
+                    const pos = bottomY * surfaceWidth + xx;
+                    /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
+                }
+            }
         }
 
         // Draw vertical edges (left and right, excluding corners)
         const leftX = Math.floor(posX);
         const rightX = Math.floor(posX + posW - 0.5);
 
-        for (let yy = Math.floor(posY + radius); yy < posY + posH - radius; yy++) {
-            // Left edge
-            setPixel(leftX, yy);
-            // Right edge
-            setPixel(rightX, yy);
+        // Left edge
+        if (leftX >= 0 && leftX < surfaceWidth) {
+            for (let yy = Math.floor(posY + radius); yy < posY + posH - radius; yy++) {
+                if (yy >= 0 && yy < surfaceHeight) {
+                    const pos = yy * surfaceWidth + leftX;
+                    /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
+                }
+            }
+        }
+        // Right edge
+        if (rightX >= 0 && rightX < surfaceWidth) {
+            for (let yy = Math.floor(posY + radius); yy < posY + posH - radius; yy++) {
+                if (yy >= 0 && yy < surfaceHeight) {
+                    const pos = yy * surfaceWidth + rightX;
+                    /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
+                }
+            }
         }
 
         // Draw corner arcs using angle iteration (Bresenham-style)
@@ -167,7 +177,10 @@ class RoundedRectOpsAA {
             for (let angle = startAngle; angle <= endAngle; angle += angleStep) {
                 const px = Math.floor(cx + sr * Math.cos(angle));
                 const py = Math.floor(cy + sr * Math.sin(angle));
-                setPixel(px, py);
+                if (px >= 0 && px < surfaceWidth && py >= 0 && py < surfaceHeight) {
+                    const pos = py * surfaceWidth + px;
+                    /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
+                }
             }
         };
 

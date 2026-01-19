@@ -55,42 +55,35 @@ class RectOpsAA {
         const right = Math.floor(x + width);
         const bottom = Math.floor(y + height);
 
-        // Helper to set pixel with clipping check
-        const setPixel = (px, py) => {
-            const pos = py * surfaceWidth + px;
-            if (clipBuffer) {
-                const byteIndex = pos >> 3;
-                const bitIndex = pos & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-            data32[pos] = packedColor;
-        };
-
         // Draw top edge (horizontal): pixels from left to right (inclusive)
         if (top >= 0 && top < surfaceHeight) {
             for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
-                setPixel(px, top);
+                const pos = top * surfaceWidth + px;
+                /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
             }
         }
 
         // Draw bottom edge (horizontal): pixels from left to right (inclusive)
         if (bottom >= 0 && bottom < surfaceHeight) {
             for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
-                setPixel(px, bottom);
+                const pos = bottom * surfaceWidth + px;
+                /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
             }
         }
 
         // Draw left edge (vertical): skip corners (already drawn)
         if (left >= 0 && left < surfaceWidth) {
             for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
-                setPixel(left, py);
+                const pos = py * surfaceWidth + left;
+                /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
             }
         }
 
         // Draw right edge (vertical): skip corners (already drawn)
         if (right >= 0 && right < surfaceWidth) {
             for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
-                setPixel(right, py);
+                const pos = py * surfaceWidth + right;
+                /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
             }
         }
     }
@@ -124,36 +117,36 @@ class RectOpsAA {
         const right = Math.floor(x + width);
         const bottom = Math.floor(y + height);
 
-        // Helper function to blend a pixel with clipping check
-        const blendPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
-            const pos = py * surfaceWidth + px;
-            if (clipBuffer) {
-                const byteIndex = pos >> 3;
-                const bitIndex = pos & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-        };
-
         // Draw top edge (horizontal): pixels from left to right (inclusive)
-        for (let px = left; px <= right; px++) {
-            blendPixel(px, top);
+        if (top >= 0 && top < surfaceHeight) {
+            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+                const pos = top * surfaceWidth + px;
+                /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
+            }
         }
 
         // Draw bottom edge (horizontal): pixels from left to right (inclusive)
-        for (let px = left; px <= right; px++) {
-            blendPixel(px, bottom);
+        if (bottom >= 0 && bottom < surfaceHeight) {
+            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+                const pos = bottom * surfaceWidth + px;
+                /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
+            }
         }
 
         // Draw left edge (vertical): skip corners (already drawn)
-        for (let py = top + 1; py < bottom; py++) {
-            blendPixel(left, py);
+        if (left >= 0 && left < surfaceWidth) {
+            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+                const pos = py * surfaceWidth + left;
+                /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
+            }
         }
 
         // Draw right edge (vertical): skip corners (already drawn)
-        for (let py = top + 1; py < bottom; py++) {
-            blendPixel(right, py);
+        if (right >= 0 && right < surfaceWidth) {
+            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+                const pos = py * surfaceWidth + right;
+                /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
+            }
         }
     }
 
@@ -184,37 +177,41 @@ class RectOpsAA {
         const right = x + width;
         const bottom = y + height;
 
-        // Helper to set pixel with optional clipping
-        const setPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
-
-            if (clipBuffer) {
-                const pixelIndex = py * surfaceWidth + px;
-                const byteIndex = pixelIndex >> 3;
-                const bitIndex = pixelIndex & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-
-            data32[py * surfaceWidth + px] = packedColor;
-        };
-
         // Draw horizontal strokes (top and bottom edges with full thickness)
         for (let px = Math.floor(left - halfStroke); px < right + halfStroke; px++) {
+            if (px < 0 || px >= surfaceWidth) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Top edge
-                setPixel(px, Math.floor(top + t));
+                const pyTop = Math.floor(top + t);
+                if (pyTop >= 0 && pyTop < surfaceHeight) {
+                    const pos = pyTop * surfaceWidth + px;
+                    /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
+                }
                 // Bottom edge
-                setPixel(px, Math.floor(bottom + t));
+                const pyBottom = Math.floor(bottom + t);
+                if (pyBottom >= 0 && pyBottom < surfaceHeight) {
+                    const pos = pyBottom * surfaceWidth + px;
+                    /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
+                }
             }
         }
 
         // Draw vertical strokes (left and right edges, excluding corners already drawn)
         for (let py = Math.floor(top + halfStroke); py < bottom - halfStroke; py++) {
+            if (py < 0 || py >= surfaceHeight) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Left edge
-                setPixel(Math.floor(left + t), py);
+                const pxLeft = Math.floor(left + t);
+                if (pxLeft >= 0 && pxLeft < surfaceWidth) {
+                    const pos = py * surfaceWidth + pxLeft;
+                    /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
+                }
                 // Right edge
-                setPixel(Math.floor(right + t), py);
+                const pxRight = Math.floor(right + t);
+                if (pxRight >= 0 && pxRight < surfaceWidth) {
+                    const pos = py * surfaceWidth + pxRight;
+                    /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
+                }
             }
         }
     }
@@ -252,28 +249,22 @@ class RectOpsAA {
         const right = x + width;
         const bottom = y + height;
 
-        // Helper function to blend a pixel with optional clipping
-        const blendPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
-
-            const pixelIndex = py * surfaceWidth + px;
-
-            if (clipBuffer) {
-                const byteIndex = pixelIndex >> 3;
-                const bitIndex = pixelIndex & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-
-            /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
-        };
-
         // Draw horizontal strokes (top and bottom edges with full thickness)
         for (let px = Math.floor(left - halfStroke); px < right + halfStroke; px++) {
+            if (px < 0 || px >= surfaceWidth) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Top edge
-                blendPixel(px, Math.floor(top + t));
+                const pyTop = Math.floor(top + t);
+                if (pyTop >= 0 && pyTop < surfaceHeight) {
+                    const pos = pyTop * surfaceWidth + px;
+                    /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
+                }
                 // Bottom edge
-                blendPixel(px, Math.floor(bottom + t));
+                const pyBottom = Math.floor(bottom + t);
+                if (pyBottom >= 0 && pyBottom < surfaceHeight) {
+                    const pos = pyBottom * surfaceWidth + px;
+                    /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
+                }
             }
         }
 
@@ -287,13 +278,20 @@ class RectOpsAA {
         // Draw vertical strokes (left and right edges, excluding corners)
         // Use px-based iteration to match horizontal stroke X coverage
         for (let py = topStrokeMaxY + 1; py < bottomStrokeMinY; py++) {
+            if (py < 0 || py >= surfaceHeight) continue;
             // Left edge
             for (let px = Math.floor(left - halfStroke); px < left + halfStroke; px++) {
-                blendPixel(px, py);
+                if (px >= 0 && px < surfaceWidth) {
+                    const pos = py * surfaceWidth + px;
+                    /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
+                }
             }
             // Right edge
             for (let px = Math.floor(right - halfStroke); px < right + halfStroke; px++) {
-                blendPixel(px, py);
+                if (px >= 0 && px < surfaceWidth) {
+                    const pos = py * surfaceWidth + px;
+                    /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
+                }
             }
         }
     }

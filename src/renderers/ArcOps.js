@@ -832,34 +832,42 @@ class ArcOps {
 
             // STEP 2: Render stroke on top (covers any micro-gaps)
             if (hasStroke) {
-                // Helper function to render a stroke pixel with angle filtering
                 const sr = strokeColor.r, sg = strokeColor.g, sb = strokeColor.b;
-                const renderStrokePixel = (x) => {
-                    const dx = x - cX;
-                    // Apply angle filtering for arc
-                    if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) return;
-                    const pos = y * width + x;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        if (strokeIsOpaque) {
-                            data32[pos] = strokePacked;
-                        } else {
-                            /*@inline:BLEND_ALPHA(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha)*/
-                        }
-                    }
-                };
 
                 if (innerRadius <= 0 || dySquared > innerRadiusSquared) {
                     // No inner circle intersection - draw entire stroke span
                     for (let x = outerLeftX; x <= outerRightX; x++) {
-                        renderStrokePixel(x);
+                        const dx = x - cX;
+                        // Apply angle filtering for arc
+                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
+                        const pos = y * width + x;
+                        if (strokeIsOpaque) {
+                            /*@inline:SET_OPAQUE_CLIPPED(data32, pos, strokePacked, clipBuffer)*/
+                        } else {
+                            /*@inline:BLEND_ALPHA_CLIPPED(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer)*/
+                        }
                     }
                 } else {
                     // Intersects both inner and outer circles - draw left and right segments
                     for (let x = outerLeftX; x <= innerLeftX; x++) {
-                        renderStrokePixel(x);
+                        const dx = x - cX;
+                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
+                        const pos = y * width + x;
+                        if (strokeIsOpaque) {
+                            /*@inline:SET_OPAQUE_CLIPPED(data32, pos, strokePacked, clipBuffer)*/
+                        } else {
+                            /*@inline:BLEND_ALPHA_CLIPPED(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer)*/
+                        }
                     }
                     for (let x = innerRightX; x <= outerRightX; x++) {
-                        renderStrokePixel(x);
+                        const dx = x - cX;
+                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
+                        const pos = y * width + x;
+                        if (strokeIsOpaque) {
+                            /*@inline:SET_OPAQUE_CLIPPED(data32, pos, strokePacked, clipBuffer)*/
+                        } else {
+                            /*@inline:BLEND_ALPHA_CLIPPED(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer)*/
+                        }
                     }
                 }
             }

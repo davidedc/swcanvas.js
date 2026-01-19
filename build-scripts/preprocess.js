@@ -71,6 +71,56 @@ if (__outA > 0) {
     'SET_OPAQUE': {
         params: ['data32', 'pixelIndex', 'packedColor'],
         code: `{{data32}}[{{pixelIndex}}] = {{packedColor}};`
+    },
+
+    /**
+     * Direct 32-bit opaque pixel write with inline clipping check.
+     * Use this in per-pixel loops where clipping cannot be hoisted to span level.
+     *
+     * Contract: Bounds checking is caller's responsibility. This template only checks clipping.
+     *
+     * @param {Uint32Array} data32 - 32-bit view of surface pixel data
+     * @param {number} pixelIndex - Linear pixel index (y * width + x)
+     * @param {number} packedColor - Pre-packed 32-bit RGBA color
+     * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
+     */
+    'SET_OPAQUE_CLIPPED': {
+        params: ['data32', 'pixelIndex', 'packedColor', 'clipBuffer'],
+        code: `if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
+    {{data32}}[{{pixelIndex}}] = {{packedColor}};
+}`
+    },
+
+    /**
+     * Porter-Duff source-over alpha blending with inline clipping check.
+     * Use this in per-pixel loops where clipping cannot be hoisted to span level.
+     *
+     * Contract: Bounds checking is caller's responsibility. This template only checks clipping.
+     *
+     * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
+     * @param {number} pixelIndex - Linear pixel index (y * width + x)
+     * @param {number} r - Red component (0-255)
+     * @param {number} g - Green component (0-255)
+     * @param {number} b - Blue component (0-255)
+     * @param {number} alpha - Alpha as fraction (0-1), pre-multiplied with globalAlpha
+     * @param {number} invAlpha - Inverse alpha (1 - alpha), pre-computed for efficiency
+     * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
+     */
+    'BLEND_ALPHA_CLIPPED': {
+        params: ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer'],
+        code: `if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
+    const __off = {{pixelIndex}} * 4;
+    const __dstA = {{data}}[__off + 3] / 255;
+    const __dstAScaled = __dstA * {{invAlpha}};
+    const __outA = {{alpha}} + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        {{data}}[__off]     = ({{r}} * {{alpha}} + {{data}}[__off] * __dstAScaled) * __blend;
+        {{data}}[__off + 1] = ({{g}} * {{alpha}} + {{data}}[__off + 1] * __dstAScaled) * __blend;
+        {{data}}[__off + 2] = ({{b}} * {{alpha}} + {{data}}[__off + 2] * __dstAScaled) * __blend;
+        {{data}}[__off + 3] = __outA * 255;
+    }
+}`
     }
 };
 
