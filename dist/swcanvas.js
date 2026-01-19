@@ -1683,14 +1683,35 @@ class SpanOps {
 
                 const bitOffset = pixelIndex & 7;
                 if ((clipBuffer[byteIndex] & (1 << bitOffset)) !== 0) {
-                    PixelOps.blend_Alpha(data, pixelIndex, r, g, b, alpha, invAlpha);
+                    const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = alpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * alpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * alpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * alpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                 }
                 px++;
             }
         } else {
             // No clipping
             for (let px = x; px < endX; px++) {
-                PixelOps.blend_Alpha(data, rowStart + px, r, g, b, alpha, invAlpha);
+                const pixelIndex = rowStart + px;
+                const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = alpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * alpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * alpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * alpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
             }
         }
     }
@@ -1862,7 +1883,17 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * inverseIncomingAlpha;
+const __outA = incomingAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                     }
                 }
             } else if (intersections.length >= 2) {
@@ -1896,7 +1927,17 @@ class QuadScanOps {
                             if (isOpaque) {
                                 data32[pixelIndex] = packedColor;
                             } else {
-                                PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                                const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * inverseIncomingAlpha;
+const __outA = incomingAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                             }
                         }
                     } else {
@@ -1964,7 +2005,17 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * inverseIncomingAlpha;
+const __outA = incomingAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                     }
                 }
             } else {
@@ -2074,17 +2125,17 @@ class RectOpsRot {
             const bitIndex = pos & 7;
             if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
         }
-        const idx = pos * 4;
-        const oldAlpha = data[idx + 3] / 255;
-        const oldAlphaScaled = oldAlpha * invAlpha;
-        const newAlpha = effectiveAlpha + oldAlphaScaled;
-        if (newAlpha > 0) {
-            const blendFactor = 1 / newAlpha;
-            data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-            data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-            data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-            data[idx + 3] = newAlpha * 255;
-        }
+        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
     }
 
     /**
@@ -2598,17 +2649,17 @@ class RectOpsAA {
                 const bitIndex = pos & 7;
                 if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
             }
-            const idx = pos * 4;
-            const oldAlpha = data[idx + 3] / 255;
-            const oldAlphaScaled = oldAlpha * invAlpha;
-            const newAlpha = effectiveAlpha + oldAlphaScaled;
-            if (newAlpha > 0) {
-                const blendFactor = 1 / newAlpha;
-                data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                data[idx + 3] = newAlpha * 255;
-            }
+            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
         };
 
         // Draw top edge (horizontal): pixels from left to right (inclusive)
@@ -2739,17 +2790,17 @@ class RectOpsAA {
                 if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
             }
 
-            const idx = pixelIndex * 4;
-            const oldAlpha = data[idx + 3] / 255;
-            const oldAlphaScaled = oldAlpha * invAlpha;
-            const newAlpha = effectiveAlpha + oldAlphaScaled;
-            if (newAlpha > 0) {
-                const blendFactor = 1 / newAlpha;
-                data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                data[idx + 3] = newAlpha * 255;
-            }
+            const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
         };
 
         // Draw horizontal strokes (top and bottom edges with full thickness)
@@ -2889,18 +2940,17 @@ class RectOpsAA {
                     if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
                 }
 
-                const idx = pixelIndex * 4;
-                const oldAlpha = data[idx + 3] / 255;
-                const oldAlphaScaled = oldAlpha * invAlpha;
-                const newAlpha = effectiveAlpha + oldAlphaScaled;
-
-                if (newAlpha > 0) {
-                    const blendFactor = 1 / newAlpha;
-                    data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                    data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                    data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                    data[idx + 3] = newAlpha * 255;
-                }
+                const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
             }
         }
     }
@@ -3408,7 +3458,17 @@ class CircleOps {
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                     }
                 }
             }
@@ -3462,7 +3522,17 @@ class CircleOps {
         // Render unique pixels with alpha blending
         for (const pos of uniquePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
+                const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
             }
         }
     }
@@ -3949,21 +4019,6 @@ class ArcOps {
         const adjCenterX = Math.floor(cx - 0.5);
         const adjCenterY = Math.floor(cy - 0.5);
 
-        // Helper function to blend a pixel
-        const blendPixel = (pos) => {
-            const idx = pos * 4;
-            const oldAlpha = data[idx + 3] / 255;
-            const oldAlphaScaled = oldAlpha * invAlpha;
-            const newAlpha = effectiveAlpha + oldAlphaScaled;
-            if (newAlpha > 0) {
-                const blendFactor = 1 / newAlpha;
-                data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                data[idx + 3] = newAlpha * 255;
-            }
-        };
-
         // Process each scanline using Bresenham extents
         for (let rel_y = 0; rel_y <= intRadius; rel_y++) {
             const max_rel_x = extents[rel_y];
@@ -3983,7 +4038,17 @@ class ArcOps {
                     if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
                         const pos = abs_y_bottom * width + x;
                         if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            blendPixel(pos);
+                            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                         }
                     }
                 }
@@ -3999,7 +4064,17 @@ class ArcOps {
                     if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
                         const pos = abs_y_top * width + x;
                         if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            blendPixel(pos);
+                            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                         }
                     }
                 }
@@ -4229,7 +4304,17 @@ class ArcOps {
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                     }
                 }
             }
@@ -4280,7 +4365,17 @@ class ArcOps {
         // Render collected pixels with alpha blending
         for (const pos of strokePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
+                const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
             }
         }
     }
@@ -4419,17 +4514,17 @@ class ArcOps {
             if (px >= 0 && px < width && py >= 0 && py < height) {
                 const pos = py * width + px;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                    const idx = pos * 4;
-                    const oldAlpha = data[idx + 3] / 255;
-                    const oldAlphaScaled = oldAlpha * invAlpha;
-                    const newAlpha = effectiveAlpha + oldAlphaScaled;
-                    if (newAlpha > 0) {
-                        const blendFactor = 1 / newAlpha;
-                        data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                        data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                        data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                        data[idx + 3] = newAlpha * 255;
-                    }
+                    const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                 }
             }
             return;
@@ -4445,21 +4540,6 @@ class ArcOps {
 
         const outerRadiusSquared = outerRadius * outerRadius;
         const innerRadiusSquared = innerRadius * innerRadius;
-
-        // Helper function to blend a pixel
-        const blendPixel = (pos) => {
-            const idx = pos * 4;
-            const oldAlpha = data[idx + 3] / 255;
-            const oldAlphaScaled = oldAlpha * invAlpha;
-            const newAlpha = effectiveAlpha + oldAlphaScaled;
-            if (newAlpha > 0) {
-                const blendFactor = 1 / newAlpha;
-                data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                data[idx + 3] = newAlpha * 255;
-            }
-        };
 
         // Scanline iteration
         for (let y = minY; y <= maxY; y++) {
@@ -4491,7 +4571,17 @@ class ArcOps {
                 if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
                     const pos = y * width + x;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        blendPixel(pos);
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                     }
                 }
             }
@@ -4504,7 +4594,17 @@ class ArcOps {
                     if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
                         const pos = y * width + x;
                         if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            blendPixel(pos);
+                            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                         }
                     }
                 }
@@ -4634,17 +4734,17 @@ class ArcOps {
                         if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
                         if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const idx = pos * 4;
-                            const oldAlpha = data[idx + 3] / 255;
-                            const oldAlphaScaled = oldAlpha * fillInvAlpha;
-                            const newAlpha = fillEffectiveAlpha + oldAlphaScaled;
-                            if (newAlpha > 0) {
-                                const blendFactor = 1 / newAlpha;
-                                data[idx] = (fr * fillEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                                data[idx + 1] = (fg * fillEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                                data[idx + 2] = (fb * fillEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                                data[idx + 3] = newAlpha * 255;
-                            }
+                            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * fillInvAlpha;
+const __outA = fillEffectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (fr * fillEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (fg * fillEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (fb * fillEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                         }
                     }
                 }
@@ -4653,6 +4753,7 @@ class ArcOps {
             // STEP 2: Render stroke on top (covers any micro-gaps)
             if (hasStroke) {
                 // Helper function to render a stroke pixel with angle filtering
+                const sr = strokeColor.r, sg = strokeColor.g, sb = strokeColor.b;
                 const renderStrokePixel = (x) => {
                     const dx = x - cX;
                     // Apply angle filtering for arc
@@ -4662,18 +4763,17 @@ class ArcOps {
                         if (strokeIsOpaque) {
                             data32[pos] = strokePacked;
                         } else {
-                            const sr = strokeColor.r, sg = strokeColor.g, sb = strokeColor.b;
-                            const idx = pos * 4;
-                            const oldAlpha = data[idx + 3] / 255;
-                            const oldAlphaScaled = oldAlpha * strokeInvAlpha;
-                            const newAlpha = strokeEffectiveAlpha + oldAlphaScaled;
-                            if (newAlpha > 0) {
-                                const blendFactor = 1 / newAlpha;
-                                data[idx] = (sr * strokeEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                                data[idx + 1] = (sg * strokeEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                                data[idx + 2] = (sb * strokeEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                                data[idx + 3] = newAlpha * 255;
-                            }
+                            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * strokeInvAlpha;
+const __outA = strokeEffectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                         }
                     }
                 };
@@ -4904,7 +5004,17 @@ class LineOps {
                     }
 
                     if (drawPixel) {
-                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * inverseIncomingAlpha;
+const __outA = incomingAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
                     }
                 }
 
@@ -6745,7 +6855,7 @@ class RoundedRectOpsAA {
         collectCorner(posX + posW - radius, posY + posH - radius, 0, HALF_PI);
         collectCorner(posX + radius, posY + posH - radius, HALF_PI, Math.PI);
 
-        // Render all unique pixels once with alpha blending via SpanOps
+        // Render all unique pixels once with alpha blending
         for (const pixelIndex of strokePixels) {
             if (clipBuffer) {
                 const byteIndex = pixelIndex >> 3;
@@ -6753,7 +6863,17 @@ class RoundedRectOpsAA {
                 if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
             }
 
-            PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+            const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * inverseIncomingAlpha;
+const __outA = incomingAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
         }
     }
 
