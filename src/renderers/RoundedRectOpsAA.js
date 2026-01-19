@@ -266,7 +266,7 @@ class RoundedRectOpsAA {
         collectCorner(posX + posW - radius, posY + posH - radius, 0, HALF_PI);
         collectCorner(posX + radius, posY + posH - radius, HALF_PI, Math.PI);
 
-        // Render all unique pixels once with alpha blending via SpanOps
+        // Render all unique pixels once with alpha blending
         for (const pixelIndex of strokePixels) {
             if (clipBuffer) {
                 const byteIndex = pixelIndex >> 3;
@@ -274,7 +274,7 @@ class RoundedRectOpsAA {
                 if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
             }
 
-            PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+            /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
         }
     }
 

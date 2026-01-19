@@ -93,17 +93,7 @@ class RectOpsRot {
             const bitIndex = pos & 7;
             if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
         }
-        const idx = pos * 4;
-        const oldAlpha = data[idx + 3] / 255;
-        const oldAlphaScaled = oldAlpha * invAlpha;
-        const newAlpha = effectiveAlpha + oldAlphaScaled;
-        if (newAlpha > 0) {
-            const blendFactor = 1 / newAlpha;
-            data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-            data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-            data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-            data[idx + 3] = newAlpha * 255;
-        }
+        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
     }
 
     /**

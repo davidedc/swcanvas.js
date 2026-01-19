@@ -346,7 +346,7 @@ class CircleOps {
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
+                        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
             }
@@ -400,7 +400,7 @@ class CircleOps {
         // Render unique pixels with alpha blending
         for (const pos of uniquePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
+                /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
             }
         }
     }

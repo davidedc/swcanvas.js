@@ -99,12 +99,20 @@ Uses object-oriented ES6 class design throughout. See ARCHITECTURE.md for comple
 - **Image creation helpers** - use `createCompatibleImage()` for unified image handling in tests
 - **Separate test architectures** - Visual tests (`/cases/`) verify rendering correctness; parametric performance tests (`/perf-cases/`) benchmark throughput. See tests/direct-rendering/README.md.
 
-### When Making Changes  
+### When Making Changes
 - **Update both paths** - SWCanvas and HTML5Canvas implementations in visual tests
 - **Verify cross-platform** - test in both Node.js and browser
 - **Check all phases** - changes may affect multiple test categories
 - **Build before testing** - `npm run build` then `npm test`
 - **Test with different backgrounds** - Use `BitmapEncodingOptions` to test transparency handling
+
+### Inline Markers for Hot Pixel Loops
+- Use `/*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, alpha, invAlpha)*/` in hot pixel loops instead of `PixelOps.blend_Alpha()`
+- Use `/*@inline:SET_OPAQUE(data32, pixelIndex, packedColor)*/` for opaque pixel writes in hot paths
+- **Clipping contract**: Caller must check `clipBuffer` BEFORE the marker, never inside/after
+- Templates are defined in `build-scripts/preprocess.js`
+- Run `npm run build` to expand markers - check `dist/swcanvas.js` to verify expansion
+- Run `node tests/build/test-preprocessor.js` to test the preprocessor
 
 ### OO Development Patterns
 - **Use proper classes**: Prefer `new SWCanvas.Core.Point(x, y)` over plain objects

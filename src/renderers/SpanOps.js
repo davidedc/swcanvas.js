@@ -132,14 +132,15 @@ class SpanOps {
 
                 const bitOffset = pixelIndex & 7;
                 if ((clipBuffer[byteIndex] & (1 << bitOffset)) !== 0) {
-                    PixelOps.blend_Alpha(data, pixelIndex, r, g, b, alpha, invAlpha);
+                    /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, alpha, invAlpha)*/
                 }
                 px++;
             }
         } else {
             // No clipping
             for (let px = x; px < endX; px++) {
-                PixelOps.blend_Alpha(data, rowStart + px, r, g, b, alpha, invAlpha);
+                const pixelIndex = rowStart + px;
+                /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, alpha, invAlpha)*/
             }
         }
     }

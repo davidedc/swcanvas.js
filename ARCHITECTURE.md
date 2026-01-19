@@ -727,4 +727,68 @@ globalThis.__SWCANVAS_DEBUG__ = true;
 // Then load SWCanvas
 ```
 
+## Build-Time Preprocessing
+
+SWCanvas uses a build-time preprocessor to inline performance-critical pixel operations, eliminating function call overhead in hot loops while maintaining a single source of truth for blending formulas.
+
+### Why Preprocessing?
+
+Static method calls incur function call overhead (stack frame, argument passing, return) that V8 doesn't always optimize away. For operations that are only ~10 arithmetic ops, this overhead is significant. Build-time inlining eliminates it while keeping a single source of truth for the blending formula.
+
+### Marker Syntax
+
+Source files use inline markers that are expanded during the build:
+
+```javascript
+/*@inline:TEMPLATE_NAME(arg1, arg2, ...)*/
+```
+
+Arguments can be expressions (e.g., `pos * 4`, `idx/4`).
+
+### Available Templates
+
+| Template | Parameters | Purpose |
+|----------|------------|---------|
+| `BLEND_ALPHA` | `data, pixelIndex, r, g, b, alpha, invAlpha` | Porter-Duff source-over blending |
+| `SET_OPAQUE` | `data32, pixelIndex, packedColor` | Direct 32-bit pixel write |
+
+### Clipping Contract
+
+**Templates do NOT check clipping.** They follow the "Check Once, Check Correctly" contract where clipping is always the caller's responsibility. The caller must check `clipBuffer` BEFORE using an inline marker, never inside or after.
+
+### Template Definitions
+
+Templates are defined in `build-scripts/preprocess.js`. Local variables use `__` prefix to avoid conflicts with caller variables.
+
+### Build Integration
+
+The build process:
+1. Preprocesses source files containing markers to `.preprocessed/`
+2. Uses preprocessed versions during concatenation
+3. Final `dist/swcanvas.js` contains no markers (all expanded)
+
+### Example Expansion
+
+**Source (SpanOps.js):**
+```javascript
+/*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, alpha, invAlpha)*/
+```
+
+**Expands to (dist/swcanvas.js):**
+```javascript
+{
+    const __off = (pixelIndex) * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * (invAlpha);
+    const __outA = (alpha) + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = ((r) * (alpha) + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = ((g) * (alpha) + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = ((b) * (alpha) + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+```
+
 This architecture represents a **paradigm bridge** that successfully unifies web standards compliance, performance optimization, and clean API design in a single coherent system.

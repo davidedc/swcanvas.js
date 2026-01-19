@@ -204,7 +204,7 @@ class LineOps {
                     }
 
                     if (drawPixel) {
-                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
                     }
                 }
 

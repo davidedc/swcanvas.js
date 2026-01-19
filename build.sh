@@ -7,6 +7,40 @@ set -e
 
 echo "Building SWCanvas.js..."
 
+# Step 0: Preprocess files with inline markers
+echo "Preprocessing inline markers..."
+rm -rf .preprocessed
+mkdir -p .preprocessed/renderers
+
+# List of files that may have inline markers
+PREPROCESSED_FILES=(
+    "src/renderers/SpanOps.js"
+    "src/renderers/CircleOps.js"
+    "src/renderers/ArcOps.js"
+    "src/renderers/LineOps.js"
+    "src/renderers/RectOpsRot.js"
+    "src/renderers/RoundedRectOpsAA.js"
+    "src/renderers/QuadScanOps.js"
+    "src/renderers/RectOpsAA.js"
+)
+
+for file in "${PREPROCESSED_FILES[@]}"; do
+    outfile=".preprocessed/${file#src/}"
+    mkdir -p "$(dirname "$outfile")"
+    node build-scripts/preprocess.js "$file" "$outfile"
+done
+
+# Helper function to get file path (use preprocessed if available)
+get_src() {
+    local file="$1"
+    local preprocessed=".preprocessed/${file#src/}"
+    if [ -f "$preprocessed" ]; then
+        echo "$preprocessed"
+    else
+        echo "$file"
+    fi
+}
+
 # Step 1: Build modular tests (if directories exist)
 if [ -d "tests/core" ] || [ -d "tests/visual" ]; then
     echo "Building modular tests..."
@@ -48,25 +82,26 @@ echo "" >> dist/swcanvas.js
 
 # Phase 1.5: Shape rendering operations (depend on Surface)
 # PixelOps must come before SpanOps (SpanOps depends on it)
+# Note: Some files use preprocessed versions with expanded inline markers
 cat src/renderers/PixelOps.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/SpanOps.js >> dist/swcanvas.js
+cat "$(get_src src/renderers/SpanOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/QuadScanOps.js >> dist/swcanvas.js
+cat "$(get_src src/renderers/QuadScanOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/RectOpsRot.js >> dist/swcanvas.js
+cat "$(get_src src/renderers/RectOpsRot.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/RectOpsAA.js >> dist/swcanvas.js
+cat "$(get_src src/renderers/RectOpsAA.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/CircleOps.js >> dist/swcanvas.js
+cat "$(get_src src/renderers/CircleOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/ArcOps.js >> dist/swcanvas.js
+cat "$(get_src src/renderers/ArcOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/LineOps.js >> dist/swcanvas.js
+cat "$(get_src src/renderers/LineOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/renderers/RoundedRectOpsRot.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/RoundedRectOpsAA.js >> dist/swcanvas.js
+cat "$(get_src src/renderers/RoundedRectOpsAA.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 
 # Phase 2: Core Service classes (depend on foundation)

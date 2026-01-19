@@ -179,21 +179,6 @@ class ArcOps {
         const adjCenterX = Math.floor(cx - 0.5);
         const adjCenterY = Math.floor(cy - 0.5);
 
-        // Helper function to blend a pixel
-        const blendPixel = (pos) => {
-            const idx = pos * 4;
-            const oldAlpha = data[idx + 3] / 255;
-            const oldAlphaScaled = oldAlpha * invAlpha;
-            const newAlpha = effectiveAlpha + oldAlphaScaled;
-            if (newAlpha > 0) {
-                const blendFactor = 1 / newAlpha;
-                data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                data[idx + 3] = newAlpha * 255;
-            }
-        };
-
         // Process each scanline using Bresenham extents
         for (let rel_y = 0; rel_y <= intRadius; rel_y++) {
             const max_rel_x = extents[rel_y];
@@ -213,7 +198,7 @@ class ArcOps {
                     if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
                         const pos = abs_y_bottom * width + x;
                         if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            blendPixel(pos);
+                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                         }
                     }
                 }
@@ -229,7 +214,7 @@ class ArcOps {
                     if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
                         const pos = abs_y_top * width + x;
                         if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            blendPixel(pos);
+                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                         }
                     }
                 }
@@ -459,7 +444,7 @@ class ArcOps {
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
+                        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
             }
@@ -510,7 +495,7 @@ class ArcOps {
         // Render collected pixels with alpha blending
         for (const pos of strokePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
+                /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
             }
         }
     }
@@ -649,17 +634,7 @@ class ArcOps {
             if (px >= 0 && px < width && py >= 0 && py < height) {
                 const pos = py * width + px;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                    const idx = pos * 4;
-                    const oldAlpha = data[idx + 3] / 255;
-                    const oldAlphaScaled = oldAlpha * invAlpha;
-                    const newAlpha = effectiveAlpha + oldAlphaScaled;
-                    if (newAlpha > 0) {
-                        const blendFactor = 1 / newAlpha;
-                        data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                        data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                        data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                        data[idx + 3] = newAlpha * 255;
-                    }
+                    /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                 }
             }
             return;
@@ -675,21 +650,6 @@ class ArcOps {
 
         const outerRadiusSquared = outerRadius * outerRadius;
         const innerRadiusSquared = innerRadius * innerRadius;
-
-        // Helper function to blend a pixel
-        const blendPixel = (pos) => {
-            const idx = pos * 4;
-            const oldAlpha = data[idx + 3] / 255;
-            const oldAlphaScaled = oldAlpha * invAlpha;
-            const newAlpha = effectiveAlpha + oldAlphaScaled;
-            if (newAlpha > 0) {
-                const blendFactor = 1 / newAlpha;
-                data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                data[idx + 3] = newAlpha * 255;
-            }
-        };
 
         // Scanline iteration
         for (let y = minY; y <= maxY; y++) {
@@ -721,7 +681,7 @@ class ArcOps {
                 if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
                     const pos = y * width + x;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        blendPixel(pos);
+                        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
             }
@@ -734,7 +694,7 @@ class ArcOps {
                     if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
                         const pos = y * width + x;
                         if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            blendPixel(pos);
+                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                         }
                     }
                 }
@@ -864,17 +824,7 @@ class ArcOps {
                         if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
                         if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const idx = pos * 4;
-                            const oldAlpha = data[idx + 3] / 255;
-                            const oldAlphaScaled = oldAlpha * fillInvAlpha;
-                            const newAlpha = fillEffectiveAlpha + oldAlphaScaled;
-                            if (newAlpha > 0) {
-                                const blendFactor = 1 / newAlpha;
-                                data[idx] = (fr * fillEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                                data[idx + 1] = (fg * fillEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                                data[idx + 2] = (fb * fillEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                                data[idx + 3] = newAlpha * 255;
-                            }
+                            /*@inline:BLEND_ALPHA(data, pos, fr, fg, fb, fillEffectiveAlpha, fillInvAlpha)*/
                         }
                     }
                 }
@@ -883,6 +833,7 @@ class ArcOps {
             // STEP 2: Render stroke on top (covers any micro-gaps)
             if (hasStroke) {
                 // Helper function to render a stroke pixel with angle filtering
+                const sr = strokeColor.r, sg = strokeColor.g, sb = strokeColor.b;
                 const renderStrokePixel = (x) => {
                     const dx = x - cX;
                     // Apply angle filtering for arc
@@ -892,18 +843,7 @@ class ArcOps {
                         if (strokeIsOpaque) {
                             data32[pos] = strokePacked;
                         } else {
-                            const sr = strokeColor.r, sg = strokeColor.g, sb = strokeColor.b;
-                            const idx = pos * 4;
-                            const oldAlpha = data[idx + 3] / 255;
-                            const oldAlphaScaled = oldAlpha * strokeInvAlpha;
-                            const newAlpha = strokeEffectiveAlpha + oldAlphaScaled;
-                            if (newAlpha > 0) {
-                                const blendFactor = 1 / newAlpha;
-                                data[idx] = (sr * strokeEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                                data[idx + 1] = (sg * strokeEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                                data[idx + 2] = (sb * strokeEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                                data[idx + 3] = newAlpha * 255;
-                            }
+                            /*@inline:BLEND_ALPHA(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha)*/
                         }
                     }
                 };

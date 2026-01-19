@@ -164,7 +164,7 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
                     }
                 }
             } else if (intersections.length >= 2) {
@@ -198,7 +198,7 @@ class QuadScanOps {
                             if (isOpaque) {
                                 data32[pixelIndex] = packedColor;
                             } else {
-                                PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                                /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
                             }
                         }
                     } else {
@@ -266,7 +266,7 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
                     }
                 }
             } else {

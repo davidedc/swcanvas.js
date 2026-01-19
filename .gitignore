@@ -27,3 +27,6 @@ tests/.DS_Store
 
 # Performance test baselines (session-specific data)
 perf-baselines/
+
+# Build-time preprocessed files
+.preprocessed/
