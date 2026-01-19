@@ -201,6 +201,12 @@ CircleOps.fill_Opaq() ────────────► SpanOps.fill_Opaq(
 CircleOps.fill_Alpha() ───────────► SpanOps.fill_Alpha()
    (each scanline)
 
+CircleOps.strokeThick_Alpha() ────► SpanOps.fill_Alpha()
+   (annulus segments)
+
+CircleOps.fillStroke_Any() ───────► SpanOps.fill_Opaq/fill_Alpha
+   (fill spans + stroke segments)
+
 RoundedRectOpsAA.fill_AA_Opaq() ────► SpanOps.fill_Opaq()
    (each scanline)
 

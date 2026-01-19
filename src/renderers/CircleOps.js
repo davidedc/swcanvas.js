@@ -15,14 +15,14 @@
  * ---------------
  * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha
  *
- * Layer 1 (Primitives - do atomic rendering):
- *   fill_Opaq, fill_Alpha (call SpanOps)
- *   stroke1px_Opaq, stroke1px_Alpha
- *   strokeThick_Alpha
+ * Layer 1 (Primitives):
+ *   fill_Opaq, fill_Alpha              → SpanOps.fill_Opaq/fill_Alpha
+ *   stroke1px_Opaq, stroke1px_Alpha    → Direct pixel writes (no SpanOps - overhead too high)
+ *   strokeThick_Any                    → SpanOps.fill_Opaq
+ *   strokeThick_Alpha                  → SpanOps.fill_Alpha
  *
- * Layer 2 (Composites/Dispatchers):
- *   strokeThick_Any → strokeThick_Alpha (for semi-transparent)
- *   fillStroke_Any  → inline rendering (single-pass)
+ * Layer 2 (Composites):
+ *   fillStroke_Any                     → SpanOps.fill_Opaq/fill_Alpha
  *
  * NAMING PATTERN: {operation}[Thickness]_{opacity}
  *   - Opaq = Opaque only, Alpha = Semi-transparent, Any = Handles both
@@ -530,66 +530,28 @@ class CircleOps {
                 innerRightX = Math.ceil(cX + innerXDist);
             }
 
-            // STEP 1: Render fill first (if this row intersects the fill circle)
+            // STEP 1: Render fill first (if this row intersects the fill circle) via SpanOps
             if (hasFill && leftFillX >= 0 && leftFillX <= rightFillX) {
+                const fillSpanLength = rightFillX - leftFillX + 1;
                 if (fillIsOpaque) {
-                    for (let x = leftFillX; x <= rightFillX; x++) {
-                        const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = fillPacked;
-                        }
-                    }
+                    SpanOps.fill_Opaq(data32, width, height, leftFillX, y, fillSpanLength, fillPacked, clipBuffer);
                 } else {
-                    const fr = fillColor.r, fg = fillColor.g, fb = fillColor.b;
-                    for (let x = leftFillX; x <= rightFillX; x++) {
-                        const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const idx = pos * 4;
-                            const oldAlpha = data[idx + 3] / 255;
-                            const oldAlphaScaled = oldAlpha * fillInvAlpha;
-                            const newAlpha = fillEffectiveAlpha + oldAlphaScaled;
-                            if (newAlpha > 0) {
-                                const blendFactor = 1 / newAlpha;
-                                data[idx] = (fr * fillEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                                data[idx + 1] = (fg * fillEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                                data[idx + 2] = (fb * fillEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                                data[idx + 3] = newAlpha * 255;
-                            }
-                        }
-                    }
+                    SpanOps.fill_Alpha(data, width, height, leftFillX, y, fillSpanLength,
+                        fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
                 }
             }
 
-            // STEP 2: Render stroke on top (covers any micro-gaps)
+            // STEP 2: Render stroke on top (covers any micro-gaps) via SpanOps
             if (hasStroke) {
-                // Helper function to render a stroke segment
+                // Helper function to render a stroke segment via SpanOps
                 const renderStrokeSegment = (startX, endX) => {
                     if (startX > endX) return;
+                    const spanLength = endX - startX + 1;
                     if (strokeIsOpaque) {
-                        for (let x = startX; x <= endX; x++) {
-                            const pos = y * width + x;
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                                data32[pos] = strokePacked;
-                            }
-                        }
+                        SpanOps.fill_Opaq(data32, width, height, startX, y, spanLength, strokePacked, clipBuffer);
                     } else {
-                        const sr = strokeColor.r, sg = strokeColor.g, sb = strokeColor.b;
-                        for (let x = startX; x <= endX; x++) {
-                            const pos = y * width + x;
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                                const idx = pos * 4;
-                                const oldAlpha = data[idx + 3] / 255;
-                                const oldAlphaScaled = oldAlpha * strokeInvAlpha;
-                                const newAlpha = strokeEffectiveAlpha + oldAlphaScaled;
-                                if (newAlpha > 0) {
-                                    const blendFactor = 1 / newAlpha;
-                                    data[idx] = (sr * strokeEffectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                                    data[idx + 1] = (sg * strokeEffectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                                    data[idx + 2] = (sb * strokeEffectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                                    data[idx + 3] = newAlpha * 255;
-                                }
-                            }
-                        }
+                        SpanOps.fill_Alpha(data, width, height, startX, y, spanLength,
+                            strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
                     }
                 };
 
@@ -739,61 +701,24 @@ class CircleOps {
             const outerRightX = Math.min(maxX, Math.floor(cX + outerXDist));
 
             if (innerRadius <= 0 || dySquared > innerRadiusSquared) {
-                for (let x = outerLeftX; x <= outerRightX; x++) {
-                    const pos = y * width + x;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const idx = pos * 4;
-                        const oldAlpha = data[idx + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * invAlpha;
-                        const newAlpha = effectiveAlpha + oldAlphaScaled;
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                            data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                            data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                            data[idx + 3] = newAlpha * 255;
-                        }
-                    }
-                }
+                // No inner circle intersection - draw full span via SpanOps
+                const spanLength = outerRightX - outerLeftX + 1;
+                SpanOps.fill_Alpha(data, width, height, outerLeftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
             } else {
                 const innerXDist = Math.sqrt(innerRadiusSquared - dySquared);
                 const innerLeftX = Math.min(outerRightX, Math.floor(cX - innerXDist));
                 const innerRightX = Math.max(outerLeftX, Math.ceil(cX + innerXDist));
 
-                // Left segment
-                for (let x = outerLeftX; x <= innerLeftX; x++) {
-                    const pos = y * width + x;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const idx = pos * 4;
-                        const oldAlpha = data[idx + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * invAlpha;
-                        const newAlpha = effectiveAlpha + oldAlphaScaled;
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                            data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                            data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                            data[idx + 3] = newAlpha * 255;
-                        }
-                    }
+                // Left segment via SpanOps
+                const leftLen = innerLeftX - outerLeftX + 1;
+                if (leftLen > 0) {
+                    SpanOps.fill_Alpha(data, width, height, outerLeftX, y, leftLen, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 }
 
-                // Right segment
-                for (let x = innerRightX; x <= outerRightX; x++) {
-                    const pos = y * width + x;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const idx = pos * 4;
-                        const oldAlpha = data[idx + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * invAlpha;
-                        const newAlpha = effectiveAlpha + oldAlphaScaled;
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                            data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                            data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                            data[idx + 3] = newAlpha * 255;
-                        }
-                    }
+                // Right segment via SpanOps
+                const rightLen = outerRightX - innerRightX + 1;
+                if (rightLen > 0) {
+                    SpanOps.fill_Alpha(data, width, height, innerRightX, y, rightLen, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 }
             }
         }
