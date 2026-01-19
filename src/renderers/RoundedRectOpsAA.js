@@ -93,7 +93,7 @@ class RoundedRectOpsAA {
      * @param {number} height - Rectangle height
      * @param {number|number[]} radii - Corner radius (single value or array)
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static stroke1px_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -193,7 +193,7 @@ class RoundedRectOpsAA {
      * @param {number|number[]} radii - Corner radius (single value or array)
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static stroke1px_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -303,7 +303,7 @@ class RoundedRectOpsAA {
      * @param {number} height - Rectangle height
      * @param {number|number[]} radii - Corner radius
      * @param {Color} color - Fill color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static fill_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -389,7 +389,7 @@ class RoundedRectOpsAA {
      * @param {number|number[]} radii - Corner radius
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static fill_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -477,7 +477,7 @@ class RoundedRectOpsAA {
      * @param {number|number[]} radii - Corner radius
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static strokeThick_AA_Opaq(surface, x, y, width, height, radii, lineWidth, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -570,7 +570,7 @@ class RoundedRectOpsAA {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static strokeThick_AA_Alpha(surface, x, y, width, height, radii, lineWidth, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -670,7 +670,7 @@ class RoundedRectOpsAA {
      * @param {Color|null} fillColor - Fill color (null to skip fill)
      * @param {Color|null} strokeColor - Stroke color (null to skip stroke)
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
     static fillStroke_AA_Any(surface, x, y, width, height, radii, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;

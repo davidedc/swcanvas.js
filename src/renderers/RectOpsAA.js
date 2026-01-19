@@ -37,7 +37,7 @@ class RectOpsAA {
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -105,7 +105,7 @@ class RectOpsAA {
      * @param {number} height - Rectangle height
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -176,7 +176,7 @@ class RectOpsAA {
      * @param {number} height - Rectangle height
      * @param {number} lineWidth - Stroke width in pixels
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -239,7 +239,7 @@ class RectOpsAA {
      * @param {number} lineWidth - Stroke width in pixels
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
@@ -360,7 +360,7 @@ class RectOpsAA {
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
      * @param {Color} color - Fill color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -397,7 +397,7 @@ class RectOpsAA {
      * @param {number} height - Rectangle height
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -458,7 +458,7 @@ class RectOpsAA {
      * @param {Color} fillColor - Fill color (may be null)
      * @param {Color} strokeColor - Stroke color (may be null)
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fillStroke_AA_Any(surface, x, y, width, height, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;

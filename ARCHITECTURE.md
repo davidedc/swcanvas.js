@@ -672,4 +672,59 @@ cat src/renderers/RoundedRectOpsAA.js >> dist/swcanvas.js
 
 Note: `FastPixelOps.js` is loaded earlier (before Phase 1.5) as it provides foundational pixel utilities.
 
+## Clipping Invariant: "Check Once, Check Correctly"
+
+SWCanvas enforces that every pixel write path checks clipping **EXACTLY ONCE**. This invariant prevents both security holes (missing checks) and performance waste (redundant checks).
+
+### Layer Responsibilities
+
+| Layer | Clipping Responsibility | Example Methods |
+|-------|------------------------|-----------------|
+| **PixelOps** | NONE - caller must check | `blend_Alpha()` |
+| **SpanOps** | YES - primary checkpoint | `fill_Opaq()`, `fill_Alpha()` |
+| **Shape *Ops** | Delegate OR inline (never both) | See method `@param` annotations |
+
+### The Two Rendering Paths
+
+**Path A: Span-Based Rendering** (most fills, thick strokes)
+```
+Shape renderer → SpanOps.fill_* → clipBuffer check → pixel write
+```
+- SpanOps handles clipping with byte-skip optimization
+- Callers pass `clipBuffer` but do NOT pre-check
+
+**Path B: Per-Pixel Rendering** (1px strokes, Bresenham lines)
+```
+Shape renderer → inline clipBuffer check → PixelOps.blend_Alpha or direct write
+```
+- Shape renderer checks clipping inline before each pixel
+- PixelOps has NO clipping responsibility (documented contract)
+
+### Rules for New Code
+
+1. **Using SpanOps?** → Pass `clipBuffer`, do NOT pre-check
+2. **Writing pixels directly?** → Check `clipBuffer` inline before each write
+3. **Never** check clipping then call something that also checks
+4. **Document** clipping responsibility in `@param` JSDoc using one of:
+   - `(CLIPPING: delegated to SpanOps)`
+   - `(CLIPPING: checked inline per-pixel)`
+   - `(CLIPPING: delegated to QuadScanOps)` etc.
+
+### Standard Clipping Check Pattern
+
+All inline clipping checks use this consistent bit-check pattern:
+```javascript
+if (!clipBuffer || (clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7)))) {
+    // Pixel is visible - proceed with write
+}
+```
+
+### Verification
+
+Enable debug assertions in development to catch clipping contract violations:
+```javascript
+globalThis.__SWCANVAS_DEBUG__ = true;
+// Then load SWCanvas
+```
+
 This architecture represents a **paradigm bridge** that successfully unifies web standards compliance, performance optimization, and clean API design in a single coherent system.

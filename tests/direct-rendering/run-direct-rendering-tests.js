@@ -8,7 +8,14 @@
 const fs = require('fs');
 const path = require('path');
 
-// Load SWCanvas
+// Check for --debug flag BEFORE loading SWCanvas (must be first)
+const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
+if (debugMode) {
+    globalThis.__SWCANVAS_DEBUG__ = true;
+    console.log('[Debug mode enabled - assertions active]');
+}
+
+// Load SWCanvas (after debug flag is set)
 const SWCanvas = require('../../dist/swcanvas.js');
 
 // Load test utilities
@@ -83,6 +90,7 @@ Options:
   -i, --iterations=<N>    Number of iterations to run (default: 1)
   -s, --start=<N>         Starting iteration number (default: 1)
   -l, --logs              Show test logs (verbose output)
+  -d, --debug             Enable debug assertions (validates clipping contracts)
   --list                  List matched tests without running them
   -h, --help              Show this help message
 

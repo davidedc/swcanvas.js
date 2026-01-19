@@ -33,7 +33,7 @@ class LineOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} paintSource - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: inline per-pixel for Bresenham, delegated to SpanOps/QuadScanOps for spans)
      * @param {boolean} isOpaqueColor - True if color is opaque with full alpha
      * @param {boolean} isSemiTransparentColor - True if color needs alpha blending
      * @returns {boolean} True if direct rendering was used, false if path-based rendering needed
@@ -242,7 +242,7 @@ class LineOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} paintSource - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps)
      * @param {boolean} useSemiTransparent - If true, use alpha blending
      */
     static _strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, useSemiTransparent = false) {

@@ -24,8 +24,10 @@ cat > dist/swcanvas.js << 'EOF'
 EOF
 
 # Concatenate source files in dependency order
-# Phase 0: Constants (no dependencies - load first)
+# Phase 0: Constants and Debug utilities (no dependencies - load first)
 cat src/SWCanvasConstants.js >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
+cat src/core/Debug.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 
 # Phase 1: Core Foundation classes (no dependencies)
@@ -198,7 +200,11 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             PixelOps: PixelOps,
-            RoundedRectOpsAA: RoundedRectOpsAA
+            RoundedRectOpsAA: RoundedRectOpsAA,
+            IS_DEBUG: IS_DEBUG,
+            assertDebug: assertDebug,
+            debugLog: debugLog,
+            debugWarn: debugWarn
         }
     };
 } else if (typeof module !== 'undefined' && module.exports) {
@@ -240,7 +246,11 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             PixelOps: PixelOps,
-            RoundedRectOpsAA: RoundedRectOpsAA
+            RoundedRectOpsAA: RoundedRectOpsAA,
+            IS_DEBUG: IS_DEBUG,
+            assertDebug: assertDebug,
+            debugLog: debugLog,
+            debugWarn: debugWarn
         }
     };
 }

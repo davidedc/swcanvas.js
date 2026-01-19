@@ -190,7 +190,7 @@ class RoundedRectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static fill_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, color, globalAlpha, clipBuffer = null) {
         // Normalize radius
@@ -228,7 +228,7 @@ class RoundedRectOpsRot {
      * @param {number} radius - Corner radius (already normalized)
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Fill color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _fill_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, color, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -360,7 +360,7 @@ class RoundedRectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _fill_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -476,7 +476,7 @@ class RoundedRectOpsRot {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static stroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, color, globalAlpha, clipBuffer = null) {
         // Normalize radius
@@ -524,7 +524,7 @@ class RoundedRectOpsRot {
      * @param {number} radius - Corner radius (already normalized)
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _stroke1px_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, color, clipBuffer) {
         // Pre-compute rotation
@@ -637,7 +637,7 @@ class RoundedRectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _stroke1px_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -788,7 +788,7 @@ class RoundedRectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _strokeThick_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -924,7 +924,7 @@ class RoundedRectOpsRot {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _strokeThick_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -1074,7 +1074,7 @@ class RoundedRectOpsRot {
      * @param {Color} fillColor - Fill color (null/undefined to skip fill)
      * @param {Color} strokeColor - Stroke color (null/undefined to skip stroke)
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static fillStroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
         // Normalize radius
@@ -1140,7 +1140,7 @@ class RoundedRectOpsRot {
      * @param {Color} fillColor - Fill color
      * @param {Color} strokeColor - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _fillStroke_Rot_1px(surface, centerX, centerY, width, height, radius, rotation, fillColor, strokeColor, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;
@@ -1316,7 +1316,7 @@ class RoundedRectOpsRot {
      * @param {Color} fillColor - Fill color
      * @param {Color} strokeColor - Stroke color
      * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
     static _fillStroke_Rot_Unified(surface, centerX, centerY, width, height, radius, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
         const surfaceWidth = surface.width;

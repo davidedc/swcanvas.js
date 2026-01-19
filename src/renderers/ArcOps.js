@@ -86,7 +86,7 @@ class ArcOps {
      * @param {number} startAngle - Start angle in radians
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Fill color
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static fill_Opaq(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer) {
         const width = surface.width;
@@ -158,7 +158,7 @@ class ArcOps {
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static fill_Alpha(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -247,7 +247,7 @@ class ArcOps {
      * @param {number} startAngle - Start angle in radians
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Opaq(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer) {
         const width = surface.width;
@@ -343,7 +343,7 @@ class ArcOps {
      * @param {number} startAngle - Start angle in radians
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Opaq_Exact(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer) {
         const width = surface.width;
@@ -425,7 +425,7 @@ class ArcOps {
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Alpha(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -526,7 +526,7 @@ class ArcOps {
      * @param {number} endAngle - End angle in radians
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static strokeOuter_Opaq(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, clipBuffer) {
         const width = surface.width;
@@ -626,7 +626,7 @@ class ArcOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static strokeOuter_Alpha(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -756,7 +756,7 @@ class ArcOps {
      * @param {Color} fillColor - Fill color (null/undefined for no fill)
      * @param {Color} strokeColor - Stroke color (null/undefined for no stroke)
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static fillStrokeOuter_Any(surface, cx, cy, radius, startAngle, endAngle, lineWidth,
         fillColor, strokeColor, globalAlpha, clipBuffer) {

@@ -79,7 +79,7 @@ class QuadScanOps {
      * @param {number} [params.packedColor] - Pre-packed color for opaque rendering
      * @param {number} [params.incomingAlpha] - Effective alpha (0-1) for blending
      * @param {number} [params.inverseIncomingAlpha] - 1 - incomingAlpha for blending
-     * @param {Uint8Array|null} params.clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} params.clipBuffer - Clip mask (CLIPPING: inline per-pixel or delegated to SpanOps depending on mode)
      * @param {Set|null} [params.collectTo] - Add rendered pixel positions to this Set
      * @param {Set|null} [params.skipFrom] - Skip pixels that are in this Set
      */
@@ -220,7 +220,7 @@ class QuadScanOps {
      * @param {number} centerX - Center X
      * @param {number} centerY - Center Y
      * @param {number} halfSize - Half the square size (typically lineWidth / 2)
-     * @param {Object} params - Same parameters as fillQuad
+     * @param {Object} params - Same parameters as fillQuad (CLIPPING: inline per-pixel or delegated to SpanOps)
      */
     static fillSquare(centerX, centerY, halfSize, params) {
         const { surface, r, g, b, isOpaque, clipBuffer } = params;

@@ -84,7 +84,7 @@ class RectOpsRot {
      * @param {number} b - Blue component (0-255)
      * @param {number} effectiveAlpha - Effective alpha (0-1)
      * @param {number} invAlpha - 1 - effectiveAlpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      * @private
      */
     static _blendPixelAlpha(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer) {
@@ -116,7 +116,7 @@ class RectOpsRot {
      * @param {Array} corners - 4 corner points [{x, y}, ...]
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      * @param {boolean} isOpaqueColor - True if color is fully opaque
      * @private
      */
@@ -225,7 +225,7 @@ class RectOpsRot {
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
     static fill_Rot_Any(surface, centerX, centerY, width, height, rotation, color, globalAlpha, clipBuffer) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
@@ -278,7 +278,7 @@ class RectOpsRot {
      * @param {number} lineWidth - Stroke width in pixels
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
     static _stroke_Rot_Alpha(surface, centerX, centerY, width, height, rotation,
                               lineWidth, color, globalAlpha, clipBuffer) {
@@ -371,7 +371,7 @@ class RectOpsRot {
      * @param {number} lineWidth - Stroke width in pixels
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
     static stroke_Rot_Any(surface, centerX, centerY, width, height, rotation, lineWidth, color, globalAlpha, clipBuffer) {
         const cos = Math.cos(rotation);
@@ -466,7 +466,7 @@ class RectOpsRot {
      * @param {Color} fillColor - Fill color (may be null)
      * @param {Color} strokeColor - Stroke color (may be null)
      * @param {number} globalAlpha - Context global alpha (0-1)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
     static fillStroke_Rot_Any(surface, centerX, centerY, width, height, rotation,
                                 lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {

@@ -83,7 +83,7 @@ class CircleOps {
      * @param {number} cy - Center Y
      * @param {number} radius - Circle radius
      * @param {Color} color - Fill color (must be opaque, alpha=255)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fill_Opaq(surface, cx, cy, radius, color, clipBuffer) {
         const width = surface.width;
@@ -135,7 +135,7 @@ class CircleOps {
      * @param {number} radius - Circle radius
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fill_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -194,7 +194,7 @@ class CircleOps {
      * @param {number} cy - Center Y
      * @param {number} radius - Circle radius
      * @param {Color} color - Stroke color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Opaq(surface, cx, cy, radius, color, clipBuffer) {
         const width = surface.width;
@@ -318,7 +318,7 @@ class CircleOps {
      * @param {number} radius - Circle radius
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
     static stroke1px_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -424,7 +424,7 @@ class CircleOps {
      * @param {Color} fillColor - Fill color
      * @param {Color} strokeColor - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static fillStroke_Any(surface, cx, cy, radius, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -557,7 +557,7 @@ class CircleOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: inline per-pixel for opaque, delegated to SpanOps for alpha)
      */
     static strokeThick_Any(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer) {
         const width = surface.width;
@@ -646,7 +646,7 @@ class CircleOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
     static strokeThick_Alpha(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer) {
         const width = surface.width;

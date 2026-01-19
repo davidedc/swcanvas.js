@@ -597,7 +597,33 @@ For direct rendering system documentation (RectOps, CircleOps, LineOps, ArcOps, 
 
 ## Development
 
-**Debug Utilities**: See [debug/README.md](debug/README.md) for debugging scripts, templates, and investigation workflows.
+### Debug Mode
+
+Enable debug assertions in development to catch contract violations and trace execution:
+
+```javascript
+// Enable before loading SWCanvas
+globalThis.__SWCANVAS_DEBUG__ = true;
+
+// Then load SWCanvas
+const SWCanvas = require('./dist/swcanvas.js');
+
+// Debug utilities available via Core API
+SWCanvas.Core.assertDebug(condition, 'error message');
+SWCanvas.Core.debugLog('trace message');
+SWCanvas.Core.debugWarn('warning message');
+```
+
+Debug mode provides:
+- Runtime assertions for architecture contract verification
+- Debug logging for tracing execution
+- Clipping invariant validation (see [ARCHITECTURE.md](ARCHITECTURE.md) for clipping contracts)
+
+**Production builds** completely strip debug code via Terser's dead code elimination.
+
+### Debug Utilities
+
+See [debug/README.md](debug/README.md) for debugging scripts, templates, and investigation workflows.
 
 ## License
 

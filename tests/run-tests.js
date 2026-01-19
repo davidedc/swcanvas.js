@@ -5,6 +5,13 @@
 const fs = require('fs');
 const path = require('path');
 
+// Check for --debug flag BEFORE loading SWCanvas (must be first)
+const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
+if (debugMode) {
+    globalThis.__SWCANVAS_DEBUG__ = true;
+    console.log('[Debug mode enabled - assertions active]');
+}
+
 // Load built tests (no fallbacks - these are required)
 console.log('Loading built modular tests...');
 const CoreFunctionalityTests = require('./dist/core-functionality-tests.js');

@@ -9,6 +9,15 @@
  *   - Called by: RectOpsAA, RectOpsRot, CircleOps, LineOps, ArcOps,
  *                RoundedRectOpsAA, RoundedRectOpsRot
  *
+ * CLIPPING CONTRACT:
+ * ------------------
+ * SpanOps IS RESPONSIBLE for clipping checks when clipBuffer is provided.
+ * Callers MUST NOT pre-check clipping before calling SpanOps methods.
+ * This is the PRIMARY clipping checkpoint for span-based rendering.
+ *
+ * Methods check each pixel against clipBuffer (with byte-skip optimization)
+ * before writing. Passing clipBuffer=null disables clipping checks.
+ *
  * NAMING PATTERN: {operation}_{opacity}
  *   - fill_Opaq: Opaque span fill (32-bit writes)
  *   - fill_Alpha: Semi-transparent span fill (calls PixelOps.blend_Alpha)
@@ -23,7 +32,7 @@ class SpanOps {
      * @param {number} y - Y coordinate of the span
      * @param {number} length - Length of the span in pixels
      * @param {number} packedColor - Pre-packed 32-bit RGBA color
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled here with byte-skip optimization)
      */
     static fill_Opaq(data32, surfaceWidth, surfaceHeight, startX, y, length, packedColor, clipBuffer) {
         // Y bounds check - use floor for consistent pixel alignment
@@ -84,7 +93,7 @@ class SpanOps {
      * @param {number} b - Blue component (0-255)
      * @param {number} alpha - Alpha as fraction (0-1)
      * @param {number} invAlpha - Inverse alpha (1 - alpha)
-     * @param {Uint8Array|null} clipBuffer - Optional clip mask buffer
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled here with byte-skip optimization)
      */
     static fill_Alpha(data, surfaceWidth, surfaceHeight, startX, y, length, r, g, b, alpha, invAlpha, clipBuffer) {
         // Y bounds check - use floor for consistent pixel alignment
