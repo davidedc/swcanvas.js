@@ -751,10 +751,23 @@ Arguments can be expressions (e.g., `pos * 4`, `idx/4`).
 |----------|------------|---------|
 | `BLEND_ALPHA` | `data, pixelIndex, r, g, b, alpha, invAlpha` | Porter-Duff source-over blending |
 | `SET_OPAQUE` | `data32, pixelIndex, packedColor` | Direct 32-bit pixel write |
+| `BLEND_ALPHA_CLIPPED` | `data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer` | Alpha blending with inline clipping |
+| `SET_OPAQUE_CLIPPED` | `data32, pixelIndex, packedColor, clipBuffer` | Opaque write with inline clipping |
 
 ### Clipping Contract
 
-**Templates do NOT check clipping.** They follow the "Check Once, Check Correctly" contract where clipping is always the caller's responsibility. The caller must check `clipBuffer` BEFORE using an inline marker, never inside or after.
+Templates follow two contracts based on their use case:
+
+**Standard Templates** (`BLEND_ALPHA`, `SET_OPAQUE`):
+- Do NOT check clipping - caller must check `clipBuffer` BEFORE the marker
+- Used with span-based rendering where clipping is handled by SpanOps
+
+**Clipped Templates** (`BLEND_ALPHA_CLIPPED`, `SET_OPAQUE_CLIPPED`):
+- Include clipping check internally: `if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7))))`
+- Used in per-pixel loops where clipping cannot be hoisted to span level
+- Bounds checking remains caller's responsibility
+
+Both contracts uphold the "Check Once, Check Correctly" invariant - clipping is checked exactly once per pixel write.
 
 ### Template Definitions
 

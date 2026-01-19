@@ -107,9 +107,17 @@ Uses object-oriented ES6 class design throughout. See ARCHITECTURE.md for comple
 - **Test with different backgrounds** - Use `BitmapEncodingOptions` to test transparency handling
 
 ### Inline Markers for Hot Pixel Loops
-- Use `/*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, alpha, invAlpha)*/` in hot pixel loops instead of `PixelOps.blend_Alpha()`
-- Use `/*@inline:SET_OPAQUE(data32, pixelIndex, packedColor)*/` for opaque pixel writes in hot paths
-- **Clipping contract**: Caller must check `clipBuffer` BEFORE the marker, never inside/after
+**Standard Templates** (caller must check clipping BEFORE):
+- `/*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, alpha, invAlpha)*/` - for span-based alpha blending
+- `/*@inline:SET_OPAQUE(data32, pixelIndex, packedColor)*/` - for span-based opaque writes
+
+**Clipped Templates** (include clipping check, for per-pixel loops):
+- `/*@inline:BLEND_ALPHA_CLIPPED(data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer)*/`
+- `/*@inline:SET_OPAQUE_CLIPPED(data32, pixelIndex, packedColor, clipBuffer)*/`
+
+**Clipping contract**:
+- Standard templates: Caller checks `clipBuffer` BEFORE the marker (for span-based code via SpanOps)
+- Clipped templates: Include clipping check internally (for per-pixel loops where hoisting is not possible)
 - Templates are defined in `build-scripts/preprocess.js`
 - Run `npm run build` to expand markers - check `dist/swcanvas.js` to verify expansion
 - Run `node tests/build/test-preprocessor.js` to test the preprocessor

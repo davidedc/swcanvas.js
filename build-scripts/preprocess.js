@@ -8,9 +8,18 @@
  *
  * CLIPPING CONTRACT:
  * ------------------
- * Templates do NOT include clipping logic. Per ARCHITECTURE.md "Check Once, Check Correctly":
- * - Caller is responsible for checking clipBuffer BEFORE using inline markers
- * - This preserves the single-clipping-check invariant
+ * Templates follow two contracts per ARCHITECTURE.md "Check Once, Check Correctly":
+ *
+ * Standard Templates (BLEND_ALPHA, SET_OPAQUE):
+ * - Do NOT include clipping logic
+ * - Caller checks clipBuffer BEFORE the marker (for span-based rendering)
+ *
+ * Clipped Templates (BLEND_ALPHA_CLIPPED, SET_OPAQUE_CLIPPED):
+ * - Include clipping logic: if (!clipBuffer || bit-check)
+ * - For per-pixel loops where clipping cannot be hoisted
+ * - Bounds checking remains caller's responsibility
+ *
+ * Both preserve the single-clipping-check invariant.
  *
  * Usage:
  *   node preprocess.js <input> [output]
@@ -22,8 +31,9 @@ const fs = require('fs');
 const path = require('path');
 
 // Template definitions - single source of truth for pixel operations
-// IMPORTANT: These templates do NOT check clipping.
-// Caller is responsible for clipping check BEFORE using these.
+// Two categories of templates:
+// - Standard (BLEND_ALPHA, SET_OPAQUE): Caller checks clipping BEFORE marker
+// - Clipped (_CLIPPED variants): Include clipping check for per-pixel loops
 // See ARCHITECTURE.md "Check Once, Check Correctly" contract.
 //
 // PERFORMANCE NOTE: Templates are optimized for V8. Since all call sites pass simple
