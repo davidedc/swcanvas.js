@@ -4046,32 +4046,40 @@ class ArcOps {
 
             // Process bottom half
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
+                const dy = rel_y;
                 for (let x = Math.max(0, abs_x_min); x <= Math.min(width - 1, abs_x_max); x++) {
                     const dx = x - adjCenterX;
-                    const dy = rel_y;
-                    // Angle filter for arc
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = abs_y_bottom * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
+                    const pos = abs_y_bottom * width + x;
+                    {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            data32[pos] = packedColor;
+        }
+    }
+}
                 }
             }
 
             // Process top half (skip overdraw conditions - same as CircleOps)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
+                const dy = -rel_y;
                 for (let x = Math.max(0, abs_x_min); x <= Math.min(width - 1, abs_x_max); x++) {
                     const dx = x - adjCenterX;
-                    const dy = -rel_y;
-                    // Angle filter for arc
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = abs_y_top * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
+                    const pos = abs_y_top * width + x;
+                    {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            data32[pos] = packedColor;
+        }
+    }
+}
                 }
             }
         }
@@ -4121,52 +4129,60 @@ class ArcOps {
 
             // Process bottom half
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
+                const dy = rel_y;
                 for (let x = Math.max(0, abs_x_min); x <= Math.min(width - 1, abs_x_max); x++) {
                     const dx = x - adjCenterX;
-                    const dy = rel_y;
-                    // Angle filter for arc
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = abs_y_bottom * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const __off = pos * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * invAlpha;
-const __outA = effectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
+                    const pos = abs_y_bottom * width + x;
+                    {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            const __off = pos * 4;
+            const __dstA = data[__off + 3] / 255;
+            const __dstAScaled = __dstA * invAlpha;
+            const __outA = effectiveAlpha + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+                data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+                data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+                data[__off + 3] = __outA * 255;
+            }
+        }
+    }
 }
-                        }
-                    }
                 }
             }
 
             // Process top half (skip overdraw conditions - same as CircleOps)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
+                const dy = -rel_y;
                 for (let x = Math.max(0, abs_x_min); x <= Math.min(width - 1, abs_x_max); x++) {
                     const dx = x - adjCenterX;
-                    const dy = -rel_y;
-                    // Angle filter for arc
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = abs_y_top * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const __off = pos * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * invAlpha;
-const __outA = effectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
+                    const pos = abs_y_top * width + x;
+                    {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            const __off = pos * 4;
+            const __dstA = data[__off + 3] / 255;
+            const __dstAScaled = __dstA * invAlpha;
+            const __outA = effectiveAlpha + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+                data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+                data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+                data[__off + 3] = __outA * 255;
+            }
+        }
+    }
 }
-                        }
-                    }
                 }
             }
         }
@@ -4544,13 +4560,17 @@ if (__outA > 0) {
             const leftEnd = Math.min(innerLeftX, outerRightX);
             for (let x = outerLeftX; x <= leftEnd; x++) {
                 const dx = x - cX;
-                // Check if pixel is within arc angle range
-                if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                    const pos = y * width + x;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        data32[pos] = packedColor;
-                    }
-                }
+                const pos = y * width + x;
+                {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            data32[pos] = packedColor;
+        }
+    }
+}
             }
 
             // Process right annulus segment (from inner right to outer right)
@@ -4558,12 +4578,17 @@ if (__outA > 0) {
                 const rightStart = Math.max(innerRightX, outerLeftX);
                 for (let x = rightStart; x <= outerRightX; x++) {
                     const dx = x - cX;
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
+                    const pos = y * width + x;
+                    {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            data32[pos] = packedColor;
+        }
+    }
+}
                 }
             }
         }
@@ -4657,23 +4682,27 @@ if (__outA > 0) {
             const leftEnd = Math.min(innerLeftX, outerRightX);
             for (let x = outerLeftX; x <= leftEnd; x++) {
                 const dx = x - cX;
-                // Check if pixel is within arc angle range
-                if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                    const pos = y * width + x;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const __off = pos * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * invAlpha;
-const __outA = effectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
+                const pos = y * width + x;
+                {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            const __off = pos * 4;
+            const __dstA = data[__off + 3] / 255;
+            const __dstAScaled = __dstA * invAlpha;
+            const __outA = effectiveAlpha + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+                data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+                data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+                data[__off + 3] = __outA * 255;
+            }
+        }
+    }
 }
-                    }
-                }
             }
 
             // Process right annulus segment (from inner right to outer right)
@@ -4681,22 +4710,27 @@ if (__outA > 0) {
                 const rightStart = Math.max(innerRightX, outerLeftX);
                 for (let x = rightStart; x <= outerRightX; x++) {
                     const dx = x - cX;
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const __off = pos * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * invAlpha;
-const __outA = effectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
+                    const pos = y * width + x;
+                    {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            const __off = pos * 4;
+            const __dstA = data[__off + 3] / 255;
+            const __dstAScaled = __dstA * invAlpha;
+            const __outA = effectiveAlpha + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+                data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+                data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+                data[__off + 3] = __outA * 255;
+            }
+        }
+    }
 }
-                        }
-                    }
                 }
             }
         }
@@ -4809,33 +4843,43 @@ if (__outA > 0) {
                 if (fillIsOpaque) {
                     for (let x = leftFillX; x <= rightFillX; x++) {
                         const dx = x - cX;
-                        // Apply angle filtering for arc
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = fillPacked;
-                        }
+                        {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            data32[pos] = fillPacked;
+        }
+    }
+}
                     }
                 } else {
                     const fr = fillColor.r, fg = fillColor.g, fb = fillColor.b;
                     for (let x = leftFillX; x <= rightFillX; x++) {
                         const dx = x - cX;
-                        // Apply angle filtering for arc
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const __off = pos * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * fillInvAlpha;
-const __outA = fillEffectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (fr * fillEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (fg * fillEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (fb * fillEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
+                        {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            const __off = pos * 4;
+            const __dstA = data[__off + 3] / 255;
+            const __dstAScaled = __dstA * fillInvAlpha;
+            const __outA = fillEffectiveAlpha + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                data[__off]     = (fr * fillEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+                data[__off + 1] = (fg * fillEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+                data[__off + 2] = (fb * fillEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+                data[__off + 3] = __outA * 255;
+            }
+        }
+    }
 }
-                        }
                     }
                 }
             }
@@ -4848,25 +4892,37 @@ if (__outA > 0) {
                     // No inner circle intersection - draw entire stroke span
                     for (let x = outerLeftX; x <= outerRightX; x++) {
                         const dx = x - cX;
-                        // Apply angle filtering for arc
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
                         if (strokeIsOpaque) {
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-    data32[pos] = strokePacked;
+                            {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            data32[pos] = strokePacked;
+        }
+    }
 }
                         } else {
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-    const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * strokeInvAlpha;
-    const __outA = strokeEffectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
+                            {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            const __off = pos * 4;
+            const __dstA = data[__off + 3] / 255;
+            const __dstAScaled = __dstA * strokeInvAlpha;
+            const __outA = strokeEffectiveAlpha + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+                data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+                data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+                data[__off + 3] = __outA * 255;
+            }
+        }
     }
 }
                         }
@@ -4875,48 +4931,74 @@ if (__outA > 0) {
                     // Intersects both inner and outer circles - draw left and right segments
                     for (let x = outerLeftX; x <= innerLeftX; x++) {
                         const dx = x - cX;
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
                         if (strokeIsOpaque) {
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-    data32[pos] = strokePacked;
+                            {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            data32[pos] = strokePacked;
+        }
+    }
 }
                         } else {
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-    const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * strokeInvAlpha;
-    const __outA = strokeEffectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
+                            {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            const __off = pos * 4;
+            const __dstA = data[__off + 3] / 255;
+            const __dstAScaled = __dstA * strokeInvAlpha;
+            const __outA = strokeEffectiveAlpha + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+                data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+                data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+                data[__off + 3] = __outA * 255;
+            }
+        }
     }
 }
                         }
                     }
                     for (let x = innerRightX; x <= outerRightX; x++) {
                         const dx = x - cX;
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
                         if (strokeIsOpaque) {
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-    data32[pos] = strokePacked;
+                            {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            data32[pos] = strokePacked;
+        }
+    }
 }
                         } else {
-                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-    const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * strokeInvAlpha;
-    const __outA = strokeEffectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
+                            {
+    let __angle = Math.atan2(dy, dx);
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < startAngle) __angle += 6.283185307179586;
+    if (__angle >= startAngle && __angle <= endAngle) {
+        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+            const __off = pos * 4;
+            const __dstA = data[__off + 3] / 255;
+            const __dstAScaled = __dstA * strokeInvAlpha;
+            const __outA = strokeEffectiveAlpha + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+                data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+                data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+                data[__off + 3] = __outA * 255;
+            }
+        }
     }
 }
                         }
