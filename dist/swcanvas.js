@@ -1438,331 +1438,65 @@ class Surface {
 
 
 /**
- * FastPixelOps - High-performance pixel operations for SWCanvas
+ * PixelOps - Static utility methods for single-pixel operations
+ * Foundation layer for all pixel-level rendering.
  *
- * Performance optimizations:
- * - 32-bit packed writes for opaque pixels (4x fewer memory operations)
- * - Inline clip buffer access with bitwise operations
- * - Pre-computed values outside hot loops
- * - Byte-level clip skipping (skip 8 pixels at once when fully clipped)
+ * CALL HIERARCHY:
+ * ---------------
+ * Layer -1 (Foundation): This class is the deepest foundation layer.
+ *   - No dependencies on other *Ops classes
+ *   - Called by: SpanOps, QuadScanOps, CircleOps, LineOps, ArcOps,
+ *                RoundedRectOpsAA, RoundedRectOpsRot
  *
- * This class centralizes the performance-critical pixel operations that are
- * used by shape renderers and the polygon filler for maximum speed.
+ * NAMING PATTERN: {operation}_{opacity}
+ *   - blend_Alpha: Single pixel alpha blending (source-over compositing)
  */
-class FastPixelOps {
+class PixelOps {
     /**
-     * Create FastPixelOps for a surface
-     * @param {Surface} surface - Target surface for pixel operations
-     */
-    constructor(surface) {
-        this.surface = surface;
-        this.width = surface.width;
-        this.height = surface.height;
-        this.data = surface.data;
-        this.data32 = surface.data32;
-    }
-
-    /**
-     * Check if pixel is clipped (inline-optimized static method)
-     * @param {Uint8Array|null} clipBuffer - Raw clip mask buffer (or null if no clipping)
+     * Blend a single pixel with source-over alpha compositing
+     *
+     * IMPORTANT: Caller is responsible for:
+     *   1. Bounds checking (pixelIndex within surface)
+     *   2. Clipping check (if clipBuffer exists)
+     *
+     * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
      * @param {number} pixelIndex - Linear pixel index (y * width + x)
-     * @returns {boolean} True if pixel is clipped (should skip rendering)
-     */
-    static isClipped(clipBuffer, pixelIndex) {
-        if (!clipBuffer) return false;
-        const byteIndex = pixelIndex >> 3;
-        const bitIndex = pixelIndex & 7;
-        return (clipBuffer[byteIndex] & (1 << bitIndex)) === 0;
-    }
-
-    /**
-     * Check if entire byte is clipped (skip 8 pixels optimization)
-     * @param {Uint8Array} clipBuffer - Raw clip mask buffer
-     * @param {number} byteIndex - Byte index in clip buffer
-     * @returns {boolean} True if all 8 pixels in byte are clipped
-     */
-    static isByteFullyClipped(clipBuffer, byteIndex) {
-        return clipBuffer[byteIndex] === 0;
-    }
-
-    /**
-     * Set single pixel with clipping and optional alpha blending
-     * @param {number} x - X coordinate
-     * @param {number} y - Y coordinate
      * @param {number} r - Red component (0-255)
      * @param {number} g - Green component (0-255)
      * @param {number} b - Blue component (0-255)
-     * @param {number} a - Alpha component (0-255)
-     * @param {number} globalAlpha - Global alpha multiplier (0-1)
-     * @param {Uint8Array|null} clipBuffer - Raw clip mask buffer (or null)
+     * @param {number} alpha - Alpha as fraction (0-1), pre-multiplied with globalAlpha
+     * @param {number} invAlpha - Inverse alpha (1 - alpha), pre-computed for efficiency
      */
-    setPixel(x, y, r, g, b, a, globalAlpha, clipBuffer) {
-        // Bounds check
-        if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
+    static blend_Alpha(data, pixelIndex, r, g, b, alpha, invAlpha) {
+        const offset = pixelIndex * 4;
+        const dstA = data[offset + 3] / 255;
+        const dstAScaled = dstA * invAlpha;
+        const outA = alpha + dstAScaled;
 
-        const pixelIndex = y * this.width + x;
-
-        // Clip check with inline bitwise operations
-        if (clipBuffer) {
-            const byteIndex = pixelIndex >> 3;
-            const bitIndex = pixelIndex & 7;
-            if ((clipBuffer[byteIndex] & (1 << bitIndex)) === 0) return;
+        if (outA > 0) {
+            const blendFactor = 1 / outA;
+            data[offset]     = (r * alpha + data[offset] * dstAScaled) * blendFactor;
+            data[offset + 1] = (g * alpha + data[offset + 1] * dstAScaled) * blendFactor;
+            data[offset + 2] = (b * alpha + data[offset + 2] * dstAScaled) * blendFactor;
+            data[offset + 3] = outA * 255;
         }
-
-        // Optimized path for fully opaque pixels
-        if (a === 255 && globalAlpha >= 1.0) {
-            this.data32[pixelIndex] = 0xFF000000 | (b << 16) | (g << 8) | r;
-            return;
-        }
-
-        // Alpha blending path (source-over compositing)
-        const idx = pixelIndex * 4;
-        const srcAlpha = (a / 255) * globalAlpha;
-        const invSrcAlpha = 1 - srcAlpha;
-        const dstAlpha = this.data[idx + 3] / 255;
-        const outAlpha = srcAlpha + dstAlpha * invSrcAlpha;
-
-        if (outAlpha <= 0) return;
-
-        const blendFactor = 1 / outAlpha;
-        this.data[idx]     = (r * srcAlpha + this.data[idx]     * dstAlpha * invSrcAlpha) * blendFactor;
-        this.data[idx + 1] = (g * srcAlpha + this.data[idx + 1] * dstAlpha * invSrcAlpha) * blendFactor;
-        this.data[idx + 2] = (b * srcAlpha + this.data[idx + 2] * dstAlpha * invSrcAlpha) * blendFactor;
-        this.data[idx + 3] = outAlpha * 255;
-    }
-
-    /**
-     * Set pixel using pre-packed color (optimized single-pixel write)
-     * No bounds checking - caller must ensure validity
-     * @param {number} pixelIndex - Linear pixel index
-     * @param {number} packedColor - Pre-packed 32-bit ABGR color
-     * @param {Uint8Array|null} clipBuffer - Raw clip mask buffer (or null)
-     */
-    setPixelPacked(pixelIndex, packedColor, clipBuffer) {
-        if (clipBuffer) {
-            const byteIndex = pixelIndex >> 3;
-            const bitIndex = pixelIndex & 7;
-            if ((clipBuffer[byteIndex] & (1 << bitIndex)) === 0) return;
-        }
-        this.data32[pixelIndex] = packedColor;
-    }
-
-    /**
-     * Clear pixel to fully transparent
-     * @param {number} x - X coordinate
-     * @param {number} y - Y coordinate
-     */
-    clearPixel(x, y) {
-        if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
-        this.data32[y * this.width + x] = 0;
-    }
-
-    /**
-     * Fill horizontal run with solid color (optimized for scanline rendering)
-     * @param {number} x - Starting X coordinate
-     * @param {number} y - Y coordinate
-     * @param {number} length - Run length in pixels
-     * @param {number} r - Red component (0-255)
-     * @param {number} g - Green component (0-255)
-     * @param {number} b - Blue component (0-255)
-     * @param {number} a - Alpha component (0-255)
-     * @param {number} globalAlpha - Global alpha multiplier (0-1)
-     * @param {Uint8Array|null} clipBuffer - Raw clip mask buffer (or null)
-     */
-    fillRun(x, y, length, r, g, b, a, globalAlpha, clipBuffer) {
-        // Y bounds check
-        if (y < 0 || y >= this.height) return;
-
-        // X clipping to surface bounds
-        if (x < 0) {
-            length += x;
-            x = 0;
-        }
-        if (x + length > this.width) {
-            length = this.width - x;
-        }
-        if (length <= 0) return;
-
-        const isOpaque = a === 255 && globalAlpha >= 1.0;
-        let pixelIndex = y * this.width + x;
-        const endIndex = pixelIndex + length;
-        const data32 = this.data32;
-
-        if (isOpaque) {
-            const packedColor = 0xFF000000 | (b << 16) | (g << 8) | r;
-
-            if (clipBuffer) {
-                // Opaque with clipping - use byte-level skip optimization
-                while (pixelIndex < endIndex) {
-                    const byteIndex = pixelIndex >> 3;
-
-                    // Skip fully clipped bytes (8 pixels at a time)
-                    if (clipBuffer[byteIndex] === 0) {
-                        const nextByteBoundary = (byteIndex + 1) << 3;
-                        pixelIndex = Math.min(nextByteBoundary, endIndex);
-                        continue;
-                    }
-
-                    // Check individual pixel within partially visible byte
-                    const bitIndex = pixelIndex & 7;
-                    if (clipBuffer[byteIndex] & (1 << bitIndex)) {
-                        data32[pixelIndex] = packedColor;
-                    }
-                    pixelIndex++;
-                }
-            } else {
-                // Opaque without clipping - optimized path
-                for (; pixelIndex < endIndex; pixelIndex++) {
-                    data32[pixelIndex] = packedColor;
-                }
-            }
-        } else {
-            // Alpha blending path
-            const srcAlpha = (a / 255) * globalAlpha;
-            if (srcAlpha <= 0) return;
-
-            const invSrcAlpha = 1 - srcAlpha;
-            const data = this.data;
-
-            if (clipBuffer) {
-                while (pixelIndex < endIndex) {
-                    const byteIndex = pixelIndex >> 3;
-
-                    // Skip fully clipped bytes
-                    if (clipBuffer[byteIndex] === 0) {
-                        const nextByteBoundary = (byteIndex + 1) << 3;
-                        pixelIndex = Math.min(nextByteBoundary, endIndex);
-                        continue;
-                    }
-
-                    const bitIndex = pixelIndex & 7;
-                    if (clipBuffer[byteIndex] & (1 << bitIndex)) {
-                        const idx = pixelIndex * 4;
-                        const dstAlpha = data[idx + 3] / 255;
-                        const outAlpha = srcAlpha + dstAlpha * invSrcAlpha;
-
-                        if (outAlpha > 0) {
-                            const blendFactor = 1 / outAlpha;
-                            data[idx]     = (r * srcAlpha + data[idx]     * dstAlpha * invSrcAlpha) * blendFactor;
-                            data[idx + 1] = (g * srcAlpha + data[idx + 1] * dstAlpha * invSrcAlpha) * blendFactor;
-                            data[idx + 2] = (b * srcAlpha + data[idx + 2] * dstAlpha * invSrcAlpha) * blendFactor;
-                            data[idx + 3] = outAlpha * 255;
-                        }
-                    }
-                    pixelIndex++;
-                }
-            } else {
-                // Blending without clipping
-                for (; pixelIndex < endIndex; pixelIndex++) {
-                    const idx = pixelIndex * 4;
-                    const dstAlpha = data[idx + 3] / 255;
-                    const outAlpha = srcAlpha + dstAlpha * invSrcAlpha;
-
-                    if (outAlpha > 0) {
-                        const blendFactor = 1 / outAlpha;
-                        data[idx]     = (r * srcAlpha + data[idx]     * dstAlpha * invSrcAlpha) * blendFactor;
-                        data[idx + 1] = (g * srcAlpha + data[idx + 1] * dstAlpha * invSrcAlpha) * blendFactor;
-                        data[idx + 2] = (b * srcAlpha + data[idx + 2] * dstAlpha * invSrcAlpha) * blendFactor;
-                        data[idx + 3] = outAlpha * 255;
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Fill horizontal run with pre-packed opaque color (optimized run fill)
-     * No bounds checking - caller must ensure validity
-     * @param {number} startIndex - Starting linear pixel index
-     * @param {number} length - Number of pixels to fill
-     * @param {number} packedColor - Pre-packed 32-bit ABGR color
-     * @param {Uint8Array|null} clipBuffer - Raw clip mask buffer (or null)
-     */
-    fillRunPacked(startIndex, length, packedColor, clipBuffer) {
-        const endIndex = startIndex + length;
-        const data32 = this.data32;
-
-        if (clipBuffer) {
-            let pixelIndex = startIndex;
-            while (pixelIndex < endIndex) {
-                const byteIndex = pixelIndex >> 3;
-
-                // Skip fully clipped bytes
-                if (clipBuffer[byteIndex] === 0) {
-                    const nextByteBoundary = (byteIndex + 1) << 3;
-                    pixelIndex = Math.min(nextByteBoundary, endIndex);
-                    continue;
-                }
-
-                const bitIndex = pixelIndex & 7;
-                if (clipBuffer[byteIndex] & (1 << bitIndex)) {
-                    data32[pixelIndex] = packedColor;
-                }
-                pixelIndex++;
-            }
-        } else {
-            // No clipping - direct fill
-            for (let i = startIndex; i < endIndex; i++) {
-                data32[i] = packedColor;
-            }
-        }
-    }
-
-    /**
-     * Fill multiple horizontal runs with the same color (batch operation)
-     * Runs format: flat array of [x, y, length, x, y, length, ...]
-     * @param {Array<number>} runs - Flat array of run triplets [x, y, length, ...]
-     * @param {number} r - Red component (0-255)
-     * @param {number} g - Green component (0-255)
-     * @param {number} b - Blue component (0-255)
-     * @param {number} a - Alpha component (0-255)
-     * @param {number} globalAlpha - Global alpha multiplier (0-1)
-     * @param {Uint8Array|null} clipBuffer - Raw clip mask buffer (or null)
-     */
-    fillRuns(runs, r, g, b, a, globalAlpha, clipBuffer) {
-        for (let i = 0; i < runs.length; i += 3) {
-            this.fillRun(runs[i], runs[i + 1], runs[i + 2], r, g, b, a, globalAlpha, clipBuffer);
-        }
-    }
-
-    /**
-     * Set pixel in clipping mask (for building clip regions)
-     * @param {Uint8Array} clipBuffer - Target clip mask buffer
-     * @param {number} x - X coordinate
-     * @param {number} y - Y coordinate
-     */
-    clipPixel(clipBuffer, x, y) {
-        // Convert to integer with bitwise OR
-        x = x | 0;
-        y = y | 0;
-
-        if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
-
-        const pixelPos = y * this.width + x;
-        const byteIndex = pixelPos >> 3;
-        const bitIndex = pixelPos & 7;
-
-        // OR the bit to mark pixel as visible in clip mask
-        clipBuffer[byteIndex] |= (1 << bitIndex);
     }
 }
 
 /**
- * SpanOps - Static utility methods for horizontal span filling and pixel blending
+ * SpanOps - Static utility methods for horizontal span filling
  * Used by all shape *Ops classes for optimized pixel rendering.
  * Follows PolygonFiller pattern with static methods.
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): This class is the foundation layer.
- *   - No dependencies on other *Ops classes
+ * Layer 0 (Foundation): Depends on PixelOps for single-pixel blending.
  *   - Called by: RectOpsAA, RectOpsRot, CircleOps, LineOps, ArcOps,
  *                RoundedRectOpsAA, RoundedRectOpsRot
  *
  * NAMING PATTERN: {operation}_{opacity}
  *   - fill_Opaq: Opaque span fill (32-bit writes)
- *   - fill_Alpha: Semi-transparent span fill (alpha blending)
- *   - blendPixel_Alpha: Single pixel alpha blending (used by 1px alpha strokes)
+ *   - fill_Alpha: Semi-transparent span fill (calls PixelOps.blend_Alpha)
  */
 class SpanOps {
     /**
@@ -1855,61 +1589,34 @@ class SpanOps {
         if (len <= 0) return;
 
         const endX = x + len;
-        const rowOffset = yi * surfaceWidth * 4;
+        const rowStart = yi * surfaceWidth;
 
         if (clipBuffer) {
             // With clipping - includes byte-skip optimization
             let px = x;
             while (px < endX) {
-                const pixelIndex = yi * surfaceWidth + px;
+                const pixelIndex = rowStart + px;
                 const byteIndex = pixelIndex >> 3;
 
                 // Skip fully clipped bytes (8 pixels at a time)
                 if (clipBuffer[byteIndex] === 0) {
                     const nextByteBoundary = (byteIndex + 1) << 3;
                     // Convert back to X coordinate with bounds check
-                    px = Math.min(nextByteBoundary - yi * surfaceWidth, endX);
+                    px = Math.min(nextByteBoundary - rowStart, endX);
                     continue;
                 }
 
                 const bitOffset = pixelIndex & 7;
                 if ((clipBuffer[byteIndex] & (1 << bitOffset)) !== 0) {
-                    const offset = rowOffset + px * 4;
-                    SpanOps.blendPixel_Alpha(data, offset, r, g, b, alpha, invAlpha);
+                    PixelOps.blend_Alpha(data, pixelIndex, r, g, b, alpha, invAlpha);
                 }
                 px++;
             }
         } else {
             // No clipping
             for (let px = x; px < endX; px++) {
-                const offset = rowOffset + px * 4;
-                SpanOps.blendPixel_Alpha(data, offset, r, g, b, alpha, invAlpha);
+                PixelOps.blend_Alpha(data, rowStart + px, r, g, b, alpha, invAlpha);
             }
-        }
-    }
-
-    /**
-     * Blend a single pixel with source-over alpha compositing
-     * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
-     * @param {number} offset - Byte offset into data array
-     * @param {number} r - Red component (0-255)
-     * @param {number} g - Green component (0-255)
-     * @param {number} b - Blue component (0-255)
-     * @param {number} alpha - Alpha as fraction (0-1)
-     * @param {number} invAlpha - Inverse alpha (1 - alpha)
-     */
-    static blendPixel_Alpha(data, offset, r, g, b, alpha, invAlpha) {
-        // Source-over alpha blending formula
-        const dstA = data[offset + 3] / 255;
-        const dstAScaled = dstA * invAlpha;
-        const outA = alpha + dstAScaled;
-
-        if (outA > 0) {
-            const blendFactor = 1 / outA;
-            data[offset]     = (r * alpha + data[offset] * dstAScaled) * blendFactor;
-            data[offset + 1] = (g * alpha + data[offset + 1] * dstAScaled) * blendFactor;
-            data[offset + 2] = (b * alpha + data[offset + 2] * dstAScaled) * blendFactor;
-            data[offset + 3] = outA * 255;
         }
     }
 }
@@ -1925,11 +1632,11 @@ class SpanOps {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
  *
  * Layer 1 (Primitives):
  *   lineToQuad - Convert line + thickness to 4 corners
- *   fillQuad   - Scanline fill the quad (calls SpanOps or per-pixel blend)
+ *   fillQuad   - Scanline fill the quad (calls SpanOps or PixelOps for per-pixel)
  */
 class QuadScanOps {
     // Static pools - reused across calls to eliminate GC pressure
@@ -2080,7 +1787,7 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        QuadScanOps._blendPixel(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
                     }
                 }
             } else if (intersections.length >= 2) {
@@ -2114,7 +1821,7 @@ class QuadScanOps {
                             if (isOpaque) {
                                 data32[pixelIndex] = packedColor;
                             } else {
-                                QuadScanOps._blendPixel(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                                PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
                             }
                         }
                     } else {
@@ -2182,7 +1889,7 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        QuadScanOps._blendPixel(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
                     }
                 }
             } else {
@@ -2193,25 +1900,6 @@ class QuadScanOps {
                     SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
                 }
             }
-        }
-    }
-
-    /**
-     * Blend a single pixel with alpha compositing.
-     * @private
-     */
-    static _blendPixel(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha) {
-        const idx = pixelIndex * 4;
-        const oldAlpha = data[idx + 3] / 255;
-        const oldAlphaScaled = oldAlpha * inverseIncomingAlpha;
-        const newAlpha = incomingAlpha + oldAlphaScaled;
-
-        if (newAlpha > 0) {
-            const blendFactor = 1 / newAlpha;
-            data[idx] = (r * incomingAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-            data[idx + 1] = (g * incomingAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-            data[idx + 2] = (b * incomingAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-            data[idx + 3] = newAlpha * 255;
         }
     }
 }
@@ -3312,11 +3000,12 @@ class RectOpsAA {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
  *
  * Layer 1 (Primitives):
  *   fill_Opaq, fill_Alpha              → SpanOps.fill_Opaq/fill_Alpha
- *   stroke1px_Opaq, stroke1px_Alpha    → Direct pixel writes (no SpanOps - overhead too high)
+ *   stroke1px_Opaq                     → Direct pixel writes (opaque)
+ *   stroke1px_Alpha                    → PixelOps.blend_Alpha
  *   strokeThick_Any                    → SpanOps.fill_Opaq
  *   strokeThick_Alpha                  → SpanOps.fill_Alpha
  *
@@ -3644,17 +3333,7 @@ class CircleOps {
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const idx = pos * 4;
-                        const oldAlpha = data[idx + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * invAlpha;
-                        const newAlpha = effectiveAlpha + oldAlphaScaled;
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                            data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                            data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                            data[idx + 3] = newAlpha * 255;
-                        }
+                        PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
                     }
                 }
             }
@@ -3708,17 +3387,7 @@ class CircleOps {
         // Render unique pixels with alpha blending
         for (const pos of uniquePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                const idx = pos * 4;
-                const oldAlpha = data[idx + 3] / 255;
-                const oldAlphaScaled = oldAlpha * invAlpha;
-                const newAlpha = effectiveAlpha + oldAlphaScaled;
-                if (newAlpha > 0) {
-                    const blendFactor = 1 / newAlpha;
-                    data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                    data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                    data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                    data[idx + 3] = newAlpha * 255;
-                }
+                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
             }
         }
     }
@@ -4039,7 +3708,7 @@ class CircleOps {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data)
+ * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), PixelOps.blend_Alpha
  *
  * Layer 1 (Primitives - do atomic rendering):
  *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering)
@@ -4485,17 +4154,7 @@ class ArcOps {
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const idx = pos * 4;
-                        const oldAlpha = data[idx + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * invAlpha;
-                        const newAlpha = effectiveAlpha + oldAlphaScaled;
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                            data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                            data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                            data[idx + 3] = newAlpha * 255;
-                        }
+                        PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
                     }
                 }
             }
@@ -4546,17 +4205,7 @@ class ArcOps {
         // Render collected pixels with alpha blending
         for (const pos of strokePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                const idx = pos * 4;
-                const oldAlpha = data[idx + 3] / 255;
-                const oldAlphaScaled = oldAlpha * invAlpha;
-                const newAlpha = effectiveAlpha + oldAlphaScaled;
-                if (newAlpha > 0) {
-                    const blendFactor = 1 / newAlpha;
-                    data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                    data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                    data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                    data[idx + 3] = newAlpha * 255;
-                }
+                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
             }
         }
     }
@@ -4986,13 +4635,13 @@ class ArcOps {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, QuadScanOps.fillQuad
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha, QuadScanOps.fillQuad
  *
  * Layer 1 (Internal):
  *   _strokeThick_PolyScan → QuadScanOps.lineToQuad + QuadScanOps.fillQuad/fillSquare
  *
  * Layer 2 (Public dispatcher):
- *   stroke_Any → Bresenham (thin), SpanOps (thick AA), _strokeThick_PolyScan
+ *   stroke_Any → Bresenham (thin opaque), PixelOps/SpanOps (thin alpha), SpanOps (thick AA), _strokeThick_PolyScan
  *
  * NAMING PATTERN: {operation}_{opacity}
  *   - Any = Handles all opacity/thickness cases (dispatcher)
@@ -5034,6 +4683,17 @@ class LineOps {
             }
             if (y1i === y2i) {
                 if (x2i > x1i) x2i--; else x1i--;
+            }
+
+            // Optimize thin horizontal lines: use span-based rendering
+            if (y1i === y2i) {
+                const leftX = Math.min(x1i, x2i);
+                const rightX = Math.max(x1i, x2i);
+                const spanLength = rightX - leftX + 1;
+                if (spanLength > 0) {
+                    SpanOps.fill_Opaq(data32, width, height, leftX, y1i, spanLength, packedColor, clipBuffer);
+                }
+                return true;
             }
 
             let dx = Math.abs(x2i - x1i);
@@ -5135,6 +4795,17 @@ class LineOps {
                 if (x2i > x1i) x2i--; else x1i--;
             }
 
+            // Optimize thin horizontal lines: use span-based rendering
+            if (y1i === y2i) {
+                const leftX = Math.min(x1i, x2i);
+                const rightX = Math.max(x1i, x2i);
+                const spanLength = rightX - leftX + 1;
+                if (spanLength > 0) {
+                    SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                }
+                return true;
+            }
+
             let dx = Math.abs(x2i - x1i);
             let dy = Math.abs(y2i - y1i);
             const sx = x1i < x2i ? 1 : -1;
@@ -5158,18 +4829,7 @@ class LineOps {
                     }
 
                     if (drawPixel) {
-                        const index = pixelIndex * 4;
-                        const oldAlpha = data[index + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * inverseIncomingAlpha;
-                        const newAlpha = incomingAlpha + oldAlphaScaled;
-
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[index] = (r * incomingAlpha + data[index] * oldAlphaScaled) * blendFactor;
-                            data[index + 1] = (g * incomingAlpha + data[index + 1] * oldAlphaScaled) * blendFactor;
-                            data[index + 2] = (b * incomingAlpha + data[index + 2] * oldAlphaScaled) * blendFactor;
-                            data[index + 3] = newAlpha * 255;
-                        }
+                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
                     }
                 }
 
@@ -5252,7 +4912,7 @@ class LineOps {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, SpanOps.blendPixel_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
  *
  * Layer 1 (Helpers - used by rotated implementations):
  *   _normalizeRadius, _transform, _generateEdgePixels, _generateArcPixels, _generatePerimeter
@@ -5261,10 +4921,10 @@ class LineOps {
  *   _fill_Rot_Opaq                → SpanOps.fill_Opaq
  *   _fill_Rot_Alpha               → SpanOps.fill_Alpha
  *   _stroke1px_Rot_Opaq           → Direct pixel writes
- *   _stroke1px_Rot_Alpha          → SpanOps.blendPixel_Alpha
+ *   _stroke1px_Rot_Alpha          → PixelOps.blend_Alpha
  *   _strokeThick_Rot_Opaq         → SpanOps.fill_Opaq
  *   _strokeThick_Rot_Alpha        → SpanOps.fill_Alpha
- *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + SpanOps.blendPixel_Alpha
+ *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + PixelOps.blend_Alpha
  *   _fillStroke_Rot_Unified       → SpanOps.fill_Opaq/fill_Alpha
  *
  * Layer 3 (Dispatchers):
@@ -6014,7 +5674,7 @@ class RoundedRectOpsRot {
         // Render all collected unique pixels with alpha blending via SpanOps
         for (const pos of strokePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                SpanOps.blendPixel_Alpha(data, pos * 4, r, g, b, effectiveAlpha, invAlpha);
+                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
             }
         }
     }
@@ -6540,7 +6200,7 @@ class RoundedRectOpsRot {
             if (strokeIsOpaque) {
                 data32[pos] = strokePacked;
             } else {
-                SpanOps.blendPixel_Alpha(data, pos * 4, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha);
+                PixelOps.blend_Alpha(data, pos, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha);
             }
         }
     }
@@ -6757,12 +6417,12 @@ class RoundedRectOpsRot {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, SpanOps.blendPixel_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
  *
- * Layer 1 (Primitives - call SpanOps, fallback to RectOpsAA for radius=0):
+ * Layer 1 (Primitives - call SpanOps/PixelOps, fallback to RectOpsAA for radius=0):
  *   fill_AA_Opaq, fill_AA_Alpha          → SpanOps.fill_Opaq/fill_Alpha
  *   stroke1px_AA_Opaq                    → Direct pixel writes
- *   stroke1px_AA_Alpha                   → SpanOps.blendPixel_Alpha
+ *   stroke1px_AA_Alpha                   → PixelOps.blend_Alpha
  *   strokeThick_AA_Opaq, strokeThick_AA_Alpha → SpanOps.fill_Opaq/fill_Alpha
  *
  * Layer 2 (Composites):
@@ -7018,7 +6678,7 @@ class RoundedRectOpsAA {
                 if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
             }
 
-            SpanOps.blendPixel_Alpha(data, pixelIndex * 4, r, g, b, incomingAlpha, inverseIncomingAlpha);
+            PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
         }
     }
 
@@ -17122,7 +16782,7 @@ if (typeof window !== 'undefined') {
             RadialGradient: RadialGradient,
             ConicGradient: ConicGradient,
             Pattern: Pattern,
-            FastPixelOps: FastPixelOps,
+            PixelOps: PixelOps,
             RoundedRectOpsAA: RoundedRectOpsAA
         }
     };
@@ -17164,7 +16824,7 @@ if (typeof window !== 'undefined') {
             RadialGradient: RadialGradient,
             ConicGradient: ConicGradient,
             Pattern: Pattern,
-            FastPixelOps: FastPixelOps,
+            PixelOps: PixelOps,
             RoundedRectOpsAA: RoundedRectOpsAA
         }
     };
