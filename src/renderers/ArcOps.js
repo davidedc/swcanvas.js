@@ -116,32 +116,22 @@ class ArcOps {
 
             // Process bottom half
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
+                const dy = rel_y;
                 for (let x = Math.max(0, abs_x_min); x <= Math.min(width - 1, abs_x_max); x++) {
                     const dx = x - adjCenterX;
-                    const dy = rel_y;
-                    // Angle filter for arc
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = abs_y_bottom * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
+                    const pos = abs_y_bottom * width + x;
+                    /*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, packedColor, clipBuffer, dx, dy, startAngle, endAngle)*/
                 }
             }
 
             // Process top half (skip overdraw conditions - same as CircleOps)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
+                const dy = -rel_y;
                 for (let x = Math.max(0, abs_x_min); x <= Math.min(width - 1, abs_x_max); x++) {
                     const dx = x - adjCenterX;
-                    const dy = -rel_y;
-                    // Angle filter for arc
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = abs_y_top * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
+                    const pos = abs_y_top * width + x;
+                    /*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, packedColor, clipBuffer, dx, dy, startAngle, endAngle)*/
                 }
             }
         }
@@ -191,32 +181,22 @@ class ArcOps {
 
             // Process bottom half
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
+                const dy = rel_y;
                 for (let x = Math.max(0, abs_x_min); x <= Math.min(width - 1, abs_x_max); x++) {
                     const dx = x - adjCenterX;
-                    const dy = rel_y;
-                    // Angle filter for arc
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = abs_y_bottom * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                        }
-                    }
+                    const pos = abs_y_bottom * width + x;
+                    /*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/
                 }
             }
 
             // Process top half (skip overdraw conditions - same as CircleOps)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
+                const dy = -rel_y;
                 for (let x = Math.max(0, abs_x_min); x <= Math.min(width - 1, abs_x_max); x++) {
                     const dx = x - adjCenterX;
-                    const dy = -rel_y;
-                    // Angle filter for arc
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = abs_y_top * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                        }
-                    }
+                    const pos = abs_y_top * width + x;
+                    /*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/
                 }
             }
         }
@@ -574,13 +554,8 @@ class ArcOps {
             const leftEnd = Math.min(innerLeftX, outerRightX);
             for (let x = outerLeftX; x <= leftEnd; x++) {
                 const dx = x - cX;
-                // Check if pixel is within arc angle range
-                if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                    const pos = y * width + x;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        data32[pos] = packedColor;
-                    }
-                }
+                const pos = y * width + x;
+                /*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, packedColor, clipBuffer, dx, dy, startAngle, endAngle)*/
             }
 
             // Process right annulus segment (from inner right to outer right)
@@ -588,12 +563,8 @@ class ArcOps {
                 const rightStart = Math.max(innerRightX, outerLeftX);
                 for (let x = rightStart; x <= outerRightX; x++) {
                     const dx = x - cX;
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
+                    const pos = y * width + x;
+                    /*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, packedColor, clipBuffer, dx, dy, startAngle, endAngle)*/
                 }
             }
         }
@@ -677,13 +648,8 @@ class ArcOps {
             const leftEnd = Math.min(innerLeftX, outerRightX);
             for (let x = outerLeftX; x <= leftEnd; x++) {
                 const dx = x - cX;
-                // Check if pixel is within arc angle range
-                if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                    const pos = y * width + x;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                    }
-                }
+                const pos = y * width + x;
+                /*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/
             }
 
             // Process right annulus segment (from inner right to outer right)
@@ -691,12 +657,8 @@ class ArcOps {
                 const rightStart = Math.max(innerRightX, outerLeftX);
                 for (let x = rightStart; x <= outerRightX; x++) {
                     const dx = x - cX;
-                    if (ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) {
-                        const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                        }
-                    }
+                    const pos = y * width + x;
+                    /*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/
                 }
             }
         }
@@ -809,23 +771,15 @@ class ArcOps {
                 if (fillIsOpaque) {
                     for (let x = leftFillX; x <= rightFillX; x++) {
                         const dx = x - cX;
-                        // Apply angle filtering for arc
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = fillPacked;
-                        }
+                        /*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, fillPacked, clipBuffer, dx, dy, startAngle, endAngle)*/
                     }
                 } else {
                     const fr = fillColor.r, fg = fillColor.g, fb = fillColor.b;
                     for (let x = leftFillX; x <= rightFillX; x++) {
                         const dx = x - cX;
-                        // Apply angle filtering for arc
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            /*@inline:BLEND_ALPHA(data, pos, fr, fg, fb, fillEffectiveAlpha, fillInvAlpha)*/
-                        }
+                        /*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pos, fr, fg, fb, fillEffectiveAlpha, fillInvAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/
                     }
                 }
             }
@@ -838,35 +792,31 @@ class ArcOps {
                     // No inner circle intersection - draw entire stroke span
                     for (let x = outerLeftX; x <= outerRightX; x++) {
                         const dx = x - cX;
-                        // Apply angle filtering for arc
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
                         if (strokeIsOpaque) {
-                            /*@inline:SET_OPAQUE_CLIPPED(data32, pos, strokePacked, clipBuffer)*/
+                            /*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, strokePacked, clipBuffer, dx, dy, startAngle, endAngle)*/
                         } else {
-                            /*@inline:BLEND_ALPHA_CLIPPED(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer)*/
+                            /*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/
                         }
                     }
                 } else {
                     // Intersects both inner and outer circles - draw left and right segments
                     for (let x = outerLeftX; x <= innerLeftX; x++) {
                         const dx = x - cX;
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
                         if (strokeIsOpaque) {
-                            /*@inline:SET_OPAQUE_CLIPPED(data32, pos, strokePacked, clipBuffer)*/
+                            /*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, strokePacked, clipBuffer, dx, dy, startAngle, endAngle)*/
                         } else {
-                            /*@inline:BLEND_ALPHA_CLIPPED(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer)*/
+                            /*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/
                         }
                     }
                     for (let x = innerRightX; x <= outerRightX; x++) {
                         const dx = x - cX;
-                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
                         const pos = y * width + x;
                         if (strokeIsOpaque) {
-                            /*@inline:SET_OPAQUE_CLIPPED(data32, pos, strokePacked, clipBuffer)*/
+                            /*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, strokePacked, clipBuffer, dx, dy, startAngle, endAngle)*/
                         } else {
-                            /*@inline:BLEND_ALPHA_CLIPPED(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer)*/
+                            /*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pos, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/
                         }
                     }
                 }

@@ -226,6 +226,48 @@ test('expandMarker: BLEND_ALPHA_CLIPPED basic expansion', () => {
     assert(result.includes('r * a'), 'Should use alpha directly in RGB blending');
 });
 
+test('TEMPLATES: SET_OPAQUE_ARC_CLIPPED has correct params', () => {
+    assert.deepStrictEqual(TEMPLATES.SET_OPAQUE_ARC_CLIPPED.params,
+        ['data32', 'pixelIndex', 'packedColor', 'clipBuffer', 'dx', 'dy', 'startAngle', 'endAngle']);
+});
+
+test('TEMPLATES: SET_OPAQUE_ARC_CLIPPED code has all placeholders', () => {
+    const code = TEMPLATES.SET_OPAQUE_ARC_CLIPPED.code;
+    for (const param of TEMPLATES.SET_OPAQUE_ARC_CLIPPED.params) {
+        assert(code.includes(`{{${param}}}`), `Missing placeholder for ${param}`);
+    }
+});
+
+test('TEMPLATES: BLEND_ALPHA_ARC_CLIPPED has correct params', () => {
+    assert.deepStrictEqual(TEMPLATES.BLEND_ALPHA_ARC_CLIPPED.params,
+        ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer', 'dx', 'dy', 'startAngle', 'endAngle']);
+});
+
+test('TEMPLATES: BLEND_ALPHA_ARC_CLIPPED code has all placeholders', () => {
+    const code = TEMPLATES.BLEND_ALPHA_ARC_CLIPPED.code;
+    for (const param of TEMPLATES.BLEND_ALPHA_ARC_CLIPPED.params) {
+        assert(code.includes(`{{${param}}}`), `Missing placeholder for ${param}`);
+    }
+});
+
+test('expandMarker: SET_OPAQUE_ARC_CLIPPED basic expansion', () => {
+    const result = expandMarker('SET_OPAQUE_ARC_CLIPPED', 'data32, pos, color, clip, dx, dy, start, end');
+    assert(result.includes('Math.atan2(dy, dx)'), 'Should have inline atan2 call');
+    assert(result.includes('6.283185307179586'), 'Should have TAU constant inlined');
+    assert(result.includes('__angle >= start && __angle <= end'), 'Should have angle range check');
+    assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
+    assert(result.includes('data32[pos] = color;'), 'Should write to data32');
+});
+
+test('expandMarker: BLEND_ALPHA_ARC_CLIPPED basic expansion', () => {
+    const result = expandMarker('BLEND_ALPHA_ARC_CLIPPED', 'd, i, r, g, b, a, inv, clip, dx, dy, start, end');
+    assert(result.includes('Math.atan2(dy, dx)'), 'Should have inline atan2 call');
+    assert(result.includes('6.283185307179586'), 'Should have TAU constant inlined');
+    assert(result.includes('__angle >= start && __angle <= end'), 'Should have angle range check');
+    assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
+    assert(result.includes('const __off = i * 4;'), 'Should have offset calculation');
+});
+
 // ============================================================================
 // Edge cases
 // ============================================================================

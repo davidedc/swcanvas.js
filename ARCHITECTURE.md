@@ -753,10 +753,12 @@ Arguments can be expressions (e.g., `pos * 4`, `idx/4`).
 | `SET_OPAQUE` | `data32, pixelIndex, packedColor` | Direct 32-bit pixel write |
 | `BLEND_ALPHA_CLIPPED` | `data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer` | Alpha blending with inline clipping |
 | `SET_OPAQUE_CLIPPED` | `data32, pixelIndex, packedColor, clipBuffer` | Opaque write with inline clipping |
+| `SET_OPAQUE_ARC_CLIPPED` | `data32, pixelIndex, packedColor, clipBuffer, dx, dy, startAngle, endAngle` | Opaque write with angle check + clipping for arcs |
+| `BLEND_ALPHA_ARC_CLIPPED` | `data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer, dx, dy, startAngle, endAngle` | Alpha blending with angle check + clipping for arcs |
 
 ### Clipping Contract
 
-Templates follow two contracts based on their use case:
+Templates follow three contracts based on their use case:
 
 **Standard Templates** (`BLEND_ALPHA`, `SET_OPAQUE`):
 - Do NOT check clipping - caller must check `clipBuffer` BEFORE the marker
@@ -767,7 +769,13 @@ Templates follow two contracts based on their use case:
 - Used in per-pixel loops where clipping cannot be hoisted to span level
 - Bounds checking remains caller's responsibility
 
-Both contracts uphold the "Check Once, Check Correctly" invariant - clipping is checked exactly once per pixel write.
+**Arc Templates** (`SET_OPAQUE_ARC_CLIPPED`, `BLEND_ALPHA_ARC_CLIPPED`):
+- Include angle range check + clipping check (inline `isAngleInRange` logic with `Math.atan2`)
+- Used in arc-specific per-pixel loops where angle filtering is required
+- Eliminates static method call overhead for `ArcOps.isAngleInRange()` in hot paths
+- TAU constant (6.283185307179586) is inlined for performance
+
+All contracts uphold the "Check Once, Check Correctly" invariant - clipping is checked exactly once per pixel write.
 
 ### Template Definitions
 

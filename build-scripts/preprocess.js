@@ -8,7 +8,7 @@
  *
  * CLIPPING CONTRACT:
  * ------------------
- * Templates follow two contracts per ARCHITECTURE.md "Check Once, Check Correctly":
+ * Templates follow three contracts per ARCHITECTURE.md "Check Once, Check Correctly":
  *
  * Standard Templates (BLEND_ALPHA, SET_OPAQUE):
  * - Do NOT include clipping logic
@@ -19,7 +19,13 @@
  * - For per-pixel loops where clipping cannot be hoisted
  * - Bounds checking remains caller's responsibility
  *
- * Both preserve the single-clipping-check invariant.
+ * Arc Templates (SET_OPAQUE_ARC_CLIPPED, BLEND_ALPHA_ARC_CLIPPED):
+ * - Include angle range check + clipping logic
+ * - Inline isAngleInRange logic (with Math.atan2) to eliminate function call overhead
+ * - For arc-specific per-pixel loops where angle filtering is required
+ * - TAU constant is inlined for performance
+ *
+ * All templates preserve the single-clipping-check invariant.
  *
  * Usage:
  *   node preprocess.js <input> [output]
@@ -31,9 +37,10 @@ const fs = require('fs');
 const path = require('path');
 
 // Template definitions - single source of truth for pixel operations
-// Two categories of templates:
+// Three categories of templates:
 // - Standard (BLEND_ALPHA, SET_OPAQUE): Caller checks clipping BEFORE marker
 // - Clipped (_CLIPPED variants): Include clipping check for per-pixel loops
+// - Arc (_ARC_CLIPPED variants): Include angle check + clipping for arc per-pixel loops
 // See ARCHITECTURE.md "Check Once, Check Correctly" contract.
 //
 // PERFORMANCE NOTE: Templates are optimized for V8. Since all call sites pass simple
@@ -129,6 +136,78 @@ if (__outA > 0) {
         {{data}}[__off + 1] = ({{g}} * {{alpha}} + {{data}}[__off + 1] * __dstAScaled) * __blend;
         {{data}}[__off + 2] = ({{b}} * {{alpha}} + {{data}}[__off + 2] * __dstAScaled) * __blend;
         {{data}}[__off + 3] = __outA * 255;
+    }
+}`
+    },
+
+    /**
+     * Opaque pixel write for arc rendering with inline angle check + clipping.
+     * Combines isAngleInRange logic with clipping and pixel write to eliminate function call overhead.
+     *
+     * TAU constant (6.283185307179586) is inlined for performance.
+     *
+     * @param {Uint32Array} data32 - 32-bit view of surface pixel data
+     * @param {number} pixelIndex - Linear pixel index (y * width + x)
+     * @param {number} packedColor - Pre-packed 32-bit RGBA color
+     * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
+     * @param {number} dx - X offset from arc center
+     * @param {number} dy - Y offset from arc center
+     * @param {number} startAngle - Arc start angle in radians
+     * @param {number} endAngle - Arc end angle in radians (must be > startAngle)
+     */
+    'SET_OPAQUE_ARC_CLIPPED': {
+        params: ['data32', 'pixelIndex', 'packedColor', 'clipBuffer', 'dx', 'dy', 'startAngle', 'endAngle'],
+        code: `{
+    let __angle = Math.atan2({{dy}}, {{dx}});
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < {{startAngle}}) __angle += 6.283185307179586;
+    if (__angle >= {{startAngle}} && __angle <= {{endAngle}}) {
+        if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
+            {{data32}}[{{pixelIndex}}] = {{packedColor}};
+        }
+    }
+}`
+    },
+
+    /**
+     * Alpha blending for arc rendering with inline angle check + clipping.
+     * Combines isAngleInRange logic with clipping and alpha blend to eliminate function call overhead.
+     *
+     * TAU constant (6.283185307179586) is inlined for performance.
+     *
+     * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
+     * @param {number} pixelIndex - Linear pixel index (y * width + x)
+     * @param {number} r - Red component (0-255)
+     * @param {number} g - Green component (0-255)
+     * @param {number} b - Blue component (0-255)
+     * @param {number} alpha - Alpha as fraction (0-1)
+     * @param {number} invAlpha - Inverse alpha (1 - alpha)
+     * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
+     * @param {number} dx - X offset from arc center
+     * @param {number} dy - Y offset from arc center
+     * @param {number} startAngle - Arc start angle in radians
+     * @param {number} endAngle - Arc end angle in radians (must be > startAngle)
+     */
+    'BLEND_ALPHA_ARC_CLIPPED': {
+        params: ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer', 'dx', 'dy', 'startAngle', 'endAngle'],
+        code: `{
+    let __angle = Math.atan2({{dy}}, {{dx}});
+    if (__angle < 0) __angle += 6.283185307179586;
+    if (__angle < {{startAngle}}) __angle += 6.283185307179586;
+    if (__angle >= {{startAngle}} && __angle <= {{endAngle}}) {
+        if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
+            const __off = {{pixelIndex}} * 4;
+            const __dstA = {{data}}[__off + 3] / 255;
+            const __dstAScaled = __dstA * {{invAlpha}};
+            const __outA = {{alpha}} + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                {{data}}[__off]     = ({{r}} * {{alpha}} + {{data}}[__off] * __dstAScaled) * __blend;
+                {{data}}[__off + 1] = ({{g}} * {{alpha}} + {{data}}[__off + 1] * __dstAScaled) * __blend;
+                {{data}}[__off + 2] = ({{b}} * {{alpha}} + {{data}}[__off + 2] * __dstAScaled) * __blend;
+                {{data}}[__off + 3] = __outA * 255;
+            }
+        }
     }
 }`
     }

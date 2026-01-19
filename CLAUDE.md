@@ -115,9 +115,16 @@ Uses object-oriented ES6 class design throughout. See ARCHITECTURE.md for comple
 - `/*@inline:BLEND_ALPHA_CLIPPED(data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer)*/`
 - `/*@inline:SET_OPAQUE_CLIPPED(data32, pixelIndex, packedColor, clipBuffer)*/`
 
+**Arc Templates** (include angle check + clipping, for arc per-pixel loops):
+- `/*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pixelIndex, packedColor, clipBuffer, dx, dy, startAngle, endAngle)*/`
+- `/*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/`
+
+Arc templates inline `isAngleInRange` logic (including `Math.atan2`) to eliminate function call overhead in arc rendering hot paths.
+
 **Clipping contract**:
 - Standard templates: Caller checks `clipBuffer` BEFORE the marker (for span-based code via SpanOps)
 - Clipped templates: Include clipping check internally (for per-pixel loops where hoisting is not possible)
+- Arc templates: Include both angle range check and clipping check (for arc-specific per-pixel loops)
 - Templates are defined in `build-scripts/preprocess.js`
 - Run `npm run build` to expand markers - check `dist/swcanvas.js` to verify expansion
 - Run `node tests/build/test-preprocessor.js` to test the preprocessor
