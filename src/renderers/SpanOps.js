@@ -1,19 +1,17 @@
 /**
- * SpanOps - Static utility methods for horizontal span filling and pixel blending
+ * SpanOps - Static utility methods for horizontal span filling
  * Used by all shape *Ops classes for optimized pixel rendering.
  * Follows PolygonFiller pattern with static methods.
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): This class is the foundation layer.
- *   - No dependencies on other *Ops classes
+ * Layer 0 (Foundation): Depends on PixelOps for single-pixel blending.
  *   - Called by: RectOpsAA, RectOpsRot, CircleOps, LineOps, ArcOps,
  *                RoundedRectOpsAA, RoundedRectOpsRot
  *
  * NAMING PATTERN: {operation}_{opacity}
  *   - fill_Opaq: Opaque span fill (32-bit writes)
- *   - fill_Alpha: Semi-transparent span fill (alpha blending)
- *   - blendPixel_Alpha: Single pixel alpha blending (used by 1px alpha strokes)
+ *   - fill_Alpha: Semi-transparent span fill (calls PixelOps.blend_Alpha)
  */
 class SpanOps {
     /**
@@ -106,61 +104,34 @@ class SpanOps {
         if (len <= 0) return;
 
         const endX = x + len;
-        const rowOffset = yi * surfaceWidth * 4;
+        const rowStart = yi * surfaceWidth;
 
         if (clipBuffer) {
             // With clipping - includes byte-skip optimization
             let px = x;
             while (px < endX) {
-                const pixelIndex = yi * surfaceWidth + px;
+                const pixelIndex = rowStart + px;
                 const byteIndex = pixelIndex >> 3;
 
                 // Skip fully clipped bytes (8 pixels at a time)
                 if (clipBuffer[byteIndex] === 0) {
                     const nextByteBoundary = (byteIndex + 1) << 3;
                     // Convert back to X coordinate with bounds check
-                    px = Math.min(nextByteBoundary - yi * surfaceWidth, endX);
+                    px = Math.min(nextByteBoundary - rowStart, endX);
                     continue;
                 }
 
                 const bitOffset = pixelIndex & 7;
                 if ((clipBuffer[byteIndex] & (1 << bitOffset)) !== 0) {
-                    const offset = rowOffset + px * 4;
-                    SpanOps.blendPixel_Alpha(data, offset, r, g, b, alpha, invAlpha);
+                    PixelOps.blend_Alpha(data, pixelIndex, r, g, b, alpha, invAlpha);
                 }
                 px++;
             }
         } else {
             // No clipping
             for (let px = x; px < endX; px++) {
-                const offset = rowOffset + px * 4;
-                SpanOps.blendPixel_Alpha(data, offset, r, g, b, alpha, invAlpha);
+                PixelOps.blend_Alpha(data, rowStart + px, r, g, b, alpha, invAlpha);
             }
-        }
-    }
-
-    /**
-     * Blend a single pixel with source-over alpha compositing
-     * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
-     * @param {number} offset - Byte offset into data array
-     * @param {number} r - Red component (0-255)
-     * @param {number} g - Green component (0-255)
-     * @param {number} b - Blue component (0-255)
-     * @param {number} alpha - Alpha as fraction (0-1)
-     * @param {number} invAlpha - Inverse alpha (1 - alpha)
-     */
-    static blendPixel_Alpha(data, offset, r, g, b, alpha, invAlpha) {
-        // Source-over alpha blending formula
-        const dstA = data[offset + 3] / 255;
-        const dstAScaled = dstA * invAlpha;
-        const outA = alpha + dstAScaled;
-
-        if (outA > 0) {
-            const blendFactor = 1 / outA;
-            data[offset]     = (r * alpha + data[offset] * dstAScaled) * blendFactor;
-            data[offset + 1] = (g * alpha + data[offset + 1] * dstAScaled) * blendFactor;
-            data[offset + 2] = (b * alpha + data[offset + 2] * dstAScaled) * blendFactor;
-            data[offset + 3] = outA * 255;
         }
     }
 }

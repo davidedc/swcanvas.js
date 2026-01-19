@@ -7,7 +7,7 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, SpanOps.blendPixel_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
  *
  * Layer 1 (Helpers - used by rotated implementations):
  *   _normalizeRadius, _transform, _generateEdgePixels, _generateArcPixels, _generatePerimeter
@@ -16,10 +16,10 @@
  *   _fill_Rot_Opaq                → SpanOps.fill_Opaq
  *   _fill_Rot_Alpha               → SpanOps.fill_Alpha
  *   _stroke1px_Rot_Opaq           → Direct pixel writes
- *   _stroke1px_Rot_Alpha          → SpanOps.blendPixel_Alpha
+ *   _stroke1px_Rot_Alpha          → PixelOps.blend_Alpha
  *   _strokeThick_Rot_Opaq         → SpanOps.fill_Opaq
  *   _strokeThick_Rot_Alpha        → SpanOps.fill_Alpha
- *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + SpanOps.blendPixel_Alpha
+ *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + PixelOps.blend_Alpha
  *   _fillStroke_Rot_Unified       → SpanOps.fill_Opaq/fill_Alpha
  *
  * Layer 3 (Dispatchers):
@@ -769,7 +769,7 @@ class RoundedRectOpsRot {
         // Render all collected unique pixels with alpha blending via SpanOps
         for (const pos of strokePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                SpanOps.blendPixel_Alpha(data, pos * 4, r, g, b, effectiveAlpha, invAlpha);
+                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
             }
         }
     }
@@ -1295,7 +1295,7 @@ class RoundedRectOpsRot {
             if (strokeIsOpaque) {
                 data32[pos] = strokePacked;
             } else {
-                SpanOps.blendPixel_Alpha(data, pos * 4, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha);
+                PixelOps.blend_Alpha(data, pos, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha);
             }
         }
     }

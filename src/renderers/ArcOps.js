@@ -13,7 +13,7 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data)
+ * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), PixelOps.blend_Alpha
  *
  * Layer 1 (Primitives - do atomic rendering):
  *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering)
@@ -459,17 +459,7 @@ class ArcOps {
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const idx = pos * 4;
-                        const oldAlpha = data[idx + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * invAlpha;
-                        const newAlpha = effectiveAlpha + oldAlphaScaled;
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                            data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                            data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                            data[idx + 3] = newAlpha * 255;
-                        }
+                        PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
                     }
                 }
             }
@@ -520,17 +510,7 @@ class ArcOps {
         // Render collected pixels with alpha blending
         for (const pos of strokePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                const idx = pos * 4;
-                const oldAlpha = data[idx + 3] / 255;
-                const oldAlphaScaled = oldAlpha * invAlpha;
-                const newAlpha = effectiveAlpha + oldAlphaScaled;
-                if (newAlpha > 0) {
-                    const blendFactor = 1 / newAlpha;
-                    data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                    data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                    data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                    data[idx + 3] = newAlpha * 255;
-                }
+                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
             }
         }
     }

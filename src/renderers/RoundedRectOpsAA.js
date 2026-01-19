@@ -13,12 +13,12 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, SpanOps.blendPixel_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
  *
- * Layer 1 (Primitives - call SpanOps, fallback to RectOpsAA for radius=0):
+ * Layer 1 (Primitives - call SpanOps/PixelOps, fallback to RectOpsAA for radius=0):
  *   fill_AA_Opaq, fill_AA_Alpha          → SpanOps.fill_Opaq/fill_Alpha
  *   stroke1px_AA_Opaq                    → Direct pixel writes
- *   stroke1px_AA_Alpha                   → SpanOps.blendPixel_Alpha
+ *   stroke1px_AA_Alpha                   → PixelOps.blend_Alpha
  *   strokeThick_AA_Opaq, strokeThick_AA_Alpha → SpanOps.fill_Opaq/fill_Alpha
  *
  * Layer 2 (Composites):
@@ -274,7 +274,7 @@ class RoundedRectOpsAA {
                 if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
             }
 
-            SpanOps.blendPixel_Alpha(data, pixelIndex * 4, r, g, b, incomingAlpha, inverseIncomingAlpha);
+            PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
         }
     }
 

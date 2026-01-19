@@ -43,10 +43,11 @@ cat src/core/SWPath2D.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/core/Surface.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/FastPixelOps.js >> dist/swcanvas.js
-echo "" >> dist/swcanvas.js
 
 # Phase 1.5: Shape rendering operations (depend on Surface)
+# PixelOps must come before SpanOps (SpanOps depends on it)
+cat src/renderers/PixelOps.js >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
 cat src/renderers/SpanOps.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/renderers/QuadScanOps.js >> dist/swcanvas.js
@@ -196,7 +197,7 @@ if (typeof window !== 'undefined') {
             RadialGradient: RadialGradient,
             ConicGradient: ConicGradient,
             Pattern: Pattern,
-            FastPixelOps: FastPixelOps,
+            PixelOps: PixelOps,
             RoundedRectOpsAA: RoundedRectOpsAA
         }
     };
@@ -238,7 +239,7 @@ if (typeof window !== 'undefined') {
             RadialGradient: RadialGradient,
             ConicGradient: ConicGradient,
             Pattern: Pattern,
-            FastPixelOps: FastPixelOps,
+            PixelOps: PixelOps,
             RoundedRectOpsAA: RoundedRectOpsAA
         }
     };

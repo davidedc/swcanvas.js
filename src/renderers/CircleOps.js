@@ -13,11 +13,12 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
  *
  * Layer 1 (Primitives):
  *   fill_Opaq, fill_Alpha              → SpanOps.fill_Opaq/fill_Alpha
- *   stroke1px_Opaq, stroke1px_Alpha    → Direct pixel writes (no SpanOps - overhead too high)
+ *   stroke1px_Opaq                     → Direct pixel writes (opaque)
+ *   stroke1px_Alpha                    → PixelOps.blend_Alpha
  *   strokeThick_Any                    → SpanOps.fill_Opaq
  *   strokeThick_Alpha                  → SpanOps.fill_Alpha
  *
@@ -345,17 +346,7 @@ class CircleOps {
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const idx = pos * 4;
-                        const oldAlpha = data[idx + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * invAlpha;
-                        const newAlpha = effectiveAlpha + oldAlphaScaled;
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                            data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                            data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                            data[idx + 3] = newAlpha * 255;
-                        }
+                        PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
                     }
                 }
             }
@@ -409,17 +400,7 @@ class CircleOps {
         // Render unique pixels with alpha blending
         for (const pos of uniquePixels) {
             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                const idx = pos * 4;
-                const oldAlpha = data[idx + 3] / 255;
-                const oldAlphaScaled = oldAlpha * invAlpha;
-                const newAlpha = effectiveAlpha + oldAlphaScaled;
-                if (newAlpha > 0) {
-                    const blendFactor = 1 / newAlpha;
-                    data[idx] = (r * effectiveAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-                    data[idx + 1] = (g * effectiveAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-                    data[idx + 2] = (b * effectiveAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-                    data[idx + 3] = newAlpha * 255;
-                }
+                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
             }
         }
     }

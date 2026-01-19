@@ -9,11 +9,11 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
  *
  * Layer 1 (Primitives):
  *   lineToQuad - Convert line + thickness to 4 corners
- *   fillQuad   - Scanline fill the quad (calls SpanOps or per-pixel blend)
+ *   fillQuad   - Scanline fill the quad (calls SpanOps or PixelOps for per-pixel)
  */
 class QuadScanOps {
     // Static pools - reused across calls to eliminate GC pressure
@@ -164,7 +164,7 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        QuadScanOps._blendPixel(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
                     }
                 }
             } else if (intersections.length >= 2) {
@@ -198,7 +198,7 @@ class QuadScanOps {
                             if (isOpaque) {
                                 data32[pixelIndex] = packedColor;
                             } else {
-                                QuadScanOps._blendPixel(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                                PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
                             }
                         }
                     } else {
@@ -266,7 +266,7 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        QuadScanOps._blendPixel(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
+                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
                     }
                 }
             } else {
@@ -277,25 +277,6 @@ class QuadScanOps {
                     SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
                 }
             }
-        }
-    }
-
-    /**
-     * Blend a single pixel with alpha compositing.
-     * @private
-     */
-    static _blendPixel(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha) {
-        const idx = pixelIndex * 4;
-        const oldAlpha = data[idx + 3] / 255;
-        const oldAlphaScaled = oldAlpha * inverseIncomingAlpha;
-        const newAlpha = incomingAlpha + oldAlphaScaled;
-
-        if (newAlpha > 0) {
-            const blendFactor = 1 / newAlpha;
-            data[idx] = (r * incomingAlpha + data[idx] * oldAlphaScaled) * blendFactor;
-            data[idx + 1] = (g * incomingAlpha + data[idx + 1] * oldAlphaScaled) * blendFactor;
-            data[idx + 2] = (b * incomingAlpha + data[idx + 2] * oldAlphaScaled) * blendFactor;
-            data[idx + 3] = newAlpha * 255;
         }
     }
 }

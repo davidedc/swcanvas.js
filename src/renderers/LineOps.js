@@ -10,13 +10,13 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, QuadScanOps.fillQuad
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha, QuadScanOps.fillQuad
  *
  * Layer 1 (Internal):
  *   _strokeThick_PolyScan → QuadScanOps.lineToQuad + QuadScanOps.fillQuad/fillSquare
  *
  * Layer 2 (Public dispatcher):
- *   stroke_Any → Bresenham (thin), SpanOps (thick AA), _strokeThick_PolyScan
+ *   stroke_Any → Bresenham (thin opaque), PixelOps/SpanOps (thin alpha), SpanOps (thick AA), _strokeThick_PolyScan
  *
  * NAMING PATTERN: {operation}_{opacity}
  *   - Any = Handles all opacity/thickness cases (dispatcher)
@@ -58,6 +58,17 @@ class LineOps {
             }
             if (y1i === y2i) {
                 if (x2i > x1i) x2i--; else x1i--;
+            }
+
+            // Optimize thin horizontal lines: use span-based rendering
+            if (y1i === y2i) {
+                const leftX = Math.min(x1i, x2i);
+                const rightX = Math.max(x1i, x2i);
+                const spanLength = rightX - leftX + 1;
+                if (spanLength > 0) {
+                    SpanOps.fill_Opaq(data32, width, height, leftX, y1i, spanLength, packedColor, clipBuffer);
+                }
+                return true;
             }
 
             let dx = Math.abs(x2i - x1i);
@@ -159,6 +170,17 @@ class LineOps {
                 if (x2i > x1i) x2i--; else x1i--;
             }
 
+            // Optimize thin horizontal lines: use span-based rendering
+            if (y1i === y2i) {
+                const leftX = Math.min(x1i, x2i);
+                const rightX = Math.max(x1i, x2i);
+                const spanLength = rightX - leftX + 1;
+                if (spanLength > 0) {
+                    SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                }
+                return true;
+            }
+
             let dx = Math.abs(x2i - x1i);
             let dy = Math.abs(y2i - y1i);
             const sx = x1i < x2i ? 1 : -1;
@@ -182,18 +204,7 @@ class LineOps {
                     }
 
                     if (drawPixel) {
-                        const index = pixelIndex * 4;
-                        const oldAlpha = data[index + 3] / 255;
-                        const oldAlphaScaled = oldAlpha * inverseIncomingAlpha;
-                        const newAlpha = incomingAlpha + oldAlphaScaled;
-
-                        if (newAlpha > 0) {
-                            const blendFactor = 1 / newAlpha;
-                            data[index] = (r * incomingAlpha + data[index] * oldAlphaScaled) * blendFactor;
-                            data[index + 1] = (g * incomingAlpha + data[index + 1] * oldAlphaScaled) * blendFactor;
-                            data[index + 2] = (b * incomingAlpha + data[index + 2] * oldAlphaScaled) * blendFactor;
-                            data[index + 3] = newAlpha * 255;
-                        }
+                        PixelOps.blend_Alpha(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha);
                     }
                 }
 
