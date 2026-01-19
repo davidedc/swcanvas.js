@@ -2571,42 +2571,43 @@ class RectOpsAA {
         const right = Math.floor(x + width);
         const bottom = Math.floor(y + height);
 
-        // Helper to set pixel with clipping check
-        const setPixel = (px, py) => {
-            const pos = py * surfaceWidth + px;
-            if (clipBuffer) {
-                const byteIndex = pos >> 3;
-                const bitIndex = pos & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-            data32[pos] = packedColor;
-        };
-
         // Draw top edge (horizontal): pixels from left to right (inclusive)
         if (top >= 0 && top < surfaceHeight) {
             for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
-                setPixel(px, top);
+                const pos = top * surfaceWidth + px;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
             }
         }
 
         // Draw bottom edge (horizontal): pixels from left to right (inclusive)
         if (bottom >= 0 && bottom < surfaceHeight) {
             for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
-                setPixel(px, bottom);
+                const pos = bottom * surfaceWidth + px;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
             }
         }
 
         // Draw left edge (vertical): skip corners (already drawn)
         if (left >= 0 && left < surfaceWidth) {
             for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
-                setPixel(left, py);
+                const pos = py * surfaceWidth + left;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
             }
         }
 
         // Draw right edge (vertical): skip corners (already drawn)
         if (right >= 0 && right < surfaceWidth) {
             for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
-                setPixel(right, py);
+                const pos = py * surfaceWidth + right;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
             }
         }
     }
@@ -2640,46 +2641,84 @@ class RectOpsAA {
         const right = Math.floor(x + width);
         const bottom = Math.floor(y + height);
 
-        // Helper function to blend a pixel with clipping check
-        const blendPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
-            const pos = py * surfaceWidth + px;
-            if (clipBuffer) {
-                const byteIndex = pos >> 3;
-                const bitIndex = pos & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-            const __off = pos * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * invAlpha;
-const __outA = effectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
-}
-        };
-
         // Draw top edge (horizontal): pixels from left to right (inclusive)
-        for (let px = left; px <= right; px++) {
-            blendPixel(px, top);
+        if (top >= 0 && top < surfaceHeight) {
+            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+                const pos = top * surfaceWidth + px;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * invAlpha;
+    const __outA = effectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+            }
         }
 
         // Draw bottom edge (horizontal): pixels from left to right (inclusive)
-        for (let px = left; px <= right; px++) {
-            blendPixel(px, bottom);
+        if (bottom >= 0 && bottom < surfaceHeight) {
+            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+                const pos = bottom * surfaceWidth + px;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * invAlpha;
+    const __outA = effectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+            }
         }
 
         // Draw left edge (vertical): skip corners (already drawn)
-        for (let py = top + 1; py < bottom; py++) {
-            blendPixel(left, py);
+        if (left >= 0 && left < surfaceWidth) {
+            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+                const pos = py * surfaceWidth + left;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * invAlpha;
+    const __outA = effectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+            }
         }
 
         // Draw right edge (vertical): skip corners (already drawn)
-        for (let py = top + 1; py < bottom; py++) {
-            blendPixel(right, py);
+        if (right >= 0 && right < surfaceWidth) {
+            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+                const pos = py * surfaceWidth + right;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * invAlpha;
+    const __outA = effectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+            }
         }
     }
 
@@ -2710,37 +2749,49 @@ if (__outA > 0) {
         const right = x + width;
         const bottom = y + height;
 
-        // Helper to set pixel with optional clipping
-        const setPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
-
-            if (clipBuffer) {
-                const pixelIndex = py * surfaceWidth + px;
-                const byteIndex = pixelIndex >> 3;
-                const bitIndex = pixelIndex & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-
-            data32[py * surfaceWidth + px] = packedColor;
-        };
-
         // Draw horizontal strokes (top and bottom edges with full thickness)
         for (let px = Math.floor(left - halfStroke); px < right + halfStroke; px++) {
+            if (px < 0 || px >= surfaceWidth) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Top edge
-                setPixel(px, Math.floor(top + t));
+                const pyTop = Math.floor(top + t);
+                if (pyTop >= 0 && pyTop < surfaceHeight) {
+                    const pos = pyTop * surfaceWidth + px;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
+                }
                 // Bottom edge
-                setPixel(px, Math.floor(bottom + t));
+                const pyBottom = Math.floor(bottom + t);
+                if (pyBottom >= 0 && pyBottom < surfaceHeight) {
+                    const pos = pyBottom * surfaceWidth + px;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
+                }
             }
         }
 
         // Draw vertical strokes (left and right edges, excluding corners already drawn)
         for (let py = Math.floor(top + halfStroke); py < bottom - halfStroke; py++) {
+            if (py < 0 || py >= surfaceHeight) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Left edge
-                setPixel(Math.floor(left + t), py);
+                const pxLeft = Math.floor(left + t);
+                if (pxLeft >= 0 && pxLeft < surfaceWidth) {
+                    const pos = py * surfaceWidth + pxLeft;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
+                }
                 // Right edge
-                setPixel(Math.floor(right + t), py);
+                const pxRight = Math.floor(right + t);
+                if (pxRight >= 0 && pxRight < surfaceWidth) {
+                    const pos = py * surfaceWidth + pxRight;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
+                }
             }
         }
     }
@@ -2778,38 +2829,46 @@ if (__outA > 0) {
         const right = x + width;
         const bottom = y + height;
 
-        // Helper function to blend a pixel with optional clipping
-        const blendPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
-
-            const pixelIndex = py * surfaceWidth + px;
-
-            if (clipBuffer) {
-                const byteIndex = pixelIndex >> 3;
-                const bitIndex = pixelIndex & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-
-            const __off = pixelIndex * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * invAlpha;
-const __outA = effectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
-}
-        };
-
         // Draw horizontal strokes (top and bottom edges with full thickness)
         for (let px = Math.floor(left - halfStroke); px < right + halfStroke; px++) {
+            if (px < 0 || px >= surfaceWidth) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Top edge
-                blendPixel(px, Math.floor(top + t));
+                const pyTop = Math.floor(top + t);
+                if (pyTop >= 0 && pyTop < surfaceHeight) {
+                    const pos = pyTop * surfaceWidth + px;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * invAlpha;
+    const __outA = effectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+                }
                 // Bottom edge
-                blendPixel(px, Math.floor(bottom + t));
+                const pyBottom = Math.floor(bottom + t);
+                if (pyBottom >= 0 && pyBottom < surfaceHeight) {
+                    const pos = pyBottom * surfaceWidth + px;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * invAlpha;
+    const __outA = effectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+                }
             }
         }
 
@@ -2823,13 +2882,44 @@ if (__outA > 0) {
         // Draw vertical strokes (left and right edges, excluding corners)
         // Use px-based iteration to match horizontal stroke X coverage
         for (let py = topStrokeMaxY + 1; py < bottomStrokeMinY; py++) {
+            if (py < 0 || py >= surfaceHeight) continue;
             // Left edge
             for (let px = Math.floor(left - halfStroke); px < left + halfStroke; px++) {
-                blendPixel(px, py);
+                if (px >= 0 && px < surfaceWidth) {
+                    const pos = py * surfaceWidth + px;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * invAlpha;
+    const __outA = effectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+                }
             }
             // Right edge
             for (let px = Math.floor(right - halfStroke); px < right + halfStroke; px++) {
-                blendPixel(px, py);
+                if (px >= 0 && px < surfaceWidth) {
+                    const pos = py * surfaceWidth + px;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * invAlpha;
+    const __outA = effectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+                }
             }
         }
     }
@@ -4752,44 +4842,84 @@ if (__outA > 0) {
 
             // STEP 2: Render stroke on top (covers any micro-gaps)
             if (hasStroke) {
-                // Helper function to render a stroke pixel with angle filtering
                 const sr = strokeColor.r, sg = strokeColor.g, sb = strokeColor.b;
-                const renderStrokePixel = (x) => {
-                    const dx = x - cX;
-                    // Apply angle filtering for arc
-                    if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) return;
-                    const pos = y * width + x;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        if (strokeIsOpaque) {
-                            data32[pos] = strokePacked;
-                        } else {
-                            const __off = pos * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * strokeInvAlpha;
-const __outA = strokeEffectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
-}
-                        }
-                    }
-                };
 
                 if (innerRadius <= 0 || dySquared > innerRadiusSquared) {
                     // No inner circle intersection - draw entire stroke span
                     for (let x = outerLeftX; x <= outerRightX; x++) {
-                        renderStrokePixel(x);
+                        const dx = x - cX;
+                        // Apply angle filtering for arc
+                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
+                        const pos = y * width + x;
+                        if (strokeIsOpaque) {
+                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = strokePacked;
+}
+                        } else {
+                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * strokeInvAlpha;
+    const __outA = strokeEffectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+                        }
                     }
                 } else {
                     // Intersects both inner and outer circles - draw left and right segments
                     for (let x = outerLeftX; x <= innerLeftX; x++) {
-                        renderStrokePixel(x);
+                        const dx = x - cX;
+                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
+                        const pos = y * width + x;
+                        if (strokeIsOpaque) {
+                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = strokePacked;
+}
+                        } else {
+                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * strokeInvAlpha;
+    const __outA = strokeEffectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+                        }
                     }
                     for (let x = innerRightX; x <= outerRightX; x++) {
-                        renderStrokePixel(x);
+                        const dx = x - cX;
+                        if (!ArcOps.isAngleInRange(dx, dy, startAngle, endAngle)) continue;
+                        const pos = y * width + x;
+                        if (strokeIsOpaque) {
+                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = strokePacked;
+}
+                        } else {
+                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * strokeInvAlpha;
+    const __outA = strokeEffectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (sr * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (sg * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (sb * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+                        }
                     }
                 }
             }
@@ -6711,40 +6841,58 @@ class RoundedRectOpsAA {
         const posW = width;
         const posH = height;
 
-        // Helper to set pixel with optional clipping
-        const setPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
-
-            if (clipBuffer) {
-                const pixelIndex = py * surfaceWidth + px;
-                const byteIndex = pixelIndex >> 3;
-                const bitIndex = pixelIndex & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
-            }
-
-            data32[py * surfaceWidth + px] = packedColor;
-        };
-
         // Draw horizontal edges (top and bottom, excluding corners)
         const topY = Math.floor(posY);
         const bottomY = Math.floor(posY + posH - 0.5);
 
-        for (let xx = Math.floor(posX + radius); xx < posX + posW - radius; xx++) {
-            // Top edge
-            setPixel(xx, topY);
-            // Bottom edge
-            setPixel(xx, bottomY);
+        // Top edge
+        if (topY >= 0 && topY < surfaceHeight) {
+            for (let xx = Math.floor(posX + radius); xx < posX + posW - radius; xx++) {
+                if (xx >= 0 && xx < surfaceWidth) {
+                    const pos = topY * surfaceWidth + xx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
+                }
+            }
+        }
+        // Bottom edge
+        if (bottomY >= 0 && bottomY < surfaceHeight) {
+            for (let xx = Math.floor(posX + radius); xx < posX + posW - radius; xx++) {
+                if (xx >= 0 && xx < surfaceWidth) {
+                    const pos = bottomY * surfaceWidth + xx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
+                }
+            }
         }
 
         // Draw vertical edges (left and right, excluding corners)
         const leftX = Math.floor(posX);
         const rightX = Math.floor(posX + posW - 0.5);
 
-        for (let yy = Math.floor(posY + radius); yy < posY + posH - radius; yy++) {
-            // Left edge
-            setPixel(leftX, yy);
-            // Right edge
-            setPixel(rightX, yy);
+        // Left edge
+        if (leftX >= 0 && leftX < surfaceWidth) {
+            for (let yy = Math.floor(posY + radius); yy < posY + posH - radius; yy++) {
+                if (yy >= 0 && yy < surfaceHeight) {
+                    const pos = yy * surfaceWidth + leftX;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
+                }
+            }
+        }
+        // Right edge
+        if (rightX >= 0 && rightX < surfaceWidth) {
+            for (let yy = Math.floor(posY + radius); yy < posY + posH - radius; yy++) {
+                if (yy >= 0 && yy < surfaceHeight) {
+                    const pos = yy * surfaceWidth + rightX;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
+                }
+            }
         }
 
         // Draw corner arcs using angle iteration (Bresenham-style)
@@ -6756,7 +6904,12 @@ class RoundedRectOpsAA {
             for (let angle = startAngle; angle <= endAngle; angle += angleStep) {
                 const px = Math.floor(cx + sr * Math.cos(angle));
                 const py = Math.floor(cy + sr * Math.sin(angle));
-                setPixel(px, py);
+                if (px >= 0 && px < surfaceWidth && py >= 0 && py < surfaceHeight) {
+                    const pos = py * surfaceWidth + px;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = packedColor;
+}
+                }
             }
         };
 
