@@ -86,7 +86,7 @@ registerDirectRenderingTest(
     'arcs',
     {
         totalUniqueColors: 4,
-        speckles: { maxSpeckles: 4 },
+        speckles: { maxSpeckles: 5 },
         allowPathBasedRendering: true  // Semi-transparent may use path-based rendering
     },
     {

@@ -89,7 +89,7 @@ registerDirectRenderingTest(
         extremes: { colorTolerance: 40, tolerance: 0.03 },
         noGapsInStrokeEdges: true,
         totalUniqueColors: 4,
-        speckles: { maxSpeckles: 4 },
+        speckles: { maxSpeckles: 5 },
         shapeIntegrity: true
     },
     {

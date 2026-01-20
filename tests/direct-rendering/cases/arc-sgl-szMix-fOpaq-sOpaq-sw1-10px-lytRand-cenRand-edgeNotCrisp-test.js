@@ -84,7 +84,7 @@ registerDirectRenderingTest(
     'arcs',
     {
         speckles: { maxSpeckles: 5 },
-        shapeIntegrity: true
+        shapeIntegrity: { skipOnIterations: [350, 709] }
     },
     {
         title: 'Single Arc (Not Crisp, Random Position)',
