@@ -180,7 +180,8 @@ function runTest(test, iterationNumber = 1) {
         failures.push({
             name,
             title: metadata?.title,
-            reason: `Exception during draw: ${e.message}`
+            reason: `Exception during draw: ${e.message}`,
+            iteration: iterationNumber
         });
         return false;
     }
@@ -227,12 +228,12 @@ function runTest(test, iterationNumber = 1) {
         // Passed but has known failures - show as warning
         passed++;
         warnings++;
-        knownFailures.push({ name, title: metadata?.title, reason: knownFailureIssues.join('; ') });
+        knownFailures.push({ name, title: metadata?.title, reason: knownFailureIssues.join('; '), iteration: iterationNumber });
         console.log(`  \x1b[33m\u26A0\x1b[0m ${name}`);
         knownFailureIssues.forEach(issue => console.log(`    - ${issue}`));
     } else {
         failed++;
-        failures.push({ name, title: metadata?.title, reason: issues.join('; ') });
+        failures.push({ name, title: metadata?.title, reason: issues.join('; '), iteration: iterationNumber });
         console.log(`  \x1b[31m\u2717\x1b[0m ${name}`);
         issues.forEach(issue => console.log(`    - ${issue}`));
     }
@@ -339,16 +340,16 @@ function main() {
     // Always list failures if any
     if (failed > 0) {
         console.log('\nFailed tests:');
-        for (const { name, title, reason } of failures) {
-            console.log(`  - ${name}${title ? ` (${title})` : ''}: ${reason}`);
+        for (const { name, title, reason, iteration } of failures) {
+            console.log(`  - ${name}${title ? ` (${title})` : ''} [iter ${iteration}]: ${reason}`);
         }
     }
 
     // Always list warnings if any
     if (knownFailures.length > 0) {
         console.log('\nWarnings (known failures, not blocking):');
-        for (const { name, title, reason } of knownFailures) {
-            console.log(`  - ${name}${title ? ` (${title})` : ''}: ${reason}`);
+        for (const { name, title, reason, iteration } of knownFailures) {
+            console.log(`  - ${name}${title ? ` (${title})` : ''} [iter ${iteration}]: ${reason}`);
         }
     }
 
