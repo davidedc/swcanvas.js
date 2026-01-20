@@ -27,6 +27,12 @@
  *   - Opaq = Opaque only, Alpha = Semi-transparent, Any = Handles both
  *   - (No orientation suffix - arcs are defined by angles, not rotation)
  */
+
+// Module-level scratch buffer for scanline events - avoids per-scanline allocation
+// Max 6 events: 2 outer + 2 inner + 2 rays (for strokeOuter)
+// Max 4 events: 2 circle + 2 rays (for fill)
+const _arcEventBuffer = new Float32Array(8);
+
 class ArcOps {
     /**
      * Check if the angle of point (px, py) relative to origin is within [startAngle, endAngle]
@@ -126,6 +132,24 @@ class ArcOps {
     }
 
     /**
+     * In-place insertion sort for event buffer. Faster than native sort for N < 10.
+     * @private
+     * @param {Float32Array} buffer - Event buffer
+     * @param {number} count - Number of elements to sort
+     */
+    static _sortEvents(buffer, count) {
+        for (let i = 1; i < count; i++) {
+            const val = buffer[i];
+            let j = i - 1;
+            while (j >= 0 && buffer[j] > val) {
+                buffer[j + 1] = buffer[j];
+                j--;
+            }
+            buffer[j + 1] = val;
+        }
+    }
+
+    /**
      * Fill an arc (pie slice) with opaque color - direct rendering
      * Uses span-based scanline algorithm with cross-product angle checks.
      * @param {Surface} surface - Target surface
@@ -187,40 +211,41 @@ class ArcOps {
 
             // Collect events (boundary points): circle edges + ray intersections
             // Note: Do NOT add cX here - the center is interior, not a boundary
-            const events = [circleLeft, circleRight];
+            // Uses module-level scratch buffer to avoid per-scanline allocation
+            let evtCount = 0;
+            _arcEventBuffer[evtCount++] = circleLeft;
+            _arcEventBuffer[evtCount++] = circleRight;
 
             // Add start ray intersection if it crosses this scanline
             if (startHasSlope) {
                 const startX = cX + dy * startSlope;
                 if (startX >= circleLeft && startX <= circleRight) {
-                    events.push(startX);
+                    _arcEventBuffer[evtCount++] = startX;
                 }
             } else if (Math.abs(dy) < 1e-10) {
                 // Horizontal ray (sin=0), handle center scanline
                 // Ray goes in direction of startCos (positive = right, negative = left)
-                if (startCos > 0) events.push(circleRight);
-                else events.push(circleLeft);
+                _arcEventBuffer[evtCount++] = startCos > 0 ? circleRight : circleLeft;
             }
 
             // Add end ray intersection if it crosses this scanline
             if (endHasSlope) {
                 const endX = cX + dy * endSlope;
                 if (endX >= circleLeft && endX <= circleRight) {
-                    events.push(endX);
+                    _arcEventBuffer[evtCount++] = endX;
                 }
             } else if (Math.abs(dy) < 1e-10) {
                 // Horizontal ray (sin=0), handle center scanline
-                if (endCos > 0) events.push(circleRight);
-                else events.push(circleLeft);
+                _arcEventBuffer[evtCount++] = endCos > 0 ? circleRight : circleLeft;
             }
 
-            // Sort events by X
-            events.sort((a, b) => a - b);
+            // Sort events by X using insertion sort (faster than native sort for N < 10)
+            ArcOps._sortEvents(_arcEventBuffer, evtCount);
 
             // Process each segment between events
-            for (let i = 0; i < events.length - 1; i++) {
-                const segLeft = events[i];
-                const segRight = events[i + 1];
+            for (let i = 0; i < evtCount - 1; i++) {
+                const segLeft = _arcEventBuffer[i];
+                const segRight = _arcEventBuffer[i + 1];
 
                 // Skip degenerate segments
                 if (segRight - segLeft < 0.5) continue;
@@ -312,37 +337,38 @@ class ArcOps {
 
             // Collect events (boundary points): circle edges + ray intersections
             // Note: Do NOT add cX here - the center is interior, not a boundary
-            const events = [circleLeft, circleRight];
+            // Uses module-level scratch buffer to avoid per-scanline allocation
+            let evtCount = 0;
+            _arcEventBuffer[evtCount++] = circleLeft;
+            _arcEventBuffer[evtCount++] = circleRight;
 
             // Add start ray intersection if it crosses this scanline
             if (startHasSlope) {
                 const startX = cX + dy * startSlope;
                 if (startX >= circleLeft && startX <= circleRight) {
-                    events.push(startX);
+                    _arcEventBuffer[evtCount++] = startX;
                 }
             } else if (Math.abs(dy) < 1e-10) {
-                if (startCos > 0) events.push(circleRight);
-                else events.push(circleLeft);
+                _arcEventBuffer[evtCount++] = startCos > 0 ? circleRight : circleLeft;
             }
 
             // Add end ray intersection if it crosses this scanline
             if (endHasSlope) {
                 const endX = cX + dy * endSlope;
                 if (endX >= circleLeft && endX <= circleRight) {
-                    events.push(endX);
+                    _arcEventBuffer[evtCount++] = endX;
                 }
             } else if (Math.abs(dy) < 1e-10) {
-                if (endCos > 0) events.push(circleRight);
-                else events.push(circleLeft);
+                _arcEventBuffer[evtCount++] = endCos > 0 ? circleRight : circleLeft;
             }
 
-            // Sort events by X
-            events.sort((a, b) => a - b);
+            // Sort events by X using insertion sort (faster than native sort for N < 10)
+            ArcOps._sortEvents(_arcEventBuffer, evtCount);
 
             // Process each segment between events
-            for (let i = 0; i < events.length - 1; i++) {
-                const segLeft = events[i];
-                const segRight = events[i + 1];
+            for (let i = 0; i < evtCount - 1; i++) {
+                const segLeft = _arcEventBuffer[i];
+                const segRight = _arcEventBuffer[i + 1];
 
                 // Skip degenerate segments
                 if (segRight - segLeft < 0.5) continue;
@@ -758,43 +784,45 @@ class ArcOps {
             }
 
             // Collect events (boundary points)
-            const events = [outerLeft, outerRight];
+            // Uses module-level scratch buffer to avoid per-scanline allocation
+            let evtCount = 0;
+            _arcEventBuffer[evtCount++] = outerLeft;
+            _arcEventBuffer[evtCount++] = outerRight;
 
             // Add inner circle boundaries if they exist
             if (innerRadius > 0 && dySquared < innerRadiusSq) {
-                events.push(innerLeft, innerRight);
+                _arcEventBuffer[evtCount++] = innerLeft;
+                _arcEventBuffer[evtCount++] = innerRight;
             }
 
             // Add start ray intersection if it crosses this scanline
             if (startHasSlope) {
                 const startX = cX + dy * startSlope;
                 if (startX >= outerLeft && startX <= outerRight) {
-                    events.push(startX);
+                    _arcEventBuffer[evtCount++] = startX;
                 }
             } else if (Math.abs(dy) < 1e-10) {
                 // Horizontal ray (sin=0), handle center scanline
-                if (startCos > 0) events.push(outerRight);
-                else events.push(outerLeft);
+                _arcEventBuffer[evtCount++] = startCos > 0 ? outerRight : outerLeft;
             }
 
             // Add end ray intersection if it crosses this scanline
             if (endHasSlope) {
                 const endX = cX + dy * endSlope;
                 if (endX >= outerLeft && endX <= outerRight) {
-                    events.push(endX);
+                    _arcEventBuffer[evtCount++] = endX;
                 }
             } else if (Math.abs(dy) < 1e-10) {
-                if (endCos > 0) events.push(outerRight);
-                else events.push(outerLeft);
+                _arcEventBuffer[evtCount++] = endCos > 0 ? outerRight : outerLeft;
             }
 
-            // Sort events by X
-            events.sort((a, b) => a - b);
+            // Sort events by X using insertion sort (faster than native sort for N < 10)
+            ArcOps._sortEvents(_arcEventBuffer, evtCount);
 
             // Process each segment between events
-            for (let i = 0; i < events.length - 1; i++) {
-                const segLeft = events[i];
-                const segRight = events[i + 1];
+            for (let i = 0; i < evtCount - 1; i++) {
+                const segLeft = _arcEventBuffer[i];
+                const segRight = _arcEventBuffer[i + 1];
 
                 // Skip degenerate segments
                 if (segRight - segLeft < 0.5) continue;
@@ -916,42 +944,44 @@ class ArcOps {
             }
 
             // Collect events (boundary points)
-            const events = [outerLeft, outerRight];
+            // Uses module-level scratch buffer to avoid per-scanline allocation
+            let evtCount = 0;
+            _arcEventBuffer[evtCount++] = outerLeft;
+            _arcEventBuffer[evtCount++] = outerRight;
 
             // Add inner circle boundaries if they exist
             if (innerRadius > 0 && dySquared < innerRadiusSq) {
-                events.push(innerLeft, innerRight);
+                _arcEventBuffer[evtCount++] = innerLeft;
+                _arcEventBuffer[evtCount++] = innerRight;
             }
 
             // Add start ray intersection if it crosses this scanline
             if (startHasSlope) {
                 const startX = cX + dy * startSlope;
                 if (startX >= outerLeft && startX <= outerRight) {
-                    events.push(startX);
+                    _arcEventBuffer[evtCount++] = startX;
                 }
             } else if (Math.abs(dy) < 1e-10) {
-                if (startCos > 0) events.push(outerRight);
-                else events.push(outerLeft);
+                _arcEventBuffer[evtCount++] = startCos > 0 ? outerRight : outerLeft;
             }
 
             // Add end ray intersection if it crosses this scanline
             if (endHasSlope) {
                 const endX = cX + dy * endSlope;
                 if (endX >= outerLeft && endX <= outerRight) {
-                    events.push(endX);
+                    _arcEventBuffer[evtCount++] = endX;
                 }
             } else if (Math.abs(dy) < 1e-10) {
-                if (endCos > 0) events.push(outerRight);
-                else events.push(outerLeft);
+                _arcEventBuffer[evtCount++] = endCos > 0 ? outerRight : outerLeft;
             }
 
-            // Sort events by X
-            events.sort((a, b) => a - b);
+            // Sort events by X using insertion sort (faster than native sort for N < 10)
+            ArcOps._sortEvents(_arcEventBuffer, evtCount);
 
             // Process each segment between events
-            for (let i = 0; i < events.length - 1; i++) {
-                const segLeft = events[i];
-                const segRight = events[i + 1];
+            for (let i = 0; i < evtCount - 1; i++) {
+                const segLeft = _arcEventBuffer[i];
+                const segRight = _arcEventBuffer[i + 1];
 
                 // Skip degenerate segments
                 if (segRight - segLeft < 0.5) continue;
@@ -1092,29 +1122,32 @@ class ArcOps {
 
             // Collect events for fill (pie shape)
             // Note: Do NOT add cX here - the center is interior, not a boundary
+            // Uses module-level scratch buffer (reused for fill then stroke)
             if (hasFill && fillLeft <= fillRight) {
-                const fillEvents = [fillLeft, fillRight];
+                let evtCount = 0;
+                _arcEventBuffer[evtCount++] = fillLeft;
+                _arcEventBuffer[evtCount++] = fillRight;
 
                 // Add ray intersections within fill circle
                 if (startHasSlope) {
                     const startX = cX + dy * startSlope;
-                    if (startX >= fillLeft && startX <= fillRight) fillEvents.push(startX);
+                    if (startX >= fillLeft && startX <= fillRight) _arcEventBuffer[evtCount++] = startX;
                 } else if (Math.abs(dy) < 1e-10) {
-                    fillEvents.push(startCos > 0 ? fillRight : fillLeft);
+                    _arcEventBuffer[evtCount++] = startCos > 0 ? fillRight : fillLeft;
                 }
                 if (endHasSlope) {
                     const endX = cX + dy * endSlope;
-                    if (endX >= fillLeft && endX <= fillRight) fillEvents.push(endX);
+                    if (endX >= fillLeft && endX <= fillRight) _arcEventBuffer[evtCount++] = endX;
                 } else if (Math.abs(dy) < 1e-10) {
-                    fillEvents.push(endCos > 0 ? fillRight : fillLeft);
+                    _arcEventBuffer[evtCount++] = endCos > 0 ? fillRight : fillLeft;
                 }
 
-                fillEvents.sort((a, b) => a - b);
+                ArcOps._sortEvents(_arcEventBuffer, evtCount);
 
                 // Process fill segments
-                for (let i = 0; i < fillEvents.length - 1; i++) {
-                    const segLeft = fillEvents[i];
-                    const segRight = fillEvents[i + 1];
+                for (let i = 0; i < evtCount - 1; i++) {
+                    const segLeft = _arcEventBuffer[i];
+                    const segRight = _arcEventBuffer[i + 1];
                     if (segRight - segLeft < 0.5) continue;
 
                     const midX = (segLeft + segRight) / 2;
@@ -1137,32 +1170,36 @@ class ArcOps {
             }
 
             // Collect events for stroke (annulus shape)
+            // Reuses same scratch buffer since fill is fully processed
             if (hasStroke) {
-                const strokeEvents = [outerLeft, outerRight];
+                let evtCount = 0;
+                _arcEventBuffer[evtCount++] = outerLeft;
+                _arcEventBuffer[evtCount++] = outerRight;
                 if (innerRadius > 0 && dySquared < innerRadiusSq) {
-                    strokeEvents.push(innerLeft, innerRight);
+                    _arcEventBuffer[evtCount++] = innerLeft;
+                    _arcEventBuffer[evtCount++] = innerRight;
                 }
 
                 // Add ray intersections within stroke area
                 if (startHasSlope) {
                     const startX = cX + dy * startSlope;
-                    if (startX >= outerLeft && startX <= outerRight) strokeEvents.push(startX);
+                    if (startX >= outerLeft && startX <= outerRight) _arcEventBuffer[evtCount++] = startX;
                 } else if (Math.abs(dy) < 1e-10) {
-                    strokeEvents.push(startCos > 0 ? outerRight : outerLeft);
+                    _arcEventBuffer[evtCount++] = startCos > 0 ? outerRight : outerLeft;
                 }
                 if (endHasSlope) {
                     const endX = cX + dy * endSlope;
-                    if (endX >= outerLeft && endX <= outerRight) strokeEvents.push(endX);
+                    if (endX >= outerLeft && endX <= outerRight) _arcEventBuffer[evtCount++] = endX;
                 } else if (Math.abs(dy) < 1e-10) {
-                    strokeEvents.push(endCos > 0 ? outerRight : outerLeft);
+                    _arcEventBuffer[evtCount++] = endCos > 0 ? outerRight : outerLeft;
                 }
 
-                strokeEvents.sort((a, b) => a - b);
+                ArcOps._sortEvents(_arcEventBuffer, evtCount);
 
                 // Process stroke segments
-                for (let i = 0; i < strokeEvents.length - 1; i++) {
-                    const segLeft = strokeEvents[i];
-                    const segRight = strokeEvents[i + 1];
+                for (let i = 0; i < evtCount - 1; i++) {
+                    const segLeft = _arcEventBuffer[i];
+                    const segRight = _arcEventBuffer[i + 1];
                     if (segRight - segLeft < 0.5) continue;
 
                     const midX = (segLeft + segRight) / 2;
