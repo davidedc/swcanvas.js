@@ -56,7 +56,7 @@ src/renderers/      → Shape-Specific Direct Renderers (static utility classes)
   RectOpsAA.js      → Axis-aligned rectangle direct rendering (fill, stroke)
   RectOpsRot.js     → Rotated rectangle direct rendering (fill, stroke)
   CircleOps.js      → Circle fill/stroke direct rendering (Bresenham, annulus rendering)
-  ArcOps.js         → Arc fill/stroke direct rendering (partial arcs, pie slices)
+  ArcOps.js         → Arc fill/stroke direct rendering (partial arcs, pie slices, scanline event buffer)
   LineOps.js        → Line stroke direct rendering (Bresenham, polygon scan algorithm)
   RoundedRectOpsAA.js  → Axis-aligned rounded rectangle direct rendering
   RoundedRectOpsRot.js → Rotated rounded rectangle direct rendering

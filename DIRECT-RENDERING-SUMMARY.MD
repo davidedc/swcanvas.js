@@ -127,6 +127,7 @@ Note: Lines already handle all orientations - no separate "rotated" variant need
 Note: Arc uses Bresenham + angle filtering. 1px paths skip Set overhead for opaque.
 **stroke1px_Opaq_Exact()** uses angle-based iteration (not Bresenham) guaranteeing pixels at exact start/end angles - used by RoundedRectOpsAA.stroke_Rot_Any() for junction alignment.
 **Requires lineCap === 'butt' for direct rendering (non-butt caps fall to path-based rendering).**
+**Performance optimizations**: Uses module-level scratch buffer (`_arcEventBuffer`) for scanline events, avoiding per-scanline allocation. Events sorted via custom insertion sort (faster than native sort for N < 6 elements).
 
 ---
 
@@ -338,6 +339,7 @@ if (clipBuffer[byteIndex] === 0) {
 | Annulus (ring)      | CircleOps.strokeThick, fillStroke     | Inner/outer radius for thick strokes   |
 | Angle filtering     | ArcOps.*                                 | Filter Bresenham points by angle range |
 | Angle-based iterate | ArcOps.stroke1pxOpaqueExactEndpoints     | Exact start/end pixels for junctions   |
+| Scanline event sort | ArcOps.*                                 | Insertion sort for 2-6 event boundaries |
 | Set deduplication   | CircleOps.stroke1pxAlpha, ArcOps         | Prevent overdraw for alpha blending    |
 | Hybrid edges+arcs   | RoundedRectOpsRot._stroke1px_Rot_* (1px)   | 4 inline Bresenham edges + 4 arcs (no LineOps) |
 | Edge Buffer Raster  | RoundedRectOpsRot.fill_Rot_Any             | O(H+P+A) optimal rotated fill          |
@@ -354,6 +356,7 @@ if (clipBuffer[byteIndex] === 0) {
 | Line extend/shorten  | RectOpsRot.stroke_Rot_Any                                        | Proper miter corners for thick rotated rect stroke |
 | Crisp center adjust  | CircleOps, ArcOps                                              | floor(cx - 0.5) for consistent pixel placement     |
 | Exact endpoints      | ArcOps.stroke1pxOpaqueExactEndpoints                           | Angle-based iteration guarantees junction pixels   |
+| Event buffer reuse   | ArcOps.*                                                       | Module-level Float32Array(8) avoids per-scanline allocation |
 | Conditional fill extent | RectOpsAA.fillStroke                                          | Semi-transparent stroke → PATH extent; opaque → INNER extent |
 
 ---
@@ -373,7 +376,7 @@ if (clipBuffer[byteIndex] === 0) {
 | Clipping TO (respects clip) | ✓    | ✓         | ✓      | ✓    | ✓   |
 | Clipping AT (defines clip)  | ✗    | ✗         | ✗      | N/A  | ✗   |
 | 32-bit writes         | ✓    | ✓         | ✓      | ✓    | ✓   |
-| Uses SpanOps          | ✓    | ✓         | ✓      | ✓    | ✗   |
+| Uses SpanOps          | ✓    | ✓         | ✓      | ✓    | ✓   |
 | Bresenham algorithm   | ✗    | ✗         | ✓      | ✓    | ✓   |
 | Set deduplication     | ✗    | ✗         | ✓      | ✗    | ✓   |
 

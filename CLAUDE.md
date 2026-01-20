@@ -119,7 +119,7 @@ Uses object-oriented ES6 class design throughout. See ARCHITECTURE.md for comple
 - `/*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pixelIndex, packedColor, clipBuffer, dx, dy, startAngle, endAngle)*/`
 - `/*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/`
 
-Arc templates inline `isAngleInRange` logic (including `Math.atan2`) to eliminate function call overhead in arc rendering hot paths.
+Arc templates inline `isAngleInRange` logic using fast cross-product checks (not atan2) to eliminate function call overhead in arc rendering hot paths. Scanline-based arc methods use module-level event buffer (`_arcEventBuffer`) and insertion sort for additional performance.
 
 **Clipping contract**:
 - Standard templates: Caller checks `clipBuffer` BEFORE the marker (for span-based code via SpanOps)
