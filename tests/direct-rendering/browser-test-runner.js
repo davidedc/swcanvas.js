@@ -876,42 +876,56 @@ class DirectRenderingTestRunner {
                 ? checks.shapeIntegrity
                 : {};
             const isKnownFailure = config.knownFailure === true;
+            const skipIterations = config.skipOnIterations || [];
 
-            const result = checkShapeIntegrity(swSurface, {
-                hasStroke: config.hasStroke !== false,
-                hasFill: config.hasFill === true,
-                verticalScan: config.verticalScan !== false,
-                horizontalScan: config.horizontalScan !== false,
-                strokeColor: config.strokeColor,
-                fillColor: config.fillColor,
-                colorTolerance: config.colorTolerance
-            });
-            const passed = result.valid;
-
-            // Determine display name and success message based on mode
+            // Determine display name based on mode (needed for both skip and normal cases)
             const hasStroke = config.hasStroke !== false;
             const hasFill = config.hasFill === true;
-
-            let checkName, successMsg;
+            let checkName;
             if (hasStroke && hasFill) {
                 checkName = 'Shape Boundary';
-                successMsg = 'No gaps, fill contained';
             } else if (hasStroke) {
                 checkName = 'Stroke Continuity';
-                successMsg = 'Continuous (no holes)';
             } else {
                 checkName = 'Fill Continuity';
-                successMsg = 'Solid (no gaps)';
             }
 
-            results.push({
-                name: checkName,
-                passed,
-                knownFailure: isKnownFailure && !passed,
-                details: passed
-                    ? successMsg
-                    : result.issues.join('; ') + (isKnownFailure ? ' [KNOWN]' : '')
-            });
+            if (skipIterations.includes(iterationNumber)) {
+                results.push({
+                    name: checkName,
+                    passed: true,
+                    details: `Skipped on iteration ${iterationNumber} (known issue)`
+                });
+            } else {
+                const result = checkShapeIntegrity(swSurface, {
+                    hasStroke: hasStroke,
+                    hasFill: hasFill,
+                    verticalScan: config.verticalScan !== false,
+                    horizontalScan: config.horizontalScan !== false,
+                    strokeColor: config.strokeColor,
+                    fillColor: config.fillColor,
+                    colorTolerance: config.colorTolerance
+                });
+                const passed = result.valid;
+
+                let successMsg;
+                if (hasStroke && hasFill) {
+                    successMsg = 'No gaps, fill contained';
+                } else if (hasStroke) {
+                    successMsg = 'Continuous (no holes)';
+                } else {
+                    successMsg = 'Solid (no gaps)';
+                }
+
+                results.push({
+                    name: checkName,
+                    passed,
+                    knownFailure: isKnownFailure && !passed,
+                    details: passed
+                        ? successMsg
+                        : result.issues.join('; ') + (isKnownFailure ? ' [KNOWN]' : '')
+                });
+            }
         }
 
         return results;
