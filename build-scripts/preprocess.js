@@ -210,6 +210,86 @@ if (__outA > 0) {
         }
     }
 }`
+    },
+
+    /**
+     * Fast opaque pixel write for arc rendering using cross-product angle check + clipping.
+     * Uses cross-product instead of atan2 for 10-50x faster angle checking.
+     *
+     * Cross-product logic: A point P is "left of" vector V if cross(V, P) >= 0
+     * - afterStart = (startCos * py - startSin * px) >= 0
+     * - beforeEnd = (endCos * py - endSin * px) <= 0
+     * - Small arc (<180°): afterStart AND beforeEnd
+     * - Large arc (>180°): afterStart OR beforeEnd
+     *
+     * @param {Uint32Array} data32 - 32-bit view of surface pixel data
+     * @param {number} pixelIndex - Linear pixel index (y * width + x)
+     * @param {number} packedColor - Pre-packed 32-bit RGBA color
+     * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
+     * @param {number} dx - X offset from arc center
+     * @param {number} dy - Y offset from arc center
+     * @param {number} startCos - cos(startAngle), precomputed
+     * @param {number} startSin - sin(startAngle), precomputed
+     * @param {number} endCos - cos(endAngle), precomputed
+     * @param {number} endSin - sin(endAngle), precomputed
+     * @param {boolean} isLargeArc - True if arc spans > 180°
+     */
+    'SET_OPAQUE_ARC_FAST_CLIPPED': {
+        params: ['data32', 'pixelIndex', 'packedColor', 'clipBuffer', 'dx', 'dy', 'startCos', 'startSin', 'endCos', 'endSin', 'isLargeArc'],
+        code: `{
+    const __afterStart = ({{startCos}} * {{dy}} - {{startSin}} * {{dx}}) >= 0;
+    const __beforeEnd = ({{endCos}} * {{dy}} - {{endSin}} * {{dx}}) <= 0;
+    const __inRange = {{isLargeArc}} ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange) {
+        if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
+            {{data32}}[{{pixelIndex}}] = {{packedColor}};
+        }
+    }
+}`
+    },
+
+    /**
+     * Fast alpha blending for arc rendering using cross-product angle check + clipping.
+     * Uses cross-product instead of atan2 for 10-50x faster angle checking.
+     *
+     * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
+     * @param {number} pixelIndex - Linear pixel index (y * width + x)
+     * @param {number} r - Red component (0-255)
+     * @param {number} g - Green component (0-255)
+     * @param {number} b - Blue component (0-255)
+     * @param {number} alpha - Alpha as fraction (0-1)
+     * @param {number} invAlpha - Inverse alpha (1 - alpha)
+     * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
+     * @param {number} dx - X offset from arc center
+     * @param {number} dy - Y offset from arc center
+     * @param {number} startCos - cos(startAngle), precomputed
+     * @param {number} startSin - sin(startAngle), precomputed
+     * @param {number} endCos - cos(endAngle), precomputed
+     * @param {number} endSin - sin(endAngle), precomputed
+     * @param {boolean} isLargeArc - True if arc spans > 180°
+     */
+    'BLEND_ALPHA_ARC_FAST_CLIPPED': {
+        params: ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer', 'dx', 'dy', 'startCos', 'startSin', 'endCos', 'endSin', 'isLargeArc'],
+        code: `{
+    const __afterStart = ({{startCos}} * {{dy}} - {{startSin}} * {{dx}}) >= 0;
+    const __beforeEnd = ({{endCos}} * {{dy}} - {{endSin}} * {{dx}}) <= 0;
+    const __inRange = {{isLargeArc}} ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange) {
+        if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
+            const __off = {{pixelIndex}} * 4;
+            const __dstA = {{data}}[__off + 3] / 255;
+            const __dstAScaled = __dstA * {{invAlpha}};
+            const __outA = {{alpha}} + __dstAScaled;
+            if (__outA > 0) {
+                const __blend = 1 / __outA;
+                {{data}}[__off]     = ({{r}} * {{alpha}} + {{data}}[__off] * __dstAScaled) * __blend;
+                {{data}}[__off + 1] = ({{g}} * {{alpha}} + {{data}}[__off + 1] * __dstAScaled) * __blend;
+                {{data}}[__off + 2] = ({{b}} * {{alpha}} + {{data}}[__off + 2] * __dstAScaled) * __blend;
+                {{data}}[__off + 3] = __outA * 255;
+            }
+        }
+    }
+}`
     }
 };
 
