@@ -73,13 +73,15 @@ Notes:
 Notes:
 - Context2D calls RoundedRectOpsAA for axis-aligned (AA) operations and RoundedRectOpsRot directly for rotated operations.
 - RoundedRectOpsRot falls back to RectOpsRot (not RectOpsAA) when radius=0 for consistency.
-- Axis-aligned rounded rectangle **stroke** (1px alpha) uses Set deduplication to prevent overdraw at edge-arc junctions.
+- Axis-aligned rounded rectangle **stroke** (1px alpha) uses edge shortening + lastPos tracking to prevent overdraw.
 - Rotated rounded rectangle **stroke** (1px opaque) uses hybrid algorithm: 4 edges via inline Bresenham + 4 corner arcs via ArcOps.stroke1px_Opaq_Exact().
-- Rotated rounded rectangle **stroke** (1px alpha) uses hybrid algorithm (inline Bresenham edges + arcs) + Set deduplication to prevent overdraw at edge-arc junctions.
+- Rotated rounded rectangle **stroke** (1px alpha) uses hybrid algorithm + global lastPos tracking across corners to prevent overdraw.
 - Rotated rounded rectangle **stroke** (thick) uses Dual Edge Buffer algorithm: generates outer and inner perimeters, fills annulus per scanline.
 - Rotated rounded rectangle **fill** uses Edge Buffer Rasterization: O(H + P + A) optimal complexity.
 - **fillStroke_Rot_Any()** combines fill with epsilon contraction + stroke on top.
 - **fillStroke_AA_Any()** fill extent: thick semi-transparent strokes use PATH extent (for proper overlap blending), while 1px and opaque strokes use INNER extent (no meaningful overlap area).
+- **RoundedRectOpsRot** uses module-level Int16Array buffer pool (`_rrRotBufferPool`) with growth-only strategy for zero steady-state allocations.
+- **_fillStroke_Rot_1px** uses double-generation strategy: generate perimeter twice (once for bounds, once for render) instead of storing pixels in Set.
 
 ### 2.3 CIRCLES (CircleOps.js)
 
@@ -124,7 +126,8 @@ Note: Lines already handle all orientations - no separate "rotated" variant need
 | >1px         | Semi-transparent | ArcOps.strokeOuter_Alpha()         | YES      |
 | Any          | Both             | ArcOps.fillStrokeOuter_Any()       | YES      |
 
-Note: Arc uses Bresenham + angle filtering. 1px paths skip Set overhead for opaque.
+Note: Arc uses Bresenham + angle filtering for stroke rendering.
+**stroke1px_Alpha()** uses conditional deduplication (same pattern as CircleOps) - avoids Set allocation via x!=y + cardinal point checks.
 **stroke1px_Opaq_Exact()** uses angle-based iteration (not Bresenham) guaranteeing pixels at exact start/end angles - used by RoundedRectOpsAA.stroke_Rot_Any() for junction alignment.
 **Requires lineCap === 'butt' for direct rendering (non-butt caps fall to path-based rendering).**
 **Performance optimizations**: Uses module-level scratch buffer (`_arcEventBuffer`) for scanline events, avoiding per-scanline allocation. Events sorted via custom insertion sort (faster than native sort for N < 6 elements).
@@ -340,13 +343,16 @@ if (clipBuffer[byteIndex] === 0) {
 | Angle filtering     | ArcOps.*                                 | Filter Bresenham points by angle range |
 | Angle-based iterate | ArcOps.stroke1pxOpaqueExactEndpoints     | Exact start/end pixels for junctions   |
 | Scanline event sort | ArcOps.*                                 | Insertion sort for 2-6 event boundaries |
-| Set deduplication   | CircleOps.stroke1pxAlpha, ArcOps         | Prevent overdraw for alpha blending    |
+| Conditional dedup   | CircleOps.stroke1px_Alpha, ArcOps.stroke1px_Alpha | Prevent overdraw via x!=y + cardinal checks |
 | Hybrid edges+arcs   | RoundedRectOpsRot._stroke1px_Rot_* (1px)   | 4 inline Bresenham edges + 4 arcs (no LineOps) |
 | Edge Buffer Raster  | RoundedRectOpsRot.fill_Rot_Any             | O(H+P+A) optimal rotated fill          |
 | Dual Edge Buffer    | RoundedRectOpsRot.stroke_Rot_Any (thick)   | Outer+inner perimeters, fill annulus   |
 | Span-based fill-first | RectOpsAA.fillStroke                  | Correct semi-transparent stroke blending |
 | Incremental DDA     | QuadScanOps.fillQuad                     | 4x faster scanline traversal (1 add vs 2 muls) |
 | Edge-based DDA      | RectOpsRot._stroke_Rot_1px_DDA           | 1px rotated rect stroke aligned with fill |
+| Buffer pool         | RoundedRectOpsRot (all methods)          | Growth-only Int16Array pool eliminates per-call allocations |
+| Double-generation   | RoundedRectOpsRot._fillStroke_Rot_1px    | Generate perimeter twice instead of storing in Set |
+| lastPos tracking    | RoundedRectOpsRot._stroke1px_Rot_Alpha, _fillStroke_Rot_1px | Prevent consecutive overdraw for semi-transparent |
 
 ### 6.4 Special Optimizations
 
@@ -358,6 +364,9 @@ if (clipBuffer[byteIndex] === 0) {
 | Exact endpoints      | ArcOps.stroke1pxOpaqueExactEndpoints                           | Angle-based iteration guarantees junction pixels   |
 | Event buffer reuse   | ArcOps.*                                                       | Module-level Float32Array(8) avoids per-scanline allocation |
 | Conditional fill extent | RectOpsAA.fillStroke                                          | Semi-transparent stroke → PATH extent; opaque → INNER extent |
+| Int16Array buffer pool | RoundedRectOpsRot                                              | Module-level growth-only pool eliminates 10-20 allocations per call |
+| Double-generation      | RoundedRectOpsRot._fillStroke_Rot_1px                          | CPU cycles for coord generation < Set hash overhead |
+| Conditional dedup      | CircleOps/ArcOps stroke1px_Alpha                               | x!=y + cardinal checks eliminate Set allocation |
 
 ---
 
@@ -378,7 +387,7 @@ if (clipBuffer[byteIndex] === 0) {
 | 32-bit writes         | ✓    | ✓         | ✓      | ✓    | ✓   |
 | Uses SpanOps          | ✓    | ✓         | ✓      | ✓    | ✓   |
 | Bresenham algorithm   | ✗    | ✗         | ✓      | ✓    | ✓   |
-| Set deduplication     | ✗    | ✗         | ✓      | ✗    | ✓   |
+| Conditional dedup     | ✗    | ✗         | ✓      | ✗    | ✓   |
 
 Note: Clipping AT (defining clip regions) uses path-based approach for all shapes - see Section 5.1.
 

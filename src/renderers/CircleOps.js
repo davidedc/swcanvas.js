@@ -25,6 +25,10 @@
  * Layer 2 (Composites):
  *   fillStroke_Any                     → SpanOps.fill_Opaq/fill_Alpha
  *
+ * MEMORY OPTIMIZATIONS:
+ * - stroke1px_Alpha uses conditional deduplication (no Set allocation)
+ *   via x!=y + cardinal point checks to prevent overdraw
+ *
  * NAMING PATTERN: {operation}[Thickness]_{opacity}
  *   - Opaq = Opaque only, Alpha = Semi-transparent, Any = Handles both
  *   - (No orientation suffix - circles are rotation-invariant)
