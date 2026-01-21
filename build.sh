@@ -20,6 +20,7 @@ PREPROCESSED_FILES=(
     "src/renderers/LineOps.js"
     "src/renderers/RectOpsRot.js"
     "src/renderers/RoundedRectOpsAA.js"
+    "src/renderers/RoundedRectOpsRot.js"
     "src/renderers/QuadScanOps.js"
     "src/renderers/RectOpsAA.js"
 )
@@ -99,7 +100,7 @@ cat "$(get_src src/renderers/ArcOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/LineOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/renderers/RoundedRectOpsRot.js >> dist/swcanvas.js
+cat "$(get_src src/renderers/RoundedRectOpsRot.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/RoundedRectOpsAA.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js

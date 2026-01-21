@@ -656,37 +656,76 @@ class RoundedRectOpsRot {
         const hw = width / 2;   // half-width
         const hh = height / 2;  // half-height
 
-        // Use Set to collect unique pixel positions (prevents overdraw at junctions)
-        const strokePixels = new Set();
-
-        // Calculate 8 edge endpoints in local space, then transform to screen space
-        const edgeEndpoints = [
-            // Top edge
-            { start: RoundedRectOpsRot._transform(-hw + radius, -hh, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(hw - radius, -hh, centerX, centerY, cos, sin) },
-            // Right edge
-            { start: RoundedRectOpsRot._transform(hw, -hh + radius, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(hw, hh - radius, centerX, centerY, cos, sin) },
-            // Bottom edge
-            { start: RoundedRectOpsRot._transform(hw - radius, hh, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(-hw + radius, hh, centerX, centerY, cos, sin) },
-            // Left edge
-            { start: RoundedRectOpsRot._transform(-hw, hh - radius, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(-hw, -hh + radius, centerX, centerY, cos, sin) }
+        // Define 4 corner arc centers and angles (needed first for junction calculation)
+        const corners = [
+            { localCx: -hw + radius, localCy: -hh + radius, startAngle: Math.PI, endAngle: THREE_HALF_PI },         // Top-left
+            { localCx: hw - radius, localCy: -hh + radius, startAngle: THREE_HALF_PI, endAngle: TAU },      // Top-right
+            { localCx: hw - radius, localCy: hh - radius, startAngle: 0, endAngle: HALF_PI },                 // Bottom-right
+            { localCx: -hw + radius, localCy: hh - radius, startAngle: HALF_PI, endAngle: Math.PI }           // Bottom-left
         ];
 
-        // Collect edge pixels via Bresenham (inline to collect into Set)
-        for (const edge of edgeEndpoints) {
-            // Skip zero-length edges
-            const dx = edge.end.x - edge.start.x;
-            const dy = edge.end.y - edge.start.y;
+        // Pre-compute junction pixels using the SAME math as corner rendering.
+        // This ensures edges skip exactly the pixels that corners will draw.
+        // CRITICAL: Store both integer (floored) and float coordinates.
+        // Edge endpoints are DERIVED from these junction pixels, NOT computed separately!
+        // This eliminates floating-point precision mismatches that cause overdraw.
+        const junctionPixels = [];
+        for (const corner of corners) {
+            const screenCenter = RoundedRectOpsRot._transform(corner.localCx, corner.localCy, centerX, centerY, cos, sin);
+            const cx = screenCenter.x;
+            const cy = screenCenter.y;
+
+            // Start junction (connects to previous edge's end)
+            const startAngle = corner.startAngle + rotation;
+            const startXf = cx + radius * Math.cos(startAngle);
+            const startYf = cy + radius * Math.sin(startAngle);
+            junctionPixels.push({
+                x: Math.floor(startXf), y: Math.floor(startYf),
+                xf: startXf, yf: startYf  // Float coords for edge length calculation
+            });
+
+            // End junction (connects to next edge's start)
+            const endAngle = corner.endAngle + rotation;
+            const endXf = cx + radius * Math.cos(endAngle);
+            const endYf = cy + radius * Math.sin(endAngle);
+            junctionPixels.push({
+                x: Math.floor(endXf), y: Math.floor(endYf),
+                xf: endXf, yf: endYf
+            });
+        }
+
+        // DERIVE edge endpoints from junction pixels (DON'T compute separately!)
+        // This guarantees Bresenham first/last pixels match junction pixels exactly.
+        // Edge connectivity:
+        // Edge 0 (Top): TL_end (1) → TR_start (2)
+        // Edge 1 (Right): TR_end (3) → BR_start (4)
+        // Edge 2 (Bottom): BR_end (5) → BL_start (6)
+        // Edge 3 (Left): BL_end (7) → TL_start (0)
+        const edgeEndpoints = [
+            { start: junctionPixels[1], end: junctionPixels[2] },  // Top edge
+            { start: junctionPixels[3], end: junctionPixels[4] },  // Right edge
+            { start: junctionPixels[5], end: junctionPixels[6] },  // Bottom edge
+            { start: junctionPixels[7], end: junctionPixels[0] }   // Left edge
+        ];
+
+        // Draw edge pixels via Bresenham, skipping junction pixels by coordinate match
+        for (let edgeIndex = 0; edgeIndex < edgeEndpoints.length; edgeIndex++) {
+            const edge = edgeEndpoints[edgeIndex];
+            // Junction pixels to skip (same objects as edge start/end, guaranteed match!)
+            const junc1 = edge.start;
+            const junc2 = edge.end;
+
+            // Skip zero-length edges (use float coords for accurate length)
+            const dx = edge.end.xf - edge.start.xf;
+            const dy = edge.end.yf - edge.start.yf;
             const edgeLength = Math.sqrt(dx * dx + dy * dy);
             if (edgeLength < MIN_EDGE_LENGTH) continue;
 
-            const x1i = Math.floor(edge.start.x);
-            const y1i = Math.floor(edge.start.y);
-            const x2i = Math.floor(edge.end.x);
-            const y2i = Math.floor(edge.end.y);
-
-            // NOTE: No line shortening here! Unlike standalone lines, rounded rectangle
-            // edges must draw their full length to meet corner arcs at junction points.
-            // The Set handles any overdraw for correct alpha blending.
+            // Use integer coords for Bresenham (same as junction pixels!)
+            const x1i = edge.start.x;
+            const y1i = edge.start.y;
+            const x2i = edge.end.x;
+            const y2i = edge.end.y;
 
             const dxAbs = Math.abs(x2i - x1i);
             const dyAbs = Math.abs(y2i - y1i);
@@ -698,11 +737,19 @@ class RoundedRectOpsRot {
             let y = y1i;
 
             while (true) {
-                if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
-                    strokePixels.add(y * surfaceWidth + x);
+                const isLast = (x === x2i && y === y2i);
+
+                // Skip if current pixel matches either junction pixel (corner will handle it)
+                if (!((x === junc1.x && y === junc1.y) || (x === junc2.x && y === junc2.y))) {
+                    if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
+                        const pos = y * surfaceWidth + x;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
+                        }
+                    }
                 }
 
-                if (x === x2i && y === y2i) break;
+                if (isLast) break;
 
                 const e2 = 2 * err;
                 if (e2 > -dyAbs) {
@@ -716,15 +763,15 @@ class RoundedRectOpsRot {
             }
         }
 
-        // Calculate 4 corner arc centers and angles
-        const corners = [
-            { localCx: -hw + radius, localCy: -hh + radius, startAngle: Math.PI, endAngle: THREE_HALF_PI },         // Top-left
-            { localCx: hw - radius, localCy: -hh + radius, startAngle: THREE_HALF_PI, endAngle: TAU },      // Top-right
-            { localCx: hw - radius, localCy: hh - radius, startAngle: 0, endAngle: HALF_PI },                 // Bottom-right
-            { localCx: -hw + radius, localCy: hh - radius, startAngle: HALF_PI, endAngle: Math.PI }           // Bottom-left
-        ];
+        // Draw corner arc pixels with cross-corner duplicate tracking
+        // Angle iteration can map multiple angles to the same pixel for small radii.
+        // Additionally, adjacent corners may map their junction pixels to the same screen coordinate
+        // (e.g., TR's END and BR's START may both be pixel (170,171)).
+        // Using a global lastPos across ALL corners prevents overdraw in both cases:
+        // 1. Consecutive duplicates within a single corner arc
+        // 2. Corner END matching next corner's START (when they map to the same pixel)
+        let globalLastPos = -1;
 
-        // Collect corner arc pixels using angle-based iteration (same as stroke1px_AA_OpaqExactEndpoints)
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.localCx, corner.localCy, centerX, centerY, cos, sin);
             const cx = screenCenter.x;
@@ -756,20 +803,20 @@ class RoundedRectOpsRot {
                 const py = Math.floor(cy + ay);
 
                 if (px >= 0 && px < surfaceWidth && py >= 0 && py < surfaceHeight) {
-                    strokePixels.add(py * surfaceWidth + px);
+                    const pos = py * surfaceWidth + px;
+                    // Skip consecutive duplicates (including cross-corner duplicates)
+                    if (pos !== globalLastPos) {
+                        globalLastPos = pos;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
+                        }
+                    }
                 }
 
                 // Apply rotation for next iteration
                 const nextX = ax * cosStep - ay * sinStep;
                 ay = ax * sinStep + ay * cosStep;
                 ax = nextX;
-            }
-        }
-
-        // Render all collected unique pixels with alpha blending via SpanOps
-        for (const pos of strokePixels) {
-            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                PixelOps.blend_Alpha(data, pos, r, g, b, effectiveAlpha, invAlpha);
             }
         }
     }
