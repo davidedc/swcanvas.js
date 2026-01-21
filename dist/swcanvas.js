@@ -3227,6 +3227,10 @@ if (__outA > 0) {
  * Layer 2 (Composites):
  *   fillStroke_Any                     → SpanOps.fill_Opaq/fill_Alpha
  *
+ * MEMORY OPTIMIZATIONS:
+ * - stroke1px_Alpha uses conditional deduplication (no Set allocation)
+ *   via x!=y + cardinal point checks to prevent overdraw
+ *
  * NAMING PATTERN: {operation}[Thickness]_{opacity}
  *   - Opaq = Opaque only, Alpha = Semi-transparent, Any = Handles both
  *   - (No orientation suffix - circles are rotation-invariant)
@@ -4068,6 +4072,11 @@ if (__outA > 0) {
  * Layer 2 (Composites):
  *   fillStrokeOuter_Any → inline rendering (single-pass)
  *
+ * MEMORY OPTIMIZATIONS:
+ * - stroke1px_Alpha uses conditional deduplication (no Set allocation)
+ *   following CircleOps pattern: primary/swapped point checks prevent overdraw
+ * - Module-level scratch buffer (_arcEventBuffer) for scanline events
+ *
  * NAMING PATTERN: {operation}[Thickness]_{opacity}
  *   - Opaq = Opaque only, Alpha = Semi-transparent, Any = Handles both
  *   - (No orientation suffix - arcs are defined by angles, not rotation)
@@ -4701,52 +4710,33 @@ if (__outA > 0) {
             return;
         }
 
-        // Collect unique pixels using Set (needed for alpha to prevent overdraw)
-        const strokePixels = new Set();
-
-        // Bresenham circle algorithm with fast angle filtering
+        // Bresenham circle algorithm with conditional checks to prevent overdraw
+        // (eliminates Set allocation by using geometric deduplication - same pattern as CircleOps)
         let bx = 0;
         let by = intRadius;
         let d = 3 - 2 * intRadius;
 
-        while (by >= bx) {
-            // 8 symmetric points with offset corrections (same pattern as CircleOps)
-            const points = [
-                [bx, by],                                    // bottom-right: no offset
-                [by, bx],                                    // bottom-right: no offset
-                [by, -bx - yOffset],                         // top-right: yOffset
-                [bx, -by - yOffset],                         // top-right: yOffset
-                [-bx - xOffset, -by - yOffset],              // top-left: both offsets
-                [-by - xOffset, -bx - yOffset],              // top-left: both offsets
-                [-by - xOffset, bx],                         // bottom-left: xOffset
-                [-bx - xOffset, by]                          // bottom-left: xOffset
-            ];
+        while (bx <= by) {
+            // Calculate 8 symmetric points with offsets for top/left halves
+            // Primary points (A, C, E, G) - always unique from each other
+            const pAx = adjCX + bx, pAy = adjCY + by;                       // bottom-right quadrant
+            const pCx = adjCX + by, pCy = adjCY - bx - yOffset;             // top-right quadrant
+            const pEx = adjCX - bx - xOffset, pEy = adjCY - by - yOffset;   // top-left quadrant
+            const pGx = adjCX - by - xOffset, pGy = adjCY + bx;             // bottom-left quadrant
 
-            for (const [px, py] of points) {
-                // Fast cross-product angle check
-                if (ArcOps.isAngleInRange_Fast(px, py, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    const screenX = adjCX + px;
-                    const screenY = adjCY + py;
+            // Swapped points (B, D, F, H) - duplicate primaries when bx == by
+            const pBx = adjCX + by, pBy = adjCY + bx;                       // duplicates A when bx == by
+            const pDx = adjCX + bx, pDy = adjCY - by - yOffset;             // duplicates C when bx == by
+            const pFx = adjCX - by - xOffset, pFy = adjCY - bx - yOffset;   // duplicates E when bx == by
+            const pHx = adjCX - bx - xOffset, pHy = adjCY + by;             // duplicates G when bx == by
 
-                    if (screenX >= 0 && screenX < width && screenY >= 0 && screenY < height) {
-                        strokePixels.add(screenY * width + screenX);
-                    }
-                }
-            }
-
-            bx++;
-            if (d > 0) {
-                by--;
-                d = d + 4 * (bx - by) + 10;
-            } else {
-                d = d + 4 * bx + 6;
-            }
-        }
-
-        // Render collected pixels with alpha blending
-        for (const pos of strokePixels) {
-            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                const __off = pos * 4;
+            // Draw primary points (always) - with angle filtering
+            // Point A (bottom-right quadrant)
+            if (ArcOps.isAngleInRange_Fast(bx, by, startCos, startSin, endCos, endSin, isLargeArc)) {
+                if (pAx >= 0 && pAx < width && pAy >= 0 && pAy < height) {
+                    const pos = pAy * width + pAx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -4757,7 +4747,156 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
+                    }
+                }
             }
+            // Point C (top-right quadrant)
+            if (ArcOps.isAngleInRange_Fast(by, -bx - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
+                if (pCx >= 0 && pCx < width && pCy >= 0 && pCy < height) {
+                    const pos = pCy * width + pCx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                    }
+                }
+            }
+            // Point E (top-left quadrant)
+            if (ArcOps.isAngleInRange_Fast(-bx - xOffset, -by - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
+                if (pEx >= 0 && pEx < width && pEy >= 0 && pEy < height) {
+                    const pos = pEy * width + pEx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                    }
+                }
+            }
+            // Point G (bottom-left quadrant)
+            if (ArcOps.isAngleInRange_Fast(-by - xOffset, bx, startCos, startSin, endCos, endSin, isLargeArc)) {
+                if (pGx >= 0 && pGx < width && pGy >= 0 && pGy < height) {
+                    const pos = pGy * width + pGx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                    }
+                }
+            }
+
+            // Draw swapped points only when bx != by (they duplicate primaries on the diagonal)
+            // Additional cardinal point checks: at bx == 0, swapped points may duplicate primaries
+            if (bx !== by) {
+                // Point B - duplicates C at right cardinal when bx == 0 && yOffset == 0
+                if ((bx !== 0 || yOffset !== 0) && ArcOps.isAngleInRange_Fast(by, bx, startCos, startSin, endCos, endSin, isLargeArc)) {
+                    if (pBx >= 0 && pBx < width && pBy >= 0 && pBy < height) {
+                        const pos = pBy * width + pBx;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                        }
+                    }
+                }
+                // Point D - duplicates E at top cardinal when bx == 0 && xOffset == 0
+                if ((bx !== 0 || xOffset !== 0) && ArcOps.isAngleInRange_Fast(bx, -by - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
+                    if (pDx >= 0 && pDx < width && pDy >= 0 && pDy < height) {
+                        const pos = pDy * width + pDx;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                        }
+                    }
+                }
+                // Point F - duplicates G at left cardinal when bx == 0 && yOffset == 0
+                if ((bx !== 0 || yOffset !== 0) && ArcOps.isAngleInRange_Fast(-by - xOffset, -bx - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
+                    if (pFx >= 0 && pFx < width && pFy >= 0 && pFy < height) {
+                        const pos = pFy * width + pFx;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                        }
+                    }
+                }
+                // Point H - duplicates A at bottom cardinal when bx == 0 && xOffset == 0
+                if ((bx !== 0 || xOffset !== 0) && ArcOps.isAngleInRange_Fast(-bx - xOffset, by, startCos, startSin, endCos, endSin, isLargeArc)) {
+                    if (pHx >= 0 && pHx < width && pHy >= 0 && pHy < height) {
+                        const pos = pHy * width + pHx;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                            const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                        }
+                    }
+                }
+            }
+
+            // Update Bresenham state
+            if (d < 0) {
+                d = d + 4 * bx + 6;
+            } else {
+                d = d + 4 * (bx - by) + 10;
+                by--;
+            }
+            bx++;
         }
     }
 
@@ -5612,10 +5751,10 @@ if (__outA > 0) {
  *   _fill_Rot_Opaq                → SpanOps.fill_Opaq
  *   _fill_Rot_Alpha               → SpanOps.fill_Alpha
  *   _stroke1px_Rot_Opaq           → Direct pixel writes
- *   _stroke1px_Rot_Alpha          → PixelOps.blend_Alpha
+ *   _stroke1px_Rot_Alpha          → PixelOps.blend_Alpha (with lastPos tracking)
  *   _strokeThick_Rot_Opaq         → SpanOps.fill_Opaq
  *   _strokeThick_Rot_Alpha        → SpanOps.fill_Alpha
- *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + PixelOps.blend_Alpha
+ *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + PixelOps.blend_Alpha (double-generation)
  *   _fillStroke_Rot_Unified       → SpanOps.fill_Opaq/fill_Alpha
  *
  * Layer 3 (Dispatchers):
@@ -5628,6 +5767,15 @@ if (__outA > 0) {
  *   - RectOpsRot.stroke_Rot_Any (fallback when radius=0)
  *   - ArcOps.stroke1px_Opaq_Exact (for corner arc strokes)
  *
+ * MEMORY OPTIMIZATIONS:
+ * ---------------------
+ * - Module-level Int16Array buffer pool (_rrRotBufferPool) with growth-only strategy
+ *   eliminates 10-20 allocations per call after initial warmup
+ * - _stroke1px_Rot_Alpha uses global lastPos tracking across corners to prevent overdraw
+ *   without Set allocation
+ * - _fillStroke_Rot_1px uses double-generation: generates perimeter twice (bounds pass +
+ *   render pass) instead of storing pixels in Set - CPU cycles are cheaper than hash ops
+ *
  * Note: 1px stroke edges use inline Bresenham (no LineOps) to avoid line-shortening
  * that would create gaps at edge-arc junctions.
  *
@@ -5635,6 +5783,50 @@ if (__outA > 0) {
  * have been routed to RoundedRectOpsAA. Uses TRANSFORM_EPSILON (0.0001) aligned with
  * Transform2D.isAxisAligned for consistent threshold.
  */
+
+// Module-level buffer pool for Int16Array span buffers (growth-only strategy)
+// All functions share this pool since JavaScript is single-threaded.
+const _rrRotBufferPool = {
+    capacity: 0,
+    // Fill buffers
+    minX: null,
+    maxX: null,
+    // Stroke outer buffers
+    outerMinX: null,
+    outerMaxX: null,
+    // Stroke inner buffers
+    innerMinX: null,
+    innerMaxX: null,
+    // fillStroke stroke boundary buffers
+    strokeMinX: null,
+    strokeMaxX: null,
+    // fillStroke fill buffers
+    fillMinX: null,
+    fillMaxX: null
+};
+
+/**
+ * Ensure buffer pool has sufficient capacity (growth-only).
+ * @param {number} spanCount - Required number of spans
+ */
+function _ensureRRRotBuffers(spanCount) {
+    if (spanCount > _rrRotBufferPool.capacity) {
+        // Grow with headroom to avoid frequent reallocations (2x or min 256)
+        const newCapacity = Math.max(spanCount, _rrRotBufferPool.capacity * 2, 256);
+        _rrRotBufferPool.minX = new Int16Array(newCapacity);
+        _rrRotBufferPool.maxX = new Int16Array(newCapacity);
+        _rrRotBufferPool.outerMinX = new Int16Array(newCapacity);
+        _rrRotBufferPool.outerMaxX = new Int16Array(newCapacity);
+        _rrRotBufferPool.innerMinX = new Int16Array(newCapacity);
+        _rrRotBufferPool.innerMaxX = new Int16Array(newCapacity);
+        _rrRotBufferPool.strokeMinX = new Int16Array(newCapacity);
+        _rrRotBufferPool.strokeMaxX = new Int16Array(newCapacity);
+        _rrRotBufferPool.fillMinX = new Int16Array(newCapacity);
+        _rrRotBufferPool.fillMaxX = new Int16Array(newCapacity);
+        _rrRotBufferPool.capacity = newCapacity;
+    }
+}
+
 class RoundedRectOpsRot {
     // =========================================================================
     // Private Static Helpers
@@ -5847,11 +6039,14 @@ class RoundedRectOpsRot {
 
         if (spanCount <= 0) return;
 
-        // Allocate span arrays (Int16Array for memory efficiency)
-        const minX = new Int16Array(spanCount);
-        const maxX = new Int16Array(spanCount);
-        minX.fill(surfaceWidth);  // Sentinel: larger than any valid x
-        maxX.fill(-1);            // Sentinel: smaller than any valid x
+        // Use pooled span arrays (growth-only buffer pool)
+        _ensureRRRotBuffers(spanCount);
+        const minX = _rrRotBufferPool.minX;
+        const maxX = _rrRotBufferPool.maxX;
+        for (let i = 0; i < spanCount; i++) {
+            minX[i] = surfaceWidth;  // Sentinel: larger than any valid x
+            maxX[i] = -1;            // Sentinel: smaller than any valid x
+        }
 
         // Record perimeter pixel into span arrays
         const recordPixel = (x, y) => {
@@ -5979,11 +6174,14 @@ class RoundedRectOpsRot {
 
         if (spanCount <= 0) return;
 
-        // Allocate span arrays
-        const minX = new Int16Array(spanCount);
-        const maxX = new Int16Array(spanCount);
-        minX.fill(surfaceWidth);
-        maxX.fill(-1);
+        // Use pooled span arrays (growth-only buffer pool)
+        _ensureRRRotBuffers(spanCount);
+        const minX = _rrRotBufferPool.minX;
+        const maxX = _rrRotBufferPool.maxX;
+        for (let i = 0; i < spanCount; i++) {
+            minX[i] = surfaceWidth;
+            maxX[i] = -1;
+        }
 
         const recordPixel = (x, y) => {
             if (y < yMin || y > yMax) return;
@@ -6488,18 +6686,23 @@ if (__outA > 0) {
 
         if (spanCount <= 0) return;
 
-        // Allocate span arrays for outer perimeter
-        const outerMinX = new Int16Array(spanCount);
-        const outerMaxX = new Int16Array(spanCount);
-        outerMinX.fill(surfaceWidth);
-        outerMaxX.fill(-1);
+        // Use pooled span arrays (growth-only buffer pool)
+        _ensureRRRotBuffers(spanCount);
+        const outerMinX = _rrRotBufferPool.outerMinX;
+        const outerMaxX = _rrRotBufferPool.outerMaxX;
+        for (let i = 0; i < spanCount; i++) {
+            outerMinX[i] = surfaceWidth;
+            outerMaxX[i] = -1;
+        }
 
-        // Allocate span arrays for inner perimeter (if inner rect exists)
-        const innerMinX = hasInnerRect ? new Int16Array(spanCount) : null;
-        const innerMaxX = hasInnerRect ? new Int16Array(spanCount) : null;
+        // Use pooled inner perimeter buffers (if inner rect exists)
+        const innerMinX = hasInnerRect ? _rrRotBufferPool.innerMinX : null;
+        const innerMaxX = hasInnerRect ? _rrRotBufferPool.innerMaxX : null;
         if (hasInnerRect) {
-            innerMinX.fill(surfaceWidth);
-            innerMaxX.fill(-1);
+            for (let i = 0; i < spanCount; i++) {
+                innerMinX[i] = surfaceWidth;
+                innerMaxX[i] = -1;
+            }
         }
 
         // Helper to record pixel to outer perimeter
@@ -6629,18 +6832,23 @@ if (__outA > 0) {
 
         if (spanCount <= 0) return;
 
-        // Allocate span arrays for outer perimeter
-        const outerMinX = new Int16Array(spanCount);
-        const outerMaxX = new Int16Array(spanCount);
-        outerMinX.fill(surfaceWidth);
-        outerMaxX.fill(-1);
+        // Use pooled span arrays (growth-only buffer pool)
+        _ensureRRRotBuffers(spanCount);
+        const outerMinX = _rrRotBufferPool.outerMinX;
+        const outerMaxX = _rrRotBufferPool.outerMaxX;
+        for (let i = 0; i < spanCount; i++) {
+            outerMinX[i] = surfaceWidth;
+            outerMaxX[i] = -1;
+        }
 
-        // Allocate span arrays for inner perimeter (if inner rect exists)
-        const innerMinX = hasInnerRect ? new Int16Array(spanCount) : null;
-        const innerMaxX = hasInnerRect ? new Int16Array(spanCount) : null;
+        // Use pooled inner perimeter buffers (if inner rect exists)
+        const innerMinX = hasInnerRect ? _rrRotBufferPool.innerMinX : null;
+        const innerMaxX = hasInnerRect ? _rrRotBufferPool.innerMaxX : null;
         if (hasInnerRect) {
-            innerMinX.fill(surfaceWidth);
-            innerMaxX.fill(-1);
+            for (let i = 0; i < spanCount; i++) {
+                innerMinX[i] = surfaceWidth;
+                innerMaxX[i] = -1;
+            }
         }
 
         // Helper to record pixel to outer perimeter
@@ -6825,9 +7033,6 @@ if (__outA > 0) {
         const hw = width / 2;
         const hh = height / 2;
 
-        // Collect stroke pixels into a Set (like _stroke1px_Rot_Alpha)
-        const strokePixels = new Set();
-
         // Edge endpoints in local space
         const edges = [
             { start: { x: -hw + radius, y: -hh }, end: { x: hw - radius, y: -hh } },      // Top
@@ -6835,20 +7040,6 @@ if (__outA > 0) {
             { start: { x: hw - radius, y: hh }, end: { x: -hw + radius, y: hh } },        // Bottom
             { start: { x: -hw, y: hh - radius }, end: { x: -hw, y: -hh + radius } }       // Left
         ];
-
-        // Collect edge pixels
-        for (const edge of edges) {
-            const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
-            const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
-            const dx = end.x - start.x, dy = end.y - start.y;
-            if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
-
-            RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, (x, y) => {
-                if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
-                    strokePixels.add(y * surfaceWidth + x);
-                }
-            });
-        }
 
         // Corner definitions
         const corners = [
@@ -6858,35 +7049,29 @@ if (__outA > 0) {
             { cx: -hw + radius, cy: hh - radius, startAngle: HALF_PI, endAngle: Math.PI }
         ];
 
-        // Collect corner arc pixels
-        for (const corner of corners) {
-            const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
-            RoundedRectOpsRot._generateArcPixels(
-                screenCenter.x, screenCenter.y, radius,
-                corner.startAngle + rotation, corner.endAngle + rotation,
-                (x, y) => {
-                    if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
-                        strokePixels.add(y * surfaceWidth + x);
-                    }
-                }
-            );
-        }
-
-        // Now render fill (stroke will render on top)
-        // Use edge buffer rasterization for fill
+        // Calculate bounding box for fill
         const boundingHeight = Math.abs(width * sin) + Math.abs(height * cos);
         const yMin = Math.max(0, Math.floor(centerY - boundingHeight / 2));
         const yMax = Math.min(surfaceHeight - 1, Math.ceil(centerY + boundingHeight / 2));
         const spanCount = yMax - yMin + 1;
 
         if (spanCount > 0) {
-            const fillMinX = new Int16Array(spanCount);
-            const fillMaxX = new Int16Array(spanCount);
-            fillMinX.fill(surfaceWidth);
-            fillMaxX.fill(-1);
+            // Use pooled span arrays (growth-only buffer pool)
+            _ensureRRRotBuffers(spanCount);
+            const fillMinX = _rrRotBufferPool.fillMinX;
+            const fillMaxX = _rrRotBufferPool.fillMaxX;
+            const strokeMinX = _rrRotBufferPool.strokeMinX;
+            const strokeMaxX = _rrRotBufferPool.strokeMaxX;
 
-            // Generate fill bounds using perimeter-based approach
-            // The clamping to stroke bounds afterwards handles any discrete pixel mismatches
+            for (let i = 0; i < spanCount; i++) {
+                fillMinX[i] = surfaceWidth;
+                fillMaxX[i] = -1;
+                strokeMinX[i] = surfaceWidth;
+                strokeMaxX[i] = -1;
+            }
+
+            // PASS 1: Generate stroke perimeter for bounds only (no Set allocation)
+            // Record both fill bounds and stroke bounds
             const recordFill = (x, y) => {
                 if (y < yMin || y > yMax) return;
                 const row = y - yMin;
@@ -6894,20 +7079,32 @@ if (__outA > 0) {
                 if (x > fillMaxX[row]) fillMaxX[row] = x;
             };
 
+            const recordStrokeBounds = (x, y) => {
+                if (x < 0 || x >= surfaceWidth || y < 0 || y >= surfaceHeight) return;
+                if (y < yMin || y > yMax) return;
+                const row = y - yMin;
+                if (x < strokeMinX[row]) strokeMinX[row] = x;
+                if (x > strokeMaxX[row]) strokeMaxX[row] = x;
+            };
+
+            // Generate fill bounds using perimeter-based approach
             RoundedRectOpsRot._generatePerimeter(hw, hh, radius, recordFill, centerX, centerY, cos, sin, rotation);
 
-            // Calculate stroke bounds per row from discrete stroke pixels
-            // Then clamp fill to stroke bounds to prevent overspill
-            const strokeMinX = new Int16Array(spanCount).fill(surfaceWidth);
-            const strokeMaxX = new Int16Array(spanCount).fill(-1);
-            for (const pos of strokePixels) {
-                const x = pos % surfaceWidth;
-                const y = Math.floor(pos / surfaceWidth);
-                if (y >= yMin && y <= yMax) {
-                    const row = y - yMin;
-                    if (x < strokeMinX[row]) strokeMinX[row] = x;
-                    if (x > strokeMaxX[row]) strokeMaxX[row] = x;
-                }
+            // Generate stroke bounds (PASS 1 of double-generation)
+            for (const edge of edges) {
+                const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
+                const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
+                const dx = end.x - start.x, dy = end.y - start.y;
+                if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
+                RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, recordStrokeBounds);
+            }
+            for (const corner of corners) {
+                const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
+                RoundedRectOpsRot._generateArcPixels(
+                    screenCenter.x, screenCenter.y, radius,
+                    corner.startAngle + rotation, corner.endAngle + rotation,
+                    recordStrokeBounds
+                );
             }
 
             // Clamp fill to stroke bounds to prevent overspill
@@ -6946,20 +7143,51 @@ if (__outA > 0) {
             }
         }
 
-        // Render stroke pixels on top via SpanOps
+        // PASS 2: Render stroke on top (re-generate perimeter, no Set allocation)
         const strokeIsOpaque = strokeColor.a === 255 && globalAlpha >= 1.0;
         const strokeEffectiveAlpha = (strokeColor.a / 255) * globalAlpha;
         const strokeInvAlpha = 1 - strokeEffectiveAlpha;
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
-        for (const pos of strokePixels) {
-            if (clipBuffer && !(clipBuffer[pos >> 3] & (1 << (pos & 7)))) continue;
+        // For opaque strokes, direct rendering is safe (duplicates just overwrite same value)
+        // For semi-transparent strokes, use lastPos tracking to prevent overdraw
+        let lastPos = -1;
+
+        const renderStrokePixel = (x, y) => {
+            if (x < 0 || x >= surfaceWidth || y < 0 || y >= surfaceHeight) return;
+            const pos = y * surfaceWidth + x;
+
+            // Skip if clipped
+            if (clipBuffer && !(clipBuffer[pos >> 3] & (1 << (pos & 7)))) return;
 
             if (strokeIsOpaque) {
+                // Opaque: safe to overwrite duplicates
                 data32[pos] = strokePacked;
             } else {
+                // Semi-transparent: use lastPos to prevent consecutive duplicates
+                if (pos === lastPos) return;
+                lastPos = pos;
                 PixelOps.blend_Alpha(data, pos, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha);
             }
+        };
+
+        // Re-generate edges for rendering
+        for (const edge of edges) {
+            const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
+            const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
+            const dx = end.x - start.x, dy = end.y - start.y;
+            if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
+            RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, renderStrokePixel);
+        }
+
+        // Re-generate corners for rendering
+        for (const corner of corners) {
+            const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
+            RoundedRectOpsRot._generateArcPixels(
+                screenCenter.x, screenCenter.y, radius,
+                corner.startAngle + rotation, corner.endAngle + rotation,
+                renderStrokePixel
+            );
         }
     }
 
@@ -7020,17 +7248,23 @@ if (__outA > 0) {
 
         if (spanCount <= 0) return;
 
-        // Allocate span arrays for all three perimeters
-        const outerMinX = new Int16Array(spanCount);
-        const outerMaxX = new Int16Array(spanCount);
-        outerMinX.fill(surfaceWidth);
-        outerMaxX.fill(-1);
+        // Use pooled span arrays (growth-only buffer pool)
+        _ensureRRRotBuffers(spanCount);
+        const outerMinX = _rrRotBufferPool.outerMinX;
+        const outerMaxX = _rrRotBufferPool.outerMaxX;
+        for (let i = 0; i < spanCount; i++) {
+            outerMinX[i] = surfaceWidth;
+            outerMaxX[i] = -1;
+        }
 
-        const innerMinX = hasInnerRect ? new Int16Array(spanCount) : null;
-        const innerMaxX = hasInnerRect ? new Int16Array(spanCount) : null;
+        // Use pooled inner perimeter buffers (if inner rect exists)
+        const innerMinX = hasInnerRect ? _rrRotBufferPool.innerMinX : null;
+        const innerMaxX = hasInnerRect ? _rrRotBufferPool.innerMaxX : null;
         if (hasInnerRect) {
-            innerMinX.fill(surfaceWidth);
-            innerMaxX.fill(-1);
+            for (let i = 0; i < spanCount; i++) {
+                innerMinX[i] = surfaceWidth;
+                innerMaxX[i] = -1;
+            }
         }
 
         // For opaque strokes, reuse inner bounds for fill (stroke covers overlap region)
@@ -7041,11 +7275,13 @@ if (__outA > 0) {
             fillMinX = hasInnerRect ? innerMinX : null;
             fillMaxX = hasInnerRect ? innerMaxX : null;
         } else {
-            // Semi-transparent stroke: need separate fill bounds at path boundary
-            fillMinX = new Int16Array(spanCount);
-            fillMaxX = new Int16Array(spanCount);
-            fillMinX.fill(surfaceWidth);
-            fillMaxX.fill(-1);
+            // Semi-transparent stroke: use pooled fill bounds at path boundary
+            fillMinX = _rrRotBufferPool.fillMinX;
+            fillMaxX = _rrRotBufferPool.fillMaxX;
+            for (let i = 0; i < spanCount; i++) {
+                fillMinX[i] = surfaceWidth;
+                fillMaxX[i] = -1;
+            }
         }
 
         // Create recorders for each perimeter
