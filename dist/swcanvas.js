@@ -7341,57 +7341,19 @@ class RoundedRectOpsAA {
         const posW = width;
         const posH = height;
 
-        // Use Set to collect unique pixel positions (prevents overdraw at edge-arc junctions)
-        const strokePixels = new Set();
+        // Edge shortening strategy: shorten edges by 1 pixel at each end to avoid
+        // junction overlap with corners. Corners naturally cover junction pixels.
+        // This eliminates the need for a Set to prevent overdraw at junctions.
 
-        // Helper to collect pixel into Set
-        const collectPixel = (px, py) => {
+        // Helper to blend a pixel directly
+        const blendPixel = (px, py) => {
             if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
-            strokePixels.add(py * surfaceWidth + px);
-        };
-
-        // Collect horizontal edge pixels
-        const topY = Math.floor(posY);
-        const bottomY = Math.floor(posY + posH - 0.5);
-
-        for (let xx = Math.floor(posX + radius); xx < posX + posW - radius; xx++) {
-            collectPixel(xx, topY);
-            collectPixel(xx, bottomY);
-        }
-
-        // Collect vertical edge pixels
-        const leftX = Math.floor(posX);
-        const rightX = Math.floor(posX + posW - 0.5);
-
-        for (let yy = Math.floor(posY + radius); yy < posY + posH - radius; yy++) {
-            collectPixel(leftX, yy);
-            collectPixel(rightX, yy);
-        }
-
-        // Collect corner arc pixels
-        const collectCorner = (cx, cy, startAngle, endAngle) => {
-            const sr = radius - 0.5;
-            const angleStep = DEG_TO_RAD;
-            for (let angle = startAngle; angle <= endAngle; angle += angleStep) {
-                const px = Math.floor(cx + sr * Math.cos(angle));
-                const py = Math.floor(cy + sr * Math.sin(angle));
-                collectPixel(px, py);
-            }
-        };
-
-        collectCorner(posX + radius, posY + radius, Math.PI, THREE_HALF_PI);
-        collectCorner(posX + posW - radius, posY + radius, THREE_HALF_PI, TAU);
-        collectCorner(posX + posW - radius, posY + posH - radius, 0, HALF_PI);
-        collectCorner(posX + radius, posY + posH - radius, HALF_PI, Math.PI);
-
-        // Render all unique pixels once with alpha blending
-        for (const pixelIndex of strokePixels) {
+            const pixelIndex = py * surfaceWidth + px;
             if (clipBuffer) {
                 const byteIndex = pixelIndex >> 3;
                 const bitIndex = pixelIndex & 7;
-                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
+                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
             }
-
             const __off = pixelIndex * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * inverseIncomingAlpha;
@@ -7403,7 +7365,71 @@ if (__outA > 0) {
     data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
+        };
+
+        // Draw horizontal edges (shortened by 1 pixel at each end to avoid junction overlap)
+        const topY = Math.floor(posY);
+        const bottomY = Math.floor(posY + posH - 0.5);
+        const horzStart = Math.floor(posX + radius) + 1;  // Skip left junction pixel
+        const horzEnd = Math.floor(posX + posW - radius); // Stop before right junction pixel
+
+        for (let xx = horzStart; xx < horzEnd; xx++) {
+            blendPixel(xx, topY);
+            blendPixel(xx, bottomY);
         }
+
+        // Draw vertical edges (shortened by 1 pixel at each end to avoid junction overlap)
+        const leftX = Math.floor(posX);
+        const rightX = Math.floor(posX + posW - 0.5);
+        const vertStart = Math.floor(posY + radius) + 1;  // Skip top junction pixel
+        const vertEnd = Math.floor(posY + posH - radius); // Stop before bottom junction pixel
+
+        for (let yy = vertStart; yy < vertEnd; yy++) {
+            blendPixel(leftX, yy);
+            blendPixel(rightX, yy);
+        }
+
+        // Draw corner arcs with consecutive-duplicate tracking
+        // Angle iteration can map multiple angles to the same pixel for small radii.
+        // Since duplicates are always consecutive, tracking lastPos is sufficient.
+        const drawCorner = (cx, cy, startAngle, endAngle) => {
+            const sr = radius - 0.5;
+            const angleStep = DEG_TO_RAD;
+            let lastPos = -1;
+            for (let angle = startAngle; angle <= endAngle; angle += angleStep) {
+                const px = Math.floor(cx + sr * Math.cos(angle));
+                const py = Math.floor(cy + sr * Math.sin(angle));
+                if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) continue;
+                const pos = py * surfaceWidth + px;
+                if (pos === lastPos) continue; // Skip consecutive duplicate
+                lastPos = pos;
+                if (clipBuffer) {
+                    const byteIndex = pos >> 3;
+                    const bitIndex = pos & 7;
+                    if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
+                }
+                const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * inverseIncomingAlpha;
+const __outA = incomingAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+            }
+        };
+
+        // Top-left corner (180° to 270°)
+        drawCorner(posX + radius, posY + radius, Math.PI, THREE_HALF_PI);
+        // Top-right corner (270° to 360°)
+        drawCorner(posX + posW - radius, posY + radius, THREE_HALF_PI, TAU);
+        // Bottom-right corner (0° to 90°)
+        drawCorner(posX + posW - radius, posY + posH - radius, 0, HALF_PI);
+        // Bottom-left corner (90° to 180°)
+        drawCorner(posX + radius, posY + posH - radius, HALF_PI, Math.PI);
     }
 
     /**
