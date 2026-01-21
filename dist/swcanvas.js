@@ -3572,30 +3572,162 @@ if (__outA > 0) {
             yOffset = 1;
         }
 
-        // Use Set to collect unique pixel positions (prevents overdraw)
-        const uniquePixels = new Set();
-
-        // Bresenham circle algorithm
+        // Bresenham circle algorithm with conditional checks to prevent overdraw
+        // (eliminates Set allocation by using geometric deduplication)
         let x = 0;
         let y = intRadius;
         let d = 3 - 2 * intRadius;
 
         while (x <= y) {
-            // Calculate 8 symmetric points
-            const points = [
-                [cX + x, cY + y],
-                [cX + y, cY + x],
-                [cX + y, cY - x - yOffset],
-                [cX + x, cY - y - yOffset],
-                [cX - x - xOffset, cY - y - yOffset],
-                [cX - y - xOffset, cY - x - yOffset],
-                [cX - y - xOffset, cY + x],
-                [cX - x - xOffset, cY + y]
-            ];
+            // Calculate 8 symmetric points with offsets for top/left halves
+            // Primary points (A, C, E, G) - always unique from each other
+            const pAx = cX + x, pAy = cY + y;                       // bottom-right quadrant
+            const pCx = cX + y, pCy = cY - x - yOffset;             // top-right quadrant
+            const pEx = cX - x - xOffset, pEy = cY - y - yOffset;   // top-left quadrant
+            const pGx = cX - y - xOffset, pGy = cY + x;             // bottom-left quadrant
 
-            for (const [px, py] of points) {
-                if (px >= 0 && px < width && py >= 0 && py < height) {
-                    uniquePixels.add(py * width + px);
+            // Swapped points (B, D, F, H) - duplicate primaries when x == y
+            const pBx = cX + y, pBy = cY + x;                       // duplicates A when x == y
+            const pDx = cX + x, pDy = cY - y - yOffset;             // duplicates C when x == y
+            const pFx = cX - y - xOffset, pFy = cY - x - yOffset;   // duplicates E when x == y
+            const pHx = cX - x - xOffset, pHy = cY + y;             // duplicates G when x == y, also A when x == 0 && xOffset == 0
+
+            // Draw primary points (always)
+            if (pAx >= 0 && pAx < width && pAy >= 0 && pAy < height) {
+                const pos = pAy * width + pAx;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                }
+            }
+            if (pCx >= 0 && pCx < width && pCy >= 0 && pCy < height) {
+                const pos = pCy * width + pCx;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                }
+            }
+            if (pEx >= 0 && pEx < width && pEy >= 0 && pEy < height) {
+                const pos = pEy * width + pEx;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                }
+            }
+            if (pGx >= 0 && pGx < width && pGy >= 0 && pGy < height) {
+                const pos = pGy * width + pGx;
+                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                }
+            }
+
+            // Draw swapped points only when x != y (they duplicate primaries on the diagonal)
+            // Additional cardinal point checks: at x == 0, swapped points may duplicate primaries
+            if (x !== y) {
+                // B duplicates C at right cardinal when x == 0 && yOffset == 0
+                if ((x !== 0 || yOffset !== 0) && pBx >= 0 && pBx < width && pBy >= 0 && pBy < height) {
+                    const pos = pBy * width + pBx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                    }
+                }
+                // D duplicates E at top cardinal when x == 0 && xOffset == 0
+                if ((x !== 0 || xOffset !== 0) && pDx >= 0 && pDx < width && pDy >= 0 && pDy < height) {
+                    const pos = pDy * width + pDx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                    }
+                }
+                // F duplicates G at left cardinal when x == 0 && yOffset == 0
+                if ((x !== 0 || yOffset !== 0) && pFx >= 0 && pFx < width && pFy >= 0 && pFy < height) {
+                    const pos = pFy * width + pFx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                    }
+                }
+                // H duplicates A at bottom cardinal when x == 0 && xOffset == 0
+                if ((x !== 0 || xOffset !== 0) && pHx >= 0 && pHx < width && pHy >= 0 && pHy < height) {
+                    const pos = pHy * width + pHx;
+                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        const __off = pos * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+                    }
                 }
             }
 
@@ -3607,23 +3739,6 @@ if (__outA > 0) {
                 y--;
             }
             x++;
-        }
-
-        // Render unique pixels with alpha blending
-        for (const pos of uniquePixels) {
-            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                const __off = pos * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * invAlpha;
-const __outA = effectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
-}
-            }
         }
     }
 
