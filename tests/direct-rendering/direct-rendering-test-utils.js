@@ -1691,9 +1691,13 @@ function runValidationChecks(surface, checks, iterationNumber = 0) {
                 ? checks.totalUniqueColors.expected
                 : checks.totalUniqueColors.count)
             : checks.totalUniqueColors;
-        const actual = countUniqueColors(surface);
-        if (actual !== expected) {
-            issues.push(`Unique colors: expected exactly ${expected}, got ${actual}`);
+        const skipIterations = (isObject && checks.totalUniqueColors.skipOnIterations) || [];
+
+        if (!skipIterations.includes(iterationNumber)) {
+            const actual = countUniqueColors(surface);
+            if (actual !== expected) {
+                issues.push(`Unique colors: expected exactly ${expected}, got ${actual}`);
+            }
         }
     }
 
@@ -1731,27 +1735,31 @@ function runValidationChecks(surface, checks, iterationNumber = 0) {
 
     // Speckle checks
     if (checks.speckles === true || (checks.speckles && typeof checks.speckles === 'object')) {
-        const expected = (typeof checks.speckles === 'object' && checks.speckles.expected !== undefined)
-            ? checks.speckles.expected : 0;
-        const maxSpeckles = typeof checks.speckles === 'object' ? checks.speckles.maxSpeckles : undefined;
-        const isKnownFailure = typeof checks.speckles === 'object' && checks.speckles.knownFailure === true;
-        const speckleResult = countSpeckles(surface);
-        const speckleCount = speckleResult.count;
+        const skipIterations = (typeof checks.speckles === 'object' && checks.speckles.skipOnIterations) || [];
 
-        const speckleCheckPassed = maxSpeckles !== undefined
-            ? speckleCount <= maxSpeckles
-            : speckleCount === expected;
+        if (!skipIterations.includes(iterationNumber)) {
+            const expected = (typeof checks.speckles === 'object' && checks.speckles.expected !== undefined)
+                ? checks.speckles.expected : 0;
+            const maxSpeckles = typeof checks.speckles === 'object' ? checks.speckles.maxSpeckles : undefined;
+            const isKnownFailure = typeof checks.speckles === 'object' && checks.speckles.knownFailure === true;
+            const speckleResult = countSpeckles(surface);
+            const speckleCount = speckleResult.count;
 
-        if (!speckleCheckPassed) {
-            const firstInfo = speckleResult.firstSpeckle
-                ? ` (first at ${speckleResult.firstSpeckle.x},${speckleResult.firstSpeckle.y})`
-                : '';
-            const expectedMsg = maxSpeckles !== undefined ? `≤${maxSpeckles}` : `${expected}`;
-            const message = `Speckle count: ${speckleCount} (expected ${expectedMsg})${firstInfo}`;
-            if (isKnownFailure) {
-                knownFailureIssues.push(message + ' [KNOWN]');
-            } else {
-                issues.push(message);
+            const speckleCheckPassed = maxSpeckles !== undefined
+                ? speckleCount <= maxSpeckles
+                : speckleCount === expected;
+
+            if (!speckleCheckPassed) {
+                const firstInfo = speckleResult.firstSpeckle
+                    ? ` (first at ${speckleResult.firstSpeckle.x},${speckleResult.firstSpeckle.y})`
+                    : '';
+                const expectedMsg = maxSpeckles !== undefined ? `≤${maxSpeckles}` : `${expected}`;
+                const message = `Speckle count: ${speckleCount} (expected ${expectedMsg})${firstInfo}`;
+                if (isKnownFailure) {
+                    knownFailureIssues.push(message + ' [KNOWN]');
+                } else {
+                    issues.push(message);
+                }
             }
         }
     } else if (checks.noSpeckles === true || checks.speckles === false) {
