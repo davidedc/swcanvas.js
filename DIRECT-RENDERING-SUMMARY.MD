@@ -368,6 +368,129 @@ if (clipBuffer[byteIndex] === 0) {
 | Double-generation      | RoundedRectOpsRot._fillStroke_Rot_1px                          | CPU cycles for coord generation < Set hash overhead |
 | Conditional dedup      | CircleOps/ArcOps stroke1px_Alpha                               | x!=y + cardinal checks eliminate Set allocation |
 
+### 6.5 Overdraw Prevention for Semi-Transparent Strokes
+
+**The Problem**: When rendering semi-transparent (alpha < 1.0) strokes, drawing the same pixel twice causes visible darkening artifacts. Unlike opaque strokes where overdraw is invisible (pixel just gets set again to same value), alpha blending accumulates: `blend(blend(bg, color), color) ≠ blend(bg, color)`.
+
+**Why It Matters**: The Bresenham circle algorithm with 8-way symmetry generates 8 points per iteration. At certain positions (diagonals, cardinals), multiple symmetric points map to the same pixel. Similarly, rounded rectangle strokes have edge-corner junctions and cross-corner adjacencies that can produce duplicate pixels.
+
+**Design Philosophy**: CPU cycles for coordinate generation are nearly free; memory allocations (Set, Array) and hash operations are expensive. All techniques below use conditionals or tracking variables instead of data structures.
+
+#### 6.5.1 Conditional Deduplication (CircleOps, ArcOps)
+
+Used by: `CircleOps.stroke1px_Alpha()`, `ArcOps.stroke1px_Alpha()`
+
+The 8-way symmetry of circles generates these point pairs per Bresenham step:
+```
+Primary points (A, C, E, G): Always unique from each other
+Swapped points (B, D, F, H): Swap x/y coordinates of primaries
+```
+
+**Duplicate conditions**:
+1. **Diagonal** (`bx == by`): Swapped points exactly equal primary points
+   - B duplicates A, D duplicates C, F duplicates E, H duplicates G
+
+2. **Cardinal** (`bx == 0`): Additional duplicates based on center offset:
+   - When `bx == 0 && yOffset == 0`: B duplicates C (right cardinal)
+   - When `bx == 0 && xOffset == 0`: D duplicates E (top cardinal)
+   - When `bx == 0 && yOffset == 0`: F duplicates G (left cardinal)
+   - When `bx == 0 && xOffset == 0`: H duplicates A (bottom cardinal)
+
+**Implementation pattern**:
+```javascript
+// Primary points: always draw (with bounds/clip/angle checks)
+drawPoint(A); drawPoint(C); drawPoint(E); drawPoint(G);
+
+// Swapped points: conditional on bx != by plus cardinal checks
+if (bx !== by) {
+    if (bx !== 0 || yOffset !== 0) drawPoint(B);  // Not right cardinal
+    if (bx !== 0 || xOffset !== 0) drawPoint(D);  // Not top cardinal
+    if (bx !== 0 || yOffset !== 0) drawPoint(F);  // Not left cardinal
+    if (bx !== 0 || xOffset !== 0) drawPoint(H);  // Not bottom cardinal
+}
+```
+
+**Result**: Zero allocations, O(1) checks per Bresenham step.
+
+#### 6.5.2 Edge Shortening (RoundedRectOpsAA)
+
+Used by: `RoundedRectOpsAA.stroke1px_AA_Alpha()`
+
+Axis-aligned rounded rectangles have edge-corner junctions where Bresenham edges meet quarter-arc corners. Rather than track which pixels belong to edges vs corners:
+
+**Strategy**: Shorten edges to exclude junction pixels; corners "own" them.
+```javascript
+// Edges start 1 pixel after corner end
+const horzStart = Math.floor(posX + radius) + 1;
+const vertStart = Math.floor(posY + radius) + 1;
+```
+
+Combined with `lastPos` tracking within each corner arc to prevent consecutive duplicates from the arc's own Bresenham iteration.
+
+#### 6.5.3 Global lastPos Tracking (RoundedRectOpsRot)
+
+Used by: `RoundedRectOpsRot._stroke1px_Rot_Alpha()`, `RoundedRectOpsRot._fillStroke_Rot_1px()`
+
+**Problem**: Rotated rounded rectangles have floating-point edge endpoints and corner positions. Due to rounding, adjacent corners (e.g., TR corner end and BR corner start) can produce the same screen pixel.
+
+**Solution**: A single `lastPos` variable that persists across ALL corners (not reset per-corner):
+```javascript
+let lastPos = -1;
+
+// Process corners in order: TL → TR → BR → BL
+for (const corner of [TL, TR, BR, BL]) {
+    generateArcPixels(corner, (x, y) => {
+        const pos = y * width + x;
+        if (pos === lastPos) return;  // Skip consecutive duplicate
+        lastPos = pos;
+        blendPixel(pos);
+    });
+}
+```
+
+**Key insight**: Cross-corner duplicates happen at corner boundaries. A global `lastPos` catches them because we process corners sequentially (TL→TR→BR→BL), so the end of one corner's arc is immediately followed by the start of the next.
+
+**Edge-corner junctions**: Pre-compute junction pixels from corners first, then derive edge endpoints from them. Edges skip junction pixels by coordinate match.
+
+#### 6.5.4 Double-Generation Strategy (RoundedRectOpsRot)
+
+Used by: `RoundedRectOpsRot._fillStroke_Rot_1px()`
+
+**Problem**: `fillStroke` needs stroke pixel bounds to clamp fill extent, but also needs to render stroke pixels. Naive approach stores pixels in a Set.
+
+**Solution**: Generate the perimeter twice instead of storing it:
+```javascript
+// PASS 1: Generate for bounds only (no rendering, no allocation)
+for (edge of edges) generateEdgePixels(edge, recordBounds);
+for (corner of corners) generateArcPixels(corner, recordBounds);
+
+// ... render fill using recorded bounds ...
+
+// PASS 2: Generate again for rendering (no allocation)
+let lastPos = -1;
+for (edge of edges) generateEdgePixels(edge, renderPixel);
+for (corner of corners) generateArcPixels(corner, renderPixel);
+```
+
+**Why this works**: Perimeter generation is pure computation (Bresenham arithmetic). The cost of generating coordinates twice is far less than:
+- Allocating a Set with O(perimeter) entries
+- Computing hash codes for each pixel position
+- Managing Set's internal hash table
+
+**Measured impact**: Eliminates Set allocation entirely; CPU overhead of double-generation is negligible compared to memory allocation cost.
+
+#### 6.5.5 Summary: Overdraw Prevention by Shape
+
+| Shape | Method | Technique | Key Mechanism |
+|-------|--------|-----------|---------------|
+| Circle | stroke1px_Alpha | Conditional dedup | `bx != by` + cardinal checks |
+| Arc | stroke1px_Alpha | Conditional dedup | Same as Circle + angle filtering |
+| RoundedRect AA | stroke1px_AA_Alpha | Edge shortening + lastPos | Edges exclude junctions; corners track lastPos |
+| RoundedRect Rot | _stroke1px_Rot_Alpha | Global lastPos | Single variable across all corners |
+| RoundedRect Rot | _fillStroke_Rot_1px | Double-generation + lastPos | Generate twice; no Set allocation |
+
+**Note**: Opaque strokes (`_Opaq` variants) don't need overdraw prevention—setting the same pixel twice to the same opaque color is visually identical and causes no artifacts.
+
 ---
 
 ## 7. Feature Comparison Summary
