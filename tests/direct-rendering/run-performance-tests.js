@@ -106,6 +106,9 @@ let orientationFilter = null;
 let shapeFilter = null;
 let angleFilter = null;
 let listOnly = false;
+let outputFormat = 'text'; // 'text', 'json', 'csv'
+let compareBaseline = null;
+let adaptiveRuns = false;
 
 // Help text
 if (args.includes('--help') || args.includes('-h')) {
@@ -129,6 +132,10 @@ Options:
   -r, --runs=<N>            Number of measurement runs to average (default: ${DEFAULT_RUNS})
   -q, --quiet               Only show final summary (no per-test progress)
   --list                    List matched tests without running them
+  --json                    Output results in JSON format
+  --csv                     Output results in CSV format
+  --compare=<file>          Compare results against a JSON baseline file
+  --adaptive-runs           Automatically increase runs for high-variance tests
   -h, --help                Show this help message
 
 Stroke Categories:
@@ -193,6 +200,10 @@ Examples:
   npm run test:direct-rendering:perf -- --orient aa               # Axis-aligned tests
   npm run test:direct-rendering:perf -- -s 5000 -r 10             # 5000 shapes, 10 runs
   npm run test:direct-rendering:perf -- -q                        # Quiet mode
+  npm run test:direct-rendering:perf -- --json                    # JSON output for scripting
+  npm run test:direct-rendering:perf -- --csv                     # CSV output for spreadsheets
+  npm run test:direct-rendering:perf -- --compare=baseline.json   # Compare against baseline
+  npm run test:direct-rendering:perf -- --adaptive-runs           # Auto-adjust runs for stability
 `);
     process.exit(0);
 }
@@ -235,6 +246,17 @@ for (let i = 0; i < args.length; i++) {
         quietMode = true;
     } else if (arg === '--list') {
         listOnly = true;
+    } else if (arg === '--json') {
+        outputFormat = 'json';
+    } else if (arg === '--csv') {
+        outputFormat = 'csv';
+    } else if (arg.startsWith('--compare=')) {
+        compareBaseline = arg.split('=')[1];
+    } else if (arg === '--compare' && args[i + 1]) {
+        compareBaseline = args[i + 1];
+        i++;
+    } else if (arg === '--adaptive-runs') {
+        adaptiveRuns = true;
     }
 }
 
@@ -320,8 +342,10 @@ function formatNumber(num, decimals = 0) {
 
 /**
  * Run performance test for a single test
+ * @param {Object} test - The test to run
+ * @param {boolean} adaptive - Whether to use adaptive runs
  */
-function runPerformanceTest(test) {
+function runPerformanceTest(test, adaptive = false) {
     // Create fresh canvas for this test
     const canvas = SWCanvas.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
     const ctx = canvas.getContext('2d');
@@ -330,9 +354,17 @@ function runPerformanceTest(test) {
     // Warmup phase
     runWarmup(test, ctx, warmupIterations);
 
+    // Determine number of runs
+    let runsToUse = numRuns;
+
+    if (adaptive) {
+        // Start with 5 runs for adaptive mode
+        runsToUse = 5;
+    }
+
     // Measurement phase
     const measurements = [];
-    for (let run = 0; run < numRuns; run++) {
+    for (let run = 0; run < runsToUse; run++) {
         // Clear canvas between runs
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
@@ -340,8 +372,31 @@ function runPerformanceTest(test) {
         measurements.push(elapsed);
     }
 
-    // Calculate statistics
-    const stats = calculateStats(measurements);
+    // Calculate initial statistics
+    let stats = calculateStats(measurements);
+
+    // Adaptive: increase runs if StdDev is high
+    if (adaptive && stats.stddevPercent > 25 && runsToUse < 20) {
+        // Extend to 20 runs
+        for (let run = runsToUse; run < 20; run++) {
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            const elapsed = measureRun(test, ctx, shapesPerRun, run);
+            measurements.push(elapsed);
+        }
+        runsToUse = 20;
+        stats = calculateStats(measurements);
+    }
+
+    if (adaptive && stats.stddevPercent > 35 && runsToUse < 40) {
+        // Extend to 40 runs
+        for (let run = runsToUse; run < 40; run++) {
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            const elapsed = measureRun(test, ctx, shapesPerRun, run);
+            measurements.push(elapsed);
+        }
+        runsToUse = 40;
+        stats = calculateStats(measurements);
+    }
 
     // Calculate derived metrics
     const shapesPerSecond = (shapesPerRun / stats.mean) * 1000;
@@ -362,7 +417,8 @@ function runPerformanceTest(test) {
         shapesPerSecondMax,
         microsecondsPerShape,
         microsecondsPerShapeMin,
-        microsecondsPerShapeMax
+        microsecondsPerShapeMax,
+        actualRuns: runsToUse
     };
 }
 
@@ -380,6 +436,198 @@ function printTestResult(result) {
     console.log(`    Best:    ${formatNumber(result.shapesPerSecondMax)} shapes/sec (${result.microsecondsPerShapeMin.toFixed(1)} us/shape)`);
     console.log(`    Worst:   ${formatNumber(result.shapesPerSecondMin)} shapes/sec (${result.microsecondsPerShapeMax.toFixed(1)} us/shape)`);
     console.log(`    StdDev:  ${result.stats.stddevPercent.toFixed(1)}%`);
+}
+
+/**
+ * Output results as JSON
+ */
+function outputJSON(results) {
+    const gitCommit = (() => {
+        try {
+            const { execSync } = require('child_process');
+            return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+        } catch (e) {
+            return 'unknown';
+        }
+    })();
+
+    const output = {
+        metadata: {
+            timestamp: new Date().toISOString(),
+            gitCommit: gitCommit,
+            config: {
+                shapesPerRun: shapesPerRun,
+                warmupIterations: warmupIterations,
+                numRuns: numRuns,
+                canvasSize: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT }
+            }
+        },
+        results: results.map(r => ({
+            id: r.test.id,
+            name: r.test.perfName,
+            category: r.test.category,
+            metadata: r.test.metadata || {},
+            shapesPerSec: Math.round(r.shapesPerSecond),
+            usPerShape: parseFloat(r.microsecondsPerShape.toFixed(2)),
+            stddev: parseFloat(r.stats.stddevPercent.toFixed(1)),
+            min: Math.round(r.shapesPerSecondMin),
+            max: Math.round(r.shapesPerSecondMax)
+        }))
+    };
+
+    console.log(JSON.stringify(output, null, 2));
+}
+
+/**
+ * Output results as CSV
+ */
+function outputCSV(results) {
+    // Header
+    console.log('Test ID,Test Name,Category,Shapes/sec,us/shape,StdDev%,Min,Max');
+
+    for (const r of results) {
+        const row = [
+            `"${r.test.id}"`,
+            `"${r.test.perfName}"`,
+            `"${r.test.category || ''}"`,
+            Math.round(r.shapesPerSecond),
+            r.microsecondsPerShape.toFixed(2),
+            r.stats.stddevPercent.toFixed(1),
+            Math.round(r.shapesPerSecondMin),
+            Math.round(r.shapesPerSecondMax)
+        ];
+        console.log(row.join(','));
+    }
+}
+
+/**
+ * Load and compare against a baseline JSON file
+ */
+function loadBaseline(filePath) {
+    try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        return JSON.parse(content);
+    } catch (e) {
+        console.error(`Error loading baseline file: ${e.message}`);
+        return null;
+    }
+}
+
+/**
+ * Compare current results against baseline and print comparison table
+ */
+function printComparison(results, baseline) {
+    console.log('\n' + '='.repeat(100));
+    console.log('COMPARISON WITH BASELINE');
+    console.log('='.repeat(100));
+    console.log(`Baseline: ${baseline.metadata.gitCommit} @ ${baseline.metadata.timestamp}`);
+    console.log('');
+
+    // Create lookup map from baseline
+    const baselineMap = new Map();
+    for (const b of baseline.results) {
+        baselineMap.set(b.id, b);
+    }
+
+    const comparisons = [];
+    let fasterCount = 0;
+    let sameCount = 0;
+    let slowerCount = 0;
+    let regressionCount = 0;
+
+    for (const r of results) {
+        const b = baselineMap.get(r.test.id);
+        if (!b) {
+            continue; // Test not in baseline
+        }
+
+        const change = ((r.shapesPerSecond - b.shapesPerSec) / b.shapesPerSec) * 100;
+
+        // Determine threshold based on operation type
+        const isSemi = r.test.metadata?.operation?.includes('semi') || false;
+        const threshold = isSemi ? 25 : 15;
+
+        let classification;
+        if (change > threshold) {
+            classification = 'FASTER';
+            fasterCount++;
+        } else if (change < -2 * threshold) {
+            classification = 'REGRESSION';
+            regressionCount++;
+        } else if (change < -threshold) {
+            classification = 'SLOWER';
+            slowerCount++;
+        } else {
+            classification = 'SAME';
+            sameCount++;
+        }
+
+        comparisons.push({
+            name: r.test.perfName,
+            before: b.shapesPerSec,
+            after: Math.round(r.shapesPerSecond),
+            change: change,
+            classification: classification
+        });
+    }
+
+    // Print comparison table
+    const maxNameLen = Math.max('Test Name'.length, ...comparisons.map(c => c.name.length));
+    console.log(`| ${'Test Name'.padEnd(maxNameLen)} |     Before |      After |  Change | Status     |`);
+    console.log(`|${'-'.repeat(maxNameLen + 2)}|------------|------------|---------|------------|`);
+
+    // Sort by change (most regressed first)
+    comparisons.sort((a, b) => a.change - b.change);
+
+    for (const c of comparisons) {
+        const name = c.name.padEnd(maxNameLen);
+        const before = formatNumber(c.before).padStart(10);
+        const after = formatNumber(c.after).padStart(10);
+        const change = (c.change >= 0 ? '+' : '') + c.change.toFixed(1) + '%';
+        const changeStr = change.padStart(7);
+
+        // Color coding for terminal
+        let statusStr;
+        if (c.classification === 'FASTER') {
+            statusStr = '\x1b[32mFASTER\x1b[0m     ';
+        } else if (c.classification === 'REGRESSION') {
+            statusStr = '\x1b[31mREGRESSION\x1b[0m ';
+        } else if (c.classification === 'SLOWER') {
+            statusStr = '\x1b[33mSLOWER\x1b[0m     ';
+        } else {
+            statusStr = 'SAME       ';
+        }
+
+        console.log(`| ${name} | ${before} | ${after} | ${changeStr} | ${statusStr}|`);
+    }
+
+    console.log('');
+    console.log('Summary:');
+    console.log(`  FASTER:     ${fasterCount}`);
+    console.log(`  SAME:       ${sameCount}`);
+    console.log(`  SLOWER:     ${slowerCount}`);
+    console.log(`  REGRESSION: ${regressionCount}`);
+
+    if (regressionCount > 0) {
+        console.log('\n\x1b[31mWARNING: Regressions detected!\x1b[0m');
+        return 1; // Exit code for CI
+    }
+    return 0;
+}
+
+/**
+ * Print high-StdDev warnings
+ */
+function printHighStdDevWarnings(results) {
+    const highVariance = results.filter(r => r.stats.stddevPercent > 35);
+
+    if (highVariance.length > 0) {
+        console.log('\n\x1b[33mWARNING: High variance detected in some tests:\x1b[0m');
+        for (const r of highVariance) {
+            console.log(`  - ${r.test.perfName}: ${r.stats.stddevPercent.toFixed(1)}% StdDev`);
+        }
+        console.log('\nConsider using --adaptive-runs or increasing -r for more reliable results.\n');
+    }
 }
 
 /**
@@ -419,12 +667,20 @@ function printSummary(results) {
  * Main entry point
  */
 function main() {
-    console.log('\n=== SWCanvas Performance Tests (Node.js) ===\n');
-    console.log(`Configuration:`);
-    console.log(`  Shapes per run: ${formatNumber(shapesPerRun)}`);
-    console.log(`  Warmup iterations: ${formatNumber(warmupIterations)}`);
-    console.log(`  Measurement runs: ${numRuns}`);
-    console.log(`  Canvas size: ${CANVAS_WIDTH}x${CANVAS_HEIGHT}`);
+    // Suppress header for machine-readable formats
+    const isHumanReadable = outputFormat === 'text';
+
+    if (isHumanReadable) {
+        console.log('\n=== SWCanvas Performance Tests (Node.js) ===\n');
+        console.log(`Configuration:`);
+        console.log(`  Shapes per run: ${formatNumber(shapesPerRun)}`);
+        console.log(`  Warmup iterations: ${formatNumber(warmupIterations)}`);
+        console.log(`  Measurement runs: ${adaptiveRuns ? 'adaptive (5-40)' : numRuns}`);
+        console.log(`  Canvas size: ${CANVAS_WIDTH}x${CANVAS_HEIGHT}`);
+        if (compareBaseline) {
+            console.log(`  Comparing against: ${compareBaseline}`);
+        }
+    }
 
     // Load test case files
     loadTestCases();
@@ -533,23 +789,32 @@ function main() {
     if (angleFilter) activeFilters.push(`angle=${angleFilter}`);
     if (operationFilter) activeFilters.push(`op=${operationFilter}`);
 
-    if (activeFilters.length > 0) {
+    if (activeFilters.length > 0 && isHumanReadable) {
         console.log(`\nFilters: ${activeFilters.join(', ')}`);
     }
 
     if (testsToRun.length === 0) {
-        console.log(`\nNo tests match the specified filters.`);
-        console.log('Available performance tests:');
-        DIRECT_RENDERING_PERF_REGISTRY.slice(0, 20).forEach(t =>
-            console.log(`  - ${t.perfName} (${t.id})`)
-        );
-        if (DIRECT_RENDERING_PERF_REGISTRY.length > 20) {
-            console.log(`  ... and ${DIRECT_RENDERING_PERF_REGISTRY.length - 20} more`);
+        if (isHumanReadable) {
+            console.log(`\nNo tests match the specified filters.`);
+            console.log('Available performance tests:');
+            DIRECT_RENDERING_PERF_REGISTRY.slice(0, 20).forEach(t =>
+                console.log(`  - ${t.perfName} (${t.id})`)
+            );
+            if (DIRECT_RENDERING_PERF_REGISTRY.length > 20) {
+                console.log(`  ... and ${DIRECT_RENDERING_PERF_REGISTRY.length - 20} more`);
+            }
+        } else {
+            // For JSON/CSV, output empty results
+            if (outputFormat === 'json') {
+                console.log(JSON.stringify({ metadata: {}, results: [], error: 'No tests matched filters' }, null, 2));
+            } else if (outputFormat === 'csv') {
+                console.log('Test ID,Test Name,Category,Shapes/sec,us/shape,StdDev%,Min,Max');
+            }
         }
         process.exit(1);
     }
 
-    if (activeFilters.length > 0) {
+    if (activeFilters.length > 0 && isHumanReadable) {
         console.log(`Matched ${testsToRun.length} test(s)`);
     }
 
@@ -563,24 +828,42 @@ function main() {
         process.exit(0);
     }
 
-    console.log(`\nRunning ${testsToRun.length} performance test(s)...\n`);
+    if (isHumanReadable) {
+        console.log(`\nRunning ${testsToRun.length} performance test(s)...\n`);
+    }
 
     // Run tests and collect results
     const results = [];
 
     for (const test of testsToRun) {
-        if (!quietMode) {
+        if (!quietMode && isHumanReadable) {
             process.stdout.write(`Running: ${test.perfName}... `);
         }
 
-        const result = runPerformanceTest(test);
+        const result = runPerformanceTest(test, adaptiveRuns);
         results.push(result);
 
-        if (!quietMode) {
-            console.log(`${formatNumber(result.shapesPerSecond)} shapes/sec`);
+        if (!quietMode && isHumanReadable) {
+            let runsInfo = '';
+            if (adaptiveRuns && result.actualRuns !== numRuns) {
+                runsInfo = ` (${result.actualRuns} runs)`;
+            }
+            console.log(`${formatNumber(result.shapesPerSecond)} shapes/sec${runsInfo}`);
         }
     }
 
+    // Handle different output formats
+    if (outputFormat === 'json') {
+        outputJSON(results);
+        return;
+    }
+
+    if (outputFormat === 'csv') {
+        outputCSV(results);
+        return;
+    }
+
+    // Text output mode
     // Print detailed results (unless quiet mode)
     if (!quietMode) {
         for (const result of results) {
@@ -591,7 +874,23 @@ function main() {
     // Always print summary
     printSummary(results);
 
+    // Print high StdDev warnings
+    printHighStdDevWarnings(results);
+
+    // Handle comparison mode
+    let exitCode = 0;
+    if (compareBaseline) {
+        const baseline = loadBaseline(compareBaseline);
+        if (baseline) {
+            exitCode = printComparison(results, baseline);
+        }
+    }
+
     console.log('\n\x1b[32mPerformance tests completed.\x1b[0m\n');
+
+    if (exitCode !== 0) {
+        process.exit(exitCode);
+    }
 }
 
 main();

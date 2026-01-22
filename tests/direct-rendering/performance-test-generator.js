@@ -141,9 +141,9 @@ function registerParametricPerfTests(config) {
         }
     }
 
-    // Log registration summary
-    if (typeof console !== 'undefined') {
-        console.log(`[Perf Generator] Registered ${testCount} tests for ${baseName}`);
+    // Log registration summary (to stderr so it doesn't pollute JSON/CSV output)
+    if (typeof process !== 'undefined' && process.stderr) {
+        process.stderr.write(`[Perf Generator] Registered ${testCount} tests for ${baseName}\n`);
     }
 
     return testCount;

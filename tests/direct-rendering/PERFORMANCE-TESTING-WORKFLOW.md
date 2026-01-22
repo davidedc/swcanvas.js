@@ -14,8 +14,9 @@ For technical details on how benchmarking works (VSync cliff detection, timing m
 4. [Phase 3: Determine Test Parameters](#4-phase-3-determine-test-parameters)
 5. [Phase 4: Execute and Collect Data](#5-phase-4-execute-and-collect-data)
 6. [Phase 5: Analyze and Conclude](#6-phase-5-analyze-and-conclude)
-7. [Case Study: RoundedRect SpanOps Refactoring](#7-case-study-roundedrect-spanops-refactoring)
-8. [Quick Reference](#8-quick-reference)
+7. [Advanced Techniques](#7-advanced-techniques)
+8. [Case Study: RoundedRect SpanOps Refactoring](#8-case-study-roundedrect-spanops-refactoring)
+9. [Quick Reference](#9-quick-reference)
 
 ---
 
@@ -179,6 +180,8 @@ Observed standard deviation varies by operation type:
 | Semi-transparent | 15-30% | 25% change is significant |
 
 **Rule of thumb**: A change must exceed 2× the typical stddev to be considered significant.
+
+See [Section 7.5: Updated Regression Thresholds](#75-updated-regression-thresholds) for detailed thresholds by operation type.
 
 ### 4.3 Command Line Filters
 
@@ -387,15 +390,140 @@ Decision: [Ship as-is / Investigate further / Revert]
 
 ---
 
-## 7. Case Study: RoundedRect SpanOps Refactoring
+## 7. Advanced Techniques
 
-### 7.1 Context
+### 7.1 Noise Floor Validation
+
+When analyzing performance changes, **unchanged code paths serve as controls** to establish the noise floor for the current test run.
+
+**Why this matters**: Performance measurements vary due to system load, JIT optimization, CPU throttling, and other factors. By including tests for code paths you didn't modify, you get a baseline for how much variance to expect.
+
+**How to use control tests**:
+1. Include tests for unchanged code paths in your baseline collection
+2. Calculate the variance observed in unchanged tests
+3. Use this as your noise floor threshold
+4. Changes must exceed 2× the observed noise floor to be significant
+
+**Expected variance by operation type**:
+
+| Operation Type | Typical StdDev | Noise Floor (2× StdDev) |
+|----------------|----------------|-------------------------|
+| Opaque operations | 5-15% | 10-30% |
+| Semi-transparent | 15-30% | 30-60% |
+| Fill+Stroke combined | 20-40% | 40-80% |
+
+**Example**: If your control tests show ±12% variance, then:
+- Changes < 24% are likely noise
+- Changes > 24% warrant investigation
+- Changes > 48% are highly significant
+
+### 7.2 Incremental Change Assessment
+
+For complex refactoring involving multiple code paths, use incremental assessment:
+
+**Pattern**:
+1. Implement changes one at a time (one file or one method)
+2. Run performance baseline after each change
+3. Use unimplemented changes as control tests
+4. Build confidence incrementally
+
+**Benefits**:
+- Isolate performance impact of each individual change
+- Catch regressions immediately when they're introduced
+- Easier to investigate and fix issues
+- Provides clear before/after for each modification
+
+**Example workflow** (refactoring 4 files):
+```
+1. Baseline: all 4 files unchanged
+2. Modify file A, baseline → Files B,C,D are controls
+3. Modify file B, baseline → Files C,D are controls
+4. Modify file C, baseline → File D is control
+5. Modify file D, final baseline → Compare to step 1
+```
+
+### 7.3 High StdDev Handling
+
+High standard deviation indicates unstable measurements. Use this guide:
+
+| StdDev Range | Assessment | Recommended Action |
+|--------------|------------|-------------------|
+| < 20% | Good | Results are reliable |
+| 20-35% | Acceptable | Consider more runs if comparing close values |
+| 35-50% | Marginal | Increase runs to 40; investigate if persists |
+| > 50% | Unstable | Investigate cause; may indicate GC pressure or test instability |
+
+**Common causes of high StdDev**:
+- **GC pressure**: Large temporary allocations cause unpredictable pauses
+- **JIT warmup**: Insufficient warmup iterations
+- **Fill+Stroke operations**: Inherently more variable than single operations
+- **Very small shapes**: Per-shape overhead dominates timing
+
+**Mitigation strategies**:
+1. Increase runs: `-r 40` instead of `-r 20`
+2. Increase shapes: `-s 5000` instead of `-s 2000`
+3. Use stroke-only or fill-only tests when possible (more stable)
+4. Close background applications during benchmarking
+
+### 7.4 File Naming Convention
+
+Use consistent naming for baseline files to maintain organization:
+
+**Standard patterns**:
+```
+baseline-YYYYMMDD_HHMMSS.txt              # Generic timestamped baseline
+baseline-YYYYMMDD_HHMMSS-before.txt       # Explicit "before" marker
+baseline-YYYYMMDD_HHMMSS-after.txt        # Explicit "after" marker
+baseline-FEATURE_NAME-before.txt          # Feature-specific baseline
+baseline-FEATURE_NAME-after.txt           # Feature-specific comparison
+```
+
+**Examples**:
+```
+baseline-20260121_143022.txt              # Quick snapshot
+baseline-20260121_143022-before.txt       # Before refactoring
+baseline-20260121_150315-after.txt        # After refactoring
+baseline-circle-ops-refactor-before.txt   # Named baseline pair
+baseline-circle-ops-refactor-after.txt
+baseline-spanops-v2-before.txt            # Version-specific
+```
+
+**Recommendations**:
+- Use `--name` flag when running baseline script for meaningful names
+- Keep before/after pairs together chronologically
+- Archive old baselines to `perf-baselines/archive/` after analysis
+- Include git commit hash in baseline metadata (done automatically)
+
+### 7.5 Updated Regression Thresholds
+
+Based on practical observations, use these thresholds:
+
+| Test Type | Typical StdDev | Significant Change | Strong Signal |
+|-----------|----------------|-------------------|---------------|
+| Opaque stroke-only | 10-20% | >25% | >50% |
+| Opaque fill-only | 8-15% | >20% | >40% |
+| Semi stroke-only | 15-25% | >40% | >100% |
+| Semi fill-only | 12-20% | >30% | >60% |
+| Fill+Stroke opaque | 15-25% | >35% | >70% |
+| Fill+Stroke semi | 25-40% | >60% | >100% |
+
+**Interpretation guide**:
+- **Significant Change**: Exceeds typical noise; warrants attention
+- **Strong Signal**: Very likely a real change; high confidence
+
+**Note**: These are guidelines. Always validate against control tests in your specific run.
+
+---
+
+## 8. Case Study: RoundedRect SpanOps Refactoring
+
+### 8.1 Context
 
 **Change**: Refactor `RoundedRectOpsAA.js` and `RoundedRectOpsRot.js` to use existing `SpanOps` pattern, reducing code duplication.
 
 **Hypothesis**: Performance should be maintained; code consolidation might introduce minor overhead or minor gains.
 
-### 7.2 Test Selection
+### 8.2 Test Selection
 
 **Test matrix** (56 tests total):
 
@@ -410,7 +538,7 @@ Decision: [Ship as-is / Investigate further / Revert]
 
 **Parameters**: 20 runs, 2000 shapes per run
 
-### 7.3 Results Summary
+### 8.3 Results Summary
 
 | Category | Count |
 |----------|-------|
@@ -420,7 +548,7 @@ Decision: [Ship as-is / Investigate further / Revert]
 | REGRESSION (<-15%) | **0 tests** |
 | **Average change** | **+6.0%** |
 
-### 7.4 Notable Findings
+### 8.4 Notable Findings
 
 **Top improvements** (rotated thick stroke paths):
 | Test | Before | After | Change |
@@ -435,7 +563,7 @@ Decision: [Ship as-is / Investigate further / Revert]
 | Rot Fill+Stroke Semi, sw1px, L | 9,959 | 8,907 | -10.6% |
 | AA Fill Semi, sw0, M | 75,738 | 68,839 | -9.1% |
 
-### 7.5 Conclusion
+### 8.5 Conclusion
 
 **SAFE TO SHIP**
 
@@ -446,7 +574,7 @@ Decision: [Ship as-is / Investigate further / Revert]
 
 ---
 
-## 8. Quick Reference
+## 9. Quick Reference
 
 ### Command Cheat Sheet
 
@@ -494,9 +622,30 @@ npm run test:direct-rendering:perf -- -t roundrect --size=szM -r 20 -s 2000 -q
 
 ```
 perf-baselines/
-├── baseline-YYYYMMDD_HHMMSS.txt    # Before refactoring
-├── baseline-YYYYMMDD_HHMMSS.txt    # After refactoring
-└── comparison-report-YYYYMMDD.txt   # Analysis summary
+├── baseline-FEATURE-before.txt      # Named baseline (before)
+├── baseline-FEATURE-after.txt       # Named baseline (after)
+├── baseline-YYYYMMDD_HHMMSS.txt     # Timestamped snapshot
+└── archive/                          # Old baselines for reference
+```
+
+See [Section 7.4: File Naming Convention](#74-file-naming-convention) for naming guidelines.
+
+### Comparison Commands
+
+```bash
+# Compare two baselines
+node tests/direct-rendering/compare-baselines.js \
+  --before perf-baselines/baseline-before.txt \
+  --after perf-baselines/baseline-after.txt
+
+# Quick comparison with custom thresholds
+node tests/direct-rendering/compare-baselines.js \
+  --before baseline1.txt --after baseline2.txt \
+  --threshold-opaque 20 --threshold-semi 35
+
+# Output as JSON for scripting
+node tests/direct-rendering/compare-baselines.js \
+  --before baseline1.txt --after baseline2.txt --json
 ```
 
 ---
