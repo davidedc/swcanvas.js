@@ -2601,16 +2601,16 @@ class RectOpsAA {
                 const pos = top * surfaceWidth + px;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * invAlpha;
-    const __outA = effectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
             }
         }
@@ -2621,16 +2621,16 @@ class RectOpsAA {
                 const pos = bottom * surfaceWidth + px;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * invAlpha;
-    const __outA = effectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
             }
         }
@@ -2641,16 +2641,16 @@ class RectOpsAA {
                 const pos = py * surfaceWidth + left;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * invAlpha;
-    const __outA = effectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
             }
         }
@@ -2661,16 +2661,16 @@ class RectOpsAA {
                 const pos = py * surfaceWidth + right;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * invAlpha;
-    const __outA = effectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
             }
         }
@@ -2793,16 +2793,16 @@ class RectOpsAA {
                     const pos = pyTop * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * invAlpha;
-    const __outA = effectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
                 }
                 // Bottom edge
@@ -2811,16 +2811,16 @@ class RectOpsAA {
                     const pos = pyBottom * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * invAlpha;
-    const __outA = effectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
                 }
             }
@@ -2843,16 +2843,16 @@ class RectOpsAA {
                     const pos = py * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * invAlpha;
-    const __outA = effectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
                 }
             }
@@ -2862,16 +2862,16 @@ class RectOpsAA {
                     const pos = py * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * invAlpha;
-    const __outA = effectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
                 }
             }
@@ -7136,16 +7136,16 @@ if (__outA > 0) {
                             lastPos = pos;
                             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * strokeInvAlpha;
-    const __outA = strokeEffectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * strokeInvAlpha;
+const __outA = strokeEffectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
                         }
                     }
@@ -7192,16 +7192,16 @@ if (__outA > 0) {
                             lastPos = pos;
                             if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
-    const __dstA = data[__off + 3] / 255;
-    const __dstAScaled = __dstA * strokeInvAlpha;
-    const __outA = strokeEffectiveAlpha + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
-        data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-        data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-        data[__off + 3] = __outA * 255;
-    }
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * strokeInvAlpha;
+const __outA = strokeEffectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
 }
                         }
                     }
