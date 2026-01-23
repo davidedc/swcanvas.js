@@ -7,7 +7,7 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
  * Layer 1 (Helpers - used by rotated implementations):
  *   _normalizeRadius, _transform, _generateEdgePixels, _generateArcPixels, _generatePerimeter
@@ -16,10 +16,10 @@
  *   _fill_Rot_Opaq                → SpanOps.fill_Opaq
  *   _fill_Rot_Alpha               → SpanOps.fill_Alpha
  *   _stroke1px_Rot_Opaq           → Direct pixel writes
- *   _stroke1px_Rot_Alpha          → PixelOps.blend_Alpha (with lastPos tracking)
+ *   _stroke1px_Rot_Alpha          → Inline BLEND_ALPHA marker (with lastPos tracking)
  *   _strokeThick_Rot_Opaq         → SpanOps.fill_Opaq
  *   _strokeThick_Rot_Alpha        → SpanOps.fill_Alpha
- *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + PixelOps.blend_Alpha (double-generation)
+ *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + inline markers (double-generation)
  *   _fillStroke_Rot_Unified       → SpanOps.fill_Opaq/fill_Alpha
  *
  * Layer 3 (Dispatchers):
@@ -1388,51 +1388,88 @@ class RoundedRectOpsRot {
             }
         }
 
-        // PASS 2: Render stroke on top (re-generate perimeter, no Set allocation)
+        // PASS 2: Render stroke on top (inline iteration, no closure/callback overhead)
         const strokeIsOpaque = strokeColor.a === 255 && globalAlpha >= 1.0;
         const strokeEffectiveAlpha = (strokeColor.a / 255) * globalAlpha;
         const strokeInvAlpha = 1 - strokeEffectiveAlpha;
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
+        // Extract RGB for inline markers (required by BLEND_ALPHA_CLIPPED)
+        const r = strokeColor.r, g = strokeColor.g, b = strokeColor.b;
+
         // For opaque strokes, direct rendering is safe (duplicates just overwrite same value)
         // For semi-transparent strokes, use lastPos tracking to prevent overdraw
         let lastPos = -1;
 
-        const renderStrokePixel = (x, y) => {
-            if (x < 0 || x >= surfaceWidth || y < 0 || y >= surfaceHeight) return;
-            const pos = y * surfaceWidth + x;
-
-            // Skip if clipped
-            if (clipBuffer && !(clipBuffer[pos >> 3] & (1 << (pos & 7)))) return;
-
-            if (strokeIsOpaque) {
-                // Opaque: safe to overwrite duplicates
-                data32[pos] = strokePacked;
-            } else {
-                // Semi-transparent: use lastPos to prevent consecutive duplicates
-                if (pos === lastPos) return;
-                lastPos = pos;
-                PixelOps.blend_Alpha(data, pos, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha);
-            }
-        };
-
-        // Re-generate edges for rendering
+        // Render edges via inline Bresenham (no callback)
         for (const edge of edges) {
             const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
             const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
             const dx = end.x - start.x, dy = end.y - start.y;
             if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
-            RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, renderStrokePixel);
+
+            const x1i = Math.floor(start.x), y1i = Math.floor(start.y);
+            const x2i = Math.floor(end.x), y2i = Math.floor(end.y);
+            const dxAbs = Math.abs(x2i - x1i), dyAbs = Math.abs(y2i - y1i);
+            const sx = x1i < x2i ? 1 : -1, sy = y1i < y2i ? 1 : -1;
+            let err = dxAbs - dyAbs;
+            let x = x1i, y = y1i;
+
+            while (true) {
+                if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
+                    const pos = y * surfaceWidth + x;
+                    if (strokeIsOpaque) {
+                        /*@inline:SET_OPAQUE_CLIPPED(data32, pos, strokePacked, clipBuffer)*/
+                    } else {
+                        if (pos !== lastPos) {
+                            lastPos = pos;
+                            /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer)*/
+                        }
+                    }
+                }
+                if (x === x2i && y === y2i) break;
+                const e2 = 2 * err;
+                if (e2 > -dyAbs) { err -= dyAbs; x += sx; }
+                if (e2 < dxAbs) { err += dxAbs; y += sy; }
+            }
         }
 
-        // Re-generate corners for rendering
+        // Render corners via inline arc iteration (matching _generateArcPixels parameters)
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
-            RoundedRectOpsRot._generateArcPixels(
-                screenCenter.x, screenCenter.y, radius,
-                corner.startAngle + rotation, corner.endAngle + rotation,
-                renderStrokePixel
-            );
+            const cx = screenCenter.x, cy = screenCenter.y;
+            const startAngle = corner.startAngle + rotation;
+            const endAngle = corner.endAngle + rotation;
+
+            const arcLength = radius * Math.abs(endAngle - startAngle);
+            const numSteps = Math.max(Math.ceil(arcLength), 8);
+            const angleStep = (endAngle - startAngle) / numSteps;
+
+            // Use per-arc pixel deduplication (matching _generateArcPixels behavior)
+            let lastPx = null, lastPy = null;
+
+            for (let i = 0; i <= numSteps; i++) {
+                const angle = startAngle + i * angleStep;
+                const px = Math.floor(cx + radius * Math.cos(angle));
+                const py = Math.floor(cy + radius * Math.sin(angle));
+
+                // Skip consecutive duplicates within this arc
+                if (px === lastPx && py === lastPy) continue;
+                lastPx = px;
+                lastPy = py;
+
+                if (px >= 0 && px < surfaceWidth && py >= 0 && py < surfaceHeight) {
+                    const pos = py * surfaceWidth + px;
+                    if (strokeIsOpaque) {
+                        /*@inline:SET_OPAQUE_CLIPPED(data32, pos, strokePacked, clipBuffer)*/
+                    } else {
+                        if (pos !== lastPos) {
+                            lastPos = pos;
+                            /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer)*/
+                        }
+                    }
+                }
+            }
         }
     }
 

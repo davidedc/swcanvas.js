@@ -50,7 +50,6 @@ src/filters/        → Effects
   BoxBlur.js        → Multi-pass box blur algorithm approximating Gaussian blur
 
 src/renderers/      → Shape-Specific Direct Renderers (static utility classes)
-  FastPixelOps.js   → Fast pixel operation utilities (optimized pixel writes)
   SpanOps.js        → Horizontal span fill utilities (shared by shape renderers)
   QuadScanOps.js    → Quadrilateral scanline DDA for thick lines and rotated fills
   RectOpsAA.js      → Axis-aligned rectangle direct rendering (fill, stroke)
@@ -670,8 +669,6 @@ cat src/renderers/RoundedRectOpsRot.js >> dist/swcanvas.js
 cat src/renderers/RoundedRectOpsAA.js >> dist/swcanvas.js
 ```
 
-Note: `FastPixelOps.js` is loaded earlier (before Phase 1.5) as it provides foundational pixel utilities.
-
 ## Clipping Invariant: "Check Once, Check Correctly"
 
 SWCanvas enforces that every pixel write path checks clipping **EXACTLY ONCE**. This invariant prevents both security holes (missing checks) and performance waste (redundant checks).
@@ -680,7 +677,7 @@ SWCanvas enforces that every pixel write path checks clipping **EXACTLY ONCE**. 
 
 | Layer | Clipping Responsibility | Example Methods |
 |-------|------------------------|-----------------|
-| **PixelOps** | NONE - caller must check | `blend_Alpha()` |
+| **Inline Markers** | NONE - caller must check | `BLEND_ALPHA`, `SET_OPAQUE` |
 | **SpanOps** | YES - primary checkpoint | `fill_Opaq()`, `fill_Alpha()` |
 | **Shape *Ops** | Delegate OR inline (never both) | See method `@param` annotations |
 
@@ -695,10 +692,10 @@ Shape renderer → SpanOps.fill_* → clipBuffer check → pixel write
 
 **Path B: Per-Pixel Rendering** (1px strokes, Bresenham lines)
 ```
-Shape renderer → inline clipBuffer check → PixelOps.blend_Alpha or direct write
+Shape renderer → inline clipBuffer check → BLEND_ALPHA/SET_OPAQUE inline marker
 ```
 - Shape renderer checks clipping inline before each pixel
-- PixelOps has NO clipping responsibility (documented contract)
+- Inline markers have NO clipping responsibility (caller must check first)
 
 ### Rules for New Code
 

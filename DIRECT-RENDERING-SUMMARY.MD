@@ -216,23 +216,23 @@ RoundedRectOpsAA.fill_AA_Opaq() ────► SpanOps.fill_Opaq()
 
 RoundedRectOpsAA.fillStroke_AA_Any() ─► SpanOps.fill_Opaq/fill_Alpha (via helper functions)
 
-RoundedRectOpsAA.stroke1px_AA_Alpha() ─► PixelOps.blend_Alpha()
+RoundedRectOpsAA.stroke1px_AA_Alpha() ─► Inline BLEND_ALPHA marker
    (1px alpha strokes)
 
 RoundedRectOpsRot._fill_Rot_Alpha() ──► SpanOps.fill_Alpha()
 
 RoundedRectOpsRot._strokeThick_Rot_Alpha() ► SpanOps.fill_Alpha()
 
-RoundedRectOpsRot._stroke1px_Rot_Alpha() ► PixelOps.blend_Alpha()
+RoundedRectOpsRot._stroke1px_Rot_Alpha() ► Inline BLEND_ALPHA marker
    (1px alpha strokes)
 
-RoundedRectOpsRot._fillStroke_Rot_*() ──► SpanOps.fill_Opaq/fill_Alpha + PixelOps.blend_Alpha
+RoundedRectOpsRot._fillStroke_Rot_*() ──► SpanOps.fill_Opaq/fill_Alpha + inline markers
 
 All *Ops.fill*() ─────────────────► SpanOps.fill_Opaq() or SpanOps.fill_Alpha()
    (all shapes)                       (shared horizontal span utility)
 
-All *Ops.stroke1px*_Alpha() ──────► PixelOps.blend_Alpha()
-   (1px alpha strokes)                (shared pixel blending utility)
+All *Ops.stroke1px*_Alpha() ──────► Inline BLEND_ALPHA marker
+   (1px alpha strokes)                (preprocessor-expanded pixel blending)
 
 RectOpsRot.fill_Rot_Any() ────────► QuadScanOps.fillQuad
    (rotated rectangle fill)
@@ -244,9 +244,9 @@ QuadScanOps.fillQuad() ───────────► SpanOps.fill_Opaq / 
    (each scanline span)
 ```
 
-**PixelOps is the foundation layer** - provides blend_Alpha for single-pixel alpha blending, used by all shape renderers for 1px semi-transparent strokes
+**Inline markers provide pixel-level blending** - BLEND_ALPHA and SET_OPAQUE markers are expanded by the preprocessor at build time, used by all shape renderers for 1px semi-transparent strokes
 
-**SpanOps is the span layer** - provides fill_Opaq and fill_Alpha for horizontal span operations, calls PixelOps.blend_Alpha internally. Used by all shape renderers: RectOpsAA, RectOpsRot, CircleOps, LineOps, RoundedRectOpsAA, RoundedRectOpsRot
+**SpanOps is the span layer** - provides fill_Opaq and fill_Alpha for horizontal span operations, uses inline markers internally. Used by all shape renderers: RectOpsAA, RectOpsRot, CircleOps, LineOps, RoundedRectOpsAA, RoundedRectOpsRot
 
 **QuadScanOps is the quad primitive** - used by LineOps (thick diagonal) and RectOpsRot (rotated fills/strokes)
 
@@ -533,7 +533,6 @@ Methods follow the dual-suffix pattern: `{operation}[Thickness]_{orientation}_{o
 | CircleOps          | fill_Opaq, fill_Alpha                             | stroke1px_Opaq, stroke1px_Alpha, strokeThick_Any, strokeThick_Alpha                                    |
 | LineOps            | N/A                                               | stroke_Any (public dispatcher)                                                                         |
 | ArcOps             | fill_Opaq, fill_Alpha                             | stroke1px_Opaq, stroke1px_Opaq_Exact, stroke1px_Alpha, strokeOuter_Opaq, strokeOuter_Alpha             |
-| PixelOps           | blend_Alpha                                       | N/A                                                                                                    |
 | SpanOps            | fill_Opaq, fill_Alpha                             | N/A                                                                                                    |
 
 Note: Context2D calls *OpsAA classes for axis-aligned operations and *OpsRot classes directly for rotated operations.
@@ -563,9 +562,8 @@ Each *Ops file contains a **CALL HIERARCHY** header comment documenting method d
 
 | Layer | Name | Description |
 |-------|------|-------------|
-| **Layer -1** | Pixel Foundation | PixelOps.blend_Alpha - single pixel alpha blending with no dependencies |
-| **Layer 0** | Span Foundation | SpanOps methods - shared horizontal span utilities, depends on PixelOps |
-| **Layer 1** | Primitives | Methods that call Layer 0/Layer -1, possibly with fallback to same-class methods |
+| **Layer 0** | Foundation | SpanOps methods and inline markers - shared horizontal span and pixel utilities |
+| **Layer 1** | Primitives | Methods that call Layer 0, possibly with fallback to same-class methods |
 | **Layer 2** | Internal | Underscore-prefixed internal implementations called by dispatchers |
 | **Layer 3** | Dispatchers/Composites | Public methods that dispatch to internal implementations or combine multiple operations |
 
@@ -574,9 +572,9 @@ Each *Ops file contains a **CALL HIERARCHY** header comment documenting method d
 /**
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
- * Layer 1 (Primitives - call SpanOps/PixelOps, fallback to RectOpsAA for radius=0):
+ * Layer 1 (Primitives - call SpanOps, fallback to RectOpsAA for radius=0):
  *   fill_AA_Opaq, fill_AA_Alpha
  *   stroke1px_AA_Opaq, stroke1px_AA_Alpha
  *   strokeThick_AA_Opaq, strokeThick_AA_Alpha
@@ -592,7 +590,7 @@ Each *Ops file contains a **CALL HIERARCHY** header comment documenting method d
 - Renaming methods
 - Adding cross-class calls
 
-All *Ops files have this header: `PixelOps.js`, `SpanOps.js`, `QuadScanOps.js`, `RectOpsAA.js`, `RectOpsRot.js`, `CircleOps.js`, `ArcOps.js`, `LineOps.js`, `RoundedRectOpsAA.js`, `RoundedRectOpsRot.js`
+All *Ops files have this header: `SpanOps.js`, `QuadScanOps.js`, `RectOpsAA.js`, `RectOpsRot.js`, `CircleOps.js`, `ArcOps.js`, `LineOps.js`, `RoundedRectOpsAA.js`, `RoundedRectOpsRot.js`
 
 **Note on Module Architecture:** The codebase uses a direct call pattern:
 - RectOpsAA and RoundedRectOpsAA handle axis-aligned (AA) operations only
@@ -615,8 +613,7 @@ All *Ops files have this header: `PixelOps.js`, `SpanOps.js`, `QuadScanOps.js`, 
 
 | File                               | Purpose                                           |
 |------------------------------------|---------------------------------------------------|
-| src/renderers/PixelOps.js          | Single-pixel alpha blending (foundation layer)    |
-| src/renderers/SpanOps.js           | Shared horizontal span utilities (calls PixelOps) |
+| src/renderers/SpanOps.js           | Shared horizontal span utilities                  |
 | src/renderers/QuadScanOps.js       | Quadrilateral scanline fill (used by LineOps, RectOpsRot) |
 | src/renderers/RectOpsRot.js        | Rotated rectangle renderings (called by Context2D)|
 | src/renderers/RectOpsAA.js         | Axis-aligned rectangle renderings                 |

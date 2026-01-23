@@ -82,10 +82,7 @@ cat src/core/Surface.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 
 # Phase 1.5: Shape rendering operations (depend on Surface)
-# PixelOps must come before SpanOps (SpanOps depends on it)
 # Note: Some files use preprocessed versions with expanded inline markers
-cat src/renderers/PixelOps.js >> dist/swcanvas.js
-echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/SpanOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/QuadScanOps.js)" >> dist/swcanvas.js
@@ -235,7 +232,6 @@ if (typeof window !== 'undefined') {
             RadialGradient: RadialGradient,
             ConicGradient: ConicGradient,
             Pattern: Pattern,
-            PixelOps: PixelOps,
             RoundedRectOpsAA: RoundedRectOpsAA,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,
@@ -281,7 +277,6 @@ if (typeof window !== 'undefined') {
             RadialGradient: RadialGradient,
             ConicGradient: ConicGradient,
             Pattern: Pattern,
-            PixelOps: PixelOps,
             RoundedRectOpsAA: RoundedRectOpsAA,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,
