@@ -1504,59 +1504,13 @@ class Surface {
 
 
 /**
- * PixelOps - Static utility methods for single-pixel operations
- * Foundation layer for all pixel-level rendering.
- *
- * CALL HIERARCHY:
- * ---------------
- * Layer -1 (Foundation): This class is the deepest foundation layer.
- *   - No dependencies on other *Ops classes
- *   - Called by: SpanOps, QuadScanOps, CircleOps, LineOps, ArcOps,
- *                RoundedRectOpsAA, RoundedRectOpsRot
- *
- * NAMING PATTERN: {operation}_{opacity}
- *   - blend_Alpha: Single pixel alpha blending (source-over compositing)
- */
-class PixelOps {
-    /**
-     * Blend a single pixel with source-over alpha compositing
-     *
-     * IMPORTANT: Caller is responsible for:
-     *   1. Bounds checking (pixelIndex within surface)
-     *   2. Clipping check (if clipBuffer exists)
-     *
-     * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
-     * @param {number} pixelIndex - Linear pixel index (y * width + x)
-     * @param {number} r - Red component (0-255)
-     * @param {number} g - Green component (0-255)
-     * @param {number} b - Blue component (0-255)
-     * @param {number} alpha - Alpha as fraction (0-1), pre-multiplied with globalAlpha
-     * @param {number} invAlpha - Inverse alpha (1 - alpha), pre-computed for efficiency
-     */
-    static blend_Alpha(data, pixelIndex, r, g, b, alpha, invAlpha) {
-        const offset = pixelIndex * 4;
-        const dstA = data[offset + 3] / 255;
-        const dstAScaled = dstA * invAlpha;
-        const outA = alpha + dstAScaled;
-
-        if (outA > 0) {
-            const blendFactor = 1 / outA;
-            data[offset]     = (r * alpha + data[offset] * dstAScaled) * blendFactor;
-            data[offset + 1] = (g * alpha + data[offset + 1] * dstAScaled) * blendFactor;
-            data[offset + 2] = (b * alpha + data[offset + 2] * dstAScaled) * blendFactor;
-            data[offset + 3] = outA * 255;
-        }
-    }
-}
-
-/**
  * SpanOps - Static utility methods for horizontal span filling
  * Used by all shape *Ops classes for optimized pixel rendering.
  * Follows PolygonFiller pattern with static methods.
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): Depends on PixelOps for single-pixel blending.
+ * Layer 0 (Foundation): Uses inline markers for pixel blending.
  *   - Called by: RectOpsAA, RectOpsRot, CircleOps, LineOps, ArcOps,
  *                RoundedRectOpsAA, RoundedRectOpsRot
  *
@@ -1571,7 +1525,7 @@ class PixelOps {
  *
  * NAMING PATTERN: {operation}_{opacity}
  *   - fill_Opaq: Opaque span fill (32-bit writes)
- *   - fill_Alpha: Semi-transparent span fill (calls PixelOps.blend_Alpha)
+ *   - fill_Alpha: Semi-transparent span fill (uses inline BLEND_ALPHA marker)
  */
 class SpanOps {
     /**
@@ -1728,11 +1682,11 @@ if (__outA > 0) {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
  * Layer 1 (Primitives):
  *   lineToQuad - Convert line + thickness to 4 corners
- *   fillQuad   - Scanline fill the quad (calls SpanOps or PixelOps for per-pixel)
+ *   fillQuad   - Scanline fill the quad (calls SpanOps for spans)
  */
 class QuadScanOps {
     // Static pools - reused across calls to eliminate GC pressure
@@ -3215,12 +3169,12 @@ if (__outA > 0) {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
  * Layer 1 (Primitives):
  *   fill_Opaq, fill_Alpha              → SpanOps.fill_Opaq/fill_Alpha
  *   stroke1px_Opaq                     → Direct pixel writes (opaque)
- *   stroke1px_Alpha                    → PixelOps.blend_Alpha
+ *   stroke1px_Alpha                    → Inline BLEND_ALPHA marker
  *   strokeThick_Any                    → SpanOps.fill_Opaq
  *   strokeThick_Alpha                  → SpanOps.fill_Alpha
  *
@@ -4062,7 +4016,7 @@ if (__outA > 0) {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), PixelOps.blend_Alpha
+ * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), inline markers
  *
  * Layer 1 (Primitives - do atomic rendering):
  *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering)
@@ -5455,13 +5409,13 @@ if (__outA > 0) {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha, QuadScanOps.fillQuad
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers, QuadScanOps.fillQuad
  *
  * Layer 1 (Internal):
  *   _strokeThick_PolyScan → QuadScanOps.lineToQuad + QuadScanOps.fillQuad/fillSquare
  *
  * Layer 2 (Public dispatcher):
- *   stroke_Any → Bresenham (thin opaque), PixelOps/SpanOps (thin alpha), SpanOps (thick AA), _strokeThick_PolyScan
+ *   stroke_Any → Bresenham (thin opaque), inline markers/SpanOps (thin alpha), SpanOps (thick AA), _strokeThick_PolyScan
  *
  * NAMING PATTERN: {operation}_{opacity}
  *   - Any = Handles all opacity/thickness cases (dispatcher)
@@ -5742,7 +5696,7 @@ if (__outA > 0) {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
  * Layer 1 (Helpers - used by rotated implementations):
  *   _normalizeRadius, _transform, _generateEdgePixels, _generateArcPixels, _generatePerimeter
@@ -5751,10 +5705,10 @@ if (__outA > 0) {
  *   _fill_Rot_Opaq                → SpanOps.fill_Opaq
  *   _fill_Rot_Alpha               → SpanOps.fill_Alpha
  *   _stroke1px_Rot_Opaq           → Direct pixel writes
- *   _stroke1px_Rot_Alpha          → PixelOps.blend_Alpha (with lastPos tracking)
+ *   _stroke1px_Rot_Alpha          → Inline BLEND_ALPHA marker (with lastPos tracking)
  *   _strokeThick_Rot_Opaq         → SpanOps.fill_Opaq
  *   _strokeThick_Rot_Alpha        → SpanOps.fill_Alpha
- *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + PixelOps.blend_Alpha (double-generation)
+ *   _fillStroke_Rot_1px           → SpanOps.fill_Opaq/fill_Alpha + inline markers (double-generation)
  *   _fillStroke_Rot_Unified       → SpanOps.fill_Opaq/fill_Alpha
  *
  * Layer 3 (Dispatchers):
@@ -7143,51 +7097,116 @@ if (__outA > 0) {
             }
         }
 
-        // PASS 2: Render stroke on top (re-generate perimeter, no Set allocation)
+        // PASS 2: Render stroke on top (inline iteration, no closure/callback overhead)
         const strokeIsOpaque = strokeColor.a === 255 && globalAlpha >= 1.0;
         const strokeEffectiveAlpha = (strokeColor.a / 255) * globalAlpha;
         const strokeInvAlpha = 1 - strokeEffectiveAlpha;
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
+        // Extract RGB for inline markers (required by BLEND_ALPHA_CLIPPED)
+        const r = strokeColor.r, g = strokeColor.g, b = strokeColor.b;
+
         // For opaque strokes, direct rendering is safe (duplicates just overwrite same value)
         // For semi-transparent strokes, use lastPos tracking to prevent overdraw
         let lastPos = -1;
 
-        const renderStrokePixel = (x, y) => {
-            if (x < 0 || x >= surfaceWidth || y < 0 || y >= surfaceHeight) return;
-            const pos = y * surfaceWidth + x;
-
-            // Skip if clipped
-            if (clipBuffer && !(clipBuffer[pos >> 3] & (1 << (pos & 7)))) return;
-
-            if (strokeIsOpaque) {
-                // Opaque: safe to overwrite duplicates
-                data32[pos] = strokePacked;
-            } else {
-                // Semi-transparent: use lastPos to prevent consecutive duplicates
-                if (pos === lastPos) return;
-                lastPos = pos;
-                PixelOps.blend_Alpha(data, pos, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha);
-            }
-        };
-
-        // Re-generate edges for rendering
+        // Render edges via inline Bresenham (no callback)
         for (const edge of edges) {
             const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
             const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
             const dx = end.x - start.x, dy = end.y - start.y;
             if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
-            RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, renderStrokePixel);
+
+            const x1i = Math.floor(start.x), y1i = Math.floor(start.y);
+            const x2i = Math.floor(end.x), y2i = Math.floor(end.y);
+            const dxAbs = Math.abs(x2i - x1i), dyAbs = Math.abs(y2i - y1i);
+            const sx = x1i < x2i ? 1 : -1, sy = y1i < y2i ? 1 : -1;
+            let err = dxAbs - dyAbs;
+            let x = x1i, y = y1i;
+
+            while (true) {
+                if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
+                    const pos = y * surfaceWidth + x;
+                    if (strokeIsOpaque) {
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = strokePacked;
+}
+                    } else {
+                        if (pos !== lastPos) {
+                            lastPos = pos;
+                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * strokeInvAlpha;
+    const __outA = strokeEffectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+                        }
+                    }
+                }
+                if (x === x2i && y === y2i) break;
+                const e2 = 2 * err;
+                if (e2 > -dyAbs) { err -= dyAbs; x += sx; }
+                if (e2 < dxAbs) { err += dxAbs; y += sy; }
+            }
         }
 
-        // Re-generate corners for rendering
+        // Render corners via inline arc iteration (matching _generateArcPixels parameters)
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
-            RoundedRectOpsRot._generateArcPixels(
-                screenCenter.x, screenCenter.y, radius,
-                corner.startAngle + rotation, corner.endAngle + rotation,
-                renderStrokePixel
-            );
+            const cx = screenCenter.x, cy = screenCenter.y;
+            const startAngle = corner.startAngle + rotation;
+            const endAngle = corner.endAngle + rotation;
+
+            const arcLength = radius * Math.abs(endAngle - startAngle);
+            const numSteps = Math.max(Math.ceil(arcLength), 8);
+            const angleStep = (endAngle - startAngle) / numSteps;
+
+            // Use per-arc pixel deduplication (matching _generateArcPixels behavior)
+            let lastPx = null, lastPy = null;
+
+            for (let i = 0; i <= numSteps; i++) {
+                const angle = startAngle + i * angleStep;
+                const px = Math.floor(cx + radius * Math.cos(angle));
+                const py = Math.floor(cy + radius * Math.sin(angle));
+
+                // Skip consecutive duplicates within this arc
+                if (px === lastPx && py === lastPy) continue;
+                lastPx = px;
+                lastPy = py;
+
+                if (px >= 0 && px < surfaceWidth && py >= 0 && py < surfaceHeight) {
+                    const pos = py * surfaceWidth + px;
+                    if (strokeIsOpaque) {
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = strokePacked;
+}
+                    } else {
+                        if (pos !== lastPos) {
+                            lastPos = pos;
+                            if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    const __off = pos * 4;
+    const __dstA = data[__off + 3] / 255;
+    const __dstAScaled = __dstA * strokeInvAlpha;
+    const __outA = strokeEffectiveAlpha + __dstAScaled;
+    if (__outA > 0) {
+        const __blend = 1 / __outA;
+        data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+        data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+        data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+        data[__off + 3] = __outA * 255;
+    }
+}
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -7411,12 +7430,12 @@ if (__outA > 0) {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
- * Layer 1 (Primitives - call SpanOps/PixelOps, fallback to RectOpsAA for radius=0):
+ * Layer 1 (Primitives - call SpanOps, fallback to RectOpsAA for radius=0):
  *   fill_AA_Opaq, fill_AA_Alpha          → SpanOps.fill_Opaq/fill_Alpha
  *   stroke1px_AA_Opaq                    → Direct pixel writes
- *   stroke1px_AA_Alpha                   → PixelOps.blend_Alpha
+ *   stroke1px_AA_Alpha                   → Inline BLEND_ALPHA marker
  *   strokeThick_AA_Opaq, strokeThick_AA_Alpha → SpanOps.fill_Opaq/fill_Alpha
  *
  * Layer 2 (Composites):
@@ -17835,7 +17854,6 @@ if (typeof window !== 'undefined') {
             RadialGradient: RadialGradient,
             ConicGradient: ConicGradient,
             Pattern: Pattern,
-            PixelOps: PixelOps,
             RoundedRectOpsAA: RoundedRectOpsAA,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,
@@ -17881,7 +17899,6 @@ if (typeof window !== 'undefined') {
             RadialGradient: RadialGradient,
             ConicGradient: ConicGradient,
             Pattern: Pattern,
-            PixelOps: PixelOps,
             RoundedRectOpsAA: RoundedRectOpsAA,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,
