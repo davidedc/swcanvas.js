@@ -13,12 +13,12 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
  * Layer 1 (Primitives):
  *   fill_Opaq, fill_Alpha              → SpanOps.fill_Opaq/fill_Alpha
  *   stroke1px_Opaq                     → Direct pixel writes (opaque)
- *   stroke1px_Alpha                    → PixelOps.blend_Alpha
+ *   stroke1px_Alpha                    → Inline BLEND_ALPHA marker
  *   strokeThick_Any                    → SpanOps.fill_Opaq
  *   strokeThick_Alpha                  → SpanOps.fill_Alpha
  *

@@ -13,7 +13,7 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), PixelOps.blend_Alpha
+ * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), inline markers
  *
  * Layer 1 (Primitives - do atomic rendering):
  *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering)

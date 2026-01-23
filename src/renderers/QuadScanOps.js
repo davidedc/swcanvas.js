@@ -9,11 +9,11 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
  * Layer 1 (Primitives):
  *   lineToQuad - Convert line + thickness to 4 corners
- *   fillQuad   - Scanline fill the quad (calls SpanOps or PixelOps for per-pixel)
+ *   fillQuad   - Scanline fill the quad (calls SpanOps for spans)
  */
 class QuadScanOps {
     // Static pools - reused across calls to eliminate GC pressure

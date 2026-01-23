@@ -5,7 +5,7 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): Depends on PixelOps for single-pixel blending.
+ * Layer 0 (Foundation): Uses inline markers for pixel blending.
  *   - Called by: RectOpsAA, RectOpsRot, CircleOps, LineOps, ArcOps,
  *                RoundedRectOpsAA, RoundedRectOpsRot
  *
@@ -20,7 +20,7 @@
  *
  * NAMING PATTERN: {operation}_{opacity}
  *   - fill_Opaq: Opaque span fill (32-bit writes)
- *   - fill_Alpha: Semi-transparent span fill (calls PixelOps.blend_Alpha)
+ *   - fill_Alpha: Semi-transparent span fill (uses inline BLEND_ALPHA marker)
  */
 class SpanOps {
     /**

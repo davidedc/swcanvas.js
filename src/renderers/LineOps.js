@@ -10,13 +10,13 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, PixelOps.blend_Alpha, QuadScanOps.fillQuad
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers, QuadScanOps.fillQuad
  *
  * Layer 1 (Internal):
  *   _strokeThick_PolyScan → QuadScanOps.lineToQuad + QuadScanOps.fillQuad/fillSquare
  *
  * Layer 2 (Public dispatcher):
- *   stroke_Any → Bresenham (thin opaque), PixelOps/SpanOps (thin alpha), SpanOps (thick AA), _strokeThick_PolyScan
+ *   stroke_Any → Bresenham (thin opaque), inline markers/SpanOps (thin alpha), SpanOps (thick AA), _strokeThick_PolyScan
  *
  * NAMING PATTERN: {operation}_{opacity}
  *   - Any = Handles all opacity/thickness cases (dispatcher)
