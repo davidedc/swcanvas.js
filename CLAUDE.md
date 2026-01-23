@@ -107,17 +107,29 @@ Uses object-oriented ES6 class design throughout. See ARCHITECTURE.md for comple
 - **Test with different backgrounds** - Use `BitmapEncodingOptions` to test transparency handling
 
 ### Inline Markers for Hot Pixel Loops
+
+The preprocessor supports **chained template expansion** - templates can reference other templates via nested markers. The preprocessor performs multi-pass expansion until all markers are resolved, with depth protection (default max 10 passes) to prevent infinite loops.
+
+**Template Hierarchy** (chained expansion):
+```
+Level 0 (Base):     SET_OPAQUE, BLEND_ALPHA
+Level 1 (Clipped):  *_CLIPPED → references Level 0
+Level 2 (Arc):      *_ARC_CLIPPED, *_ARC_FAST_CLIPPED → references Level 1
+```
+
 **Standard Templates** (caller must check clipping BEFORE):
 - `/*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, alpha, invAlpha)*/` - for span-based alpha blending
 - `/*@inline:SET_OPAQUE(data32, pixelIndex, packedColor)*/` - for span-based opaque writes
 
 **Clipped Templates** (include clipping check, for per-pixel loops):
-- `/*@inline:BLEND_ALPHA_CLIPPED(data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer)*/`
-- `/*@inline:SET_OPAQUE_CLIPPED(data32, pixelIndex, packedColor, clipBuffer)*/`
+- `/*@inline:BLEND_ALPHA_CLIPPED(...)*/` - chains to BLEND_ALPHA
+- `/*@inline:SET_OPAQUE_CLIPPED(...)*/` - chains to SET_OPAQUE
 
 **Arc Templates** (include angle check + clipping, for arc per-pixel loops):
-- `/*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pixelIndex, packedColor, clipBuffer, dx, dy, startAngle, endAngle)*/`
-- `/*@inline:BLEND_ALPHA_ARC_CLIPPED(data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer, dx, dy, startAngle, endAngle)*/`
+- `/*@inline:SET_OPAQUE_ARC_CLIPPED(...)*/` - chains to SET_OPAQUE_CLIPPED
+- `/*@inline:BLEND_ALPHA_ARC_CLIPPED(...)*/` - chains to BLEND_ALPHA_CLIPPED
+- `/*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(...)*/` - cross-product version, chains to SET_OPAQUE_CLIPPED
+- `/*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(...)*/` - cross-product version, chains to BLEND_ALPHA_CLIPPED
 
 Arc templates inline `isAngleInRange` logic using fast cross-product checks (not atan2) to eliminate function call overhead in arc rendering hot paths. Scanline-based arc methods use module-level event buffer (`_arcEventBuffer`) and insertion sort for additional performance.
 
@@ -127,7 +139,7 @@ Arc templates inline `isAngleInRange` logic using fast cross-product checks (not
 - Arc templates: Include both angle range check and clipping check (for arc-specific per-pixel loops)
 - Templates are defined in `build-scripts/preprocess.js`
 - Run `npm run build` to expand markers - check `dist/swcanvas.js` to verify expansion
-- Run `node tests/build/test-preprocessor.js` to test the preprocessor
+- Run `node tests/build/test-preprocessor.js` to test the preprocessor (45 tests)
 
 ### OO Development Patterns
 - **Use proper classes**: Prefer `new SWCanvas.Core.Point(x, y)` over plain objects

@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 /**
- * Unit tests for the build-time preprocessor.
+ * Unit tests for the build-time preprocessor (45 tests).
+ *
+ * Tests cover:
+ * - Argument parsing (5 tests)
+ * - Single-level marker expansion (6 tests)
+ * - Full preprocessing with chained expansion (10 tests)
+ * - Template validation (14 tests)
+ * - Chained template expansion and depth protection (8 tests)
+ * - Edge cases (2 tests)
  *
  * Run with: node tests/build/test-preprocessor.js
  */
@@ -210,20 +218,24 @@ test('TEMPLATES: BLEND_ALPHA_CLIPPED code has all placeholders', () => {
     }
 });
 
-test('expandMarker: SET_OPAQUE_CLIPPED basic expansion', () => {
-    const result = expandMarker('SET_OPAQUE_CLIPPED', 'data32, pos, color, clip');
+test('preprocess: SET_OPAQUE_CLIPPED full expansion (chained)', () => {
+    const input = '/*@inline:SET_OPAQUE_CLIPPED(data32, pos, color, clip)*/';
+    const result = preprocess(input, 'test.js');
     assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
     assert(result.includes('clip[pos >> 3]'), 'Should check clipBuffer byte');
     assert(result.includes('(1 << (pos & 7))'), 'Should check clipBuffer bit');
     assert(result.includes('data32[pos] = color;'), 'Should write to data32');
+    assert(!result.includes('/*@inline:'), 'Should have no remaining markers');
 });
 
-test('expandMarker: BLEND_ALPHA_CLIPPED basic expansion', () => {
-    const result = expandMarker('BLEND_ALPHA_CLIPPED', 'd, i, r, g, b, a, inv, clip');
+test('preprocess: BLEND_ALPHA_CLIPPED full expansion (chained)', () => {
+    const input = '/*@inline:BLEND_ALPHA_CLIPPED(d, i, r, g, b, a, inv, clip)*/';
+    const result = preprocess(input, 'test.js');
     assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
     assert(result.includes('clip[i >> 3]'), 'Should check clipBuffer byte');
     assert(result.includes('const __off = i * 4;'), 'Should have offset calculation');
     assert(result.includes('r * a'), 'Should use alpha directly in RGB blending');
+    assert(!result.includes('/*@inline:'), 'Should have no remaining markers');
 });
 
 test('TEMPLATES: SET_OPAQUE_ARC_CLIPPED has correct params', () => {
@@ -250,22 +262,115 @@ test('TEMPLATES: BLEND_ALPHA_ARC_CLIPPED code has all placeholders', () => {
     }
 });
 
-test('expandMarker: SET_OPAQUE_ARC_CLIPPED basic expansion', () => {
-    const result = expandMarker('SET_OPAQUE_ARC_CLIPPED', 'data32, pos, color, clip, dx, dy, start, end');
+test('preprocess: SET_OPAQUE_ARC_CLIPPED full expansion (chained)', () => {
+    const input = '/*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, color, clip, dx, dy, start, end)*/';
+    const result = preprocess(input, 'test.js');
     assert(result.includes('Math.atan2(dy, dx)'), 'Should have inline atan2 call');
     assert(result.includes('6.283185307179586'), 'Should have TAU constant inlined');
     assert(result.includes('__angle >= start && __angle <= end'), 'Should have angle range check');
     assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
     assert(result.includes('data32[pos] = color;'), 'Should write to data32');
+    assert(!result.includes('/*@inline:'), 'Should have no remaining markers');
 });
 
-test('expandMarker: BLEND_ALPHA_ARC_CLIPPED basic expansion', () => {
-    const result = expandMarker('BLEND_ALPHA_ARC_CLIPPED', 'd, i, r, g, b, a, inv, clip, dx, dy, start, end');
+test('preprocess: BLEND_ALPHA_ARC_CLIPPED full expansion (chained)', () => {
+    const input = '/*@inline:BLEND_ALPHA_ARC_CLIPPED(d, i, r, g, b, a, inv, clip, dx, dy, start, end)*/';
+    const result = preprocess(input, 'test.js');
     assert(result.includes('Math.atan2(dy, dx)'), 'Should have inline atan2 call');
     assert(result.includes('6.283185307179586'), 'Should have TAU constant inlined');
     assert(result.includes('__angle >= start && __angle <= end'), 'Should have angle range check');
     assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
     assert(result.includes('const __off = i * 4;'), 'Should have offset calculation');
+    assert(!result.includes('/*@inline:'), 'Should have no remaining markers');
+});
+
+// ============================================================================
+// Chained template expansion tests
+// ============================================================================
+
+test('preprocess: chained expansion depth 2 (ARC → CLIPPED → BASE)', () => {
+    // SET_OPAQUE_ARC_CLIPPED references SET_OPAQUE_CLIPPED which references SET_OPAQUE
+    const input = '/*@inline:SET_OPAQUE_ARC_CLIPPED(d32, idx, c, cb, px, py, s, e)*/';
+    const result = preprocess(input, 'test.js');
+    // Level 2 (arc) content
+    assert(result.includes('Math.atan2(py, px)'), 'Should have atan2 from arc template');
+    // Level 1 (clipped) content
+    assert(result.includes('if (!cb ||'), 'Should have clip check from clipped template');
+    // Level 0 (base) content
+    assert(result.includes('d32[idx] = c;'), 'Should have direct write from base template');
+    // No remaining markers
+    assert(!result.includes('/*@inline:'), 'All markers should be expanded');
+});
+
+test('preprocess: chained expansion BLEND_ALPHA chain', () => {
+    // BLEND_ALPHA_ARC_CLIPPED → BLEND_ALPHA_CLIPPED → BLEND_ALPHA
+    const input = '/*@inline:BLEND_ALPHA_ARC_CLIPPED(buf, pi, 255, 128, 64, 0.5, 0.5, mask, x, y, 0, 3.14)*/';
+    const result = preprocess(input, 'test.js');
+    // Arc level
+    assert(result.includes('Math.atan2(y, x)'), 'Should have atan2');
+    // Clipped level
+    assert(result.includes('if (!mask ||'), 'Should have clip check');
+    // Base level - Porter-Duff blending
+    assert(result.includes('const __off = pi * 4;'), 'Should have offset calculation');
+    assert(result.includes('255 * 0.5'), 'Should have color*alpha multiplication');
+    assert(!result.includes('/*@inline:'), 'No remaining markers');
+});
+
+test('preprocess: FAST arc templates also chain correctly', () => {
+    const input = '/*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(d32, i, col, clip, dx, dy, sc, ss, ec, es, false)*/';
+    const result = preprocess(input, 'test.js');
+    // Fast arc uses cross-product, not atan2
+    assert(result.includes('const __afterStart ='), 'Should have cross-product check');
+    assert(result.includes('sc * dy - ss * dx'), 'Should have start angle cross-product');
+    // Should chain to clipped → base
+    assert(result.includes('if (!clip ||'), 'Should have clip check');
+    assert(result.includes('d32[i] = col;'), 'Should have direct write');
+    assert(!result.includes('/*@inline:'), 'No remaining markers');
+});
+
+test('preprocess: depth protection triggers at maxDepth', () => {
+    // Use maxDepth=1 on a 2-level nested template
+    // SET_OPAQUE_CLIPPED needs 2 passes: 1) expands to SET_OPAQUE marker, 2) expands SET_OPAQUE
+    const input = '/*@inline:SET_OPAQUE_CLIPPED(d, p, c, cb)*/';
+    assert.throws(() => {
+        preprocess(input, 'test.js', 1);  // maxDepth=1, but needs 2 passes
+    }, /Max expansion depth/);
+});
+
+test('preprocess: depth protection allows sufficient depth', () => {
+    // With maxDepth=2, a 2-level template should expand successfully
+    const input = '/*@inline:SET_OPAQUE_CLIPPED(d, p, c, cb)*/';
+    const result = preprocess(input, 'test.js', 2);
+    assert(result.includes('d[p] = c;'), 'Should fully expand with sufficient depth');
+    assert(!result.includes('/*@inline:'), 'No remaining markers');
+});
+
+test('preprocess: depth protection for 3-level chain', () => {
+    // ARC_CLIPPED → CLIPPED → BASE needs 3 passes
+    const input = '/*@inline:SET_OPAQUE_ARC_CLIPPED(d, i, c, cb, x, y, s, e)*/';
+    // Should fail with maxDepth=2
+    assert.throws(() => {
+        preprocess(input, 'test.js', 2);
+    }, /Max expansion depth/);
+    // Should succeed with maxDepth=3
+    const result = preprocess(input, 'test.js', 3);
+    assert(result.includes('d[i] = c;'), 'Should fully expand');
+});
+
+test('hasMarkers: regex lastIndex handling with multiple calls', () => {
+    const input = 'some code /*@inline:SET_OPAQUE(a, b, c)*/ more code';
+    // Multiple consecutive calls should all return correct result
+    // (tests that lastIndex is properly reset)
+    assert(hasMarkers(input), 'First call should find marker');
+    assert(hasMarkers(input), 'Second call should still find marker');
+    assert(hasMarkers(input), 'Third call should still find marker');
+});
+
+test('hasMarkers: returns false consistently for non-marker code', () => {
+    const input = 'const x = 1; // no markers here';
+    assert(!hasMarkers(input), 'First call');
+    assert(!hasMarkers(input), 'Second call');
+    assert(!hasMarkers(input), 'Third call');
 });
 
 // ============================================================================

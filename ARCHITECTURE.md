@@ -732,6 +732,23 @@ SWCanvas uses a build-time preprocessor to inline performance-critical pixel ope
 
 Static method calls incur function call overhead (stack frame, argument passing, return) that V8 doesn't always optimize away. For operations that are only ~10 arithmetic ops, this overhead is significant. Build-time inlining eliminates it while keeping a single source of truth for the blending formula.
 
+### Chained Template Expansion
+
+The preprocessor supports **nested/chained templates** - templates can reference other templates via inline markers. This eliminates code duplication while maintaining identical output. The preprocessor performs multi-pass expansion until no markers remain, with configurable depth protection (default 10 passes) to prevent infinite loops from circular references.
+
+**Template Hierarchy:**
+```
+Level 0 (Base):     SET_OPAQUE, BLEND_ALPHA
+Level 1 (Clipped):  SET_OPAQUE_CLIPPED → SET_OPAQUE
+                    BLEND_ALPHA_CLIPPED → BLEND_ALPHA
+Level 2 (Arc):      SET_OPAQUE_ARC_CLIPPED → SET_OPAQUE_CLIPPED
+                    BLEND_ALPHA_ARC_CLIPPED → BLEND_ALPHA_CLIPPED
+                    SET_OPAQUE_ARC_FAST_CLIPPED → SET_OPAQUE_CLIPPED
+                    BLEND_ALPHA_ARC_FAST_CLIPPED → BLEND_ALPHA_CLIPPED
+```
+
+This architecture reduces template code by ~50% while ensuring all derived templates stay synchronized with base template changes.
+
 ### Marker Syntax
 
 Source files use inline markers that are expanded during the build:
@@ -740,7 +757,7 @@ Source files use inline markers that are expanded during the build:
 /*@inline:TEMPLATE_NAME(arg1, arg2, ...)*/
 ```
 
-Arguments can be expressions (e.g., `pos * 4`, `idx/4`).
+Arguments can be expressions (e.g., `pos * 4`, `idx/4`). Templates can contain nested markers that are expanded in subsequent passes.
 
 ### Available Templates
 
@@ -777,6 +794,19 @@ All contracts uphold the "Check Once, Check Correctly" invariant - clipping is c
 ### Template Definitions
 
 Templates are defined in `build-scripts/preprocess.js`. Local variables use `__` prefix to avoid conflicts with caller variables.
+
+Derived templates (Level 1+) use nested markers to reference base templates:
+```javascript
+// BLEND_ALPHA_CLIPPED references BLEND_ALPHA via nested marker
+'BLEND_ALPHA_CLIPPED': {
+    params: ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer'],
+    code: `if (!{{clipBuffer}} || ...) {
+    /*@inline:BLEND_ALPHA({{data}}, {{pixelIndex}}, {{r}}, {{g}}, {{b}}, {{alpha}}, {{invAlpha}})*/
+}`
+}
+```
+
+The `preprocess()` function accepts an optional `maxDepth` parameter (default 10) for depth protection.
 
 ### Build Integration
 

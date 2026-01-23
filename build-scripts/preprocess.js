@@ -6,6 +6,19 @@
  *   /\*@inline:TEMPLATE_NAME(args)\*\/
  * into inlined code at build time, eliminating function call overhead in hot pixel loops.
  *
+ * CHAINED TEMPLATE EXPANSION:
+ * ---------------------------
+ * Templates can reference other templates via nested markers. The preprocessor performs
+ * multi-pass expansion until no markers remain. Depth protection (default 10 passes)
+ * prevents infinite loops from circular references.
+ *
+ * Template Hierarchy:
+ *   Level 0 (Base):     SET_OPAQUE, BLEND_ALPHA
+ *   Level 1 (Clipped):  *_CLIPPED → references Level 0
+ *   Level 2 (Arc):      *_ARC_CLIPPED, *_ARC_FAST_CLIPPED → references Level 1
+ *
+ * This architecture reduces template code by ~50% while maintaining identical output.
+ *
  * CLIPPING CONTRACT:
  * ------------------
  * Templates follow three contracts per ARCHITECTURE.md "Check Once, Check Correctly":
@@ -18,12 +31,14 @@
  * - Include clipping logic: if (!clipBuffer || bit-check)
  * - For per-pixel loops where clipping cannot be hoisted
  * - Bounds checking remains caller's responsibility
+ * - Chain to base templates via nested markers
  *
  * Arc Templates (SET_OPAQUE_ARC_CLIPPED, BLEND_ALPHA_ARC_CLIPPED):
  * - Include angle range check + clipping logic
  * - Inline isAngleInRange logic (with Math.atan2) to eliminate function call overhead
  * - For arc-specific per-pixel loops where angle filtering is required
  * - TAU constant is inlined for performance
+ * - Chain to clipped templates via nested markers
  *
  * All templates preserve the single-clipping-check invariant.
  *
@@ -37,11 +52,14 @@ const fs = require('fs');
 const path = require('path');
 
 // Template definitions - single source of truth for pixel operations
-// Three categories of templates:
-// - Standard (BLEND_ALPHA, SET_OPAQUE): Caller checks clipping BEFORE marker
-// - Clipped (_CLIPPED variants): Include clipping check for per-pixel loops
-// - Arc (_ARC_CLIPPED variants): Include angle check + clipping for arc per-pixel loops
+// Three levels of templates with chained expansion:
+// - Level 0 (Base): BLEND_ALPHA, SET_OPAQUE - caller checks clipping BEFORE marker
+// - Level 1 (Clipped): *_CLIPPED variants - include clipping check, chain to Level 0
+// - Level 2 (Arc): *_ARC_CLIPPED, *_ARC_FAST_CLIPPED - include angle+clipping check, chain to Level 1
 // See ARCHITECTURE.md "Check Once, Check Correctly" contract.
+//
+// CHAINED EXPANSION: Derived templates reference base templates via nested markers.
+// The preprocess() function performs multi-pass expansion until no markers remain.
 //
 // PERFORMANCE NOTE: Templates are optimized for V8. Since all call sites pass simple
 // variable names (not expressions), arguments are used directly without caching.
@@ -95,6 +113,7 @@ if (__outA > 0) {
      * Use this in per-pixel loops where clipping cannot be hoisted to span level.
      *
      * Contract: Bounds checking is caller's responsibility. This template only checks clipping.
+     * Uses chained expansion: references SET_OPAQUE template.
      *
      * @param {Uint32Array} data32 - 32-bit view of surface pixel data
      * @param {number} pixelIndex - Linear pixel index (y * width + x)
@@ -104,7 +123,7 @@ if (__outA > 0) {
     'SET_OPAQUE_CLIPPED': {
         params: ['data32', 'pixelIndex', 'packedColor', 'clipBuffer'],
         code: `if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
-    {{data32}}[{{pixelIndex}}] = {{packedColor}};
+    /*@inline:SET_OPAQUE({{data32}}, {{pixelIndex}}, {{packedColor}})*/
 }`
     },
 
@@ -113,6 +132,7 @@ if (__outA > 0) {
      * Use this in per-pixel loops where clipping cannot be hoisted to span level.
      *
      * Contract: Bounds checking is caller's responsibility. This template only checks clipping.
+     * Uses chained expansion: references BLEND_ALPHA template.
      *
      * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
      * @param {number} pixelIndex - Linear pixel index (y * width + x)
@@ -126,17 +146,7 @@ if (__outA > 0) {
     'BLEND_ALPHA_CLIPPED': {
         params: ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer'],
         code: `if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
-    const __off = {{pixelIndex}} * 4;
-    const __dstA = {{data}}[__off + 3] / 255;
-    const __dstAScaled = __dstA * {{invAlpha}};
-    const __outA = {{alpha}} + __dstAScaled;
-    if (__outA > 0) {
-        const __blend = 1 / __outA;
-        {{data}}[__off]     = ({{r}} * {{alpha}} + {{data}}[__off] * __dstAScaled) * __blend;
-        {{data}}[__off + 1] = ({{g}} * {{alpha}} + {{data}}[__off + 1] * __dstAScaled) * __blend;
-        {{data}}[__off + 2] = ({{b}} * {{alpha}} + {{data}}[__off + 2] * __dstAScaled) * __blend;
-        {{data}}[__off + 3] = __outA * 255;
-    }
+    /*@inline:BLEND_ALPHA({{data}}, {{pixelIndex}}, {{r}}, {{g}}, {{b}}, {{alpha}}, {{invAlpha}})*/
 }`
     },
 
@@ -145,6 +155,7 @@ if (__outA > 0) {
      * Combines isAngleInRange logic with clipping and pixel write to eliminate function call overhead.
      *
      * TAU constant (6.283185307179586) is inlined for performance.
+     * Uses chained expansion: references SET_OPAQUE_CLIPPED template.
      *
      * @param {Uint32Array} data32 - 32-bit view of surface pixel data
      * @param {number} pixelIndex - Linear pixel index (y * width + x)
@@ -162,9 +173,7 @@ if (__outA > 0) {
     if (__angle < 0) __angle += 6.283185307179586;
     if (__angle < {{startAngle}}) __angle += 6.283185307179586;
     if (__angle >= {{startAngle}} && __angle <= {{endAngle}}) {
-        if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
-            {{data32}}[{{pixelIndex}}] = {{packedColor}};
-        }
+        /*@inline:SET_OPAQUE_CLIPPED({{data32}}, {{pixelIndex}}, {{packedColor}}, {{clipBuffer}})*/
     }
 }`
     },
@@ -174,6 +183,7 @@ if (__outA > 0) {
      * Combines isAngleInRange logic with clipping and alpha blend to eliminate function call overhead.
      *
      * TAU constant (6.283185307179586) is inlined for performance.
+     * Uses chained expansion: references BLEND_ALPHA_CLIPPED template.
      *
      * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
      * @param {number} pixelIndex - Linear pixel index (y * width + x)
@@ -195,19 +205,7 @@ if (__outA > 0) {
     if (__angle < 0) __angle += 6.283185307179586;
     if (__angle < {{startAngle}}) __angle += 6.283185307179586;
     if (__angle >= {{startAngle}} && __angle <= {{endAngle}}) {
-        if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
-            const __off = {{pixelIndex}} * 4;
-            const __dstA = {{data}}[__off + 3] / 255;
-            const __dstAScaled = __dstA * {{invAlpha}};
-            const __outA = {{alpha}} + __dstAScaled;
-            if (__outA > 0) {
-                const __blend = 1 / __outA;
-                {{data}}[__off]     = ({{r}} * {{alpha}} + {{data}}[__off] * __dstAScaled) * __blend;
-                {{data}}[__off + 1] = ({{g}} * {{alpha}} + {{data}}[__off + 1] * __dstAScaled) * __blend;
-                {{data}}[__off + 2] = ({{b}} * {{alpha}} + {{data}}[__off + 2] * __dstAScaled) * __blend;
-                {{data}}[__off + 3] = __outA * 255;
-            }
-        }
+        /*@inline:BLEND_ALPHA_CLIPPED({{data}}, {{pixelIndex}}, {{r}}, {{g}}, {{b}}, {{alpha}}, {{invAlpha}}, {{clipBuffer}})*/
     }
 }`
     },
@@ -221,6 +219,8 @@ if (__outA > 0) {
      * - beforeEnd = (endCos * py - endSin * px) <= 0
      * - Small arc (<180°): afterStart AND beforeEnd
      * - Large arc (>180°): afterStart OR beforeEnd
+     *
+     * Uses chained expansion: references SET_OPAQUE_CLIPPED template.
      *
      * @param {Uint32Array} data32 - 32-bit view of surface pixel data
      * @param {number} pixelIndex - Linear pixel index (y * width + x)
@@ -241,9 +241,7 @@ if (__outA > 0) {
     const __beforeEnd = ({{endCos}} * {{dy}} - {{endSin}} * {{dx}}) <= 0;
     const __inRange = {{isLargeArc}} ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
     if (__inRange) {
-        if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
-            {{data32}}[{{pixelIndex}}] = {{packedColor}};
-        }
+        /*@inline:SET_OPAQUE_CLIPPED({{data32}}, {{pixelIndex}}, {{packedColor}}, {{clipBuffer}})*/
     }
 }`
     },
@@ -251,6 +249,8 @@ if (__outA > 0) {
     /**
      * Fast alpha blending for arc rendering using cross-product angle check + clipping.
      * Uses cross-product instead of atan2 for 10-50x faster angle checking.
+     *
+     * Uses chained expansion: references BLEND_ALPHA_CLIPPED template.
      *
      * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
      * @param {number} pixelIndex - Linear pixel index (y * width + x)
@@ -275,19 +275,7 @@ if (__outA > 0) {
     const __beforeEnd = ({{endCos}} * {{dy}} - {{endSin}} * {{dx}}) <= 0;
     const __inRange = {{isLargeArc}} ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
     if (__inRange) {
-        if (!{{clipBuffer}} || ({{clipBuffer}}[{{pixelIndex}} >> 3] & (1 << ({{pixelIndex}} & 7)))) {
-            const __off = {{pixelIndex}} * 4;
-            const __dstA = {{data}}[__off + 3] / 255;
-            const __dstAScaled = __dstA * {{invAlpha}};
-            const __outA = {{alpha}} + __dstAScaled;
-            if (__outA > 0) {
-                const __blend = 1 / __outA;
-                {{data}}[__off]     = ({{r}} * {{alpha}} + {{data}}[__off] * __dstAScaled) * __blend;
-                {{data}}[__off + 1] = ({{g}} * {{alpha}} + {{data}}[__off + 1] * __dstAScaled) * __blend;
-                {{data}}[__off + 2] = ({{b}} * {{alpha}} + {{data}}[__off + 2] * __dstAScaled) * __blend;
-                {{data}}[__off + 3] = __outA * 255;
-            }
-        }
+        /*@inline:BLEND_ALPHA_CLIPPED({{data}}, {{pixelIndex}}, {{r}}, {{g}}, {{b}}, {{alpha}}, {{invAlpha}}, {{clipBuffer}})*/
     }
 }`
     }
@@ -355,18 +343,52 @@ function expandMarker(templateName, argsStr) {
 
 /**
  * Preprocess source code, expanding all inline markers.
+ * Supports chained/nested templates - templates can reference other templates
+ * and will be expanded through multiple passes until no markers remain.
+ *
  * @param {string} source - Source code with markers
  * @param {string} filename - Filename for error messages
+ * @param {number} maxDepth - Maximum expansion depth (default 10, prevents infinite loops)
  * @returns {string} Processed source with markers expanded
  */
-function preprocess(source, filename) {
-    return source.replace(MARKER_REGEX, (match, name, args) => {
-        try {
-            return expandMarker(name, args);
-        } catch (e) {
-            throw new Error(`Error in ${filename}: ${e.message}`);
+function preprocess(source, filename, maxDepth = 10) {
+    let result = source;
+    let depth = 0;
+
+    while (depth < maxDepth) {
+        // CRITICAL: Reset regex lastIndex before each pass
+        MARKER_REGEX.lastIndex = 0;
+
+        if (!MARKER_REGEX.test(result)) {
+            break;  // No more markers
         }
-    });
+
+        // Reset again after test() modified it
+        MARKER_REGEX.lastIndex = 0;
+
+        const previousResult = result;
+        result = result.replace(MARKER_REGEX, (match, name, args) => {
+            try {
+                return expandMarker(name, args);
+            } catch (e) {
+                throw new Error(`Error in ${filename} (depth ${depth}): ${e.message}`);
+            }
+        });
+
+        if (result === previousResult) {
+            throw new Error(`Infinite loop detected in ${filename}: markers not expanding`);
+        }
+
+        depth++;
+    }
+
+    // Check for unexpanded markers after reaching max depth
+    MARKER_REGEX.lastIndex = 0;
+    if (MARKER_REGEX.test(result)) {
+        throw new Error(`Max expansion depth (${maxDepth}) exceeded in ${filename}`);
+    }
+
+    return result;
 }
 
 /**
@@ -375,7 +397,10 @@ function preprocess(source, filename) {
  * @returns {boolean} True if markers found
  */
 function hasMarkers(source) {
-    return MARKER_REGEX.test(source);
+    MARKER_REGEX.lastIndex = 0;  // Reset before test (global regex)
+    const result = MARKER_REGEX.test(source);
+    MARKER_REGEX.lastIndex = 0;  // Reset after test for safety
+    return result;
 }
 
 // CLI entry point
