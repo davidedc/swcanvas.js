@@ -15,7 +15,7 @@
  * Template Hierarchy:
  *   Level 0 (Base):     SET_OPAQUE, BLEND_ALPHA
  *   Level 1 (Clipped):  *_CLIPPED → references Level 0
- *   Level 2 (Arc):      *_ARC_CLIPPED, *_ARC_FAST_CLIPPED → references Level 1
+ *   Level 2 (Arc):      *_ARC_FAST_CLIPPED → references Level 1
  *
  * This architecture reduces template code by ~50% while maintaining identical output.
  *
@@ -33,11 +33,10 @@
  * - Bounds checking remains caller's responsibility
  * - Chain to base templates via nested markers
  *
- * Arc Templates (SET_OPAQUE_ARC_CLIPPED, BLEND_ALPHA_ARC_CLIPPED):
- * - Include angle range check + clipping logic
- * - Inline isAngleInRange logic (with Math.atan2) to eliminate function call overhead
+ * Fast Arc Templates (SET_OPAQUE_ARC_FAST_CLIPPED, BLEND_ALPHA_ARC_FAST_CLIPPED):
+ * - Include angle range check + bounds check + clipping logic
+ * - Use cross-product instead of atan2 for 10-50x faster angle checking
  * - For arc-specific per-pixel loops where angle filtering is required
- * - TAU constant is inlined for performance
  * - Chain to clipped templates via nested markers
  *
  * All templates preserve the single-clipping-check invariant.
@@ -55,7 +54,7 @@ const path = require('path');
 // Three levels of templates with chained expansion:
 // - Level 0 (Base): BLEND_ALPHA, SET_OPAQUE - caller checks clipping BEFORE marker
 // - Level 1 (Clipped): *_CLIPPED variants - include clipping check, chain to Level 0
-// - Level 2 (Arc): *_ARC_CLIPPED, *_ARC_FAST_CLIPPED - include angle+clipping check, chain to Level 1
+// - Level 2 (Arc): *_ARC_FAST_CLIPPED - include angle+bounds+clipping check, chain to Level 1
 // See ARCHITECTURE.md "Check Once, Check Correctly" contract.
 //
 // CHAINED EXPANSION: Derived templates reference base templates via nested markers.
@@ -151,67 +150,7 @@ if (__outA > 0) {
     },
 
     /**
-     * Opaque pixel write for arc rendering with inline angle check + clipping.
-     * Combines isAngleInRange logic with clipping and pixel write to eliminate function call overhead.
-     *
-     * TAU constant (6.283185307179586) is inlined for performance.
-     * Uses chained expansion: references SET_OPAQUE_CLIPPED template.
-     *
-     * @param {Uint32Array} data32 - 32-bit view of surface pixel data
-     * @param {number} pixelIndex - Linear pixel index (y * width + x)
-     * @param {number} packedColor - Pre-packed 32-bit RGBA color
-     * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
-     * @param {number} dx - X offset from arc center
-     * @param {number} dy - Y offset from arc center
-     * @param {number} startAngle - Arc start angle in radians
-     * @param {number} endAngle - Arc end angle in radians (must be > startAngle)
-     */
-    'SET_OPAQUE_ARC_CLIPPED': {
-        params: ['data32', 'pixelIndex', 'packedColor', 'clipBuffer', 'dx', 'dy', 'startAngle', 'endAngle'],
-        code: `{
-    let __angle = Math.atan2({{dy}}, {{dx}});
-    if (__angle < 0) __angle += 6.283185307179586;
-    if (__angle < {{startAngle}}) __angle += 6.283185307179586;
-    if (__angle >= {{startAngle}} && __angle <= {{endAngle}}) {
-        /*@inline:SET_OPAQUE_CLIPPED({{data32}}, {{pixelIndex}}, {{packedColor}}, {{clipBuffer}})*/
-    }
-}`
-    },
-
-    /**
-     * Alpha blending for arc rendering with inline angle check + clipping.
-     * Combines isAngleInRange logic with clipping and alpha blend to eliminate function call overhead.
-     *
-     * TAU constant (6.283185307179586) is inlined for performance.
-     * Uses chained expansion: references BLEND_ALPHA_CLIPPED template.
-     *
-     * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
-     * @param {number} pixelIndex - Linear pixel index (y * width + x)
-     * @param {number} r - Red component (0-255)
-     * @param {number} g - Green component (0-255)
-     * @param {number} b - Blue component (0-255)
-     * @param {number} alpha - Alpha as fraction (0-1)
-     * @param {number} invAlpha - Inverse alpha (1 - alpha)
-     * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
-     * @param {number} dx - X offset from arc center
-     * @param {number} dy - Y offset from arc center
-     * @param {number} startAngle - Arc start angle in radians
-     * @param {number} endAngle - Arc end angle in radians (must be > startAngle)
-     */
-    'BLEND_ALPHA_ARC_CLIPPED': {
-        params: ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer', 'dx', 'dy', 'startAngle', 'endAngle'],
-        code: `{
-    let __angle = Math.atan2({{dy}}, {{dx}});
-    if (__angle < 0) __angle += 6.283185307179586;
-    if (__angle < {{startAngle}}) __angle += 6.283185307179586;
-    if (__angle >= {{startAngle}} && __angle <= {{endAngle}}) {
-        /*@inline:BLEND_ALPHA_CLIPPED({{data}}, {{pixelIndex}}, {{r}}, {{g}}, {{b}}, {{alpha}}, {{invAlpha}}, {{clipBuffer}})*/
-    }
-}`
-    },
-
-    /**
-     * Fast opaque pixel write for arc rendering using cross-product angle check + clipping.
+     * Fast opaque pixel write for arc rendering using cross-product angle check + bounds + clipping.
      * Uses cross-product instead of atan2 for 10-50x faster angle checking.
      *
      * Cross-product logic: A point P is "left of" vector V if cross(V, P) >= 0
@@ -220,62 +159,72 @@ if (__outA > 0) {
      * - Small arc (<180°): afterStart AND beforeEnd
      * - Large arc (>180°): afterStart OR beforeEnd
      *
+     * Includes bounds checking (px, py, width, height) and computes pixelIndex internally.
      * Uses chained expansion: references SET_OPAQUE_CLIPPED template.
      *
      * @param {Uint32Array} data32 - 32-bit view of surface pixel data
-     * @param {number} pixelIndex - Linear pixel index (y * width + x)
      * @param {number} packedColor - Pre-packed 32-bit RGBA color
      * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
-     * @param {number} dx - X offset from arc center
-     * @param {number} dy - Y offset from arc center
+     * @param {number} dx - X offset from arc center (for angle check)
+     * @param {number} dy - Y offset from arc center (for angle check)
      * @param {number} startCos - cos(startAngle), precomputed
      * @param {number} startSin - sin(startAngle), precomputed
      * @param {number} endCos - cos(endAngle), precomputed
      * @param {number} endSin - sin(endAngle), precomputed
      * @param {boolean} isLargeArc - True if arc spans > 180°
+     * @param {number} px - Screen X coordinate
+     * @param {number} py - Screen Y coordinate
+     * @param {number} width - Surface width
+     * @param {number} height - Surface height
      */
     'SET_OPAQUE_ARC_FAST_CLIPPED': {
-        params: ['data32', 'pixelIndex', 'packedColor', 'clipBuffer', 'dx', 'dy', 'startCos', 'startSin', 'endCos', 'endSin', 'isLargeArc'],
+        params: ['data32', 'packedColor', 'clipBuffer', 'dx', 'dy', 'startCos', 'startSin', 'endCos', 'endSin', 'isLargeArc', 'px', 'py', 'width', 'height'],
         code: `{
     const __afterStart = ({{startCos}} * {{dy}} - {{startSin}} * {{dx}}) >= 0;
     const __beforeEnd = ({{endCos}} * {{dy}} - {{endSin}} * {{dx}}) <= 0;
     const __inRange = {{isLargeArc}} ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
-    if (__inRange) {
-        /*@inline:SET_OPAQUE_CLIPPED({{data32}}, {{pixelIndex}}, {{packedColor}}, {{clipBuffer}})*/
+    if (__inRange && {{px}} >= 0 && {{px}} < {{width}} && {{py}} >= 0 && {{py}} < {{height}}) {
+        const __pos = {{py}} * {{width}} + {{px}};
+        /*@inline:SET_OPAQUE_CLIPPED({{data32}}, __pos, {{packedColor}}, {{clipBuffer}})*/
     }
 }`
     },
 
     /**
-     * Fast alpha blending for arc rendering using cross-product angle check + clipping.
+     * Fast alpha blending for arc rendering using cross-product angle check + bounds + clipping.
      * Uses cross-product instead of atan2 for 10-50x faster angle checking.
      *
+     * Includes bounds checking (px, py, width, height) and computes pixelIndex internally.
      * Uses chained expansion: references BLEND_ALPHA_CLIPPED template.
      *
      * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
-     * @param {number} pixelIndex - Linear pixel index (y * width + x)
      * @param {number} r - Red component (0-255)
      * @param {number} g - Green component (0-255)
      * @param {number} b - Blue component (0-255)
      * @param {number} alpha - Alpha as fraction (0-1)
      * @param {number} invAlpha - Inverse alpha (1 - alpha)
      * @param {Uint8Array|null} clipBuffer - Clip mask (null = no clipping)
-     * @param {number} dx - X offset from arc center
-     * @param {number} dy - Y offset from arc center
+     * @param {number} dx - X offset from arc center (for angle check)
+     * @param {number} dy - Y offset from arc center (for angle check)
      * @param {number} startCos - cos(startAngle), precomputed
      * @param {number} startSin - sin(startAngle), precomputed
      * @param {number} endCos - cos(endAngle), precomputed
      * @param {number} endSin - sin(endAngle), precomputed
      * @param {boolean} isLargeArc - True if arc spans > 180°
+     * @param {number} px - Screen X coordinate
+     * @param {number} py - Screen Y coordinate
+     * @param {number} width - Surface width
+     * @param {number} height - Surface height
      */
     'BLEND_ALPHA_ARC_FAST_CLIPPED': {
-        params: ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer', 'dx', 'dy', 'startCos', 'startSin', 'endCos', 'endSin', 'isLargeArc'],
+        params: ['data', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer', 'dx', 'dy', 'startCos', 'startSin', 'endCos', 'endSin', 'isLargeArc', 'px', 'py', 'width', 'height'],
         code: `{
     const __afterStart = ({{startCos}} * {{dy}} - {{startSin}} * {{dx}}) >= 0;
     const __beforeEnd = ({{endCos}} * {{dy}} - {{endSin}} * {{dx}}) <= 0;
     const __inRange = {{isLargeArc}} ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
-    if (__inRange) {
-        /*@inline:BLEND_ALPHA_CLIPPED({{data}}, {{pixelIndex}}, {{r}}, {{g}}, {{b}}, {{alpha}}, {{invAlpha}}, {{clipBuffer}})*/
+    if (__inRange && {{px}} >= 0 && {{px}} < {{width}} && {{py}} >= 0 && {{py}} < {{height}}) {
+        const __pos = {{py}} * {{width}} + {{px}};
+        /*@inline:BLEND_ALPHA_CLIPPED({{data}}, __pos, {{r}}, {{g}}, {{b}}, {{alpha}}, {{invAlpha}}, {{clipBuffer}})*/
     }
 }`
     }

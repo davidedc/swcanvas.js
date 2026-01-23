@@ -238,62 +238,59 @@ test('preprocess: BLEND_ALPHA_CLIPPED full expansion (chained)', () => {
     assert(!result.includes('/*@inline:'), 'Should have no remaining markers');
 });
 
-test('TEMPLATES: SET_OPAQUE_ARC_CLIPPED has correct params', () => {
-    assert.deepStrictEqual(TEMPLATES.SET_OPAQUE_ARC_CLIPPED.params,
-        ['data32', 'pixelIndex', 'packedColor', 'clipBuffer', 'dx', 'dy', 'startAngle', 'endAngle']);
+test('TEMPLATES: SET_OPAQUE_ARC_FAST_CLIPPED has correct params', () => {
+    assert.deepStrictEqual(TEMPLATES.SET_OPAQUE_ARC_FAST_CLIPPED.params,
+        ['data32', 'packedColor', 'clipBuffer', 'dx', 'dy', 'startCos', 'startSin', 'endCos', 'endSin', 'isLargeArc', 'px', 'py', 'width', 'height']);
 });
 
-test('TEMPLATES: SET_OPAQUE_ARC_CLIPPED code has all placeholders', () => {
-    const code = TEMPLATES.SET_OPAQUE_ARC_CLIPPED.code;
-    for (const param of TEMPLATES.SET_OPAQUE_ARC_CLIPPED.params) {
+test('TEMPLATES: SET_OPAQUE_ARC_FAST_CLIPPED code has all placeholders', () => {
+    const code = TEMPLATES.SET_OPAQUE_ARC_FAST_CLIPPED.code;
+    for (const param of TEMPLATES.SET_OPAQUE_ARC_FAST_CLIPPED.params) {
         assert(code.includes(`{{${param}}}`), `Missing placeholder for ${param}`);
     }
 });
 
-test('TEMPLATES: BLEND_ALPHA_ARC_CLIPPED has correct params', () => {
-    assert.deepStrictEqual(TEMPLATES.BLEND_ALPHA_ARC_CLIPPED.params,
-        ['data', 'pixelIndex', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer', 'dx', 'dy', 'startAngle', 'endAngle']);
+test('TEMPLATES: BLEND_ALPHA_ARC_FAST_CLIPPED has correct params', () => {
+    assert.deepStrictEqual(TEMPLATES.BLEND_ALPHA_ARC_FAST_CLIPPED.params,
+        ['data', 'r', 'g', 'b', 'alpha', 'invAlpha', 'clipBuffer', 'dx', 'dy', 'startCos', 'startSin', 'endCos', 'endSin', 'isLargeArc', 'px', 'py', 'width', 'height']);
 });
 
-test('TEMPLATES: BLEND_ALPHA_ARC_CLIPPED code has all placeholders', () => {
-    const code = TEMPLATES.BLEND_ALPHA_ARC_CLIPPED.code;
-    for (const param of TEMPLATES.BLEND_ALPHA_ARC_CLIPPED.params) {
+test('TEMPLATES: BLEND_ALPHA_ARC_FAST_CLIPPED code has all placeholders', () => {
+    const code = TEMPLATES.BLEND_ALPHA_ARC_FAST_CLIPPED.code;
+    for (const param of TEMPLATES.BLEND_ALPHA_ARC_FAST_CLIPPED.params) {
         assert(code.includes(`{{${param}}}`), `Missing placeholder for ${param}`);
     }
 });
 
-test('preprocess: SET_OPAQUE_ARC_CLIPPED full expansion (chained)', () => {
-    const input = '/*@inline:SET_OPAQUE_ARC_CLIPPED(data32, pos, color, clip, dx, dy, start, end)*/';
+test('preprocess: SET_OPAQUE_ARC_FAST_CLIPPED full expansion (chained)', () => {
+    const input = '/*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(data32, color, clip, dx, dy, sc, ss, ec, es, false, px, py, 100, 100)*/';
     const result = preprocess(input, 'test.js');
-    assert(result.includes('Math.atan2(dy, dx)'), 'Should have inline atan2 call');
-    assert(result.includes('6.283185307179586'), 'Should have TAU constant inlined');
-    assert(result.includes('__angle >= start && __angle <= end'), 'Should have angle range check');
+    assert(result.includes('const __afterStart ='), 'Should have cross-product check');
+    assert(result.includes('sc * dy - ss * dx'), 'Should have start angle cross-product');
+    assert(result.includes('px >= 0 && px < 100'), 'Should have bounds check');
     assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
-    assert(result.includes('data32[pos] = color;'), 'Should write to data32');
+    assert(result.includes('data32[__pos] = color;'), 'Should write to data32');
     assert(!result.includes('/*@inline:'), 'Should have no remaining markers');
 });
 
-test('preprocess: BLEND_ALPHA_ARC_CLIPPED full expansion (chained)', () => {
-    const input = '/*@inline:BLEND_ALPHA_ARC_CLIPPED(d, i, r, g, b, a, inv, clip, dx, dy, start, end)*/';
+test('preprocess: BLEND_ALPHA_ARC_FAST_CLIPPED full expansion (chained)', () => {
+    const input = '/*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(d, 255, 128, 64, 0.5, 0.5, mask, dx, dy, sc, ss, ec, es, false, px, py, 100, 100)*/';
     const result = preprocess(input, 'test.js');
-    assert(result.includes('Math.atan2(dy, dx)'), 'Should have inline atan2 call');
-    assert(result.includes('6.283185307179586'), 'Should have TAU constant inlined');
-    assert(result.includes('__angle >= start && __angle <= end'), 'Should have angle range check');
-    assert(result.includes('if (!clip ||'), 'Should have null clipBuffer check');
-    assert(result.includes('const __off = i * 4;'), 'Should have offset calculation');
-    assert(!result.includes('/*@inline:'), 'Should have no remaining markers');
+    assert(result.includes('const __afterStart ='), 'Should have cross-product check');
+    assert(result.includes('px >= 0 && px < 100'), 'Should have bounds check');
+    assert(result.includes('if (!mask ||'), 'Should have clip check');
+    assert(result.includes('const __off = __pos * 4;'), 'Should have offset calculation');
+    assert(!result.includes('/*@inline:'), 'No remaining markers');
 });
 
 // ============================================================================
 // Chained template expansion tests
 // ============================================================================
 
-test('preprocess: chained expansion depth 2 (ARC → CLIPPED → BASE)', () => {
-    // SET_OPAQUE_ARC_CLIPPED references SET_OPAQUE_CLIPPED which references SET_OPAQUE
-    const input = '/*@inline:SET_OPAQUE_ARC_CLIPPED(d32, idx, c, cb, px, py, s, e)*/';
+test('preprocess: chained expansion depth 2 (CLIPPED → BASE)', () => {
+    // SET_OPAQUE_CLIPPED references SET_OPAQUE
+    const input = '/*@inline:SET_OPAQUE_CLIPPED(d32, idx, c, cb)*/';
     const result = preprocess(input, 'test.js');
-    // Level 2 (arc) content
-    assert(result.includes('Math.atan2(py, px)'), 'Should have atan2 from arc template');
     // Level 1 (clipped) content
     assert(result.includes('if (!cb ||'), 'Should have clip check from clipped template');
     // Level 0 (base) content
@@ -302,12 +299,10 @@ test('preprocess: chained expansion depth 2 (ARC → CLIPPED → BASE)', () => {
     assert(!result.includes('/*@inline:'), 'All markers should be expanded');
 });
 
-test('preprocess: chained expansion BLEND_ALPHA chain', () => {
-    // BLEND_ALPHA_ARC_CLIPPED → BLEND_ALPHA_CLIPPED → BLEND_ALPHA
-    const input = '/*@inline:BLEND_ALPHA_ARC_CLIPPED(buf, pi, 255, 128, 64, 0.5, 0.5, mask, x, y, 0, 3.14)*/';
+test('preprocess: chained expansion BLEND_ALPHA_CLIPPED chain', () => {
+    // BLEND_ALPHA_CLIPPED → BLEND_ALPHA
+    const input = '/*@inline:BLEND_ALPHA_CLIPPED(buf, pi, 255, 128, 64, 0.5, 0.5, mask)*/';
     const result = preprocess(input, 'test.js');
-    // Arc level
-    assert(result.includes('Math.atan2(y, x)'), 'Should have atan2');
     // Clipped level
     assert(result.includes('if (!mask ||'), 'Should have clip check');
     // Base level - Porter-Duff blending
@@ -316,15 +311,17 @@ test('preprocess: chained expansion BLEND_ALPHA chain', () => {
     assert(!result.includes('/*@inline:'), 'No remaining markers');
 });
 
-test('preprocess: FAST arc templates also chain correctly', () => {
-    const input = '/*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(d32, i, col, clip, dx, dy, sc, ss, ec, es, false)*/';
+test('preprocess: FAST arc templates chain correctly (depth 3)', () => {
+    const input = '/*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(d32, col, clip, dx, dy, sc, ss, ec, es, false, px, py, 100, 100)*/';
     const result = preprocess(input, 'test.js');
     // Fast arc uses cross-product, not atan2
     assert(result.includes('const __afterStart ='), 'Should have cross-product check');
     assert(result.includes('sc * dy - ss * dx'), 'Should have start angle cross-product');
+    // Should have bounds check
+    assert(result.includes('px >= 0 && px < 100'), 'Should have bounds check');
     // Should chain to clipped → base
     assert(result.includes('if (!clip ||'), 'Should have clip check');
-    assert(result.includes('d32[i] = col;'), 'Should have direct write');
+    assert(result.includes('d32[__pos] = col;'), 'Should have direct write');
     assert(!result.includes('/*@inline:'), 'No remaining markers');
 });
 
@@ -346,15 +343,15 @@ test('preprocess: depth protection allows sufficient depth', () => {
 });
 
 test('preprocess: depth protection for 3-level chain', () => {
-    // ARC_CLIPPED → CLIPPED → BASE needs 3 passes
-    const input = '/*@inline:SET_OPAQUE_ARC_CLIPPED(d, i, c, cb, x, y, s, e)*/';
+    // ARC_FAST_CLIPPED → CLIPPED → BASE needs 3 passes
+    const input = '/*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(d, c, cb, dx, dy, sc, ss, ec, es, false, px, py, 100, 100)*/';
     // Should fail with maxDepth=2
     assert.throws(() => {
         preprocess(input, 'test.js', 2);
     }, /Max expansion depth/);
     // Should succeed with maxDepth=3
     const result = preprocess(input, 'test.js', 3);
-    assert(result.includes('d[i] = c;'), 'Should fully expand');
+    assert(result.includes('d[__pos] = c;'), 'Should fully expand');
 });
 
 test('hasMarkers: regex lastIndex handling with multiple calls', () => {

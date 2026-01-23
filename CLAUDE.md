@@ -114,7 +114,7 @@ The preprocessor supports **chained template expansion** - templates can referen
 ```
 Level 0 (Base):     SET_OPAQUE, BLEND_ALPHA
 Level 1 (Clipped):  *_CLIPPED → references Level 0
-Level 2 (Arc):      *_ARC_CLIPPED, *_ARC_FAST_CLIPPED → references Level 1
+Level 2 (Arc):      *_ARC_FAST_CLIPPED → references Level 1
 ```
 
 **Standard Templates** (caller must check clipping BEFORE):
@@ -125,13 +125,11 @@ Level 2 (Arc):      *_ARC_CLIPPED, *_ARC_FAST_CLIPPED → references Level 1
 - `/*@inline:BLEND_ALPHA_CLIPPED(...)*/` - chains to BLEND_ALPHA
 - `/*@inline:SET_OPAQUE_CLIPPED(...)*/` - chains to SET_OPAQUE
 
-**Arc Templates** (include angle check + clipping, for arc per-pixel loops):
-- `/*@inline:SET_OPAQUE_ARC_CLIPPED(...)*/` - chains to SET_OPAQUE_CLIPPED
-- `/*@inline:BLEND_ALPHA_ARC_CLIPPED(...)*/` - chains to BLEND_ALPHA_CLIPPED
-- `/*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(...)*/` - cross-product version, chains to SET_OPAQUE_CLIPPED
-- `/*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(...)*/` - cross-product version, chains to BLEND_ALPHA_CLIPPED
+**Arc Templates** (include angle + bounds + clipping, for arc per-pixel loops):
+- `/*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(data32, packedColor, clipBuffer, dx, dy, startCos, startSin, endCos, endSin, isLargeArc, px, py, width, height)*/` - chains to SET_OPAQUE_CLIPPED
+- `/*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, alpha, invAlpha, clipBuffer, dx, dy, startCos, startSin, endCos, endSin, isLargeArc, px, py, width, height)*/` - chains to BLEND_ALPHA_CLIPPED
 
-Arc templates inline `isAngleInRange` logic using fast cross-product checks (not atan2) to eliminate function call overhead in arc rendering hot paths. Scanline-based arc methods use module-level event buffer (`_arcEventBuffer`) and insertion sort for additional performance.
+Arc templates use fast cross-product angle checks (10-50x faster than atan2) and include bounds checking. They are used in `ArcOps.stroke1px_Opaq()` and `ArcOps.stroke1px_Alpha()` for per-pixel Bresenham rendering. Scanline-based arc methods use module-level event buffer (`_arcEventBuffer`) and insertion sort for additional performance.
 
 **Clipping contract**:
 - Standard templates: Caller checks `clipBuffer` BEFORE the marker (for span-based code via SpanOps)

@@ -9,22 +9,26 @@
  * generic polygon pipeline for consistent, predictable behavior.
  *
  * Unlike CircleOps (which handles full circles), ArcOps handles partial arcs
- * by filtering pixels based on angle range using isAngleInRange().
+ * by filtering pixels based on angle range using isAngleInRange_Fast() or
+ * inline ARC_FAST_CLIPPED templates for per-pixel Bresenham rendering.
  *
  * CALL HIERARCHY:
  * ---------------
  * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), inline markers
  *
  * Layer 1 (Primitives - do atomic rendering):
- *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering)
- *   stroke1px_Opaq, stroke1px_Alpha, stroke1px_Opaq_Exact
+ *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering via isAngleInRange_Fast)
+ *   stroke1px_Opaq (uses SET_OPAQUE_ARC_FAST_CLIPPED inline template)
+ *   stroke1px_Alpha (uses BLEND_ALPHA_ARC_FAST_CLIPPED inline template)
+ *   stroke1px_Opaq_Exact (uses angle-based iteration for exact endpoints)
  *   strokeOuter_Opaq, strokeOuter_Alpha
  *
  * Layer 2 (Composites):
  *   fillStrokeOuter_Any → inline rendering (single-pass)
  *
  * MEMORY OPTIMIZATIONS:
- * - stroke1px_Alpha uses conditional deduplication (no Set allocation)
+ * - stroke1px_Opaq uses SET_OPAQUE_ARC_FAST_CLIPPED (angle+bounds+clipping in one template)
+ * - stroke1px_Alpha uses BLEND_ALPHA_ARC_FAST_CLIPPED + conditional deduplication
  *   following CircleOps pattern: primary/swapped point checks prevent overdraw
  * - Module-level scratch buffer (_arcEventBuffer) for scanline events
  *
@@ -478,18 +482,9 @@ class ArcOps {
             ];
 
             for (const [px, py] of points) {
-                // Only render if within angle range (fast cross-product check)
-                if (ArcOps.isAngleInRange_Fast(px, py, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    const screenX = adjCX + px;
-                    const screenY = adjCY + py;
-
-                    if (screenX >= 0 && screenX < width && screenY >= 0 && screenY < height) {
-                        const pos = screenY * width + screenX;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
-                }
+                const screenX = adjCX + px;
+                const screenY = adjCY + py;
+                /*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(data32, packedColor, clipBuffer, px, py, startCos, startSin, endCos, endSin, isLargeArc, screenX, screenY, width, height)*/
             }
 
             bx++;
@@ -589,8 +584,9 @@ class ArcOps {
         }
     }
     /**
-     * Optimized 1px semi-transparent arc stroke using Bresenham + Set
-     * Uses fast cross-product angle check and Set to prevent overdraw.
+     * Optimized 1px semi-transparent arc stroke using Bresenham with conditional deduplication.
+     * Uses fast cross-product angle check via inline template. Prevents overdraw via
+     * bx != by + cardinal point checks (same pattern as CircleOps.stroke1px_Alpha).
      * @param {Surface} surface - Target surface
      * @param {number} cx - Center X
      * @param {number} cy - Center Y
@@ -673,80 +669,32 @@ class ArcOps {
 
             // Draw primary points (always) - with angle filtering
             // Point A (bottom-right quadrant)
-            if (ArcOps.isAngleInRange_Fast(bx, by, startCos, startSin, endCos, endSin, isLargeArc)) {
-                if (pAx >= 0 && pAx < width && pAy >= 0 && pAy < height) {
-                    const pos = pAy * width + pAx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                    }
-                }
-            }
+            /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, bx, by, startCos, startSin, endCos, endSin, isLargeArc, pAx, pAy, width, height)*/
             // Point C (top-right quadrant)
-            if (ArcOps.isAngleInRange_Fast(by, -bx - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
-                if (pCx >= 0 && pCx < width && pCy >= 0 && pCy < height) {
-                    const pos = pCy * width + pCx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                    }
-                }
-            }
+            /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, by, -bx - yOffset, startCos, startSin, endCos, endSin, isLargeArc, pCx, pCy, width, height)*/
             // Point E (top-left quadrant)
-            if (ArcOps.isAngleInRange_Fast(-bx - xOffset, -by - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
-                if (pEx >= 0 && pEx < width && pEy >= 0 && pEy < height) {
-                    const pos = pEy * width + pEx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                    }
-                }
-            }
+            /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, -bx - xOffset, -by - yOffset, startCos, startSin, endCos, endSin, isLargeArc, pEx, pEy, width, height)*/
             // Point G (bottom-left quadrant)
-            if (ArcOps.isAngleInRange_Fast(-by - xOffset, bx, startCos, startSin, endCos, endSin, isLargeArc)) {
-                if (pGx >= 0 && pGx < width && pGy >= 0 && pGy < height) {
-                    const pos = pGy * width + pGx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                    }
-                }
-            }
+            /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, -by - xOffset, bx, startCos, startSin, endCos, endSin, isLargeArc, pGx, pGy, width, height)*/
 
             // Draw swapped points only when bx != by (they duplicate primaries on the diagonal)
             // Additional cardinal point checks: at bx == 0, swapped points may duplicate primaries
             if (bx !== by) {
                 // Point B - duplicates C at right cardinal when bx == 0 && yOffset == 0
-                if ((bx !== 0 || yOffset !== 0) && ArcOps.isAngleInRange_Fast(by, bx, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    if (pBx >= 0 && pBx < width && pBy >= 0 && pBy < height) {
-                        const pos = pBy * width + pBx;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                        }
-                    }
+                if (bx !== 0 || yOffset !== 0) {
+                    /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, by, bx, startCos, startSin, endCos, endSin, isLargeArc, pBx, pBy, width, height)*/
                 }
                 // Point D - duplicates E at top cardinal when bx == 0 && xOffset == 0
-                if ((bx !== 0 || xOffset !== 0) && ArcOps.isAngleInRange_Fast(bx, -by - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    if (pDx >= 0 && pDx < width && pDy >= 0 && pDy < height) {
-                        const pos = pDy * width + pDx;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                        }
-                    }
+                if (bx !== 0 || xOffset !== 0) {
+                    /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, bx, -by - yOffset, startCos, startSin, endCos, endSin, isLargeArc, pDx, pDy, width, height)*/
                 }
                 // Point F - duplicates G at left cardinal when bx == 0 && yOffset == 0
-                if ((bx !== 0 || yOffset !== 0) && ArcOps.isAngleInRange_Fast(-by - xOffset, -bx - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    if (pFx >= 0 && pFx < width && pFy >= 0 && pFy < height) {
-                        const pos = pFy * width + pFx;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                        }
-                    }
+                if (bx !== 0 || yOffset !== 0) {
+                    /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, -by - xOffset, -bx - yOffset, startCos, startSin, endCos, endSin, isLargeArc, pFx, pFy, width, height)*/
                 }
                 // Point H - duplicates A at bottom cardinal when bx == 0 && xOffset == 0
-                if ((bx !== 0 || xOffset !== 0) && ArcOps.isAngleInRange_Fast(-bx - xOffset, by, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    if (pHx >= 0 && pHx < width && pHy >= 0 && pHy < height) {
-                        const pos = pHy * width + pHx;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                        }
-                    }
+                if (bx !== 0 || xOffset !== 0) {
+                    /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, -bx - xOffset, by, startCos, startSin, endCos, endSin, isLargeArc, pHx, pHy, width, height)*/
                 }
             }
 

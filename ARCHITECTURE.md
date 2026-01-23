@@ -741,9 +741,7 @@ The preprocessor supports **nested/chained templates** - templates can reference
 Level 0 (Base):     SET_OPAQUE, BLEND_ALPHA
 Level 1 (Clipped):  SET_OPAQUE_CLIPPED → SET_OPAQUE
                     BLEND_ALPHA_CLIPPED → BLEND_ALPHA
-Level 2 (Arc):      SET_OPAQUE_ARC_CLIPPED → SET_OPAQUE_CLIPPED
-                    BLEND_ALPHA_ARC_CLIPPED → BLEND_ALPHA_CLIPPED
-                    SET_OPAQUE_ARC_FAST_CLIPPED → SET_OPAQUE_CLIPPED
+Level 2 (Arc):      SET_OPAQUE_ARC_FAST_CLIPPED → SET_OPAQUE_CLIPPED
                     BLEND_ALPHA_ARC_FAST_CLIPPED → BLEND_ALPHA_CLIPPED
 ```
 
@@ -767,8 +765,8 @@ Arguments can be expressions (e.g., `pos * 4`, `idx/4`). Templates can contain n
 | `SET_OPAQUE` | `data32, pixelIndex, packedColor` | Direct 32-bit pixel write |
 | `BLEND_ALPHA_CLIPPED` | `data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer` | Alpha blending with inline clipping |
 | `SET_OPAQUE_CLIPPED` | `data32, pixelIndex, packedColor, clipBuffer` | Opaque write with inline clipping |
-| `SET_OPAQUE_ARC_CLIPPED` | `data32, pixelIndex, packedColor, clipBuffer, dx, dy, startAngle, endAngle` | Opaque write with angle check + clipping for arcs |
-| `BLEND_ALPHA_ARC_CLIPPED` | `data, pixelIndex, r, g, b, alpha, invAlpha, clipBuffer, dx, dy, startAngle, endAngle` | Alpha blending with angle check + clipping for arcs |
+| `SET_OPAQUE_ARC_FAST_CLIPPED` | `data32, packedColor, clipBuffer, dx, dy, startCos, startSin, endCos, endSin, isLargeArc, px, py, width, height` | Opaque write with cross-product angle check + bounds + clipping for arcs |
+| `BLEND_ALPHA_ARC_FAST_CLIPPED` | `data, r, g, b, alpha, invAlpha, clipBuffer, dx, dy, startCos, startSin, endCos, endSin, isLargeArc, px, py, width, height` | Alpha blending with cross-product angle check + bounds + clipping for arcs |
 
 ### Clipping Contract
 
@@ -783,11 +781,11 @@ Templates follow three contracts based on their use case:
 - Used in per-pixel loops where clipping cannot be hoisted to span level
 - Bounds checking remains caller's responsibility
 
-**Arc Templates** (`SET_OPAQUE_ARC_CLIPPED`, `BLEND_ALPHA_ARC_CLIPPED`):
-- Include angle range check + clipping check (inline `isAngleInRange` logic with `Math.atan2`)
-- Used in arc-specific per-pixel loops where angle filtering is required
-- Eliminates static method call overhead for `ArcOps.isAngleInRange()` in hot paths
-- TAU constant (6.283185307179586) is inlined for performance
+**Arc Templates** (`SET_OPAQUE_ARC_FAST_CLIPPED`, `BLEND_ALPHA_ARC_FAST_CLIPPED`):
+- Include angle range check + bounds check + clipping check
+- Use fast cross-product angle checking (10-50x faster than atan2)
+- Include bounds checking and compute pixelIndex internally
+- Used in `ArcOps.stroke1px_Opaq()` and `ArcOps.stroke1px_Alpha()` for Bresenham arc rendering
 
 All contracts uphold the "Check Once, Check Correctly" invariant - clipping is checked exactly once per pixel write.
 
