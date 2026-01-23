@@ -4012,22 +4012,26 @@ if (__outA > 0) {
  * generic polygon pipeline for consistent, predictable behavior.
  *
  * Unlike CircleOps (which handles full circles), ArcOps handles partial arcs
- * by filtering pixels based on angle range using isAngleInRange().
+ * by filtering pixels based on angle range using isAngleInRange_Fast() or
+ * inline ARC_FAST_CLIPPED templates for per-pixel Bresenham rendering.
  *
  * CALL HIERARCHY:
  * ---------------
  * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), inline markers
  *
  * Layer 1 (Primitives - do atomic rendering):
- *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering)
- *   stroke1px_Opaq, stroke1px_Alpha, stroke1px_Opaq_Exact
+ *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering via isAngleInRange_Fast)
+ *   stroke1px_Opaq (uses SET_OPAQUE_ARC_FAST_CLIPPED inline template)
+ *   stroke1px_Alpha (uses BLEND_ALPHA_ARC_FAST_CLIPPED inline template)
+ *   stroke1px_Opaq_Exact (uses angle-based iteration for exact endpoints)
  *   strokeOuter_Opaq, strokeOuter_Alpha
  *
  * Layer 2 (Composites):
  *   fillStrokeOuter_Any → inline rendering (single-pass)
  *
  * MEMORY OPTIMIZATIONS:
- * - stroke1px_Alpha uses conditional deduplication (no Set allocation)
+ * - stroke1px_Opaq uses SET_OPAQUE_ARC_FAST_CLIPPED (angle+bounds+clipping in one template)
+ * - stroke1px_Alpha uses BLEND_ALPHA_ARC_FAST_CLIPPED + conditional deduplication
  *   following CircleOps pattern: primary/swapped point checks prevent overdraw
  * - Module-level scratch buffer (_arcEventBuffer) for scanline events
  *
@@ -4481,18 +4485,19 @@ class ArcOps {
             ];
 
             for (const [px, py] of points) {
-                // Only render if within angle range (fast cross-product check)
-                if (ArcOps.isAngleInRange_Fast(px, py, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    const screenX = adjCX + px;
-                    const screenY = adjCY + py;
-
-                    if (screenX >= 0 && screenX < width && screenY >= 0 && screenY < height) {
-                        const pos = screenY * width + screenX;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
-                }
+                const screenX = adjCX + px;
+                const screenY = adjCY + py;
+                {
+    const __afterStart = (startCos * py - startSin * px) >= 0;
+    const __beforeEnd = (endCos * py - endSin * px) <= 0;
+    const __inRange = isLargeArc ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange && screenX >= 0 && screenX < width && screenY >= 0 && screenY < height) {
+        const __pos = screenY * width + screenX;
+        if (!clipBuffer || (clipBuffer[__pos >> 3] & (1 << (__pos & 7)))) {
+    data32[__pos] = packedColor;
+}
+    }
+}
             }
 
             bx++;
@@ -4592,8 +4597,9 @@ class ArcOps {
         }
     }
     /**
-     * Optimized 1px semi-transparent arc stroke using Bresenham + Set
-     * Uses fast cross-product angle check and Set to prevent overdraw.
+     * Optimized 1px semi-transparent arc stroke using Bresenham with conditional deduplication.
+     * Uses fast cross-product angle check via inline template. Prevents overdraw via
+     * bx != by + cardinal point checks (same pattern as CircleOps.stroke1px_Alpha).
      * @param {Surface} surface - Target surface
      * @param {number} cx - Center X
      * @param {number} cy - Center Y
@@ -4686,11 +4692,14 @@ if (__outA > 0) {
 
             // Draw primary points (always) - with angle filtering
             // Point A (bottom-right quadrant)
-            if (ArcOps.isAngleInRange_Fast(bx, by, startCos, startSin, endCos, endSin, isLargeArc)) {
-                if (pAx >= 0 && pAx < width && pAy >= 0 && pAy < height) {
-                    const pos = pAy * width + pAx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const __off = pos * 4;
+            {
+    const __afterStart = (startCos * by - startSin * bx) >= 0;
+    const __beforeEnd = (endCos * by - endSin * bx) <= 0;
+    const __inRange = isLargeArc ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange && pAx >= 0 && pAx < width && pAy >= 0 && pAy < height) {
+        const __pos = pAy * width + pAx;
+        if (!clipBuffer || (clipBuffer[__pos >> 3] & (1 << (__pos & 7)))) {
+    const __off = __pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -4701,15 +4710,18 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
-                    }
-                }
-            }
+}
+    }
+}
             // Point C (top-right quadrant)
-            if (ArcOps.isAngleInRange_Fast(by, -bx - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
-                if (pCx >= 0 && pCx < width && pCy >= 0 && pCy < height) {
-                    const pos = pCy * width + pCx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const __off = pos * 4;
+            {
+    const __afterStart = (startCos * -bx - yOffset - startSin * by) >= 0;
+    const __beforeEnd = (endCos * -bx - yOffset - endSin * by) <= 0;
+    const __inRange = isLargeArc ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange && pCx >= 0 && pCx < width && pCy >= 0 && pCy < height) {
+        const __pos = pCy * width + pCx;
+        if (!clipBuffer || (clipBuffer[__pos >> 3] & (1 << (__pos & 7)))) {
+    const __off = __pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -4720,15 +4732,18 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
-                    }
-                }
-            }
+}
+    }
+}
             // Point E (top-left quadrant)
-            if (ArcOps.isAngleInRange_Fast(-bx - xOffset, -by - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
-                if (pEx >= 0 && pEx < width && pEy >= 0 && pEy < height) {
-                    const pos = pEy * width + pEx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const __off = pos * 4;
+            {
+    const __afterStart = (startCos * -by - yOffset - startSin * -bx - xOffset) >= 0;
+    const __beforeEnd = (endCos * -by - yOffset - endSin * -bx - xOffset) <= 0;
+    const __inRange = isLargeArc ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange && pEx >= 0 && pEx < width && pEy >= 0 && pEy < height) {
+        const __pos = pEy * width + pEx;
+        if (!clipBuffer || (clipBuffer[__pos >> 3] & (1 << (__pos & 7)))) {
+    const __off = __pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -4739,15 +4754,18 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
-                    }
-                }
-            }
+}
+    }
+}
             // Point G (bottom-left quadrant)
-            if (ArcOps.isAngleInRange_Fast(-by - xOffset, bx, startCos, startSin, endCos, endSin, isLargeArc)) {
-                if (pGx >= 0 && pGx < width && pGy >= 0 && pGy < height) {
-                    const pos = pGy * width + pGx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                        const __off = pos * 4;
+            {
+    const __afterStart = (startCos * bx - startSin * -by - xOffset) >= 0;
+    const __beforeEnd = (endCos * bx - endSin * -by - xOffset) <= 0;
+    const __inRange = isLargeArc ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange && pGx >= 0 && pGx < width && pGy >= 0 && pGy < height) {
+        const __pos = pGy * width + pGx;
+        if (!clipBuffer || (clipBuffer[__pos >> 3] & (1 << (__pos & 7)))) {
+    const __off = __pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -4758,19 +4776,23 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
-                    }
-                }
-            }
+}
+    }
+}
 
             // Draw swapped points only when bx != by (they duplicate primaries on the diagonal)
             // Additional cardinal point checks: at bx == 0, swapped points may duplicate primaries
             if (bx !== by) {
                 // Point B - duplicates C at right cardinal when bx == 0 && yOffset == 0
-                if ((bx !== 0 || yOffset !== 0) && ArcOps.isAngleInRange_Fast(by, bx, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    if (pBx >= 0 && pBx < width && pBy >= 0 && pBy < height) {
-                        const pos = pBy * width + pBx;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const __off = pos * 4;
+                if (bx !== 0 || yOffset !== 0) {
+                    {
+    const __afterStart = (startCos * bx - startSin * by) >= 0;
+    const __beforeEnd = (endCos * bx - endSin * by) <= 0;
+    const __inRange = isLargeArc ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange && pBx >= 0 && pBx < width && pBy >= 0 && pBy < height) {
+        const __pos = pBy * width + pBx;
+        if (!clipBuffer || (clipBuffer[__pos >> 3] & (1 << (__pos & 7)))) {
+    const __off = __pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -4781,15 +4803,20 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
-                        }
-                    }
+}
+    }
+}
                 }
                 // Point D - duplicates E at top cardinal when bx == 0 && xOffset == 0
-                if ((bx !== 0 || xOffset !== 0) && ArcOps.isAngleInRange_Fast(bx, -by - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    if (pDx >= 0 && pDx < width && pDy >= 0 && pDy < height) {
-                        const pos = pDy * width + pDx;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const __off = pos * 4;
+                if (bx !== 0 || xOffset !== 0) {
+                    {
+    const __afterStart = (startCos * -by - yOffset - startSin * bx) >= 0;
+    const __beforeEnd = (endCos * -by - yOffset - endSin * bx) <= 0;
+    const __inRange = isLargeArc ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange && pDx >= 0 && pDx < width && pDy >= 0 && pDy < height) {
+        const __pos = pDy * width + pDx;
+        if (!clipBuffer || (clipBuffer[__pos >> 3] & (1 << (__pos & 7)))) {
+    const __off = __pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -4800,15 +4827,20 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
-                        }
-                    }
+}
+    }
+}
                 }
                 // Point F - duplicates G at left cardinal when bx == 0 && yOffset == 0
-                if ((bx !== 0 || yOffset !== 0) && ArcOps.isAngleInRange_Fast(-by - xOffset, -bx - yOffset, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    if (pFx >= 0 && pFx < width && pFy >= 0 && pFy < height) {
-                        const pos = pFy * width + pFx;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const __off = pos * 4;
+                if (bx !== 0 || yOffset !== 0) {
+                    {
+    const __afterStart = (startCos * -bx - yOffset - startSin * -by - xOffset) >= 0;
+    const __beforeEnd = (endCos * -bx - yOffset - endSin * -by - xOffset) <= 0;
+    const __inRange = isLargeArc ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange && pFx >= 0 && pFx < width && pFy >= 0 && pFy < height) {
+        const __pos = pFy * width + pFx;
+        if (!clipBuffer || (clipBuffer[__pos >> 3] & (1 << (__pos & 7)))) {
+    const __off = __pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -4819,15 +4851,20 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
-                        }
-                    }
+}
+    }
+}
                 }
                 // Point H - duplicates A at bottom cardinal when bx == 0 && xOffset == 0
-                if ((bx !== 0 || xOffset !== 0) && ArcOps.isAngleInRange_Fast(-bx - xOffset, by, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    if (pHx >= 0 && pHx < width && pHy >= 0 && pHy < height) {
-                        const pos = pHy * width + pHx;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            const __off = pos * 4;
+                if (bx !== 0 || xOffset !== 0) {
+                    {
+    const __afterStart = (startCos * by - startSin * -bx - xOffset) >= 0;
+    const __beforeEnd = (endCos * by - endSin * -bx - xOffset) <= 0;
+    const __inRange = isLargeArc ? (__afterStart || __beforeEnd) : (__afterStart && __beforeEnd);
+    if (__inRange && pHx >= 0 && pHx < width && pHy >= 0 && pHy < height) {
+        const __pos = pHy * width + pHx;
+        if (!clipBuffer || (clipBuffer[__pos >> 3] & (1 << (__pos & 7)))) {
+    const __off = __pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -4838,8 +4875,9 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
-                        }
-                    }
+}
+    }
+}
                 }
             }
 
