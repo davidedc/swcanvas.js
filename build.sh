@@ -290,3 +290,6 @@ if (typeof window !== 'undefined') {
 EOF
 
 echo "Build complete: dist/swcanvas.js"
+
+# Generate build info metadata
+node build-scripts/generate-build-info.js dev dist/swcanvas.build-info.js

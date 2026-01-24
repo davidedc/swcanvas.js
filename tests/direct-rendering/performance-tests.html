@@ -260,6 +260,10 @@
       <span class="system-info-label">Frame budget:</span>
       <span id="frame-budget" class="system-info-value">16.70</span> ms
     </div>
+    <div class="system-info-item">
+      <span class="system-info-label">Build:</span>
+      <span id="build-info" class="system-info-value">-</span>
+    </div>
   </div>
 
   <div class="test-controls">
@@ -475,6 +479,17 @@
   <!-- Load SWCanvas library (minified build for accurate performance benchmarks) -->
   <!-- Run 'npm run build:prod' to generate dist/swcanvas.min.js -->
   <script src="../../dist/swcanvas.min.js"></script>
+  <script src="../../dist/swcanvas.min.build-info.js"></script>
+  <script>
+    // Display build info if available
+    if (window.SWCANVAS_BUILD_INFO) {
+      const info = window.SWCANVAS_BUILD_INFO;
+      document.getElementById('build-info').textContent =
+        `${info.commit} (${info.type})`;
+      document.getElementById('build-info').title =
+        `Build: ${info.timestamp}\nCommit: ${info.commitFull}\nBranch: ${info.branch}\nVersion: ${info.version}`;
+    }
+  </script>
   <script src="../../lib/swcanvas-compat-polyfill.js"></script>
 
   <!-- Load test utilities -->

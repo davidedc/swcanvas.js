@@ -72,3 +72,6 @@ echo "   dist/swcanvas.min.js     - Minified library"
 echo "   dist/swcanvas.min.js.map - Source map"
 echo ""
 echo "🎉 Ready for production use!"
+
+# Generate build info metadata for minified build
+node build-scripts/generate-build-info.js min dist/swcanvas.min.build-info.js

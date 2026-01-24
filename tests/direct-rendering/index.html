@@ -12,6 +12,7 @@
     <header>
         <h1>SWCanvas.js Direct Rendering Tests</h1>
         <p>Comparing SWCanvas.js (direct rendering) vs native HTML5 Canvas side-by-side</p>
+        <p class="build-info" id="build-info"></p>
         <div id="summary"></div>
     </header>
 
@@ -21,6 +22,7 @@
 
     <!-- Load SWCanvas library -->
     <script src="../../dist/swcanvas.js"></script>
+    <script src="../../dist/swcanvas.build-info.js"></script>
 
     <!-- Load SWCanvas-compatible polyfills for native HTML5 Canvas -->
     <script src="../../lib/swcanvas-compat-polyfill.js"></script>
@@ -160,6 +162,13 @@
     <!-- Initialize test runner when DOM is ready -->
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            // Display build info if available
+            if (window.SWCANVAS_BUILD_INFO) {
+                const info = window.SWCANVAS_BUILD_INFO;
+                document.getElementById('build-info').textContent =
+                    `Build: ${info.timestamp} | Commit: ${info.commit} | Type: ${info.type}`;
+            }
+
             // Verify SWCanvas is loaded
             if (typeof SWCanvas === 'undefined') {
                 document.body.innerHTML = '<div style="color: red; padding: 20px;">Error: SWCanvas library not loaded. Please run "npm run build" first.</div>';
