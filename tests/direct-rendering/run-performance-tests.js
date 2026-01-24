@@ -13,8 +13,17 @@ const fs = require('fs');
 const path = require('path');
 const { performance } = require('perf_hooks');
 
-// Load SWCanvas
-const SWCanvas = require('../../dist/swcanvas.js');
+// Performance tests require the minified build for accurate production-like benchmarks
+const minifiedPath = path.join(__dirname, '../../dist/swcanvas.min.js');
+if (!fs.existsSync(minifiedPath)) {
+    console.error('\x1b[31mError: Minified build not found at dist/swcanvas.min.js\x1b[0m');
+    console.error('Performance tests require the minified build for accurate results.');
+    console.error('Run: npm run build:prod');
+    process.exit(1);
+}
+
+// Load SWCanvas (minified build for accurate performance benchmarks)
+const SWCanvas = require('../../dist/swcanvas.min.js');
 
 // Load test utilities
 const {

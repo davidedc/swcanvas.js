@@ -53,6 +53,19 @@ Use performance testing when:
 3. **Account for variance**: Use enough runs to achieve statistical significance
 4. **Document everything**: Save both raw data and analysis for future reference
 
+### Build Requirements
+
+**IMPORTANT**: Always use the minified build for performance testing.
+
+Before running performance tests:
+```bash
+npm run build:prod    # Creates both dist/swcanvas.js and dist/swcanvas.min.js
+```
+
+Performance tests automatically load the minified build (`dist/swcanvas.min.js`). Using the unminified build will produce inaccurate results that don't reflect production performance.
+
+If you run performance tests without the minified build, the Node.js runner will display an error and exit.
+
 ---
 
 ## 2. Phase 1: Understand the Change
@@ -275,7 +288,7 @@ echo "Baseline saved to: $OUTPUT"
 ┌─────────────────────────────────────────────────────────────────┐
 │  BEFORE REFACTORING                                             │
 │  1. Ensure clean git state (commit or stash changes)            │
-│  2. Run: npm run build                                          │
+│  2. Run: npm run build:prod   (creates minified build!)         │
 │  3. Run: ./run-perf-baseline.sh                                 │
 │  4. Note filename: perf-baselines/baseline-YYYYMMDD_HHMMSS.txt  │
 └─────────────────────────────────────────────────────────────────┘
@@ -289,7 +302,7 @@ echo "Baseline saved to: $OUTPUT"
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  AFTER REFACTORING                                              │
-│  1. Run: npm run build                                          │
+│  1. Run: npm run build:prod   (creates minified build!)         │
 │  2. Run: npm test (ensure correctness first!)                   │
 │  3. Run: ./run-perf-baseline.sh                                 │
 │  4. Note filename: perf-baselines/baseline-YYYYMMDD_HHMMSS.txt  │

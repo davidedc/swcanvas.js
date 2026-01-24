@@ -472,8 +472,9 @@
 
   <div class="chart-container" id="chart-container"></div>
 
-  <!-- Load SWCanvas library -->
-  <script src="../../dist/swcanvas.js"></script>
+  <!-- Load SWCanvas library (minified build for accurate performance benchmarks) -->
+  <!-- Run 'npm run build:prod' to generate dist/swcanvas.min.js -->
+  <script src="../../dist/swcanvas.min.js"></script>
   <script src="../../lib/swcanvas-compat-polyfill.js"></script>
 
   <!-- Load test utilities -->

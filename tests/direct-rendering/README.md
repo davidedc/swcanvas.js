@@ -640,6 +640,16 @@ For a detailed explanation of why this is necessary and how it works, see [PERFO
 
 For a workflow guide on using performance tests to benchmark code changes, see [PERFORMANCE-TESTING-WORKFLOW.md](PERFORMANCE-TESTING-WORKFLOW.md).
 
+### Build Requirements
+
+**IMPORTANT**: Performance tests require the minified build for accurate results.
+
+```bash
+npm run build:prod    # Creates dist/swcanvas.min.js
+```
+
+Performance tests load `dist/swcanvas.min.js` to ensure benchmarks reflect production performance. The Node.js runner will error if the minified build is missing.
+
 ### Performance Test Architecture
 
 Performance tests are **separate from visual regression tests**:

@@ -140,6 +140,8 @@ This works because:
 - CPU work happens immediately
 - `performance.now()` accurately measures rendering time
 
+**Build Requirement**: Performance tests load the minified build (`dist/swcanvas.min.js`) to ensure benchmarks reflect production performance. Run `npm run build:prod` before benchmarking.
+
 ---
 
 ## Measurement Comparison

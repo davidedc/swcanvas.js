@@ -1,8 +1,15 @@
 #!/bin/bash
 # run-pixelops-perf-baseline.sh
 # Performance baseline for PixelOps consolidation refactoring
+#
+# IMPORTANT: Performance tests require the minified build for accurate results.
+# This script uses 'npm run build:prod' to ensure the minified build exists.
 
 set -e
+
+# Build minified version for accurate performance benchmarks
+echo "Building minified version for accurate benchmarks..."
+npm run build:prod
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 mkdir -p perf-baselines
 OUTPUT="perf-baselines/pixelops-baseline-$TIMESTAMP.txt"
