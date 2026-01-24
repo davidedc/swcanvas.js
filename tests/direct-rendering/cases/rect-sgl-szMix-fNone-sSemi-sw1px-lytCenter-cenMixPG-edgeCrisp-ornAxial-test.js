@@ -78,7 +78,8 @@ registerDirectRenderingTest(
     {
         extremes: true,
         totalUniqueColors: 2,  // White background + one blended color (no overdraw at corners)
-        shapeIntegrity: true
+        shapeIntegrity: true,
+        stroke8Connectivity: { color: [255, 128, 128], tolerance: 10 }
     },
     {
         title: 'Single 1px Semi-Transparent Stroked Rectangle (Crisp, Mixed P/G Centering)',

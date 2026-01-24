@@ -141,7 +141,8 @@ registerDirectRenderingTest(
     {
         extremes: false,
         maxUniqueColors: 4, // some very rare test iterations have exactly 3 colors i.e. all the pixels of the stroke overlap the fill
-        shapeIntegrity: { hasFill: true, hasStroke: true }
+        shapeIntegrity: { hasFill: true, hasStroke: true },
+        stroke8Connectivity: { color: [255, 130, 130], tolerance: 15 }  // Red stroke blended with white (higher tolerance for fill overlap)
     },
     {
         title: 'Single Rotated Rounded Rectangle - Fill + 1px Semi-Transparent Stroke (Random)',

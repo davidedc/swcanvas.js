@@ -161,7 +161,8 @@ registerDirectRenderingTest(
     {
         extremes: false,  // Rotated shapes have complex bounds, skip strict extremes check
         totalUniqueColors: 2,  // Background + single semi-transparent stroke color (no overdraw)
-        shapeIntegrity: true
+        shapeIntegrity: true,
+        stroke8Connectivity: { color: [255, 179, 102], tolerance: 10 }  // Orange stroke blended with white
     },
     {
         title: 'Single Rotated Rounded Rectangle - 1px Semi-Transparent Stroke (Random)',
