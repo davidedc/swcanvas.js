@@ -33,6 +33,7 @@ src/core/           → Core engine primitives
   Context2D.js      → High-performance rendering engine
   SWPath2D.js       → Path definition and command recording
   ClipMask.js       → Stencil-based clipping using BitBuffer composition
+  SourceMask.js     → Source coverage tracking using BitBuffer and BoundsTracker composition
 
 src/utils/          → Shared utilities
   Point.js          → Immutable 2D point operations
@@ -71,7 +72,6 @@ src/renderers/      → Shape-Specific Direct Renderers (static utility classes)
 src/compat/
   SWCanvasElement.js           → HTMLCanvasElement mimic
   CanvasCompatibleContext2D.js → CanvasRenderingContext2D mimic
-  SourceMask.js                → Source coverage tracking for canvas-wide compositing
 ```
 
 **Purpose**: Familiar HTML5 Canvas API for web developers.

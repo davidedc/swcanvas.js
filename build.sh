@@ -125,7 +125,7 @@ cat src/utils/BoundsTracker.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/core/ClipMask.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/compat/SourceMask.js >> dist/swcanvas.js
+cat src/core/SourceMask.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/filters/ShadowBuffer.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
