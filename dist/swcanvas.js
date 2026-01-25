@@ -1750,8 +1750,8 @@ class QuadScanOps {
      * @param {number} params.b - Blue component (0-255)
      * @param {boolean} params.isOpaque - Use 32-bit writes (true) or alpha blend (false)
      * @param {number} [params.packedColor] - Pre-packed color for opaque rendering
-     * @param {number} [params.incomingAlpha] - Effective alpha (0-1) for blending
-     * @param {number} [params.inverseIncomingAlpha] - 1 - incomingAlpha for blending
+     * @param {number} [params.effectiveAlpha] - Effective alpha (0-1) for blending
+     * @param {number} [params.invAlpha] - 1 - effectiveAlpha for blending
      * @param {Uint8Array|null} params.clipBuffer - Clip mask (CLIPPING: inline per-pixel or delegated to SpanOps depending on mode)
      * @param {Set|null} [params.collectTo] - Add rendered pixel positions to this Set
      * @param {Set|null} [params.skipFrom] - Skip pixels that are in this Set
@@ -1759,8 +1759,8 @@ class QuadScanOps {
     static fillQuad(corners, params) {
         const { surface, r, g, b, isOpaque, clipBuffer } = params;
         const packedColor = params.packedColor || 0;
-        const incomingAlpha = params.incomingAlpha || 0;
-        const inverseIncomingAlpha = params.inverseIncomingAlpha || 0;
+        const effectiveAlpha = params.effectiveAlpha || 0;
+        const invAlpha = params.invAlpha || 0;
         const collectTo = params.collectTo || null;
         const skipFrom = params.skipFrom || null;
 
@@ -1839,13 +1839,13 @@ class QuadScanOps {
                     } else {
                         const __off = pixelIndex * 4;
 const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * inverseIncomingAlpha;
-const __outA = incomingAlpha + __dstAScaled;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
 if (__outA > 0) {
     const __blend = 1 / __outA;
-    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
                     }
@@ -1883,13 +1883,13 @@ if (__outA > 0) {
                             } else {
                                 const __off = pixelIndex * 4;
 const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * inverseIncomingAlpha;
-const __outA = incomingAlpha + __dstAScaled;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
 if (__outA > 0) {
     const __blend = 1 / __outA;
-    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
                             }
@@ -1899,7 +1899,7 @@ if (__outA > 0) {
                         if (isOpaque) {
                             SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
                         } else {
-                            SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                            SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                         }
                     }
                 }
@@ -1918,8 +1918,8 @@ if (__outA > 0) {
     static fillSquare(centerX, centerY, halfSize, params) {
         const { surface, r, g, b, isOpaque, clipBuffer } = params;
         const packedColor = params.packedColor || 0;
-        const incomingAlpha = params.incomingAlpha || 0;
-        const inverseIncomingAlpha = params.inverseIncomingAlpha || 0;
+        const effectiveAlpha = params.effectiveAlpha || 0;
+        const invAlpha = params.invAlpha || 0;
         const collectTo = params.collectTo || null;
         const skipFrom = params.skipFrom || null;
 
@@ -1961,13 +1961,13 @@ if (__outA > 0) {
                     } else {
                         const __off = pixelIndex * 4;
 const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * inverseIncomingAlpha;
-const __outA = incomingAlpha + __dstAScaled;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
 if (__outA > 0) {
     const __blend = 1 / __outA;
-    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
                     }
@@ -1977,7 +1977,7 @@ if (__outA > 0) {
                 if (isOpaque) {
                     SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
                 } else {
-                    SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 }
             }
         }
@@ -2216,7 +2216,7 @@ if (__outA > 0) {
     static fill_Rot_Any(surface, centerX, centerY, width, height, rotation, color, globalAlpha, clipBuffer) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
-
+        const invAlpha = 1 - effectiveAlpha;
         const r = color.r, g = color.g, b = color.b;
         const isOpaque = effectiveAlpha >= 1.0;
 
@@ -2241,8 +2241,8 @@ if (__outA > 0) {
             r, g, b,
             isOpaque,
             packedColor: isOpaque ? Surface.packColor(r, g, b, 255) : 0,
-            incomingAlpha: effectiveAlpha,
-            inverseIncomingAlpha: 1 - effectiveAlpha,
+            effectiveAlpha,
+            invAlpha,
             clipBuffer
         });
     }
@@ -2300,8 +2300,8 @@ if (__outA > 0) {
             surface,
             r, g, b,
             isOpaque: false,
-            incomingAlpha: effectiveAlpha,
-            inverseIncomingAlpha: invAlpha,
+            effectiveAlpha,
+            invAlpha,
             clipBuffer
         };
 
@@ -2406,8 +2406,8 @@ if (__outA > 0) {
             r: color.r, g: color.g, b: color.b,
             isOpaque: true,
             packedColor,
-            incomingAlpha: 0,
-            inverseIncomingAlpha: 0,
+            effectiveAlpha: 0,
+            invAlpha: 0,
             clipBuffer
         };
 
@@ -5587,13 +5587,10 @@ class LineOps {
         } else if (isSemiTransparentColor && lineWidth <= THIN_LINE_THRESHOLD) {
             // Direct rendering for thin semitransparent lines: Bresenham with alpha blending
             const data = surface.data;
-            const r = paintSource.r;
-            const g = paintSource.g;
-            const b = paintSource.b;
-            const a = paintSource.a;
-
-            const incomingAlpha = (a / 255) * globalAlpha;
-            const inverseIncomingAlpha = 1 - incomingAlpha;
+            const effectiveAlpha = (paintSource.a / 255) * globalAlpha;
+            // Note: No early return - already inside a conditional branch
+            const invAlpha = 1 - effectiveAlpha;
+            const r = paintSource.r, g = paintSource.g, b = paintSource.b;
 
             let x1i = Math.floor(x1);
             let y1i = Math.floor(y1);
@@ -5613,7 +5610,7 @@ class LineOps {
                 const rightX = Math.max(x1i, x2i);
                 const spanLength = rightX - leftX + 1;
                 if (spanLength > 0) {
-                    SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 }
                 return true;
             }
@@ -5643,13 +5640,13 @@ class LineOps {
                     if (drawPixel) {
                         const __off = pixelIndex * 4;
 const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * inverseIncomingAlpha;
-const __outA = incomingAlpha + __dstAScaled;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
 if (__outA > 0) {
     const __blend = 1 / __outA;
-    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
                     }
@@ -5693,15 +5690,12 @@ if (__outA > 0) {
      * @param {boolean} useSemiTransparent - If true, use alpha blending
      */
     static _strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, useSemiTransparent = false) {
-        const r = paintSource.r;
-        const g = paintSource.g;
-        const b = paintSource.b;
-        const a = paintSource.a;
+        const r = paintSource.r, g = paintSource.g, b = paintSource.b;
 
         const isOpaque = !useSemiTransparent;
         const packedColor = isOpaque ? Surface.packColor(r, g, b, 255) : 0;
-        const incomingAlpha = useSemiTransparent ? (a / 255) * globalAlpha : 0;
-        const inverseIncomingAlpha = useSemiTransparent ? 1 - incomingAlpha : 0;
+        const effectiveAlpha = useSemiTransparent ? (paintSource.a / 255) * globalAlpha : 0;
+        const invAlpha = useSemiTransparent ? 1 - effectiveAlpha : 0;
 
         const halfThick = lineWidth * 0.5;
         const corners = QuadScanOps.lineToQuad(x1, y1, x2, y2, halfThick);
@@ -5711,8 +5705,8 @@ if (__outA > 0) {
             r, g, b,
             isOpaque,
             packedColor,
-            incomingAlpha,
-            inverseIncomingAlpha,
+            effectiveAlpha,
+            invAlpha,
             clipBuffer
         };
 
@@ -6219,11 +6213,10 @@ class RoundedRectOpsRot {
         }
 
         // Fill with alpha blending via SpanOps
-        const r = color.r;
-        const g = color.g;
-        const b = color.b;
-        const incomingAlpha = (color.a / 255) * globalAlpha;
-        const inverseIncomingAlpha = 1 - incomingAlpha;
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        if (effectiveAlpha <= 0) return;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r, g = color.g, b = color.b;
 
         for (let row = 0; row < spanCount; row++) {
             const left = minX[row];
@@ -6236,7 +6229,7 @@ class RoundedRectOpsRot {
 
             if (x0 <= x1) {
                 const spanLength = x1 - x0 + 1;
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
             }
         }
     }
@@ -7690,11 +7683,10 @@ class RoundedRectOpsAA {
             return;
         }
 
-        const r = color.r;
-        const g = color.g;
-        const b = color.b;
-        const incomingAlpha = (color.a / 255) * globalAlpha;
-        const inverseIncomingAlpha = 1 - incomingAlpha;
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        if (effectiveAlpha <= 0) return;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r, g = color.g, b = color.b;
 
         const posX = x;
         const posY = y;
@@ -7716,13 +7708,13 @@ class RoundedRectOpsAA {
             }
             const __off = pixelIndex * 4;
 const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * inverseIncomingAlpha;
-const __outA = incomingAlpha + __dstAScaled;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
 if (__outA > 0) {
     const __blend = 1 / __outA;
-    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
         };
@@ -7770,13 +7762,13 @@ if (__outA > 0) {
                 }
                 const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * inverseIncomingAlpha;
-const __outA = incomingAlpha + __dstAScaled;
+const __dstAScaled = __dstA * invAlpha;
+const __outA = effectiveAlpha + __dstAScaled;
 if (__outA > 0) {
     const __blend = 1 / __outA;
-    data[__off]     = (r * incomingAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * incomingAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * incomingAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
             }
@@ -7919,11 +7911,10 @@ if (__outA > 0) {
             return;
         }
 
-        const r = color.r;
-        const g = color.g;
-        const b = color.b;
-        const incomingAlpha = (color.a / 255) * globalAlpha;
-        const inverseIncomingAlpha = 1 - incomingAlpha;
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        if (effectiveAlpha <= 0) return;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r, g = color.g, b = color.b;
 
         // Calculate integer bounds
         const rectX = Math.floor(x);
@@ -7975,7 +7966,7 @@ if (__outA > 0) {
 
             // Fill scanline with alpha blending
             const spanLength = rightX - leftX + 1;
-            SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, leftX, py, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+            SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, leftX, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
         }
     }
 
@@ -8102,11 +8093,10 @@ if (__outA > 0) {
 
         const halfStroke = lineWidth / 2;
 
-        const r = color.r;
-        const g = color.g;
-        const b = color.b;
-        const incomingAlpha = (color.a / 255) * globalAlpha;
-        const inverseIncomingAlpha = 1 - incomingAlpha;
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        if (effectiveAlpha <= 0) return;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r, g = color.g, b = color.b;
 
         // Calculate outer and inner bounds
         const outerX = Math.floor(x - halfStroke);
@@ -8141,21 +8131,21 @@ if (__outA > 0) {
 
                     if (outerLeft < innerLeft) {
                         const leftSpanLength = innerLeft - outerLeft;
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, leftSpanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, leftSpanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                     }
 
                     if (innerRight < outerRight) {
                         const rightSpanStart = innerRight + 1;
                         const rightSpanLength = outerRight - innerRight;
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, rightSpanStart, py, rightSpanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, rightSpanStart, py, rightSpanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                     }
                 } else {
                     const spanLength = outerRight - outerLeft + 1;
-                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 }
             } else {
                 const spanLength = outerRight - outerLeft + 1;
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
             }
         }
     }
