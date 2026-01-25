@@ -225,11 +225,10 @@ class RoundedRectOpsAA {
             return;
         }
 
-        const r = color.r;
-        const g = color.g;
-        const b = color.b;
-        const incomingAlpha = (color.a / 255) * globalAlpha;
-        const inverseIncomingAlpha = 1 - incomingAlpha;
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        if (effectiveAlpha <= 0) return;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r, g = color.g, b = color.b;
 
         const posX = x;
         const posY = y;
@@ -249,7 +248,7 @@ class RoundedRectOpsAA {
                 const bitIndex = pixelIndex & 7;
                 if (!(clipBuffer[byteIndex] & (1 << bitIndex))) return;
             }
-            /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
+            /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
         };
 
         // Draw horizontal edges (shortened by 1 pixel at each end to avoid junction overlap)
@@ -293,7 +292,7 @@ class RoundedRectOpsAA {
                     const bitIndex = pos & 7;
                     if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
                 }
-                /*@inline:BLEND_ALPHA(data, pos, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
+                /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
             }
         };
 
@@ -434,11 +433,10 @@ class RoundedRectOpsAA {
             return;
         }
 
-        const r = color.r;
-        const g = color.g;
-        const b = color.b;
-        const incomingAlpha = (color.a / 255) * globalAlpha;
-        const inverseIncomingAlpha = 1 - incomingAlpha;
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        if (effectiveAlpha <= 0) return;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r, g = color.g, b = color.b;
 
         // Calculate integer bounds
         const rectX = Math.floor(x);
@@ -490,7 +488,7 @@ class RoundedRectOpsAA {
 
             // Fill scanline with alpha blending
             const spanLength = rightX - leftX + 1;
-            SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, leftX, py, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+            SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, leftX, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
         }
     }
 
@@ -617,11 +615,10 @@ class RoundedRectOpsAA {
 
         const halfStroke = lineWidth / 2;
 
-        const r = color.r;
-        const g = color.g;
-        const b = color.b;
-        const incomingAlpha = (color.a / 255) * globalAlpha;
-        const inverseIncomingAlpha = 1 - incomingAlpha;
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        if (effectiveAlpha <= 0) return;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r, g = color.g, b = color.b;
 
         // Calculate outer and inner bounds
         const outerX = Math.floor(x - halfStroke);
@@ -656,21 +653,21 @@ class RoundedRectOpsAA {
 
                     if (outerLeft < innerLeft) {
                         const leftSpanLength = innerLeft - outerLeft;
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, leftSpanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, leftSpanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                     }
 
                     if (innerRight < outerRight) {
                         const rightSpanStart = innerRight + 1;
                         const rightSpanLength = outerRight - innerRight;
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, rightSpanStart, py, rightSpanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, rightSpanStart, py, rightSpanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                     }
                 } else {
                     const spanLength = outerRight - outerLeft + 1;
-                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 }
             } else {
                 const spanLength = outerRight - outerLeft + 1;
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
             }
         }
     }

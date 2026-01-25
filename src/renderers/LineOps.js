@@ -150,13 +150,10 @@ class LineOps {
         } else if (isSemiTransparentColor && lineWidth <= THIN_LINE_THRESHOLD) {
             // Direct rendering for thin semitransparent lines: Bresenham with alpha blending
             const data = surface.data;
-            const r = paintSource.r;
-            const g = paintSource.g;
-            const b = paintSource.b;
-            const a = paintSource.a;
-
-            const incomingAlpha = (a / 255) * globalAlpha;
-            const inverseIncomingAlpha = 1 - incomingAlpha;
+            const effectiveAlpha = (paintSource.a / 255) * globalAlpha;
+            // Note: No early return - already inside a conditional branch
+            const invAlpha = 1 - effectiveAlpha;
+            const r = paintSource.r, g = paintSource.g, b = paintSource.b;
 
             let x1i = Math.floor(x1);
             let y1i = Math.floor(y1);
@@ -176,7 +173,7 @@ class LineOps {
                 const rightX = Math.max(x1i, x2i);
                 const spanLength = rightX - leftX + 1;
                 if (spanLength > 0) {
-                    SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 }
                 return true;
             }
@@ -204,7 +201,7 @@ class LineOps {
                     }
 
                     if (drawPixel) {
-                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
+                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
 
@@ -246,15 +243,12 @@ class LineOps {
      * @param {boolean} useSemiTransparent - If true, use alpha blending
      */
     static _strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, useSemiTransparent = false) {
-        const r = paintSource.r;
-        const g = paintSource.g;
-        const b = paintSource.b;
-        const a = paintSource.a;
+        const r = paintSource.r, g = paintSource.g, b = paintSource.b;
 
         const isOpaque = !useSemiTransparent;
         const packedColor = isOpaque ? Surface.packColor(r, g, b, 255) : 0;
-        const incomingAlpha = useSemiTransparent ? (a / 255) * globalAlpha : 0;
-        const inverseIncomingAlpha = useSemiTransparent ? 1 - incomingAlpha : 0;
+        const effectiveAlpha = useSemiTransparent ? (paintSource.a / 255) * globalAlpha : 0;
+        const invAlpha = useSemiTransparent ? 1 - effectiveAlpha : 0;
 
         const halfThick = lineWidth * 0.5;
         const corners = QuadScanOps.lineToQuad(x1, y1, x2, y2, halfThick);
@@ -264,8 +258,8 @@ class LineOps {
             r, g, b,
             isOpaque,
             packedColor,
-            incomingAlpha,
-            inverseIncomingAlpha,
+            effectiveAlpha,
+            invAlpha,
             clipBuffer
         };
 

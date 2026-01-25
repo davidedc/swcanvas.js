@@ -492,11 +492,10 @@ class RoundedRectOpsRot {
         }
 
         // Fill with alpha blending via SpanOps
-        const r = color.r;
-        const g = color.g;
-        const b = color.b;
-        const incomingAlpha = (color.a / 255) * globalAlpha;
-        const inverseIncomingAlpha = 1 - incomingAlpha;
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        if (effectiveAlpha <= 0) return;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r, g = color.g, b = color.b;
 
         for (let row = 0; row < spanCount; row++) {
             const left = minX[row];
@@ -509,7 +508,7 @@ class RoundedRectOpsRot {
 
             if (x0 <= x1) {
                 const spanLength = x1 - x0 + 1;
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
             }
         }
     }

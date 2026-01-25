@@ -220,7 +220,7 @@ class RectOpsRot {
     static fill_Rot_Any(surface, centerX, centerY, width, height, rotation, color, globalAlpha, clipBuffer) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
-
+        const invAlpha = 1 - effectiveAlpha;
         const r = color.r, g = color.g, b = color.b;
         const isOpaque = effectiveAlpha >= 1.0;
 
@@ -245,8 +245,8 @@ class RectOpsRot {
             r, g, b,
             isOpaque,
             packedColor: isOpaque ? Surface.packColor(r, g, b, 255) : 0,
-            incomingAlpha: effectiveAlpha,
-            inverseIncomingAlpha: 1 - effectiveAlpha,
+            effectiveAlpha,
+            invAlpha,
             clipBuffer
         });
     }
@@ -304,8 +304,8 @@ class RectOpsRot {
             surface,
             r, g, b,
             isOpaque: false,
-            incomingAlpha: effectiveAlpha,
-            inverseIncomingAlpha: invAlpha,
+            effectiveAlpha,
+            invAlpha,
             clipBuffer
         };
 
@@ -410,8 +410,8 @@ class RectOpsRot {
             r: color.r, g: color.g, b: color.b,
             isOpaque: true,
             packedColor,
-            incomingAlpha: 0,
-            inverseIncomingAlpha: 0,
+            effectiveAlpha: 0,
+            invAlpha: 0,
             clipBuffer
         };
 

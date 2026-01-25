@@ -77,8 +77,8 @@ class QuadScanOps {
      * @param {number} params.b - Blue component (0-255)
      * @param {boolean} params.isOpaque - Use 32-bit writes (true) or alpha blend (false)
      * @param {number} [params.packedColor] - Pre-packed color for opaque rendering
-     * @param {number} [params.incomingAlpha] - Effective alpha (0-1) for blending
-     * @param {number} [params.inverseIncomingAlpha] - 1 - incomingAlpha for blending
+     * @param {number} [params.effectiveAlpha] - Effective alpha (0-1) for blending
+     * @param {number} [params.invAlpha] - 1 - effectiveAlpha for blending
      * @param {Uint8Array|null} params.clipBuffer - Clip mask (CLIPPING: inline per-pixel or delegated to SpanOps depending on mode)
      * @param {Set|null} [params.collectTo] - Add rendered pixel positions to this Set
      * @param {Set|null} [params.skipFrom] - Skip pixels that are in this Set
@@ -86,8 +86,8 @@ class QuadScanOps {
     static fillQuad(corners, params) {
         const { surface, r, g, b, isOpaque, clipBuffer } = params;
         const packedColor = params.packedColor || 0;
-        const incomingAlpha = params.incomingAlpha || 0;
-        const inverseIncomingAlpha = params.inverseIncomingAlpha || 0;
+        const effectiveAlpha = params.effectiveAlpha || 0;
+        const invAlpha = params.invAlpha || 0;
         const collectTo = params.collectTo || null;
         const skipFrom = params.skipFrom || null;
 
@@ -164,7 +164,7 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
+                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
             } else if (intersections.length >= 2) {
@@ -198,7 +198,7 @@ class QuadScanOps {
                             if (isOpaque) {
                                 data32[pixelIndex] = packedColor;
                             } else {
-                                /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
+                                /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
                             }
                         }
                     } else {
@@ -206,7 +206,7 @@ class QuadScanOps {
                         if (isOpaque) {
                             SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
                         } else {
-                            SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                            SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                         }
                     }
                 }
@@ -225,8 +225,8 @@ class QuadScanOps {
     static fillSquare(centerX, centerY, halfSize, params) {
         const { surface, r, g, b, isOpaque, clipBuffer } = params;
         const packedColor = params.packedColor || 0;
-        const incomingAlpha = params.incomingAlpha || 0;
-        const inverseIncomingAlpha = params.inverseIncomingAlpha || 0;
+        const effectiveAlpha = params.effectiveAlpha || 0;
+        const invAlpha = params.invAlpha || 0;
         const collectTo = params.collectTo || null;
         const skipFrom = params.skipFrom || null;
 
@@ -266,7 +266,7 @@ class QuadScanOps {
                     if (isOpaque) {
                         data32[pixelIndex] = packedColor;
                     } else {
-                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, incomingAlpha, inverseIncomingAlpha)*/
+                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
             } else {
@@ -274,7 +274,7 @@ class QuadScanOps {
                 if (isOpaque) {
                     SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
                 } else {
-                    SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, incomingAlpha, inverseIncomingAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 }
             }
         }
