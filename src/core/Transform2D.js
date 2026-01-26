@@ -75,6 +75,13 @@ class Transform2D {
             TRANSFORM_EPSILON
         );
 
+        // Pre-compute uniform scale factor (sqrt of absolute determinant)
+        // Used for scaling radii and values that transform uniformly in all directions
+        this.uniformScale = Math.max(
+            Math.sqrt(Math.abs(this.a * this.d - this.b * this.c)),
+            TRANSFORM_EPSILON
+        );
+
         // Pre-compute uniform scale check: a=d, b=-c (rotation + uniform scale)
         this.isUniformScale = Math.abs(this.a - this.d) < TRANSFORM_EPSILON &&
                               Math.abs(this.b + this.c) < TRANSFORM_EPSILON;

@@ -1596,9 +1596,7 @@ class Context2D {
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
 
         // Calculate effective radius considering non-uniform scaling
-        const scale = Math.sqrt(
-            Math.abs(this._transform.a * this._transform.d - this._transform.b * this._transform.c)
-        );
+        const scale = this._transform.uniformScale;
         const scaledRadius = radius * scale;
 
         // Get paint source
@@ -1621,9 +1619,7 @@ class Context2D {
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
 
         // Calculate effective radius and line width
-        const scale = Math.sqrt(
-            Math.abs(this._transform.a * this._transform.d - this._transform.b * this._transform.c)
-        );
+        const scale = this._transform.uniformScale;
         const scaledRadius = radius * scale;
         const scaledLineWidth = this._lineWidth * scale;
 
@@ -1648,9 +1644,7 @@ class Context2D {
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
 
         // Calculate effective radius and line width
-        const scale = Math.sqrt(
-            Math.abs(this._transform.a * this._transform.d - this._transform.b * this._transform.c)
-        );
+        const scale = this._transform.uniformScale;
         const scaledRadius = radius * scale;
         const scaledLineWidth = this._lineWidth * scale;
 
@@ -1707,9 +1701,7 @@ class Context2D {
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
 
         // Calculate effective radius
-        const scale = Math.sqrt(
-            Math.abs(this._transform.a * this._transform.d - this._transform.b * this._transform.c)
-        );
+        const scale = this._transform.uniformScale;
         const scaledRadius = radius * scale;
 
         // Normalize angles
@@ -1760,9 +1752,7 @@ class Context2D {
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
 
         // Calculate effective radius and line width
-        const scale = Math.sqrt(
-            Math.abs(this._transform.a * this._transform.d - this._transform.b * this._transform.c)
-        );
+        const scale = this._transform.uniformScale;
         const scaledRadius = radius * scale;
         const scaledLineWidth = this._lineWidth * scale;
 
@@ -1828,9 +1818,7 @@ class Context2D {
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
 
         // Calculate effective radius and line width
-        const scale = Math.sqrt(
-            Math.abs(this._transform.a * this._transform.d - this._transform.b * this._transform.c)
-        );
+        const scale = this._transform.uniformScale;
         const scaledRadius = radius * scale;
         const scaledLineWidth = this._lineWidth * scale;
 
@@ -1900,9 +1888,7 @@ class Context2D {
         const end = this._transform.transformPoint({ x: x2, y: y2 });
 
         // Calculate effective line width
-        const scale = Math.sqrt(
-            Math.abs(this._transform.a * this._transform.d - this._transform.b * this._transform.c)
-        );
+        const scale = this._transform.uniformScale;
         const scaledLineWidth = this._lineWidth * scale;
 
         // Get paint source
