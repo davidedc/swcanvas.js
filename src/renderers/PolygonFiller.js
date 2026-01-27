@@ -565,4 +565,96 @@ class PolygonFiller {
         const t = dotProduct / lengthSquared;
         return t >= -epsilon && t <= 1 + epsilon;
     }
+
+    /**
+     * Fill polygons directly into a ClipMask for clipping operations.
+     * Uses scanline algorithm identical to surface filling, but writes to 1-bit stencil buffer.
+     * This centralizes clip buffer filling logic that was previously duplicated in Context2D.
+     *
+     * @param {ClipMask} clipMask - Target clip mask to render to
+     * @param {Array} polygons - Array of polygons (each polygon is array of {x,y} points)
+     * @param {string} fillRule - 'nonzero' or 'evenodd' winding rule
+     * @param {Transform2D} transform - Transformation matrix to apply to polygons
+     */
+    static fillPolygonsToClipMask(clipMask, polygons, fillRule, transform) {
+        if (polygons.length === 0) return;
+
+        const width = clipMask.width;
+        const height = clipMask.height;
+
+        // Transform all polygon vertices
+        const transformedPolygons = polygons.map(poly =>
+            poly.map(point => transform.transformPoint(point))
+        );
+
+        // Find bounding box
+        let minY = Infinity, maxY = -Infinity;
+        for (const poly of transformedPolygons) {
+            for (const point of poly) {
+                minY = Math.min(minY, point.y);
+                maxY = Math.max(maxY, point.y);
+            }
+        }
+
+        // Clamp to clip mask bounds
+        minY = Math.max(0, Math.floor(minY));
+        maxY = Math.min(height - 1, Math.ceil(maxY));
+
+        // Process each scanline
+        for (let y = minY; y <= maxY; y++) {
+            const intersections = [];
+
+            // Find all intersections with this scanline (reuse existing method)
+            for (const poly of transformedPolygons) {
+                PolygonFiller._findPolygonIntersections(poly, y + 0.5, intersections);
+            }
+
+            // Sort intersections by x coordinate
+            intersections.sort((a, b) => a.x - b.x);
+
+            // Fill spans to clip mask
+            PolygonFiller._fillClipMaskSpans(clipMask, y, intersections, fillRule, width);
+        }
+    }
+
+    /**
+     * Fill spans on a scanline into a ClipMask based on winding rule
+     * @param {ClipMask} clipMask - Target clip mask
+     * @param {number} y - Scanline y coordinate
+     * @param {Array} intersections - Sorted intersections with winding info
+     * @param {string} fillRule - 'evenodd' or 'nonzero'
+     * @param {number} width - Surface width for bounds clamping
+     * @private
+     */
+    static _fillClipMaskSpans(clipMask, y, intersections, fillRule, width) {
+        if (intersections.length === 0) return;
+
+        let windingNumber = 0;
+        let inside = false;
+
+        for (let i = 0; i < intersections.length; i++) {
+            const intersection = intersections[i];
+            const nextIntersection = intersections[i + 1];
+
+            // Update winding number
+            windingNumber += intersection.winding;
+
+            // Determine if we're inside based on fill rule
+            if (fillRule === 'evenodd') {
+                inside = (windingNumber % 2) !== 0;
+            } else { // nonzero
+                inside = windingNumber !== 0;
+            }
+
+            // Fill span if we're inside
+            if (inside && nextIntersection) {
+                const startX = Math.max(0, Math.ceil(intersection.x));
+                const endX = Math.min(width - 1, Math.floor(nextIntersection.x));
+
+                for (let x = startX; x <= endX; x++) {
+                    clipMask.setPixel(x, y, true); // Set pixel to visible
+                }
+            }
+        }
+    }
 }

@@ -1272,22 +1272,11 @@ class Context2D {
         const tempClipMask = new ClipMask(this.surface.width, this.surface.height);
         tempClipMask.clipAll(); // Start with all pixels clipped
 
-        // Create clip pixel writer that writes to the temporary buffer
-        const clipPixelWriter = tempClipMask.createPixelWriter();
-
-        // Render the clip path to the temporary buffer using fill logic
-        // We need to temporarily set up a "fake" rendering operation
-        const originalFillStyle = this._fillStyle;
-        this._fillStyle = [255, 255, 255, 255]; // White (doesn't matter for clipping)
-
         // Flatten path and fill to temporary clip buffer
         const polygons = PathFlattener.flattenPath(pathToClip);
 
-        // Use a modified version of fillPolygons that writes to our clip buffer
-        this._fillPolygonsToClipBuffer(polygons, clipRule, tempClipMask);
-
-        // Restore original fill style
-        this._fillStyle = originalFillStyle;
+        // Delegate to PolygonFiller for scanline rendering
+        PolygonFiller.fillPolygonsToClipMask(tempClipMask, polygons, clipRule, this._transform);
 
         // Intersect with existing clip mask (if any)
         if (this._clipMask) {
@@ -1299,107 +1288,6 @@ class Context2D {
         }
 
         // clip() does not auto-stroke the path (per HTML5 Canvas spec)
-    }
-
-    // Helper method to fill polygons directly to a clip buffer
-    _fillPolygonsToClipBuffer(polygons, fillRule, clipBuffer) {
-        if (polygons.length === 0) return;
-
-        const surface = this.surface;  // Need width/height for bounds
-
-        // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly =>
-            poly.map(point => this._transform.transformPoint(point))
-        );
-
-        // Find bounding box
-        let minY = Infinity, maxY = -Infinity;
-        for (const poly of transformedPolygons) {
-            for (const point of poly) {
-                minY = Math.min(minY, point.y);
-                maxY = Math.max(maxY, point.y);
-            }
-        }
-
-        // Clamp to surface bounds
-        minY = Math.max(0, Math.floor(minY));
-        maxY = Math.min(surface.height - 1, Math.ceil(maxY));
-
-        // Process each scanline (similar to fillPolygons but writes to clip buffer)
-        for (let y = minY; y <= maxY; y++) {
-            const intersections = [];
-
-            // Find all intersections with this scanline
-            for (const poly of transformedPolygons) {
-                this._findPolygonIntersections(poly, y + 0.5, intersections);
-            }
-
-            // Sort intersections by x coordinate
-            intersections.sort((a, b) => a.x - b.x);
-
-            // Fill spans based on winding rule
-            this._fillClipSpans(y, intersections, fillRule, clipBuffer);
-        }
-    }
-
-    // Helper method to find polygon intersections (copied from polygon-filler.js)
-    _findPolygonIntersections(polygon, y, intersections) {
-        for (let i = 0; i < polygon.length; i++) {
-            const p1 = polygon[i];
-            const p2 = polygon[(i + 1) % polygon.length];
-
-            // Skip horizontal edges
-            if (Math.abs(p1.y - p2.y) < FLOAT_EPSILON) continue;
-
-            // Check if scanline crosses this edge
-            const minY = Math.min(p1.y, p2.y);
-            const maxY = Math.max(p1.y, p2.y);
-
-            if (y >= minY && y < maxY) { // Note: < maxY to avoid double-counting vertices
-                // Calculate intersection point
-                const t = (y - p1.y) / (p2.y - p1.y);
-                const x = p1.x + t * (p2.x - p1.x);
-
-                // Determine winding direction
-                const winding = p2.y > p1.y ? 1 : -1;
-
-                intersections.push({ x: x, winding: winding });
-            }
-        }
-    }
-
-    // Helper method to fill clip spans (writes to clip buffer instead of surface)
-    _fillClipSpans(y, intersections, fillRule, clipBuffer) {
-        if (intersections.length === 0) return;
-
-        let windingNumber = 0;
-        let inside = false;
-
-        for (let i = 0; i < intersections.length; i++) {
-            const intersection = intersections[i];
-            const nextIntersection = intersections[i + 1];
-
-            // Update winding number
-            windingNumber += intersection.winding;
-
-            // Determine if we're inside based on fill rule
-            const wasInside = inside;
-            if (fillRule === 'evenodd') {
-                inside = (windingNumber % 2) !== 0;
-            } else { // nonzero
-                inside = windingNumber !== 0;
-            }
-
-            // Fill span if we're inside
-            if (inside && nextIntersection) {
-                const startX = Math.max(0, Math.ceil(intersection.x));
-                const endX = Math.min(this.surface.width - 1, Math.floor(nextIntersection.x));
-
-                for (let x = startX; x <= endX; x++) {
-                    clipBuffer.setPixel(x, y, true); // Set pixel to visible (inside clip region)
-                }
-            }
-        }
     }
 
     // Image rendering
