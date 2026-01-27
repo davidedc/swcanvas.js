@@ -60,10 +60,18 @@ src/renderers/      → Shape-Specific Direct Renderers (static utility classes)
   LineOps.js        → Line stroke direct rendering (Bresenham, polygon scan algorithm)
   RoundedRectOpsAA.js  → Axis-aligned rounded rectangle direct rendering
   RoundedRectOpsRot.js → Rotated rounded rectangle direct rendering
+  RoundedRectUtils.js  → Shared utilities for rounded rectangle rendering
   PolygonFiller.js  → Scanline polygon filling with paint source support
   PathFlattener.js  → Converts paths to polygons
   StrokeGenerator.js → Geometric stroke path generation with line dashing
 ```
+
+**Naming Convention:**
+- `*Ops.js` - Direct shape rendering algorithms (static methods, no instance state)
+- `*Filler.js` - Generic polygon rasterization with winding rules and paint sources
+- `*Generator.js` - Geometric path generation (converts paths to stroke geometry)
+- `*Flattener.js` - Curve decomposition (converts curves/arcs to line segments)
+- `*Utils.js` - Shared utilities for related rendering classes
 
 **Purpose**: Maximum performance graphics operations with zero overhead.
 
