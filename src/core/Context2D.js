@@ -263,9 +263,7 @@ class Context2D {
 
     // Style setters - support solid colors and paint sources
     setFillStyle(r, g, b, a) {
-        if (arguments.length === 1 && (r instanceof Color || r instanceof Gradient ||
-            r instanceof LinearGradient || r instanceof RadialGradient ||
-            r instanceof ConicGradient || r instanceof Pattern)) {
+        if (arguments.length === 1 && (r instanceof Color || r instanceof Gradient || r instanceof Pattern)) {
             // Paint source (gradient or pattern)
             this._fillStyle = r;
         } else {
@@ -276,9 +274,7 @@ class Context2D {
     }
 
     setStrokeStyle(r, g, b, a) {
-        if (arguments.length === 1 && (r instanceof Color || r instanceof Gradient ||
-            r instanceof LinearGradient || r instanceof RadialGradient ||
-            r instanceof ConicGradient || r instanceof Pattern)) {
+        if (arguments.length === 1 && (r instanceof Color || r instanceof Gradient || r instanceof Pattern)) {
             // Paint source (gradient or pattern)
             this._strokeStyle = r;
         } else {
