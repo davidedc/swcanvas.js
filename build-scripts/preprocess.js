@@ -235,6 +235,10 @@ if (__outA > 0) {
 // We parse the arguments separately to handle nested parentheses
 const MARKER_REGEX = /\/\*@inline:(\w+)\(([\s\S]*?)\)\*\//g;
 
+// Assertion marker pattern: /*@assert:...*/
+// Used for internal assertions that can be stripped in production builds
+const ASSERT_REGEX = /\/\*@assert:[\s\S]*?\*\//g;
+
 /**
  * Parse comma-separated arguments, handling nested parentheses in expressions.
  * @param {string} argsStr - The arguments string (without outer parens)
@@ -352,6 +356,30 @@ function hasMarkers(source) {
     return result;
 }
 
+/**
+ * Check if a file contains any assertion markers.
+ * @param {string} source - Source code to check
+ * @returns {boolean} True if assertion markers found
+ */
+function hasAsserts(source) {
+    ASSERT_REGEX.lastIndex = 0;
+    const result = ASSERT_REGEX.test(source);
+    ASSERT_REGEX.lastIndex = 0;
+    return result;
+}
+
+/**
+ * Strip assertion markers for production builds.
+ * Removes assertion markers entirely for zero-overhead production code.
+ *
+ * @param {string} source - Source code with assertion markers
+ * @returns {string} Processed source with assertion markers removed
+ */
+function stripAsserts(source) {
+    ASSERT_REGEX.lastIndex = 0;
+    return source.replace(ASSERT_REGEX, '');
+}
+
 // CLI entry point
 if (require.main === module) {
     const [,, input, output] = process.argv;
@@ -388,4 +416,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { preprocess, TEMPLATES, hasMarkers, parseArgs, expandMarker };
+module.exports = { preprocess, TEMPLATES, hasMarkers, hasAsserts, stripAsserts, parseArgs, expandMarker };
