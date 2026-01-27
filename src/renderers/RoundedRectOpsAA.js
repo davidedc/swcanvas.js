@@ -101,10 +101,7 @@ class RoundedRectOpsAA {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
-        if (width < 2 * radius) radius = width / 2;
-        if (height < 2 * radius) radius = height / 2;
-        radius = Math.round(Math.min(radius, Math.min(width, height) / 2));
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -214,10 +211,7 @@ class RoundedRectOpsAA {
         const data = surface.data;
 
         // Normalize radius
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
-        if (width < 2 * radius) radius = width / 2;
-        if (height < 2 * radius) radius = height / 2;
-        radius = Math.round(Math.min(radius, Math.min(width, height) / 2));
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -307,20 +301,6 @@ class RoundedRectOpsAA {
     }
 
     /**
-     * Normalize radius for rounded rectangle, clamping to valid range.
-     * @param {number|number[]} radii - Corner radius
-     * @param {number} width - Rectangle width
-     * @param {number} height - Rectangle height
-     * @returns {number} Normalized radius
-     */
-    static _normalizeRadius(radii, width, height) {
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
-        if (width < 2 * radius) radius = width / 2;
-        if (height < 2 * radius) radius = height / 2;
-        return Math.round(Math.min(radius, Math.min(width, height) / 2));
-    }
-
-    /**
      * Direct rendering for opaque fill on axis-aligned rounded rectangle.
      * Uses scanline algorithm with 32-bit packed writes.
      *
@@ -339,7 +319,7 @@ class RoundedRectOpsAA {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
@@ -425,7 +405,7 @@ class RoundedRectOpsAA {
         const data = surface.data;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
@@ -512,7 +492,7 @@ class RoundedRectOpsAA {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -605,7 +585,7 @@ class RoundedRectOpsAA {
         const data = surface.data;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -711,7 +691,7 @@ class RoundedRectOpsAA {
         if (!hasFill && !hasStroke) return;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to separate methods for zero radius
         if (radius <= 0) {

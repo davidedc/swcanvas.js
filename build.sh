@@ -99,6 +99,8 @@ cat "$(get_src src/renderers/ArcOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/LineOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
+cat src/renderers/RoundedRectUtils.js >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/RoundedRectOpsRot.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/RoundedRectOpsAA.js)" >> dist/swcanvas.js
