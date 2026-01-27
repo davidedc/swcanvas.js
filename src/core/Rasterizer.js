@@ -80,19 +80,19 @@ class Rasterizer {
      * @private
      */
     _validateParams(params) {
-        if (params.globalAlpha !== undefined) {
+        /*@assert:if (params.globalAlpha !== undefined) {
             if (typeof params.globalAlpha !== 'number' || params.globalAlpha < 0 || params.globalAlpha > 1) {
                 throw new Error('globalAlpha must be a number between 0 and 1');
             }
-        }
+        }*/
 
-        if (params.composite && !CompositeOperations.isSupported(params.composite)) {
-            throw new Error(`Invalid composite operation. Supported: ${CompositeOperations.getSupportedOperations().join(', ')}`);
-        }
+        /*@assert:if (params.composite && !CompositeOperations.isSupported(params.composite)) {
+            throw new Error('Invalid composite operation');
+        }*/
 
-        if (params.transform && !(params.transform instanceof Transform2D)) {
+        /*@assert:if (params.transform && !(params.transform instanceof Transform2D)) {
             throw new Error('transform must be a Transform2D instance');
-        }
+        }*/
     }
 
     /**
@@ -100,9 +100,9 @@ class Rasterizer {
      * @private
      */
     _requireActiveOp() {
-        if (!this._currentOp) {
+        /*@assert:if (!this._currentOp) {
             throw new Error('Must call beginOp() before drawing operations');
-        }
+        }*/
     }
 
     /**

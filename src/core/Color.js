@@ -20,9 +20,10 @@ class Color {
      */
     constructor(r, g, b, a = 255, isPremultiplied = false) {
         // Validate input ranges
-        if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
-            throw new Error('Color components must be in range 0-255');
-        }
+        Validators.colorComponent(r, 'Red component');
+        Validators.colorComponent(g, 'Green component');
+        Validators.colorComponent(b, 'Blue component');
+        Validators.colorComponent(a, 'Alpha component');
 
         if (isPremultiplied) {
             this._r = Math.round(r);

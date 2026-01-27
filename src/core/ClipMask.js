@@ -85,10 +85,10 @@ class ClipMask {
      * @param {ClipMask} other - Other clip mask to intersect with
      */
     intersectWith(other) {
-        if (!(other instanceof ClipMask)) {
+        /*@assert:if (!(other instanceof ClipMask)) {
             throw new Error('Argument must be a ClipMask instance');
-        }
-        
+        }*/
+
         this._bitBuffer.and(other._bitBuffer);
     }
     

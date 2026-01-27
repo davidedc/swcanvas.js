@@ -29,10 +29,8 @@ class PngEncodingOptions {
         if (typeof preserveTransparency !== 'boolean') {
             throw new Error('preserveTransparency must be a boolean');
         }
-        
-        if (typeof compressionLevel !== 'number' || compressionLevel < 0 || compressionLevel > 9) {
-            throw new Error('compressionLevel must be a number between 0-9');
-        }
+
+        Validators.range(compressionLevel, 'compressionLevel', 0, 9);
         
         // Currently only support compression level 0 (stored blocks)
         if (compressionLevel !== 0) {

@@ -21,18 +21,13 @@ class BitBuffer {
      */
     constructor(width, height, defaultValue = 0) {
         // Validate parameters
-        if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
-            throw new Error('BitBuffer width must be a positive integer');
-        }
-        
-        if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
-            throw new Error('BitBuffer height must be a positive integer');
-        }
-        
+        Validators.positiveInteger(width, 'BitBuffer width');
+        Validators.positiveInteger(height, 'BitBuffer height');
+
         if (defaultValue !== 0 && defaultValue !== 1) {
             throw new Error('BitBuffer defaultValue must be 0 or 1');
         }
-        
+
         this._width = width;
         this._height = height;
         this._numPixels = width * height;
@@ -136,14 +131,14 @@ class BitBuffer {
      * @param {BitBuffer} other - Other BitBuffer to AND with
      */
     and(other) {
-        if (!(other instanceof BitBuffer)) {
+        /*@assert:if (!(other instanceof BitBuffer)) {
             throw new Error('Argument must be a BitBuffer instance');
-        }
-        
-        if (other._width !== this._width || other._height !== this._height) {
+        }*/
+
+        /*@assert:if (other._width !== this._width || other._height !== this._height) {
             throw new Error('BitBuffer dimensions must match for AND operation');
-        }
-        
+        }*/
+
         // Perform bitwise AND on each byte
         for (let i = 0; i < this._numBytes; i++) {
             this._buffer[i] &= other._buffer[i];
@@ -155,14 +150,14 @@ class BitBuffer {
      * @param {BitBuffer} other - Source BitBuffer to copy from
      */
     copyFrom(other) {
-        if (!(other instanceof BitBuffer)) {
+        /*@assert:if (!(other instanceof BitBuffer)) {
             throw new Error('Argument must be a BitBuffer instance');
-        }
-        
-        if (other._width !== this._width || other._height !== this._height) {
+        }*/
+
+        /*@assert:if (other._width !== this._width || other._height !== this._height) {
             throw new Error('BitBuffer dimensions must match for copy operation');
-        }
-        
+        }*/
+
         this._buffer.set(other._buffer);
     }
     

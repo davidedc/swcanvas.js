@@ -17,13 +17,8 @@ class Surface {
      */
     constructor(width, height) {
         // Validate parameters with descriptive error messages
-        if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
-            throw new Error('Surface width must be a positive integer');
-        }
-
-        if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
-            throw new Error('Surface height must be a positive integer');
-        }
+        Validators.positiveInteger(width, 'Surface width');
+        Validators.positiveInteger(height, 'Surface height');
 
         // Check area first (SurfaceTooLarge takes precedence for test compatibility)
         if (width * height > 268435456) { // 16384 * 16384

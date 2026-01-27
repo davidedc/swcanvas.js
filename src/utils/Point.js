@@ -12,14 +12,9 @@ class Point {
      */
     constructor(x, y) {
         // Validate input parameters
-        if (typeof x !== 'number' || typeof y !== 'number') {
-            throw new Error('Point coordinates must be numbers');
-        }
-        
-        if (!isFinite(x) || !isFinite(y)) {
-            throw new Error('Point coordinates must be finite numbers');
-        }
-        
+        Validators.finiteNumber(x, 'Point x coordinate');
+        Validators.finiteNumber(y, 'Point y coordinate');
+
         this._x = x;
         this._y = y;
         

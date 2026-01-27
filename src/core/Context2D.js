@@ -300,28 +300,19 @@ class Context2D {
     }
 
     setShadowBlur(blur) {
-        if (typeof blur !== 'number' || isNaN(blur)) {
-            throw new Error('Shadow blur must be a number');
-        }
-        if (blur < 0) {
-            throw new Error('Shadow blur must be non-negative');
-        }
+        Validators.nonNegative(blur, 'shadowBlur');
         this.shadowBlur = blur;
         this._updateNoShadowFlag();
     }
 
     setShadowOffsetX(offset) {
-        if (typeof offset !== 'number' || isNaN(offset)) {
-            throw new Error('Shadow offsetX must be a number');
-        }
+        Validators.number(offset, 'shadowOffsetX');
         this.shadowOffsetX = offset;
         this._updateNoShadowFlag();
     }
 
     setShadowOffsetY(offset) {
-        if (typeof offset !== 'number' || isNaN(offset)) {
-            throw new Error('Shadow offsetY must be a number');
-        }
+        Validators.number(offset, 'shadowOffsetY');
         this.shadowOffsetY = offset;
         this._updateNoShadowFlag();
     }

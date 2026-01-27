@@ -15,19 +15,20 @@ class ShadowBuffer {
      * @param {number} maxBlurRadius - Maximum blur radius for bounds calculation
      */
     constructor(width, height, maxBlurRadius = 0) {
-        // Validate parameters
-        if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
+        // Validate parameters - these are internal assertions since ShadowBuffer
+        // is only created by Context2D internally
+        /*@assert:if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
             throw new Error('ShadowBuffer width must be a positive integer');
-        }
-        
-        if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
+        }*/
+
+        /*@assert:if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
             throw new Error('ShadowBuffer height must be a positive integer');
-        }
-        
-        if (typeof maxBlurRadius !== 'number' || maxBlurRadius < 0) {
+        }*/
+
+        /*@assert:if (typeof maxBlurRadius !== 'number' || maxBlurRadius < 0) {
             throw new Error('ShadowBuffer maxBlurRadius must be a non-negative number');
-        }
-        
+        }*/
+
         // Original surface dimensions
         this._originalWidth = width;
         this._originalHeight = height;

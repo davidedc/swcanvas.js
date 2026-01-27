@@ -408,12 +408,8 @@ class CanvasCompatibleContext2D {
      * @returns {Object} ImageData-like object
      */
     createImageData(width, height) {
-        if (typeof width !== 'number' || width <= 0 || !Number.isInteger(width)) {
-            throw new Error('Width must be a positive integer');
-        }
-        if (typeof height !== 'number' || height <= 0 || !Number.isInteger(height)) {
-            throw new Error('Height must be a positive integer');
-        }
+        Validators.positiveInteger(width, 'width');
+        Validators.positiveInteger(height, 'height');
 
         return {
             width: width,
@@ -431,15 +427,10 @@ class CanvasCompatibleContext2D {
      * @returns {Object} ImageData-like object
      */
     getImageData(x, y, width, height) {
-        if (typeof x !== 'number' || typeof y !== 'number') {
-            throw new Error('Coordinates must be numbers');
-        }
-        if (typeof width !== 'number' || width <= 0 || !Number.isInteger(width)) {
-            throw new Error('Width must be a positive integer');
-        }
-        if (typeof height !== 'number' || height <= 0 || !Number.isInteger(height)) {
-            throw new Error('Height must be a positive integer');
-        }
+        Validators.number(x, 'x coordinate');
+        Validators.number(y, 'y coordinate');
+        Validators.positiveInteger(width, 'width');
+        Validators.positiveInteger(height, 'height');
 
         // Create ImageData object
         const imageData = this.createImageData(width, height);
@@ -478,18 +469,12 @@ class CanvasCompatibleContext2D {
      * @param {number} dy - Destination y coordinate
      */
     putImageData(imageData, dx, dy) {
-        if (!imageData || typeof imageData !== 'object') {
-            throw new Error('ImageData must be an object');
-        }
-        if (typeof imageData.width !== 'number' || typeof imageData.height !== 'number') {
-            throw new Error('ImageData must have numeric width and height');
-        }
-        if (!(imageData.data instanceof Uint8ClampedArray)) {
-            throw new Error('ImageData data must be a Uint8ClampedArray');
-        }
-        if (typeof dx !== 'number' || typeof dy !== 'number') {
-            throw new Error('Destination coordinates must be numbers');
-        }
+        Validators.defined(imageData, 'imageData');
+        Validators.number(imageData.width, 'imageData.width');
+        Validators.number(imageData.height, 'imageData.height');
+        Validators.instanceOf(imageData.data, Uint8ClampedArray, 'imageData.data');
+        Validators.number(dx, 'dx');
+        Validators.number(dy, 'dy');
 
         const surface = this._core.surface;
 

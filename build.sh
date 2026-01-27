@@ -66,6 +66,8 @@ cat src/core/Debug.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 
 # Phase 1: Core Foundation classes (no dependencies)
+cat src/utils/Validators.js >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
 cat src/core/Color.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/core/StateStack.js >> dist/swcanvas.js
@@ -233,6 +235,7 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             RoundedRectOpsAA: RoundedRectOpsAA,
+            Validators: Validators,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,
             debugLog: debugLog,
@@ -278,6 +281,7 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             RoundedRectOpsAA: RoundedRectOpsAA,
+            Validators: Validators,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,
             debugLog: debugLog,

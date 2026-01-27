@@ -29,13 +29,7 @@ class Gradient {
      */
     addColorStop(offset, color) {
         // Validate offset
-        if (typeof offset !== 'number' || !isFinite(offset)) {
-            throw new Error('Color stop offset must be a finite number');
-        }
-
-        if (offset < 0 || offset > 1) {
-            throw new Error('Color stop offset must be between 0 and 1');
-        }
+        Validators.normalizedValue(offset, 'Color stop offset');
 
         // Parse color using ColorParser
         const colorParser = new ColorParser();
@@ -209,9 +203,8 @@ class RadialGradient extends Gradient {
         super();
 
         // Validate radii
-        if (r0 < 0 || r1 < 0) {
-            throw new Error('Radial gradient radii must be non-negative');
-        }
+        Validators.nonNegative(r0, 'Inner radius');
+        Validators.nonNegative(r1, 'Outer radius');
 
         // Check for identical circles (would paint nothing)
         if (x0 === x1 && y0 === y1 && r0 === r1) {

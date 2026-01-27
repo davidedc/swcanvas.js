@@ -22,27 +22,27 @@ class BoxBlur {
      * @returns {Float32Array} Blurred image data
      */
     static blur(data, width, height, blurRadius, passes = 3) {
-        // Validate parameters
-        if (!data || !(data instanceof Float32Array)) {
+        // Validate parameters - internal assertions since BoxBlur is only called by ShadowBuffer
+        /*@assert:if (!data || !(data instanceof Float32Array)) {
             throw new Error('BoxBlur requires Float32Array data');
-        }
-        
-        if (typeof width !== 'number' || width <= 0 || typeof height !== 'number' || height <= 0) {
+        }*/
+
+        /*@assert:if (typeof width !== 'number' || width <= 0 || typeof height !== 'number' || height <= 0) {
             throw new Error('BoxBlur width and height must be positive numbers');
-        }
-        
-        if (data.length !== width * height) {
+        }*/
+
+        /*@assert:if (data.length !== width * height) {
             throw new Error('BoxBlur data length must match width * height');
-        }
-        
-        if (typeof blurRadius !== 'number' || blurRadius < 0) {
+        }*/
+
+        /*@assert:if (typeof blurRadius !== 'number' || blurRadius < 0) {
             throw new Error('BoxBlur radius must be a non-negative number');
-        }
-        
-        if (typeof passes !== 'number' || passes < 1) {
+        }*/
+
+        /*@assert:if (typeof passes !== 'number' || passes < 1) {
             throw new Error('BoxBlur passes must be at least 1');
-        }
-        
+        }*/
+
         // No blur needed for zero radius
         if (blurRadius === 0) {
             return new Float32Array(data); // Return copy

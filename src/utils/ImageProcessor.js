@@ -41,22 +41,11 @@ class ImageProcessor {
      * @private
      */
     static _validateImageLike(imageLike) {
-        if (!imageLike || typeof imageLike !== 'object') {
-            throw new Error('ImageLike must be an object');
-        }
-        
-        if (typeof imageLike.width !== 'number' || imageLike.width <= 0 || !Number.isInteger(imageLike.width)) {
-            throw new Error('ImageLike width must be a positive integer');
-        }
-        
-        if (typeof imageLike.height !== 'number' || imageLike.height <= 0 || !Number.isInteger(imageLike.height)) {
-            throw new Error('ImageLike height must be a positive integer');
-        }
-        
-        if (!(imageLike.data instanceof Uint8ClampedArray)) {
-            throw new Error('ImageLike data must be a Uint8ClampedArray');
-        }
-        
+        Validators.defined(imageLike, 'ImageLike');
+        Validators.positiveInteger(imageLike.width, 'ImageLike width');
+        Validators.positiveInteger(imageLike.height, 'ImageLike height');
+        Validators.instanceOf(imageLike.data, Uint8ClampedArray, 'ImageLike data');
+
         // Additional validation for reasonable limits
         const maxDimension = 16384;
         if (imageLike.width > maxDimension || imageLike.height > maxDimension) {
@@ -98,14 +87,11 @@ class ImageProcessor {
      * @returns {Object} ImageLike representation of surface
      */
     static surfaceToImageLike(surface) {
-        if (!surface || typeof surface !== 'object') {
-            throw new Error('Surface must be a valid Surface object');
-        }
-        
-        if (!surface.width || !surface.height || !surface.data) {
-            throw new Error('Surface must have width, height, and data properties');
-        }
-        
+        Validators.defined(surface, 'Surface');
+        Validators.defined(surface.width, 'Surface.width');
+        Validators.defined(surface.height, 'Surface.height');
+        Validators.defined(surface.data, 'Surface.data');
+
         return {
             width: surface.width,
             height: surface.height,
@@ -121,10 +107,9 @@ class ImageProcessor {
      * @returns {Object} ImageLike object
      */
     static createBlankImage(width, height, fillColor = [0, 0, 0, 255]) {
-        if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
-            throw new Error('Width and height must be positive integers');
-        }
-        
+        Validators.positiveInteger(width, 'width');
+        Validators.positiveInteger(height, 'height');
+
         const numPixels = width * height;
         const data = new Uint8ClampedArray(numPixels * 4);
         
@@ -212,12 +197,10 @@ class ImageProcessor {
      */
     static scaleImage(source, newWidth, newHeight) {
         const validated = ImageProcessor.validateAndConvert(source);
-        
-        if (!Number.isInteger(newWidth) || !Number.isInteger(newHeight) || 
-            newWidth <= 0 || newHeight <= 0) {
-            throw new Error('Target dimensions must be positive integers');
-        }
-        
+
+        Validators.positiveInteger(newWidth, 'newWidth');
+        Validators.positiveInteger(newHeight, 'newHeight');
+
         const scaledData = new Uint8ClampedArray(newWidth * newHeight * 4);
         const scaleX = validated.width / newWidth;
         const scaleY = validated.height / newHeight;
@@ -294,18 +277,14 @@ class ImageProcessor {
      * @returns {Object} ImageLike representation of canvas
      */
     static fromCanvas(canvas) {
-        if (!canvas || typeof canvas !== 'object') {
-            throw new Error('Canvas must be a valid HTMLCanvasElement');
-        }
-        
-        if (typeof canvas.width !== 'number' || typeof canvas.height !== 'number') {
-            throw new Error('Canvas must have numeric width and height');
-        }
-        
+        Validators.defined(canvas, 'Canvas');
+        Validators.number(canvas.width, 'Canvas.width');
+        Validators.number(canvas.height, 'Canvas.height');
+
         if (!canvas.getContext || typeof canvas.getContext !== 'function') {
             throw new Error('Canvas must have getContext method');
         }
-        
+
         try {
             const ctx = canvas.getContext('2d');
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);

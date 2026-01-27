@@ -20,20 +20,14 @@ class BitmapEncodingOptions {
      */
     constructor(backgroundColor = { r: 255, g: 255, b: 255 }) {
         // Validate background color components
-        if (!backgroundColor || typeof backgroundColor !== 'object') {
-            throw new Error('backgroundColor must be an object with r, g, b properties');
-        }
-        
+        Validators.defined(backgroundColor, 'backgroundColor');
+
         const { r, g, b } = backgroundColor;
-        
-        if (typeof r !== 'number' || typeof g !== 'number' || typeof b !== 'number') {
-            throw new Error('backgroundColor components (r, g, b) must be numbers');
-        }
-        
-        if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
-            throw new Error('backgroundColor components must be in range 0-255');
-        }
-        
+
+        Validators.colorComponent(r, 'backgroundColor.r');
+        Validators.colorComponent(g, 'backgroundColor.g');
+        Validators.colorComponent(b, 'backgroundColor.b');
+
         // Store immutable background color
         this._backgroundColor = Object.freeze({
             r: Math.round(r),

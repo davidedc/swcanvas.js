@@ -57,27 +57,25 @@ class StrokeGenerator {
             lineDash: [],
             lineDashOffset: 0
         };
-        
+
         const validated = { ...defaults, ...props };
-        
-        if (validated.lineWidth < 0) {
+
+        /*@assert:if (validated.lineWidth < 0) {
             throw new Error('lineWidth must not be negative');
-        }
-        
-        const validJoins = ['miter', 'round', 'bevel'];
-        if (!validJoins.includes(validated.lineJoin)) {
-            throw new Error(`Invalid lineJoin: ${validated.lineJoin}`);
-        }
-        
-        const validCaps = ['butt', 'round', 'square'];
-        if (!validCaps.includes(validated.lineCap)) {
-            throw new Error(`Invalid lineCap: ${validated.lineCap}`);
-        }
-        
-        if (validated.miterLimit <= 0) {
+        }*/
+
+        /*@assert:if (!['miter', 'round', 'bevel'].includes(validated.lineJoin)) {
+            throw new Error('Invalid lineJoin');
+        }*/
+
+        /*@assert:if (!['butt', 'round', 'square'].includes(validated.lineCap)) {
+            throw new Error('Invalid lineCap');
+        }*/
+
+        /*@assert:if (validated.miterLimit <= 0) {
             throw new Error('miterLimit must be positive');
-        }
-        
+        }*/
+
         return validated;
     }
     

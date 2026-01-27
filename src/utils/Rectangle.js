@@ -14,19 +14,12 @@ class Rectangle {
      */
     constructor(x, y, width, height) {
         // Validate input parameters
-        if (typeof x !== 'number' || typeof y !== 'number' || 
-            typeof width !== 'number' || typeof height !== 'number') {
-            throw new Error('Rectangle parameters must be numbers');
-        }
-        
-        if (!isFinite(x) || !isFinite(y) || !isFinite(width) || !isFinite(height)) {
-            throw new Error('Rectangle parameters must be finite numbers');
-        }
-        
+        Validators.rectParamsFinite(x, y, width, height);
+
         if (width < 0 || height < 0) {
             throw new Error('Rectangle dimensions must be non-negative');
         }
-        
+
         this._x = x;
         this._y = y;
         this._width = width;
