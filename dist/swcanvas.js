@@ -5891,6 +5891,65 @@ if (__outA > 0) {
 }
 
 /**
+ * RoundedRectUtils - Shared utilities for rounded rectangle rendering
+ * Used by both RoundedRectOpsAA and RoundedRectOpsRot.
+ */
+class RoundedRectUtils {
+    /**
+     * Normalize radius for rounded rectangle, clamping to valid range.
+     * Handles array input (only first element used) and ensures radius
+     * doesn't exceed half of either dimension.
+     *
+     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number} width - Rectangle width
+     * @param {number} height - Rectangle height
+     * @returns {number} Normalized integer radius
+     */
+    static normalizeRadius(radii, width, height) {
+        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        if (width < 2 * radius) radius = width / 2;
+        if (height < 2 * radius) radius = height / 2;
+        return Math.round(Math.min(radius, Math.min(width, height) / 2));
+    }
+
+    /**
+     * Get edge endpoint definitions for a rounded rectangle in local coordinates
+     * (centered at origin). Used for perimeter generation in rotated rendering.
+     *
+     * @param {number} hw - Half-width
+     * @param {number} hh - Half-height
+     * @param {number} r - Corner radius
+     * @returns {Array<{start: {x: number, y: number}, end: {x: number, y: number}}>}
+     */
+    static getEdgeEndpoints(hw, hh, r) {
+        return [
+            { start: { x: -hw + r, y: -hh }, end: { x: hw - r, y: -hh } },      // Top
+            { start: { x: hw, y: -hh + r }, end: { x: hw, y: hh - r } },        // Right
+            { start: { x: hw - r, y: hh }, end: { x: -hw + r, y: hh } },        // Bottom
+            { start: { x: -hw, y: hh - r }, end: { x: -hw, y: -hh + r } }       // Left
+        ];
+    }
+
+    /**
+     * Get corner arc definitions for a rounded rectangle in local coordinates
+     * (centered at origin). Returns center points and angle ranges for each corner.
+     *
+     * @param {number} hw - Half-width
+     * @param {number} hh - Half-height
+     * @param {number} r - Corner radius
+     * @returns {Array<{cx: number, cy: number, startAngle: number, endAngle: number}>}
+     */
+    static getCornerDefinitions(hw, hh, r) {
+        return [
+            { cx: -hw + r, cy: -hh + r, startAngle: Math.PI, endAngle: THREE_HALF_PI },    // Top-left
+            { cx: hw - r, cy: -hh + r, startAngle: THREE_HALF_PI, endAngle: TAU },         // Top-right
+            { cx: hw - r, cy: hh - r, startAngle: 0, endAngle: HALF_PI },                  // Bottom-right
+            { cx: -hw + r, cy: hh - r, startAngle: HALF_PI, endAngle: Math.PI }            // Bottom-left
+        ];
+    }
+}
+
+/**
  * RoundedRectOpsRot - Static methods for rotated rounded rectangle rendering
  * Provides rotated rendering separately from axis-aligned logic in RoundedRectOpsAA.
  *
@@ -5990,20 +6049,6 @@ class RoundedRectOpsRot {
     // =========================================================================
 
     /**
-     * Normalize radius for rounded rectangle, clamping to valid range.
-     * @param {number|number[]} radii - Corner radius
-     * @param {number} width - Rectangle width
-     * @param {number} height - Rectangle height
-     * @returns {number} Normalized radius
-     */
-    static _normalizeRadius(radii, width, height) {
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
-        if (width < 2 * radius) radius = width / 2;
-        if (height < 2 * radius) radius = height / 2;
-        return Math.round(Math.min(radius, Math.min(width, height) / 2));
-    }
-
-    /**
      * Transform local coordinates to screen coordinates using rotation matrix.
      * @param {number} localX - Local X coordinate
      * @param {number} localY - Local Y coordinate
@@ -6087,12 +6132,7 @@ class RoundedRectOpsRot {
      * @private
      */
     static _generatePerimeter(hw, hh, r, recorder, centerX, centerY, cos, sin, rotation) {
-        const edges = [
-            { start: { x: -hw + r, y: -hh }, end: { x: hw - r, y: -hh } },
-            { start: { x: hw, y: -hh + r }, end: { x: hw, y: hh - r } },
-            { start: { x: hw - r, y: hh }, end: { x: -hw + r, y: hh } },
-            { start: { x: -hw, y: hh - r }, end: { x: -hw, y: -hh + r } }
-        ];
+        const edges = RoundedRectUtils.getEdgeEndpoints(hw, hh, r);
         for (const edge of edges) {
             const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
             const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
@@ -6100,12 +6140,7 @@ class RoundedRectOpsRot {
             if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
             RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, recorder);
         }
-        const corners = [
-            { cx: -hw + r, cy: -hh + r, startAngle: Math.PI, endAngle: THREE_HALF_PI },
-            { cx: hw - r, cy: -hh + r, startAngle: THREE_HALF_PI, endAngle: TAU },
-            { cx: hw - r, cy: hh - r, startAngle: 0, endAngle: HALF_PI },
-            { cx: -hw + r, cy: hh - r, startAngle: HALF_PI, endAngle: Math.PI }
-        ];
+        const corners = RoundedRectUtils.getCornerDefinitions(hw, hh, r);
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
             RoundedRectOpsRot._generateArcPixels(
@@ -6139,7 +6174,7 @@ class RoundedRectOpsRot {
      */
     static fill_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, color, globalAlpha, clipBuffer = null) {
         // Normalize radius
-        const radius = RoundedRectOpsRot._normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOpsRot.fill_Rot_Any for zero radius
         if (radius <= 0) {
@@ -6214,12 +6249,7 @@ class RoundedRectOpsRot {
         };
 
         // Edge endpoints in local space (centered at origin)
-        const edges = [
-            { start: { x: -hw + radius, y: -hh }, end: { x: hw - radius, y: -hh } },      // Top
-            { start: { x: hw, y: -hh + radius }, end: { x: hw, y: hh - radius } },        // Right
-            { start: { x: hw - radius, y: hh }, end: { x: -hw + radius, y: hh } },        // Bottom
-            { start: { x: -hw, y: hh - radius }, end: { x: -hw, y: -hh + radius } }       // Left
-        ];
+        const edges = RoundedRectUtils.getEdgeEndpoints(hw, hh, radius);
 
         // Generate edge perimeter pixels
         for (const edge of edges) {
@@ -6235,12 +6265,7 @@ class RoundedRectOpsRot {
         }
 
         // Corner definitions (local center and angle range)
-        const corners = [
-            { cx: -hw + radius, cy: -hh + radius, startAngle: Math.PI, endAngle: THREE_HALF_PI },         // Top-left
-            { cx: hw - radius, cy: -hh + radius, startAngle: THREE_HALF_PI, endAngle: TAU },      // Top-right
-            { cx: hw - radius, cy: hh - radius, startAngle: 0, endAngle: HALF_PI },                 // Bottom-right
-            { cx: -hw + radius, cy: hh - radius, startAngle: HALF_PI, endAngle: Math.PI }           // Bottom-left
-        ];
+        const corners = RoundedRectUtils.getCornerDefinitions(hw, hh, radius);
 
         // Generate corner arc perimeter pixels
         for (const corner of corners) {
@@ -6348,12 +6373,7 @@ class RoundedRectOpsRot {
         };
 
         // Edge endpoints
-        const edges = [
-            { start: { x: -hw + radius, y: -hh }, end: { x: hw - radius, y: -hh } },
-            { start: { x: hw, y: -hh + radius }, end: { x: hw, y: hh - radius } },
-            { start: { x: hw - radius, y: hh }, end: { x: -hw + radius, y: hh } },
-            { start: { x: -hw, y: hh - radius }, end: { x: -hw, y: -hh + radius } }
-        ];
+        const edges = RoundedRectUtils.getEdgeEndpoints(hw, hh, radius);
 
         for (const edge of edges) {
             const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
@@ -6365,12 +6385,7 @@ class RoundedRectOpsRot {
         }
 
         // Corner definitions
-        const corners = [
-            { cx: -hw + radius, cy: -hh + radius, startAngle: Math.PI, endAngle: THREE_HALF_PI },
-            { cx: hw - radius, cy: -hh + radius, startAngle: THREE_HALF_PI, endAngle: TAU },
-            { cx: hw - radius, cy: hh - radius, startAngle: 0, endAngle: HALF_PI },
-            { cx: -hw + radius, cy: hh - radius, startAngle: HALF_PI, endAngle: Math.PI }
-        ];
+        const corners = RoundedRectUtils.getCornerDefinitions(hw, hh, radius);
 
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
@@ -6430,7 +6445,7 @@ class RoundedRectOpsRot {
      */
     static stroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, color, globalAlpha, clipBuffer = null) {
         // Normalize radius
-        let radius = RoundedRectOpsRot._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOpsRot.stroke_Rot_Any for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -6547,19 +6562,14 @@ class RoundedRectOpsRot {
         // - Bottom-right: (hw-radius, hh-radius), angles: 0 to π/2
         // - Bottom-left: (-hw+radius, hh-radius), angles: π/2 to π
 
-        const corners = [
-            { localCx: -hw + radius, localCy: -hh + radius, startAngle: Math.PI, endAngle: THREE_HALF_PI },         // Top-left
-            { localCx: hw - radius, localCy: -hh + radius, startAngle: THREE_HALF_PI, endAngle: TAU },      // Top-right
-            { localCx: hw - radius, localCy: hh - radius, startAngle: 0, endAngle: HALF_PI },                 // Bottom-right
-            { localCx: -hw + radius, localCy: hh - radius, startAngle: HALF_PI, endAngle: Math.PI }           // Bottom-left
-        ];
+        const corners = RoundedRectUtils.getCornerDefinitions(hw, hh, radius);
 
         // Draw 4 corner arcs
         // Arc angles shift by rotation when the shape is rotated
         // Always use angle-based iteration for rotated rounded rects to ensure junction alignment with the sides (or other corner if the side ends up being zero-length).
         // Bresenham has angular coverage gaps at any radius, which cause discontinuities.
         for (const corner of corners) {
-            const screenCenter = RoundedRectOpsRot._transform(corner.localCx, corner.localCy, centerX, centerY, cos, sin);
+            const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
             // Angle-based iteration with exact endpoints (guaranteed junction alignment)
             ArcOps.stroke1px_Opaq_Exact(
                 surface,
@@ -6607,12 +6617,7 @@ class RoundedRectOpsRot {
         const hh = height / 2;  // half-height
 
         // Define 4 corner arc centers and angles (needed first for junction calculation)
-        const corners = [
-            { localCx: -hw + radius, localCy: -hh + radius, startAngle: Math.PI, endAngle: THREE_HALF_PI },         // Top-left
-            { localCx: hw - radius, localCy: -hh + radius, startAngle: THREE_HALF_PI, endAngle: TAU },      // Top-right
-            { localCx: hw - radius, localCy: hh - radius, startAngle: 0, endAngle: HALF_PI },                 // Bottom-right
-            { localCx: -hw + radius, localCy: hh - radius, startAngle: HALF_PI, endAngle: Math.PI }           // Bottom-left
-        ];
+        const corners = RoundedRectUtils.getCornerDefinitions(hw, hh, radius);
 
         // Pre-compute junction pixels using the SAME math as corner rendering.
         // This ensures edges skip exactly the pixels that corners will draw.
@@ -6621,7 +6626,7 @@ class RoundedRectOpsRot {
         // This eliminates floating-point precision mismatches that cause overdraw.
         const junctionPixels = [];
         for (const corner of corners) {
-            const screenCenter = RoundedRectOpsRot._transform(corner.localCx, corner.localCy, centerX, centerY, cos, sin);
+            const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
             const cx = screenCenter.x;
             const cy = screenCenter.y;
 
@@ -6733,9 +6738,9 @@ if (__outA > 0) {
         let globalLastPos = -1;
 
         for (const corner of corners) {
-            const screenCenter = RoundedRectOpsRot._transform(corner.localCx, corner.localCy, centerX, centerY, cos, sin);
-            const cx = screenCenter.x;
-            const cy = screenCenter.y;
+            const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
+            const arcCx = screenCenter.x;
+            const arcCy = screenCenter.y;
             const startAngle = corner.startAngle + rotation;
             const endAngle = corner.endAngle + rotation;
 
@@ -6759,8 +6764,8 @@ if (__outA > 0) {
                     ay = radius * Math.sin(endAngle);
                 }
 
-                const px = Math.floor(cx + ax);
-                const py = Math.floor(cy + ay);
+                const px = Math.floor(arcCx + ax);
+                const py = Math.floor(arcCy + ay);
 
                 if (px >= 0 && px < surfaceWidth && py >= 0 && py < surfaceHeight) {
                     const pos = py * surfaceWidth + px;
@@ -7105,7 +7110,7 @@ if (__outA > 0) {
      */
     static fillStroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
         // Normalize radius
-        const radius = RoundedRectOpsRot._normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Check what we need to draw
         const hasFill = fillColor && fillColor.a > 0;
@@ -7190,20 +7195,10 @@ if (__outA > 0) {
         const hh = height / 2;
 
         // Edge endpoints in local space
-        const edges = [
-            { start: { x: -hw + radius, y: -hh }, end: { x: hw - radius, y: -hh } },      // Top
-            { start: { x: hw, y: -hh + radius }, end: { x: hw, y: hh - radius } },        // Right
-            { start: { x: hw - radius, y: hh }, end: { x: -hw + radius, y: hh } },        // Bottom
-            { start: { x: -hw, y: hh - radius }, end: { x: -hw, y: -hh + radius } }       // Left
-        ];
+        const edges = RoundedRectUtils.getEdgeEndpoints(hw, hh, radius);
 
         // Corner definitions
-        const corners = [
-            { cx: -hw + radius, cy: -hh + radius, startAngle: Math.PI, endAngle: THREE_HALF_PI },
-            { cx: hw - radius, cy: -hh + radius, startAngle: THREE_HALF_PI, endAngle: TAU },
-            { cx: hw - radius, cy: hh - radius, startAngle: 0, endAngle: HALF_PI },
-            { cx: -hw + radius, cy: hh - radius, startAngle: HALF_PI, endAngle: Math.PI }
-        ];
+        const corners = RoundedRectUtils.getCornerDefinitions(hw, hh, radius);
 
         // Calculate bounding box for fill
         const boundingHeight = Math.abs(width * sin) + Math.abs(height * cos);
@@ -7720,10 +7715,7 @@ class RoundedRectOpsAA {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
-        if (width < 2 * radius) radius = width / 2;
-        if (height < 2 * radius) radius = height / 2;
-        radius = Math.round(Math.min(radius, Math.min(width, height) / 2));
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -7843,10 +7835,7 @@ class RoundedRectOpsAA {
         const data = surface.data;
 
         // Normalize radius
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
-        if (width < 2 * radius) radius = width / 2;
-        if (height < 2 * radius) radius = height / 2;
-        radius = Math.round(Math.min(radius, Math.min(width, height) / 2));
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -7956,20 +7945,6 @@ if (__outA > 0) {
     }
 
     /**
-     * Normalize radius for rounded rectangle, clamping to valid range.
-     * @param {number|number[]} radii - Corner radius
-     * @param {number} width - Rectangle width
-     * @param {number} height - Rectangle height
-     * @returns {number} Normalized radius
-     */
-    static _normalizeRadius(radii, width, height) {
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
-        if (width < 2 * radius) radius = width / 2;
-        if (height < 2 * radius) radius = height / 2;
-        return Math.round(Math.min(radius, Math.min(width, height) / 2));
-    }
-
-    /**
      * Direct rendering for opaque fill on axis-aligned rounded rectangle.
      * Uses scanline algorithm with 32-bit packed writes.
      *
@@ -7988,7 +7963,7 @@ if (__outA > 0) {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
@@ -8074,7 +8049,7 @@ if (__outA > 0) {
         const data = surface.data;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
@@ -8161,7 +8136,7 @@ if (__outA > 0) {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -8254,7 +8229,7 @@ if (__outA > 0) {
         const data = surface.data;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -8360,7 +8335,7 @@ if (__outA > 0) {
         if (!hasFill && !hasStroke) return;
 
         // Normalize radius
-        let radius = this._normalizeRadius(radii, width, height);
+        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to separate methods for zero radius
         if (radius <= 0) {
