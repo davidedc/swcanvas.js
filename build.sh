@@ -135,6 +135,8 @@ cat src/filters/ShadowBuffer.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/filters/BoxBlur.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
+cat src/filters/ShadowPipeline.js >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
 cat src/utils/ImageProcessor.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/paint/ColorParser.js >> dist/swcanvas.js
@@ -225,6 +227,7 @@ if (typeof window !== 'undefined') {
             SourceMask: SourceMask,
             ShadowBuffer: ShadowBuffer,
             BoxBlur: BoxBlur,
+            ShadowPipeline: ShadowPipeline,
             ImageProcessor: ImageProcessor,
             CompositeOperations: CompositeOperations,
             Rasterizer: Rasterizer,
@@ -271,6 +274,7 @@ if (typeof window !== 'undefined') {
             SourceMask: SourceMask,
             ShadowBuffer: ShadowBuffer,
             BoxBlur: BoxBlur,
+            ShadowPipeline: ShadowPipeline,
             ImageProcessor: ImageProcessor,
             CompositeOperations: CompositeOperations,
             Rasterizer: Rasterizer,

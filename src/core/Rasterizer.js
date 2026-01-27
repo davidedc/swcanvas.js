@@ -129,201 +129,6 @@ class Rasterizer {
     }
 
     /**
-     * Check if shadows are needed for current operation
-     * @returns {boolean} True if shadows should be rendered
-     * @private
-     */
-    _needsShadow() {
-        if (!this._currentOp) return false;
-
-        const op = this._currentOp;
-        return op.shadowColor.a > 0 &&
-            (op.shadowBlur > 0 || op.shadowOffsetX !== 0 || op.shadowOffsetY !== 0);
-    }
-
-    /**
-     * Render with shadow support - main shadow pipeline
-     * @param {Function} renderFunc - Function that performs the actual rendering
-     * @private
-     */
-    _renderWithShadow(renderFunc) {
-        if (!this._needsShadow()) {
-            // No shadow needed - render normally
-            renderFunc();
-            return;
-        }
-
-        // Shadow pipeline:
-        // 1. Create shadow buffer
-        // 2. Render shape alpha to shadow buffer (with offset)
-        // 3. Apply blur to shadow buffer
-        // 4. Composite shadow to surface
-        // 5. Render actual shape on top
-
-        const op = this._currentOp;
-        const maxBlurRadius = Math.ceil(op.shadowBlur);
-        const shadowBuffer = new ShadowBuffer(this._surface.width, this._surface.height, maxBlurRadius);
-
-        // Step 1: Render shape to shadow buffer
-        this._renderToShadowBuffer(shadowBuffer, renderFunc);
-
-        // Step 2: Apply blur if needed
-        let blurredShadow = shadowBuffer;
-        if (op.shadowBlur > 0) {
-            blurredShadow = this._applyShadowBlur(shadowBuffer, op.shadowBlur);
-        }
-
-        // Step 3: Composite shadow to surface
-        this._compositeShadowToSurface(blurredShadow, op.shadowColor, op.shadowOffsetX, op.shadowOffsetY);
-
-        // Step 4: Render actual shape on top
-        renderFunc();
-    }
-
-    /**
-     * Render shape alpha to shadow buffer
-     * @param {ShadowBuffer} shadowBuffer - Target shadow buffer
-     * @param {Function} renderFunc - Function that performs the actual rendering
-     * @private
-     */
-    _renderToShadowBuffer(shadowBuffer, renderFunc) {
-        // Implementation approach: render to temporary surface, then extract alpha
-        // This provides correct results with all paint sources (gradients, patterns, colors)
-        // Create a temporary surface to capture the shape
-        const tempSurface = new Surface(this._surface.width, this._surface.height);
-        const tempRasterizer = new Rasterizer(tempSurface);
-
-        // Set up operation for temp rendering (without shadow)
-        const opCopy = Object.assign({}, this._currentOp);
-        opCopy.shadowColor = Color.transparent; // No shadow for temp render
-        opCopy.shadowBlur = 0;
-        opCopy.shadowOffsetX = 0;
-        opCopy.shadowOffsetY = 0;
-
-        tempRasterizer._currentOp = opCopy;
-
-        // Render to temp surface
-        const originalSurface = this._surface;
-        const originalCurrentOp = this._currentOp;
-        this._surface = tempSurface;
-        this._currentOp = opCopy;
-
-        try {
-            renderFunc();
-        } finally {
-            // Restore original surface and operation
-            this._surface = originalSurface;
-            this._currentOp = originalCurrentOp;
-        }
-
-        // Extract alpha from temp surface to shadow buffer
-        for (let y = 0; y < tempSurface.height; y++) {
-            for (let x = 0; x < tempSurface.width; x++) {
-                const offset = y * tempSurface.stride + x * 4;
-                const alpha = tempSurface.data[offset + 3] / 255.0; // Normalize to 0-1
-
-                if (alpha > 0) {
-                    shadowBuffer.addAlpha(x, y, alpha);
-                }
-            }
-        }
-    }
-
-    /**
-     * Apply blur to shadow buffer
-     * @param {ShadowBuffer} shadowBuffer - Shadow buffer to blur
-     * @param {number} blurRadius - Blur radius
-     * @returns {ShadowBuffer} New blurred shadow buffer
-     * @private
-     */
-    _applyShadowBlur(shadowBuffer, blurRadius) {
-        // Convert shadow buffer to dense array for blur processing
-        const denseData = shadowBuffer.toDenseArray();
-
-        if (denseData.width === 0 || denseData.height === 0) {
-            return shadowBuffer; // Nothing to blur
-        }
-
-        // Apply box blur
-        const blurredData = BoxBlur.blur(denseData.data, denseData.width, denseData.height, blurRadius);
-
-        // Create new shadow buffer with blurred data
-        const blurredBuffer = new ShadowBuffer(shadowBuffer.originalWidth, shadowBuffer.originalHeight, Math.ceil(blurRadius));
-        blurredBuffer.fromDenseArray(blurredData, denseData.width, denseData.height, denseData.offsetX, denseData.offsetY);
-
-        return blurredBuffer;
-    }
-
-    /**
-     * Composite shadow buffer to surface
-     * @param {ShadowBuffer} shadowBuffer - Shadow buffer to composite
-     * @param {Color} shadowColor - Shadow color
-     * @param {number} offsetX - Shadow X offset
-     * @param {number} offsetY - Shadow Y offset
-     * @private
-     */
-    _compositeShadowToSurface(shadowBuffer, shadowColor, offsetX, offsetY) {
-        const surface = this._surface;
-        const globalAlpha = this._currentOp.globalAlpha;
-
-        // Apply global alpha to shadow color using the standard method
-        const effectiveShadowColor = shadowColor.withGlobalAlpha(globalAlpha);
-
-        // Iterate over shadow pixels and composite to surface
-        for (const pixel of shadowBuffer.getPixels()) {
-            // Convert from extended buffer coordinates to surface coordinates
-            // ShadowBuffer stores pixels in extended coordinates, we need to convert back to surface coordinates
-            const surfaceX = Math.round(pixel.x - shadowBuffer.extendedOffsetX + offsetX);
-            const surfaceY = Math.round(pixel.y - shadowBuffer.extendedOffsetY + offsetY);
-
-            // Bounds check
-            if (surfaceX < 0 || surfaceX >= surface.width || surfaceY < 0 || surfaceY >= surface.height) {
-                continue;
-            }
-
-            // Check clipping
-            if (this._isPixelClipped(surfaceX, surfaceY)) {
-                continue;
-            }
-
-            // Calculate final shadow alpha by combining pixel alpha with shadow color alpha
-            // pixel.alpha is 0-1 (from blurred shadow buffer)
-            // effectiveShadowColor.a is 0-255 range
-            // 
-            // The 8x multiplier compensates for alpha dilution caused by box blur averaging.
-            // When blur spreads a single pixel over a larger area, the average alpha drops
-            // significantly (e.g., 3x3 kernel reduces to ~1/9). The multiplier restores
-            // the visual intensity to match HTML5 Canvas shadow behavior.
-            const BLUR_DILUTION_COMPENSATION = 8;
-            const finalShadowAlpha = Math.min(255, Math.round(
-                pixel.alpha * effectiveShadowColor.a * BLUR_DILUTION_COMPENSATION
-            ));
-
-            if (finalShadowAlpha <= 0) continue;
-
-            // Get surface pixel
-            const offset = surfaceY * surface.stride + surfaceX * 4;
-            const dstR = surface.data[offset];
-            const dstG = surface.data[offset + 1];
-            const dstB = surface.data[offset + 2];
-            const dstA = surface.data[offset + 3];
-
-            // Composite shadow (using source-over blending)
-            const result = CompositeOperations.blendPixel(
-                'source-over',
-                effectiveShadowColor.r, effectiveShadowColor.g, effectiveShadowColor.b, finalShadowAlpha,
-                dstR, dstG, dstB, dstA
-            );
-
-            // Write result
-            surface.data[offset] = result.r;
-            surface.data[offset + 1] = result.g;
-            surface.data[offset + 2] = result.b;
-            surface.data[offset + 3] = result.a;
-        }
-    }
-
-    /**
      * Fill a rectangle with solid color
      * @param {number} x - Rectangle x coordinate
      * @param {number} y - Rectangle y coordinate
@@ -347,7 +152,7 @@ class Rasterizer {
         if (width === 0 || height === 0) return; // Nothing to draw
 
         // Wrap the actual rectangle filling logic with shadow pipeline
-        this._renderWithShadow(() => {
+        ShadowPipeline.renderWithShadow(this, () => {
             this._fillRectInternal(x, y, width, height, color);
         });
     }
@@ -549,7 +354,7 @@ class Rasterizer {
         this._requireActiveOp();
 
         // Wrap the actual path filling logic with shadow pipeline
-        this._renderWithShadow(() => {
+        ShadowPipeline.renderWithShadow(this, () => {
             this._fillInternal(path, rule);
         });
     }
@@ -589,7 +394,7 @@ class Rasterizer {
         this._requireActiveOp();
 
         // Wrap the actual stroke logic with shadow pipeline
-        this._renderWithShadow(() => {
+        ShadowPipeline.renderWithShadow(this, () => {
             this._strokeInternal(path, strokeProps);
         });
     }
@@ -648,7 +453,7 @@ class Rasterizer {
         this._requireActiveOp();
 
         // Wrap the actual image drawing logic with shadow pipeline
-        this._renderWithShadow(() => {
+        ShadowPipeline.renderWithShadow(this, () => {
             this._drawImageInternal.apply(this, arguments);
         });
     }
