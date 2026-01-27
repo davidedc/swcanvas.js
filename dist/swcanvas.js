@@ -165,6 +165,186 @@ function debugWarn(message) {
 }
 
 /**
+ * Validators class for SWCanvas
+ *
+ * Public API parameter validation utilities.
+ * These validations REMAIN in production builds to ensure correct API usage.
+ *
+ * Following Joshua Bloch's principle of providing clear, descriptive error messages
+ * to help users understand and fix invalid input.
+ */
+class Validators {
+    /**
+     * Validate that value is a number (not NaN)
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static number(value, name) {
+        if (typeof value !== 'number' || isNaN(value)) {
+            throw new Error(`${name} must be a valid number`);
+        }
+    }
+
+    /**
+     * Validate that value is a finite number
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static finiteNumber(value, name) {
+        if (typeof value !== 'number' || !isFinite(value)) {
+            throw new Error(`${name} must be a finite number`);
+        }
+    }
+
+    /**
+     * Validate that value is a non-negative number
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static nonNegative(value, name) {
+        Validators.number(value, name);
+        if (value < 0) {
+            throw new Error(`${name} must be non-negative`);
+        }
+    }
+
+    /**
+     * Validate that value is a positive integer
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static positiveInteger(value, name) {
+        if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+            throw new Error(`${name} must be a positive integer`);
+        }
+    }
+
+    /**
+     * Validate that value is a non-negative integer
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static nonNegativeInteger(value, name) {
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+            throw new Error(`${name} must be a non-negative integer`);
+        }
+    }
+
+    /**
+     * Validate that value is within a specified range
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     * @param {number} min - Minimum allowed value (inclusive)
+     * @param {number} max - Maximum allowed value (inclusive)
+     */
+    static range(value, name, min, max) {
+        Validators.number(value, name);
+        if (value < min || value > max) {
+            throw new Error(`${name} must be between ${min} and ${max}`);
+        }
+    }
+
+    /**
+     * Validate that value is a valid color component (0-255)
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static colorComponent(value, name) {
+        if (typeof value !== 'number' || value < 0 || value > 255) {
+            throw new Error(`${name} must be in range 0-255`);
+        }
+    }
+
+    /**
+     * Validate that value is a normalized value (0-1)
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static normalizedValue(value, name) {
+        Validators.number(value, name);
+        if (value < 0 || value > 1) {
+            throw new Error(`${name} must be between 0 and 1`);
+        }
+    }
+
+    /**
+     * Validate rectangle parameters (all must be numbers)
+     * @param {*} x - X coordinate
+     * @param {*} y - Y coordinate
+     * @param {*} width - Width
+     * @param {*} height - Height
+     */
+    static rectParams(x, y, width, height) {
+        if (typeof x !== 'number' || typeof y !== 'number' ||
+            typeof width !== 'number' || typeof height !== 'number') {
+            throw new Error('Rectangle parameters must be numbers');
+        }
+    }
+
+    /**
+     * Validate that rectangle dimensions are finite
+     * @param {*} x - X coordinate
+     * @param {*} y - Y coordinate
+     * @param {*} width - Width
+     * @param {*} height - Height
+     */
+    static rectParamsFinite(x, y, width, height) {
+        if (typeof x !== 'number' || typeof y !== 'number' ||
+            typeof width !== 'number' || typeof height !== 'number') {
+            throw new Error('Rectangle parameters must be numbers');
+        }
+        if (!isFinite(x) || !isFinite(y) || !isFinite(width) || !isFinite(height)) {
+            throw new Error('Rectangle parameters must be finite numbers');
+        }
+    }
+
+    /**
+     * Validate that value is a string
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static string(value, name) {
+        if (typeof value !== 'string') {
+            throw new Error(`${name} must be a string`);
+        }
+    }
+
+    /**
+     * Validate that value is an array
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static array(value, name) {
+        if (!Array.isArray(value)) {
+            throw new Error(`${name} must be an array`);
+        }
+    }
+
+    /**
+     * Validate that value is an instance of a specified class
+     * @param {*} value - Value to validate
+     * @param {Function} expectedClass - Expected class constructor
+     * @param {string} name - Parameter name for error message
+     */
+    static instanceOf(value, expectedClass, name) {
+        if (!(value instanceof expectedClass)) {
+            throw new Error(`${name} must be an instance of ${expectedClass.name}`);
+        }
+    }
+
+    /**
+     * Validate that value is defined (not null or undefined)
+     * @param {*} value - Value to validate
+     * @param {string} name - Parameter name for error message
+     */
+    static defined(value, name) {
+        if (value === null || value === undefined) {
+            throw new Error(`${name} must be defined`);
+        }
+    }
+}
+
+/**
  * Color class for SWCanvas
  *
  * Encapsulates color operations, conversions, and alpha blending math.
@@ -186,9 +366,10 @@ class Color {
      */
     constructor(r, g, b, a = 255, isPremultiplied = false) {
         // Validate input ranges
-        if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
-            throw new Error('Color components must be in range 0-255');
-        }
+        Validators.colorComponent(r, 'Red component');
+        Validators.colorComponent(g, 'Green component');
+        Validators.colorComponent(b, 'Blue component');
+        Validators.colorComponent(a, 'Alpha component');
 
         if (isPremultiplied) {
             this._r = Math.round(r);
@@ -447,14 +628,9 @@ class Point {
      */
     constructor(x, y) {
         // Validate input parameters
-        if (typeof x !== 'number' || typeof y !== 'number') {
-            throw new Error('Point coordinates must be numbers');
-        }
-        
-        if (!isFinite(x) || !isFinite(y)) {
-            throw new Error('Point coordinates must be finite numbers');
-        }
-        
+        Validators.finiteNumber(x, 'Point x coordinate');
+        Validators.finiteNumber(y, 'Point y coordinate');
+
         this._x = x;
         this._y = y;
         
@@ -764,19 +940,12 @@ class Rectangle {
      */
     constructor(x, y, width, height) {
         // Validate input parameters
-        if (typeof x !== 'number' || typeof y !== 'number' || 
-            typeof width !== 'number' || typeof height !== 'number') {
-            throw new Error('Rectangle parameters must be numbers');
-        }
-        
-        if (!isFinite(x) || !isFinite(y) || !isFinite(width) || !isFinite(height)) {
-            throw new Error('Rectangle parameters must be finite numbers');
-        }
-        
+        Validators.rectParamsFinite(x, y, width, height);
+
         if (width < 0 || height < 0) {
             throw new Error('Rectangle dimensions must be non-negative');
         }
-        
+
         this._x = x;
         this._y = y;
         this._width = width;
@@ -1334,13 +1503,8 @@ class Surface {
      */
     constructor(width, height) {
         // Validate parameters with descriptive error messages
-        if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
-            throw new Error('Surface width must be a positive integer');
-        }
-
-        if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
-            throw new Error('Surface height must be a positive integer');
-        }
+        Validators.positiveInteger(width, 'Surface width');
+        Validators.positiveInteger(height, 'Surface height');
 
         // Check area first (SurfaceTooLarge takes precedence for test compatibility)
         if (width * height > 268435456) { // 16384 * 16384
@@ -8652,20 +8816,14 @@ class BitmapEncodingOptions {
      */
     constructor(backgroundColor = { r: 255, g: 255, b: 255 }) {
         // Validate background color components
-        if (!backgroundColor || typeof backgroundColor !== 'object') {
-            throw new Error('backgroundColor must be an object with r, g, b properties');
-        }
-        
+        Validators.defined(backgroundColor, 'backgroundColor');
+
         const { r, g, b } = backgroundColor;
-        
-        if (typeof r !== 'number' || typeof g !== 'number' || typeof b !== 'number') {
-            throw new Error('backgroundColor components (r, g, b) must be numbers');
-        }
-        
-        if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
-            throw new Error('backgroundColor components must be in range 0-255');
-        }
-        
+
+        Validators.colorComponent(r, 'backgroundColor.r');
+        Validators.colorComponent(g, 'backgroundColor.g');
+        Validators.colorComponent(b, 'backgroundColor.b');
+
         // Store immutable background color
         this._backgroundColor = Object.freeze({
             r: Math.round(r),
@@ -9073,10 +9231,8 @@ class PngEncodingOptions {
         if (typeof preserveTransparency !== 'boolean') {
             throw new Error('preserveTransparency must be a boolean');
         }
-        
-        if (typeof compressionLevel !== 'number' || compressionLevel < 0 || compressionLevel > 9) {
-            throw new Error('compressionLevel must be a number between 0-9');
-        }
+
+        Validators.range(compressionLevel, 'compressionLevel', 0, 9);
         
         // Currently only support compression level 0 (stored blocks)
         if (compressionLevel !== 0) {
@@ -10300,9 +10456,9 @@ class PolygonFiller {
      */
     static fillPolygons(surface, polygons, paintSource, fillRule, transform, clipMask, globalAlpha = 1.0, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
         if (polygons.length === 0) return;
-        if (!PolygonFiller._isValidPaintSource(paintSource)) {
+        /*@assert:if (!PolygonFiller._isValidPaintSource(paintSource)) {
             throw new Error('Paint source must be a Color, Gradient, or Pattern instance');
-        }
+        }*/
 
         // Check if we can use direct rendering (opaque solid color with source-over)
         const canUseDirectRendering =
@@ -10894,27 +11050,25 @@ class StrokeGenerator {
             lineDash: [],
             lineDashOffset: 0
         };
-        
+
         const validated = { ...defaults, ...props };
-        
-        if (validated.lineWidth < 0) {
+
+        /*@assert:if (validated.lineWidth < 0) {
             throw new Error('lineWidth must not be negative');
-        }
-        
-        const validJoins = ['miter', 'round', 'bevel'];
-        if (!validJoins.includes(validated.lineJoin)) {
-            throw new Error(`Invalid lineJoin: ${validated.lineJoin}`);
-        }
-        
-        const validCaps = ['butt', 'round', 'square'];
-        if (!validCaps.includes(validated.lineCap)) {
-            throw new Error(`Invalid lineCap: ${validated.lineCap}`);
-        }
-        
-        if (validated.miterLimit <= 0) {
+        }*/
+
+        /*@assert:if (!['miter', 'round', 'bevel'].includes(validated.lineJoin)) {
+            throw new Error('Invalid lineJoin');
+        }*/
+
+        /*@assert:if (!['butt', 'round', 'square'].includes(validated.lineCap)) {
+            throw new Error('Invalid lineCap');
+        }*/
+
+        /*@assert:if (validated.miterLimit <= 0) {
             throw new Error('miterLimit must be positive');
-        }
-        
+        }*/
+
         return validated;
     }
     
@@ -11655,18 +11809,13 @@ class BitBuffer {
      */
     constructor(width, height, defaultValue = 0) {
         // Validate parameters
-        if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
-            throw new Error('BitBuffer width must be a positive integer');
-        }
-        
-        if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
-            throw new Error('BitBuffer height must be a positive integer');
-        }
-        
+        Validators.positiveInteger(width, 'BitBuffer width');
+        Validators.positiveInteger(height, 'BitBuffer height');
+
         if (defaultValue !== 0 && defaultValue !== 1) {
             throw new Error('BitBuffer defaultValue must be 0 or 1');
         }
-        
+
         this._width = width;
         this._height = height;
         this._numPixels = width * height;
@@ -11770,14 +11919,14 @@ class BitBuffer {
      * @param {BitBuffer} other - Other BitBuffer to AND with
      */
     and(other) {
-        if (!(other instanceof BitBuffer)) {
+        /*@assert:if (!(other instanceof BitBuffer)) {
             throw new Error('Argument must be a BitBuffer instance');
-        }
-        
-        if (other._width !== this._width || other._height !== this._height) {
+        }*/
+
+        /*@assert:if (other._width !== this._width || other._height !== this._height) {
             throw new Error('BitBuffer dimensions must match for AND operation');
-        }
-        
+        }*/
+
         // Perform bitwise AND on each byte
         for (let i = 0; i < this._numBytes; i++) {
             this._buffer[i] &= other._buffer[i];
@@ -11789,14 +11938,14 @@ class BitBuffer {
      * @param {BitBuffer} other - Source BitBuffer to copy from
      */
     copyFrom(other) {
-        if (!(other instanceof BitBuffer)) {
+        /*@assert:if (!(other instanceof BitBuffer)) {
             throw new Error('Argument must be a BitBuffer instance');
-        }
-        
-        if (other._width !== this._width || other._height !== this._height) {
+        }*/
+
+        /*@assert:if (other._width !== this._width || other._height !== this._height) {
             throw new Error('BitBuffer dimensions must match for copy operation');
-        }
-        
+        }*/
+
         this._buffer.set(other._buffer);
     }
     
@@ -12118,10 +12267,10 @@ class BoundsTracker {
      * @param {BoundsTracker} other - Other BoundsTracker to merge with
      */
     mergeWith(other) {
-        if (!(other instanceof BoundsTracker)) {
+        /*@assert:if (!(other instanceof BoundsTracker)) {
             throw new Error('BoundsTracker merge requires another BoundsTracker instance');
-        }
-        
+        }*/
+
         if (other._bounds.isEmpty) {
             return; // Nothing to merge
         }
@@ -12256,10 +12405,10 @@ class ClipMask {
      * @param {ClipMask} other - Other clip mask to intersect with
      */
     intersectWith(other) {
-        if (!(other instanceof ClipMask)) {
+        /*@assert:if (!(other instanceof ClipMask)) {
             throw new Error('Argument must be a ClipMask instance');
-        }
-        
+        }*/
+
         this._bitBuffer.and(other._bitBuffer);
     }
     
@@ -12520,19 +12669,20 @@ class ShadowBuffer {
      * @param {number} maxBlurRadius - Maximum blur radius for bounds calculation
      */
     constructor(width, height, maxBlurRadius = 0) {
-        // Validate parameters
-        if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
+        // Validate parameters - these are internal assertions since ShadowBuffer
+        // is only created by Context2D internally
+        /*@assert:if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
             throw new Error('ShadowBuffer width must be a positive integer');
-        }
-        
-        if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
+        }*/
+
+        /*@assert:if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
             throw new Error('ShadowBuffer height must be a positive integer');
-        }
-        
-        if (typeof maxBlurRadius !== 'number' || maxBlurRadius < 0) {
+        }*/
+
+        /*@assert:if (typeof maxBlurRadius !== 'number' || maxBlurRadius < 0) {
             throw new Error('ShadowBuffer maxBlurRadius must be a non-negative number');
-        }
-        
+        }*/
+
         // Original surface dimensions
         this._originalWidth = width;
         this._originalHeight = height;
@@ -12791,27 +12941,27 @@ class BoxBlur {
      * @returns {Float32Array} Blurred image data
      */
     static blur(data, width, height, blurRadius, passes = 3) {
-        // Validate parameters
-        if (!data || !(data instanceof Float32Array)) {
+        // Validate parameters - internal assertions since BoxBlur is only called by ShadowBuffer
+        /*@assert:if (!data || !(data instanceof Float32Array)) {
             throw new Error('BoxBlur requires Float32Array data');
-        }
-        
-        if (typeof width !== 'number' || width <= 0 || typeof height !== 'number' || height <= 0) {
+        }*/
+
+        /*@assert:if (typeof width !== 'number' || width <= 0 || typeof height !== 'number' || height <= 0) {
             throw new Error('BoxBlur width and height must be positive numbers');
-        }
-        
-        if (data.length !== width * height) {
+        }*/
+
+        /*@assert:if (data.length !== width * height) {
             throw new Error('BoxBlur data length must match width * height');
-        }
-        
-        if (typeof blurRadius !== 'number' || blurRadius < 0) {
+        }*/
+
+        /*@assert:if (typeof blurRadius !== 'number' || blurRadius < 0) {
             throw new Error('BoxBlur radius must be a non-negative number');
-        }
-        
-        if (typeof passes !== 'number' || passes < 1) {
+        }*/
+
+        /*@assert:if (typeof passes !== 'number' || passes < 1) {
             throw new Error('BoxBlur passes must be at least 1');
-        }
-        
+        }*/
+
         // No blur needed for zero radius
         if (blurRadius === 0) {
             return new Float32Array(data); // Return copy
@@ -13110,22 +13260,11 @@ class ImageProcessor {
      * @private
      */
     static _validateImageLike(imageLike) {
-        if (!imageLike || typeof imageLike !== 'object') {
-            throw new Error('ImageLike must be an object');
-        }
-        
-        if (typeof imageLike.width !== 'number' || imageLike.width <= 0 || !Number.isInteger(imageLike.width)) {
-            throw new Error('ImageLike width must be a positive integer');
-        }
-        
-        if (typeof imageLike.height !== 'number' || imageLike.height <= 0 || !Number.isInteger(imageLike.height)) {
-            throw new Error('ImageLike height must be a positive integer');
-        }
-        
-        if (!(imageLike.data instanceof Uint8ClampedArray)) {
-            throw new Error('ImageLike data must be a Uint8ClampedArray');
-        }
-        
+        Validators.defined(imageLike, 'ImageLike');
+        Validators.positiveInteger(imageLike.width, 'ImageLike width');
+        Validators.positiveInteger(imageLike.height, 'ImageLike height');
+        Validators.instanceOf(imageLike.data, Uint8ClampedArray, 'ImageLike data');
+
         // Additional validation for reasonable limits
         const maxDimension = 16384;
         if (imageLike.width > maxDimension || imageLike.height > maxDimension) {
@@ -13167,14 +13306,11 @@ class ImageProcessor {
      * @returns {Object} ImageLike representation of surface
      */
     static surfaceToImageLike(surface) {
-        if (!surface || typeof surface !== 'object') {
-            throw new Error('Surface must be a valid Surface object');
-        }
-        
-        if (!surface.width || !surface.height || !surface.data) {
-            throw new Error('Surface must have width, height, and data properties');
-        }
-        
+        Validators.defined(surface, 'Surface');
+        Validators.defined(surface.width, 'Surface.width');
+        Validators.defined(surface.height, 'Surface.height');
+        Validators.defined(surface.data, 'Surface.data');
+
         return {
             width: surface.width,
             height: surface.height,
@@ -13190,10 +13326,9 @@ class ImageProcessor {
      * @returns {Object} ImageLike object
      */
     static createBlankImage(width, height, fillColor = [0, 0, 0, 255]) {
-        if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
-            throw new Error('Width and height must be positive integers');
-        }
-        
+        Validators.positiveInteger(width, 'width');
+        Validators.positiveInteger(height, 'height');
+
         const numPixels = width * height;
         const data = new Uint8ClampedArray(numPixels * 4);
         
@@ -13281,12 +13416,10 @@ class ImageProcessor {
      */
     static scaleImage(source, newWidth, newHeight) {
         const validated = ImageProcessor.validateAndConvert(source);
-        
-        if (!Number.isInteger(newWidth) || !Number.isInteger(newHeight) || 
-            newWidth <= 0 || newHeight <= 0) {
-            throw new Error('Target dimensions must be positive integers');
-        }
-        
+
+        Validators.positiveInteger(newWidth, 'newWidth');
+        Validators.positiveInteger(newHeight, 'newHeight');
+
         const scaledData = new Uint8ClampedArray(newWidth * newHeight * 4);
         const scaleX = validated.width / newWidth;
         const scaleY = validated.height / newHeight;
@@ -13363,18 +13496,14 @@ class ImageProcessor {
      * @returns {Object} ImageLike representation of canvas
      */
     static fromCanvas(canvas) {
-        if (!canvas || typeof canvas !== 'object') {
-            throw new Error('Canvas must be a valid HTMLCanvasElement');
-        }
-        
-        if (typeof canvas.width !== 'number' || typeof canvas.height !== 'number') {
-            throw new Error('Canvas must have numeric width and height');
-        }
-        
+        Validators.defined(canvas, 'Canvas');
+        Validators.number(canvas.width, 'Canvas.width');
+        Validators.number(canvas.height, 'Canvas.height');
+
         if (!canvas.getContext || typeof canvas.getContext !== 'function') {
             throw new Error('Canvas must have getContext method');
         }
-        
+
         try {
             const ctx = canvas.getContext('2d');
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -13697,13 +13826,7 @@ class Gradient {
      */
     addColorStop(offset, color) {
         // Validate offset
-        if (typeof offset !== 'number' || !isFinite(offset)) {
-            throw new Error('Color stop offset must be a finite number');
-        }
-
-        if (offset < 0 || offset > 1) {
-            throw new Error('Color stop offset must be between 0 and 1');
-        }
+        Validators.normalizedValue(offset, 'Color stop offset');
 
         // Parse color using ColorParser
         const colorParser = new ColorParser();
@@ -13877,9 +14000,8 @@ class RadialGradient extends Gradient {
         super();
 
         // Validate radii
-        if (r0 < 0 || r1 < 0) {
-            throw new Error('Radial gradient radii must be non-negative');
-        }
+        Validators.nonNegative(r0, 'Inner radius');
+        Validators.nonNegative(r1, 'Outer radius');
 
         // Check for identical circles (would paint nothing)
         if (x0 === x1 && y0 === y1 && r0 === r1) {
@@ -14268,19 +14390,19 @@ class Rasterizer {
      * @private
      */
     _validateParams(params) {
-        if (params.globalAlpha !== undefined) {
+        /*@assert:if (params.globalAlpha !== undefined) {
             if (typeof params.globalAlpha !== 'number' || params.globalAlpha < 0 || params.globalAlpha > 1) {
                 throw new Error('globalAlpha must be a number between 0 and 1');
             }
-        }
+        }*/
 
-        if (params.composite && !CompositeOperations.isSupported(params.composite)) {
-            throw new Error(`Invalid composite operation. Supported: ${CompositeOperations.getSupportedOperations().join(', ')}`);
-        }
+        /*@assert:if (params.composite && !CompositeOperations.isSupported(params.composite)) {
+            throw new Error('Invalid composite operation');
+        }*/
 
-        if (params.transform && !(params.transform instanceof Transform2D)) {
+        /*@assert:if (params.transform && !(params.transform instanceof Transform2D)) {
             throw new Error('transform must be a Transform2D instance');
-        }
+        }*/
     }
 
     /**
@@ -14288,9 +14410,9 @@ class Rasterizer {
      * @private
      */
     _requireActiveOp() {
-        if (!this._currentOp) {
+        /*@assert:if (!this._currentOp) {
             throw new Error('Must call beginOp() before drawing operations');
-        }
+        }*/
     }
 
     /**
@@ -15290,28 +15412,19 @@ class Context2D {
     }
 
     setShadowBlur(blur) {
-        if (typeof blur !== 'number' || isNaN(blur)) {
-            throw new Error('Shadow blur must be a number');
-        }
-        if (blur < 0) {
-            throw new Error('Shadow blur must be non-negative');
-        }
+        Validators.nonNegative(blur, 'shadowBlur');
         this.shadowBlur = blur;
         this._updateNoShadowFlag();
     }
 
     setShadowOffsetX(offset) {
-        if (typeof offset !== 'number' || isNaN(offset)) {
-            throw new Error('Shadow offsetX must be a number');
-        }
+        Validators.number(offset, 'shadowOffsetX');
         this.shadowOffsetX = offset;
         this._updateNoShadowFlag();
     }
 
     setShadowOffsetY(offset) {
-        if (typeof offset !== 'number' || isNaN(offset)) {
-            throw new Error('Shadow offsetY must be a number');
-        }
+        Validators.number(offset, 'shadowOffsetY');
         this.shadowOffsetY = offset;
         this._updateNoShadowFlag();
     }
@@ -17428,12 +17541,8 @@ class CanvasCompatibleContext2D {
      * @returns {Object} ImageData-like object
      */
     createImageData(width, height) {
-        if (typeof width !== 'number' || width <= 0 || !Number.isInteger(width)) {
-            throw new Error('Width must be a positive integer');
-        }
-        if (typeof height !== 'number' || height <= 0 || !Number.isInteger(height)) {
-            throw new Error('Height must be a positive integer');
-        }
+        Validators.positiveInteger(width, 'width');
+        Validators.positiveInteger(height, 'height');
 
         return {
             width: width,
@@ -17451,15 +17560,10 @@ class CanvasCompatibleContext2D {
      * @returns {Object} ImageData-like object
      */
     getImageData(x, y, width, height) {
-        if (typeof x !== 'number' || typeof y !== 'number') {
-            throw new Error('Coordinates must be numbers');
-        }
-        if (typeof width !== 'number' || width <= 0 || !Number.isInteger(width)) {
-            throw new Error('Width must be a positive integer');
-        }
-        if (typeof height !== 'number' || height <= 0 || !Number.isInteger(height)) {
-            throw new Error('Height must be a positive integer');
-        }
+        Validators.number(x, 'x coordinate');
+        Validators.number(y, 'y coordinate');
+        Validators.positiveInteger(width, 'width');
+        Validators.positiveInteger(height, 'height');
 
         // Create ImageData object
         const imageData = this.createImageData(width, height);
@@ -17498,18 +17602,12 @@ class CanvasCompatibleContext2D {
      * @param {number} dy - Destination y coordinate
      */
     putImageData(imageData, dx, dy) {
-        if (!imageData || typeof imageData !== 'object') {
-            throw new Error('ImageData must be an object');
-        }
-        if (typeof imageData.width !== 'number' || typeof imageData.height !== 'number') {
-            throw new Error('ImageData must have numeric width and height');
-        }
-        if (!(imageData.data instanceof Uint8ClampedArray)) {
-            throw new Error('ImageData data must be a Uint8ClampedArray');
-        }
-        if (typeof dx !== 'number' || typeof dy !== 'number') {
-            throw new Error('Destination coordinates must be numbers');
-        }
+        Validators.defined(imageData, 'imageData');
+        Validators.number(imageData.width, 'imageData.width');
+        Validators.number(imageData.height, 'imageData.height');
+        Validators.instanceOf(imageData.data, Uint8ClampedArray, 'imageData.data');
+        Validators.number(dx, 'dx');
+        Validators.number(dy, 'dy');
 
         const surface = this._core.surface;
 
@@ -17876,6 +17974,7 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             RoundedRectOpsAA: RoundedRectOpsAA,
+            Validators: Validators,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,
             debugLog: debugLog,
@@ -17921,6 +18020,7 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             RoundedRectOpsAA: RoundedRectOpsAA,
+            Validators: Validators,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,
             debugLog: debugLog,
