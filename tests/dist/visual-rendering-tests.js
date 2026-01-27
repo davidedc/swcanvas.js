@@ -9550,6 +9550,299 @@
         }
     });
 
+    // Test: Shadow Clipping Test
+    // Tests shadow functionality with clip paths to verify shadows respect clipping regions.
+
+    registerVisualTest('shadow-clipping-test', {
+        name: 'Shadow Clipping Test',
+        width: 200, height: 200,
+        // Unified drawing function that works with both canvas types
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+
+            // White background
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 200, 200);
+
+            // Test 1: Rectangle with shadow, clipped to circle
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(50, 50, 35, 0, 2 * Math.PI);
+            ctx.clip();
+
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = 10;
+            ctx.shadowOffsetY = 10;
+
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(20, 20, 60, 60);
+            ctx.restore();
+
+            // Test 2: Circle with shadow, clipped to rectangle
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(110, 20, 70, 60);
+            ctx.clip();
+
+            ctx.shadowColor = 'rgba(255, 0, 0, 0.4)';
+            ctx.shadowBlur = 6;
+            ctx.shadowOffsetX = -5;
+            ctx.shadowOffsetY = 8;
+
+            ctx.fillStyle = 'green';
+            ctx.beginPath();
+            ctx.arc(145, 50, 30, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.restore();
+
+            // Test 3: Shadow with no blur, clipped to diagonal path
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(20, 100);
+            ctx.lineTo(80, 100);
+            ctx.lineTo(80, 180);
+            ctx.lineTo(20, 180);
+            ctx.closePath();
+            ctx.clip();
+
+            ctx.shadowColor = 'rgba(128, 0, 128, 0.6)';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 8;
+            ctx.shadowOffsetY = -5;
+
+            ctx.fillStyle = 'orange';
+            ctx.fillRect(30, 120, 40, 40);
+            ctx.restore();
+
+            // Test 4: Stroked path with shadow inside clip region
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(145, 140, 40, 0, 2 * Math.PI);
+            ctx.clip();
+
+            ctx.shadowColor = 'rgba(0, 100, 200, 0.5)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
+
+            ctx.strokeStyle = 'magenta';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.rect(115, 110, 60, 60);
+            ctx.stroke();
+            ctx.restore();
+        }
+    });
+
+
+    // Test: Shadow Rotation Test
+    // Tests shadow functionality with rotated and transformed shapes.
+    // Verifies shadow offset direction is correct under transformations.
+
+    registerVisualTest('shadow-rotation-test', {
+        name: 'Shadow Rotation Test',
+        width: 200, height: 200,
+        // Unified drawing function that works with both canvas types
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+
+            // White background
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 200, 200);
+
+            // Test 1: Rotated rectangle with shadow
+            ctx.save();
+            ctx.translate(50, 50);
+            ctx.rotate(Math.PI / 6); // 30 degrees
+
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 5;
+            ctx.shadowOffsetX = 6;
+            ctx.shadowOffsetY = 6;
+
+            ctx.fillStyle = 'red';
+            ctx.fillRect(-20, -15, 40, 30);
+            ctx.restore();
+
+            // Test 2: Scaled rectangle with shadow
+            ctx.save();
+            ctx.translate(140, 50);
+            ctx.scale(1.5, 0.8);
+
+            ctx.shadowColor = 'rgba(0, 100, 0, 0.4)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetX = 5;
+            ctx.shadowOffsetY = 5;
+
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(-15, -15, 30, 30);
+            ctx.restore();
+
+            // Test 3: Rotated + scaled shape with shadow
+            ctx.save();
+            ctx.translate(50, 140);
+            ctx.rotate(-Math.PI / 4); // -45 degrees
+            ctx.scale(1.2, 1.2);
+
+            ctx.shadowColor = 'rgba(200, 0, 200, 0.45)';
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = -4;
+            ctx.shadowOffsetY = 7;
+
+            ctx.fillStyle = 'green';
+            ctx.beginPath();
+            ctx.arc(0, 0, 20, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.restore();
+
+            // Test 4: Skewed rectangle with shadow
+            ctx.save();
+            ctx.translate(145, 135);
+            ctx.transform(1, 0.3, 0.2, 1, 0, 0); // skew transform
+
+            ctx.shadowColor = 'rgba(100, 50, 0, 0.5)';
+            ctx.shadowBlur = 3;
+            ctx.shadowOffsetX = 4;
+            ctx.shadowOffsetY = 4;
+
+            ctx.fillStyle = 'orange';
+            ctx.fillRect(-20, -15, 40, 30);
+            ctx.restore();
+        }
+    });
+
+
+    // Test: Shadow Gradient Test
+    // Tests shadow functionality with gradient-filled shapes.
+
+    registerVisualTest('shadow-gradient-test', {
+        name: 'Shadow Gradient Test',
+        width: 200, height: 200,
+        // Unified drawing function that works with both canvas types
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+
+            // White background
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 200, 200);
+
+            // Test 1: Linear gradient rectangle with shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 6;
+            ctx.shadowOffsetX = 5;
+            ctx.shadowOffsetY = 5;
+
+            var linearGradient = ctx.createLinearGradient(15, 15, 85, 75);
+            linearGradient.addColorStop(0, 'red');
+            linearGradient.addColorStop(1, 'yellow');
+            ctx.fillStyle = linearGradient;
+            ctx.fillRect(15, 15, 70, 60);
+
+            // Test 2: Radial gradient circle with shadow
+            ctx.shadowColor = 'rgba(0, 0, 150, 0.4)';
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = -4;
+            ctx.shadowOffsetY = 6;
+
+            var radialGradient = ctx.createRadialGradient(145, 45, 5, 145, 45, 35);
+            radialGradient.addColorStop(0, 'white');
+            radialGradient.addColorStop(0.5, 'blue');
+            radialGradient.addColorStop(1, 'darkblue');
+            ctx.fillStyle = radialGradient;
+            ctx.beginPath();
+            ctx.arc(145, 45, 35, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Test 3: Linear gradient with multiple stops, no blur shadow
+            ctx.shadowColor = 'rgba(100, 0, 100, 0.6)';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 8;
+            ctx.shadowOffsetY = -5;
+
+            var multiGradient = ctx.createLinearGradient(15, 110, 85, 110);
+            multiGradient.addColorStop(0, 'green');
+            multiGradient.addColorStop(0.5, 'cyan');
+            multiGradient.addColorStop(1, 'blue');
+            ctx.fillStyle = multiGradient;
+            ctx.fillRect(15, 110, 70, 50);
+
+            // Test 4: Radial gradient with large blur shadow
+            ctx.shadowColor = 'rgba(200, 100, 0, 0.35)';
+            ctx.shadowBlur = 12;
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
+
+            var orangeGradient = ctx.createRadialGradient(145, 145, 0, 145, 145, 40);
+            orangeGradient.addColorStop(0, 'yellow');
+            orangeGradient.addColorStop(1, 'darkorange');
+            ctx.fillStyle = orangeGradient;
+            ctx.fillRect(105, 105, 80, 80);
+        }
+    });
+
+
+    // Test: Shadow Large Blur Test
+    // Tests edge cases with large blur radius (30+) to verify blur algorithm handles them correctly.
+
+    registerVisualTest('shadow-large-blur-test', {
+        name: 'Shadow Large Blur Test',
+        width: 200, height: 200,
+        // Unified drawing function that works with both canvas types
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+
+            // White background
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 200, 200);
+
+            // Test 1: Very large blur (30px) on small rectangle
+            ctx.shadowColor = 'rgba(0, 0, 100, 0.4)';
+            ctx.shadowBlur = 30;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+
+            ctx.fillStyle = 'red';
+            ctx.fillRect(30, 30, 30, 30);
+
+            // Test 2: Large blur (25px) with offset
+            ctx.shadowColor = 'rgba(100, 0, 0, 0.35)';
+            ctx.shadowBlur = 25;
+            ctx.shadowOffsetX = 8;
+            ctx.shadowOffsetY = 8;
+
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(130, 30, 35, 35);
+
+            // Test 3: Large blur (35px) on circle
+            ctx.shadowColor = 'rgba(0, 100, 0, 0.3)';
+            ctx.shadowBlur = 35;
+            ctx.shadowOffsetX = -5;
+            ctx.shadowOffsetY = 5;
+
+            ctx.fillStyle = 'orange';
+            ctx.beginPath();
+            ctx.arc(55, 140, 20, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Test 4: Large blur on stroked path
+            ctx.shadowColor = 'rgba(100, 0, 100, 0.3)';
+            ctx.shadowBlur = 28;
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
+
+            ctx.strokeStyle = 'green';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.rect(115, 110, 50, 50);
+            ctx.stroke();
+
+            // Reset shadow to disable for cleanup
+            ctx.shadowColor = 'transparent';
+        }
+    });
+
+
     const VisualRenderingTests = {
         getTests: function() { return visualTests; },
         getTest: function(name) { return visualTests[name]; },
