@@ -91,7 +91,7 @@ Notes:
 | N/A (fill)   | Semi-transparent | CircleOps.fill_Alpha()      | YES      |
 | 1px          | Opaque           | CircleOps.stroke1px_Opaq()  | YES      |
 | 1px          | Semi-transparent | CircleOps.stroke1px_Alpha() | YES      |
-| >1px         | Opaque           | CircleOps.strokeThick_Any() | YES      |
+| >1px         | Opaque           | CircleOps.strokeThick_Opaq() | YES      |
 | >1px         | Semi-transparent | CircleOps.strokeThick_Alpha()| YES     |
 | Any          | Both             | CircleOps.fillStroke_Any()  | YES      |
 | 0px          | Any              | IGNORED                     | -        |
@@ -530,7 +530,7 @@ Methods follow the dual-suffix pattern: `{operation}[Thickness]_{orientation}_{o
 | RectOpsRot        | fill_Rot_Any                                      | stroke_Rot_Any                                                                                         |
 | RoundedRectOpsAA     | fill_AA_Opaq, fill_AA_Alpha                       | stroke1px_AA_Opaq, stroke1px_AA_Alpha, strokeThick_AA_Opaq, strokeThick_AA_Alpha                       |
 | RoundedRectOpsRot | fill_Rot_Any                                      | stroke_Rot_Any                                                                                         |
-| CircleOps          | fill_Opaq, fill_Alpha                             | stroke1px_Opaq, stroke1px_Alpha, strokeThick_Any, strokeThick_Alpha                                    |
+| CircleOps          | fill_Opaq, fill_Alpha                             | stroke1px_Opaq, stroke1px_Alpha, strokeThick_Opaq, strokeThick_Alpha                                   |
 | LineOps            | N/A                                               | stroke_Any (public dispatcher)                                                                         |
 | ArcOps             | fill_Opaq, fill_Alpha                             | stroke1px_Opaq, stroke1px_Opaq_Exact, stroke1px_Alpha, strokeOuter_Opaq, strokeOuter_Alpha             |
 | SpanOps            | fill_Opaq, fill_Alpha                             | N/A                                                                                                    |
@@ -598,6 +598,66 @@ All *Ops files have this header: `SpanOps.js`, `QuadScanOps.js`, `RectOpsAA.js`,
 - Context2D calls the appropriate module directly based on transform state
 - RoundedRectOpsRot falls back to RectOpsRot (not RectOpsAA) when radius=0
 - This separation keeps each file focused and eliminates unnecessary indirection
+
+### 8.2 Parameter Order Convention
+
+All *Ops methods follow a consistent parameter order:
+```
+surface, [geometry], [shape-specific], [lineWidth?], color(s), [globalAlpha?], clipBuffer
+```
+
+| Position | Parameter | Notes |
+|----------|-----------|-------|
+| 1 | `surface` | Always first |
+| 2-4 | Geometry | Shape-appropriate: `cx, cy, radius` (circles), `x, y, w, h` (rects), `x1, y1, x2, y2` (lines) |
+| Next | Shape-specific | Arc angles (`startAngle, endAngle`), corner radius, etc. |
+| Next | `lineWidth` | Only for stroke operations |
+| Next | Color(s) | Single `color` for fill/stroke; `fillColor, strokeColor` for combined |
+| Next | `globalAlpha` | Only for `_Alpha` and `_Any` methods |
+| Last | `clipBuffer` | Always last, always has `= null` default |
+
+### 8.3 Opacity Suffix Rules
+
+The opacity suffix determines whether `globalAlpha` is a parameter:
+
+| Suffix | globalAlpha Parameter | Use Case |
+|--------|----------------------|----------|
+| `_Opaq` | Never | Caller guarantees fully opaque (color.a === 255 && globalAlpha >= 1.0) |
+| `_Alpha` | Always | Semi-transparent rendering requires alpha blending calculation |
+| `_Any` | Always | Internal dispatch or combined operations (see below) |
+
+**`_Any` Suffix Usage:**
+
+The `_Any` suffix is reserved for specific patterns:
+
+| Pattern | Purpose | Example |
+|---------|---------|---------|
+| `fillStroke_*_Any` | Combined fill+stroke in single coordinated pass | `fillStroke_AA_Any`, `fillStroke_Any` |
+| `*_Rot_Any` | Rotated operations with complex internal dispatch | `fill_Rot_Any`, `stroke_Rot_Any` |
+| `LineOps.stroke_Any` | Special dispatcher with fallback path and boolean return | |
+
+**Do NOT use `_Any` for simple single-operation dispatch.** Use caller-level branching instead:
+
+```javascript
+// Correct: Caller-level branching
+if (isOpaque) {
+    CircleOps.strokeThick_Opaq(surface, cx, cy, radius, lineWidth, color, clipBuffer);
+} else {
+    CircleOps.strokeThick_Alpha(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer);
+}
+```
+
+### 8.4 Coordinate Systems by Shape
+
+| Class | Coordinate System | Reason |
+|-------|------------------|--------|
+| CircleOps | Center `(cx, cy)` | Rotation-invariant, natural center |
+| ArcOps | Center `(cx, cy)` | Angles defined relative to center |
+| RectOpsAA | Top-left `(x, y)` | Canvas API convention for axis-aligned |
+| RectOpsRot | Center `(cx, cy)` | Rotation pivot is natural at center |
+| RoundedRectOpsAA | Top-left `(x, y)` | Canvas API convention for axis-aligned |
+| RoundedRectOpsRot | Center `(cx, cy)` | Rotation pivot is natural at center |
+| LineOps | Endpoints `(x1, y1, x2, y2)` | Natural for line segments |
 
 ---
 
@@ -673,7 +733,7 @@ All 39 documented direct rendering functions have **100% explicit test coverage*
 | `fill_Alpha()` | `circle-semitransparent-test.js` |
 | `stroke1px_Opaq()` | `circle-*-sw1px-*-sOpaq-*` tests |
 | `stroke1px_Alpha()` | `circle-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-test.js` |
-| `strokeThick_Any()` | `circle-*-sw1-30px-*-sOpaq-*` tests |
+| `strokeThick_Opaq()` | `circle-*-sw1-30px-*-sOpaq-*` tests |
 | `strokeThick_Alpha()` | `circle-*-sw1-30px-*-sSemi-*` tests |
 | `fillStroke_Any()` | `circle-*-fOpaq-sOpaq-*`, `multiple-circles-test.js` |
 

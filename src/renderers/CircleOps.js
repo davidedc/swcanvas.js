@@ -19,7 +19,7 @@
  *   fill_Opaq, fill_Alpha              → SpanOps.fill_Opaq/fill_Alpha
  *   stroke1px_Opaq                     → Direct pixel writes (opaque)
  *   stroke1px_Alpha                    → Inline BLEND_ALPHA marker
- *   strokeThick_Any                    → SpanOps.fill_Opaq
+ *   strokeThick_Opaq                   → SpanOps.fill_Opaq
  *   strokeThick_Alpha                  → SpanOps.fill_Alpha
  *
  * Layer 2 (Composites):
@@ -89,7 +89,7 @@ class CircleOps {
      * @param {Color} color - Fill color (must be opaque, alpha=255)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fill_Opaq(surface, cx, cy, radius, color, clipBuffer) {
+    static fill_Opaq(surface, cx, cy, radius, color, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
@@ -141,7 +141,7 @@ class CircleOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fill_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer) {
+    static fill_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -200,7 +200,7 @@ class CircleOps {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static stroke1px_Opaq(surface, cx, cy, radius, color, clipBuffer) {
+    static stroke1px_Opaq(surface, cx, cy, radius, color, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
@@ -324,7 +324,7 @@ class CircleOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static stroke1px_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer) {
+    static stroke1px_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -475,7 +475,7 @@ class CircleOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fillStroke_Any(surface, cx, cy, radius, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
+    static fillStroke_Any(surface, cx, cy, radius, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -598,19 +598,21 @@ class CircleOps {
     }
 
     /**
-     * Optimized thick stroke circle using scanline-based annulus rendering
+     * Optimized thick opaque stroke circle using scanline-based annulus rendering
      * @param {Surface} surface - Target surface
      * @param {number} cx - Center X
      * @param {number} cy - Center Y
      * @param {number} radius - Circle radius
      * @param {number} lineWidth - Stroke width
-     * @param {Color} color - Stroke color
-     * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: inline per-pixel for opaque, delegated to SpanOps for alpha)
+     * @param {Color} color - Stroke color (must be opaque)
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static strokeThick_Any(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer) {
+    static strokeThick_Opaq(surface, cx, cy, radius, lineWidth, color, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
+        const data32 = surface.data32;
+
+        const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
 
         // Calculate inner and outer radii for the stroke annulus
         const innerRadius = radius - lineWidth / 2;
@@ -629,60 +631,41 @@ class CircleOps {
         const outerRadiusSquared = outerRadius * outerRadius;
         const innerRadiusSquared = innerRadius > 0 ? innerRadius * innerRadius : 0;
 
-        // Determine if opaque or needs alpha blending
-        const isOpaque = color.a === 255 && globalAlpha >= 1.0;
+        // Process each scanline
+        for (let y = minY; y <= maxY; y++) {
+            const dy = y - cY;
+            const dySquared = dy * dy;
 
-        if (isOpaque) {
-            const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
-            const data32 = surface.data32;
+            // Skip if outside outer circle
+            if (dySquared > outerRadiusSquared) continue;
 
-            // Process each scanline
-            for (let y = minY; y <= maxY; y++) {
-                const dy = y - cY;
-                const dySquared = dy * dy;
+            // Calculate outer circle X intersections
+            const outerXDist = Math.sqrt(outerRadiusSquared - dySquared);
+            const outerLeftX = Math.max(minX, Math.ceil(cX - outerXDist));
+            const outerRightX = Math.min(maxX, Math.floor(cX + outerXDist));
 
-                // Skip if outside outer circle
-                if (dySquared > outerRadiusSquared) continue;
+            // Case: No inner circle intersection (draw full span)
+            if (innerRadius <= 0 || dySquared > innerRadiusSquared) {
+                const spanLength = outerRightX - outerLeftX + 1;
+                SpanOps.fill_Opaq(data32, width, height, outerLeftX, y, spanLength, packedColor, clipBuffer);
+            } else {
+                // Case: Intersects both circles - draw left and right segments
+                const innerXDist = Math.sqrt(innerRadiusSquared - dySquared);
+                const innerLeftX = Math.min(outerRightX, Math.floor(cX - innerXDist));
+                const innerRightX = Math.max(outerLeftX, Math.ceil(cX + innerXDist));
 
-                // Calculate outer circle X intersections
-                const outerXDist = Math.sqrt(outerRadiusSquared - dySquared);
-                const outerLeftX = Math.max(minX, Math.ceil(cX - outerXDist));
-                const outerRightX = Math.min(maxX, Math.floor(cX + outerXDist));
+                // Left segment via SpanOps
+                const leftLen = innerLeftX - outerLeftX + 1;
+                if (leftLen > 0) {
+                    SpanOps.fill_Opaq(data32, width, height, outerLeftX, y, leftLen, packedColor, clipBuffer);
+                }
 
-                // Case: No inner circle intersection (draw full span)
-                if (innerRadius <= 0 || dySquared > innerRadiusSquared) {
-                    for (let x = outerLeftX; x <= outerRightX; x++) {
-                        const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
-                } else {
-                    // Case: Intersects both circles - draw left and right segments
-                    const innerXDist = Math.sqrt(innerRadiusSquared - dySquared);
-                    const innerLeftX = Math.min(outerRightX, Math.floor(cX - innerXDist));
-                    const innerRightX = Math.max(outerLeftX, Math.ceil(cX + innerXDist));
-
-                    // Left segment
-                    for (let x = outerLeftX; x <= innerLeftX; x++) {
-                        const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
-
-                    // Right segment
-                    for (let x = innerRightX; x <= outerRightX; x++) {
-                        const pos = y * width + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
-                            data32[pos] = packedColor;
-                        }
-                    }
+                // Right segment via SpanOps
+                const rightLen = outerRightX - innerRightX + 1;
+                if (rightLen > 0) {
+                    SpanOps.fill_Opaq(data32, width, height, innerRightX, y, rightLen, packedColor, clipBuffer);
                 }
             }
-        } else {
-            // Semi-transparent: use alpha blending path
-            CircleOps.strokeThick_Alpha(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer);
         }
     }
 
@@ -697,7 +680,7 @@ class CircleOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static strokeThick_Alpha(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer) {
+    static strokeThick_Alpha(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;

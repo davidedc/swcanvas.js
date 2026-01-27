@@ -1841,7 +1841,12 @@ class Context2D {
 
         // Direct rendering 2: Thick strokes using scanline annulus algorithm
         if (isColor && isSourceOver && lineWidth > 1 && paintSource.a > 0) {
-            CircleOps.strokeThick_Any(this.surface, cx, cy, radius, lineWidth, paintSource, this.globalAlpha, clipBuffer);
+            const isOpaqueThick = paintSource.a === 255 && this.globalAlpha >= 1.0;
+            if (isOpaqueThick) {
+                CircleOps.strokeThick_Opaq(this.surface, cx, cy, radius, lineWidth, paintSource, clipBuffer);
+            } else {
+                CircleOps.strokeThick_Alpha(this.surface, cx, cy, radius, lineWidth, paintSource, this.globalAlpha, clipBuffer);
+            }
             return;
         }
 

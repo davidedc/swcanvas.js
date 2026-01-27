@@ -170,7 +170,7 @@ class ArcOps {
      * @param {Color} color - Fill color
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static fill_Opaq(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer) {
+    static fill_Opaq(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
@@ -294,7 +294,7 @@ class ArcOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static fill_Alpha(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer) {
+    static fill_Alpha(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -416,7 +416,7 @@ class ArcOps {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static stroke1px_Opaq(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer) {
+    static stroke1px_Opaq(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
@@ -514,7 +514,7 @@ class ArcOps {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static stroke1px_Opaq_Exact(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer) {
+    static stroke1px_Opaq_Exact(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
@@ -597,7 +597,7 @@ class ArcOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static stroke1px_Alpha(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer) {
+    static stroke1px_Alpha(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -722,7 +722,7 @@ class ArcOps {
      * @param {Color} color - Stroke color
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static strokeOuter_Opaq(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, clipBuffer) {
+    static strokeOuter_Opaq(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
@@ -879,7 +879,7 @@ class ArcOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static strokeOuter_Alpha(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, globalAlpha, clipBuffer) {
+    static strokeOuter_Alpha(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, globalAlpha, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -1041,7 +1041,7 @@ class ArcOps {
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
     static fillStrokeOuter_Any(surface, cx, cy, radius, startAngle, endAngle, lineWidth,
-        fillColor, strokeColor, globalAlpha, clipBuffer) {
+        fillColor, strokeColor, globalAlpha, clipBuffer = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;

@@ -340,7 +340,7 @@ class RectOpsAA {
      * @param {Color} color - Fill color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer) {
+    static fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
@@ -377,7 +377,7 @@ class RectOpsAA {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer) {
+    static fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
