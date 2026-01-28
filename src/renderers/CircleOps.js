@@ -115,17 +115,23 @@ class CircleOps {
             const abs_y_bottom = adjCenterY + rel_y;
             const abs_y_top = adjCenterY - rel_y - yOffset + 1;
 
-            const spanWidth = abs_x_max - abs_x_min + 1;
+            // Clamp X coordinates to canvas bounds to prevent memory wrap-around
+            const clampedStartX = Math.max(0, abs_x_min);
+            const clampedEndX = Math.min(width - 1, abs_x_max);
+            const spanWidth = clampedEndX - clampedStartX + 1;
+
+            // Skip if span is entirely off-screen
+            if (spanWidth <= 0) continue;
 
             // Draw bottom scanline
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
-                SpanOps.fill_Opaq(data32, width, height, abs_x_min, abs_y_bottom, spanWidth, packedColor, clipBuffer);
+                SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_bottom, spanWidth, packedColor, clipBuffer);
             }
 
             // Draw top scanline (skip overdraw conditions)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
-                SpanOps.fill_Opaq(data32, width, height, abs_x_min, abs_y_top, spanWidth, packedColor, clipBuffer);
+                SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_top, spanWidth, packedColor, clipBuffer);
             }
         }
     }
@@ -174,18 +180,24 @@ class CircleOps {
             const abs_y_bottom = adjCenterY + rel_y;
             const abs_y_top = adjCenterY - rel_y - yOffset + 1;
 
-            const spanWidth = abs_x_max - abs_x_min + 1;
+            // Clamp X coordinates to canvas bounds to prevent memory wrap-around
+            const clampedStartX = Math.max(0, abs_x_min);
+            const clampedEndX = Math.min(width - 1, abs_x_max);
+            const spanWidth = clampedEndX - clampedStartX + 1;
+
+            // Skip if span is entirely off-screen
+            if (spanWidth <= 0) continue;
 
             // Draw bottom scanline
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
-                SpanOps.fill_Alpha(data, width, height, abs_x_min, abs_y_bottom, spanWidth,
+                SpanOps.fill_Alpha(data, width, height, clampedStartX, abs_y_bottom, spanWidth,
                     r, g, b, effectiveAlpha, invAlpha, clipBuffer);
             }
 
             // Draw top scanline (skip overdraw conditions)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
-                SpanOps.fill_Alpha(data, width, height, abs_x_min, abs_y_top, spanWidth,
+                SpanOps.fill_Alpha(data, width, height, clampedStartX, abs_y_top, spanWidth,
                     r, g, b, effectiveAlpha, invAlpha, clipBuffer);
             }
         }

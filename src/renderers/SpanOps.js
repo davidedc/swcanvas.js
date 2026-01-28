@@ -1,13 +1,24 @@
 /**
  * SpanOps - Static utility methods for horizontal span filling
  * Used by all shape *Ops classes for optimized pixel rendering.
- * Follows PolygonFiller pattern with static methods.
  *
  * CALL HIERARCHY:
  * ---------------
  * Layer 0 (Foundation): Uses inline markers for pixel blending.
  *   - Called by: RectOpsAA, RectOpsRot, CircleOps, LineOps, ArcOps,
- *                RoundedRectOpsAA, RoundedRectOpsRot
+ *                RoundedRectOpsAA, RoundedRectOpsRot, QuadScanOps
+ *
+ * BOUNDS CONTRACT:
+ * ----------------
+ * SpanOps TRUSTS that callers provide valid coordinates:
+ *   1. y must be in [0, surfaceHeight)
+ *   2. startX must be in [0, surfaceWidth)
+ *   3. startX + length must be <= surfaceWidth
+ *   4. length must be > 0
+ *
+ * In development builds, assertions verify these invariants and throw
+ * descriptive errors if violated. In production builds, assertions are
+ * stripped for maximum performance.
  *
  * CLIPPING CONTRACT:
  * ------------------
@@ -28,31 +39,34 @@ class SpanOps {
      * @param {Uint32Array} data32 - 32-bit view of surface pixel data
      * @param {number} surfaceWidth - Surface width in pixels
      * @param {number} surfaceHeight - Surface height in pixels
-     * @param {number} startX - Starting X coordinate
-     * @param {number} y - Y coordinate of the span
-     * @param {number} length - Length of the span in pixels
+     * @param {number} startX - Starting X coordinate (must be >= 0)
+     * @param {number} y - Y coordinate of the span (must be in [0, surfaceHeight))
+     * @param {number} length - Length of the span in pixels (must be > 0, startX + length <= surfaceWidth)
      * @param {number} packedColor - Pre-packed 32-bit RGBA color
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled here with byte-skip optimization)
      */
     static fill_Opaq(data32, surfaceWidth, surfaceHeight, startX, y, length, packedColor, clipBuffer) {
-        // Y bounds check - use floor for consistent pixel alignment
+        if (IS_DEBUG) {
+            const yi = Math.floor(y);
+            const x = Math.floor(startX);
+            if (yi < 0 || yi >= surfaceHeight) {
+                throw new Error(`SpanOps.fill_Opaq: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`);
+            }
+            if (x < 0) {
+                throw new Error(`SpanOps.fill_Opaq: startX out of bounds: startX=${startX} (x=${x}), must be >= 0`);
+            }
+            if (x + length > surfaceWidth) {
+                throw new Error(`SpanOps.fill_Opaq: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`);
+            }
+            if (length <= 0) {
+                throw new Error(`SpanOps.fill_Opaq: invalid length: ${length}, must be > 0`);
+            }
+        }
+
         const yi = Math.floor(y);
-        if (yi < 0 || yi >= surfaceHeight) return;
-
-        // X clipping to surface bounds - use floor for consistent pixel alignment
-        let x = Math.floor(startX);
-        let len = length;
-        if (x < 0) {
-            len += x;
-            x = 0;
-        }
-        if (x + len > surfaceWidth) {
-            len = surfaceWidth - x;
-        }
-        if (len <= 0) return;
-
+        const x = Math.floor(startX);
         let pixelIndex = yi * surfaceWidth + x;
-        const endIndex = pixelIndex + len;
+        const endIndex = pixelIndex + length;
 
         if (clipBuffer) {
             // With clipping
@@ -85,9 +99,9 @@ class SpanOps {
      * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
      * @param {number} surfaceWidth - Surface width in pixels
      * @param {number} surfaceHeight - Surface height in pixels
-     * @param {number} startX - Starting X coordinate
-     * @param {number} y - Y coordinate of the span
-     * @param {number} length - Length of the span in pixels
+     * @param {number} startX - Starting X coordinate (must be >= 0)
+     * @param {number} y - Y coordinate of the span (must be in [0, surfaceHeight))
+     * @param {number} length - Length of the span in pixels (must be > 0, startX + length <= surfaceWidth)
      * @param {number} r - Red component (0-255)
      * @param {number} g - Green component (0-255)
      * @param {number} b - Blue component (0-255)
@@ -96,23 +110,26 @@ class SpanOps {
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled here with byte-skip optimization)
      */
     static fill_Alpha(data, surfaceWidth, surfaceHeight, startX, y, length, r, g, b, alpha, invAlpha, clipBuffer) {
-        // Y bounds check - use floor for consistent pixel alignment
+        if (IS_DEBUG) {
+            const yi = Math.floor(y);
+            const x = Math.floor(startX);
+            if (yi < 0 || yi >= surfaceHeight) {
+                throw new Error(`SpanOps.fill_Alpha: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`);
+            }
+            if (x < 0) {
+                throw new Error(`SpanOps.fill_Alpha: startX out of bounds: startX=${startX} (x=${x}), must be >= 0`);
+            }
+            if (x + length > surfaceWidth) {
+                throw new Error(`SpanOps.fill_Alpha: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`);
+            }
+            if (length <= 0) {
+                throw new Error(`SpanOps.fill_Alpha: invalid length: ${length}, must be > 0`);
+            }
+        }
+
         const yi = Math.floor(y);
-        if (yi < 0 || yi >= surfaceHeight) return;
-
-        // X clipping to surface bounds - use floor for consistent pixel alignment
-        let x = Math.floor(startX);
-        let len = length;
-        if (x < 0) {
-            len += x;
-            x = 0;
-        }
-        if (x + len > surfaceWidth) {
-            len = surfaceWidth - x;
-        }
-        if (len <= 0) return;
-
-        const endX = x + len;
+        const x = Math.floor(startX);
+        const endX = x + length;
         const rowStart = yi * surfaceWidth;
 
         if (clipBuffer) {

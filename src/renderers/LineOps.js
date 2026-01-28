@@ -62,12 +62,16 @@ class LineOps {
 
             // Optimize thin horizontal lines: use span-based rendering
             if (y1i === y2i) {
-                const leftX = Math.min(x1i, x2i);
-                const rightX = Math.max(x1i, x2i);
+                // Y bounds check - skip if entirely off-screen
+                if (y1i < 0 || y1i >= height) return true;
+
+                // X bounds clamping
+                const leftX = Math.max(0, Math.min(x1i, x2i));
+                const rightX = Math.min(width - 1, Math.max(x1i, x2i));
+                if (leftX > rightX) return true;
+
                 const spanLength = rightX - leftX + 1;
-                if (spanLength > 0) {
-                    SpanOps.fill_Opaq(data32, width, height, leftX, y1i, spanLength, packedColor, clipBuffer);
-                }
+                SpanOps.fill_Opaq(data32, width, height, leftX, y1i, spanLength, packedColor, clipBuffer);
                 return true;
             }
 
@@ -125,8 +129,19 @@ class LineOps {
                 const rightX = Math.max(x1i, x2i);
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
-                for (let y = topY; y < bottomY; y++) {
-                    SpanOps.fill_Opaq(data32, width, height, leftX, y, rightX - leftX + 1, packedColor, clipBuffer);
+                // Y bounds clamping for the loop
+                const clampedTopY = Math.max(0, topY);
+                const clampedBottomY = Math.min(height, bottomY);
+                if (clampedTopY >= clampedBottomY) return true;
+
+                // X bounds clamping
+                const clampedLeftX = Math.max(0, leftX);
+                const clampedRightX = Math.min(width - 1, rightX);
+                if (clampedLeftX > clampedRightX) return true;
+
+                const spanLength = clampedRightX - clampedLeftX + 1;
+                for (let y = clampedTopY; y < clampedBottomY; y++) {
+                    SpanOps.fill_Opaq(data32, width, height, clampedLeftX, y, spanLength, packedColor, clipBuffer);
                 }
                 return true;
             } else if (x1i === x2i) {
@@ -138,8 +153,21 @@ class LineOps {
                 const bottomY = Math.max(y1i, y2i);
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
-                for (let y = topY; y < bottomY; y++) {
-                    SpanOps.fill_Opaq(data32, width, height, leftX, y, rightX - leftX, packedColor, clipBuffer);
+                // Y bounds clamping for the loop
+                const clampedTopY = Math.max(0, topY);
+                const clampedBottomY = Math.min(height, bottomY);
+                if (clampedTopY >= clampedBottomY) return true;
+
+                // X bounds clamping (for span width)
+                // Note: rightX - leftX is the span width (not +1) because leftX/rightX
+                // are computed from floor(x - halfWidth) / floor(x + halfWidth)
+                const clampedLeftX = Math.max(0, leftX);
+                const clampedRightX = Math.min(width, rightX);  // Use width (not width-1) since rightX is already exclusive
+                const spanLength = clampedRightX - clampedLeftX;
+                if (spanLength <= 0) return true;
+
+                for (let y = clampedTopY; y < clampedBottomY; y++) {
+                    SpanOps.fill_Opaq(data32, width, height, clampedLeftX, y, spanLength, packedColor, clipBuffer);
                 }
                 return true;
             } else {
@@ -169,12 +197,16 @@ class LineOps {
 
             // Optimize thin horizontal lines: use span-based rendering
             if (y1i === y2i) {
-                const leftX = Math.min(x1i, x2i);
-                const rightX = Math.max(x1i, x2i);
+                // Y bounds check - skip if entirely off-screen
+                if (y1i < 0 || y1i >= height) return true;
+
+                // X bounds clamping
+                const leftX = Math.max(0, Math.min(x1i, x2i));
+                const rightX = Math.min(width - 1, Math.max(x1i, x2i));
+                if (leftX > rightX) return true;
+
                 const spanLength = rightX - leftX + 1;
-                if (spanLength > 0) {
-                    SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
-                }
+                SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 return true;
             }
 
