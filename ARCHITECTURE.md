@@ -683,20 +683,21 @@ SWCanvas enforces that every pixel write path checks clipping **EXACTLY ONCE**. 
 
 ### Layer Responsibilities
 
-| Layer | Clipping Responsibility | Example Methods |
-|-------|------------------------|-----------------|
-| **Inline Markers** | NONE - caller must check | `BLEND_ALPHA`, `SET_OPAQUE` |
-| **SpanOps** | YES - primary checkpoint | `fill_Opaq()`, `fill_Alpha()` |
-| **Shape *Ops** | Delegate OR inline (never both) | See method `@param` annotations |
+| Layer | Clipping Responsibility | Bounds Responsibility | Example Methods |
+|-------|------------------------|----------------------|-----------------|
+| **Inline Markers** | NONE - caller must check | NONE - caller must check | `BLEND_ALPHA`, `SET_OPAQUE` |
+| **SpanOps** | YES - primary checkpoint | NONE - caller must clamp | `fill_Opaq()`, `fill_Alpha()` |
+| **Shape *Ops** | Delegate OR inline (never both) | YES - clamp before SpanOps | See method `@param` annotations |
 
 ### The Two Rendering Paths
 
 **Path A: Span-Based Rendering** (most fills, thick strokes)
 ```
-Shape renderer → SpanOps.fill_* → clipBuffer check → pixel write
+Shape renderer → clamp bounds → SpanOps.fill_* → clipBuffer check → pixel write
 ```
+- Callers MUST clamp coordinates to canvas bounds BEFORE calling SpanOps
 - SpanOps handles clipping with byte-skip optimization
-- Callers pass `clipBuffer` but do NOT pre-check
+- SpanOps TRUSTS that bounds are valid (debug assertions verify in development)
 
 **Path B: Per-Pixel Rendering** (1px strokes, Bresenham lines)
 ```
@@ -707,13 +708,41 @@ Shape renderer → inline clipBuffer check → BLEND_ALPHA/SET_OPAQUE inline mar
 
 ### Rules for New Code
 
-1. **Using SpanOps?** → Pass `clipBuffer`, do NOT pre-check
-2. **Writing pixels directly?** → Check `clipBuffer` inline before each write
+1. **Using SpanOps?** → Clamp bounds BEFORE calling, pass `clipBuffer`, do NOT pre-check clipping
+2. **Writing pixels directly?** → Check bounds AND `clipBuffer` inline before each write
 3. **Never** check clipping then call something that also checks
 4. **Document** clipping responsibility in `@param` JSDoc using one of:
    - `(CLIPPING: delegated to SpanOps)`
    - `(CLIPPING: checked inline per-pixel)`
    - `(CLIPPING: delegated to QuadScanOps)` etc.
+
+### SpanOps Bounds Contract
+
+SpanOps methods TRUST that callers provide valid coordinates:
+- `y` must be in `[0, surfaceHeight)`
+- `startX` must be in `[0, surfaceWidth)`
+- `startX + length` must be `<= surfaceWidth`
+- `length` must be `> 0`
+
+**Rationale:** Clamping operations should happen ONLY ONCE for clarity and architectural principle. Callers have the best context to clamp bounds BEFORE a potentially unnecessary call to SpanOps is made. This enables early-exit optimizations when spans are entirely off-screen.
+
+**Development verification:** Debug assertions in SpanOps throw descriptive errors if bounds are violated. Enable with `globalThis.__SWCANVAS_DEBUG__ = true`.
+
+**Example clamping pattern (from CircleOps):**
+```javascript
+// Clamp X coordinates to canvas bounds to prevent memory wrap-around
+const clampedStartX = Math.max(0, abs_x_min);
+const clampedEndX = Math.min(width - 1, abs_x_max);
+const spanWidth = clampedEndX - clampedStartX + 1;
+
+// Skip if span is entirely off-screen
+if (spanWidth <= 0) continue;
+
+// Y bounds check before calling SpanOps
+if (abs_y_bottom >= 0 && abs_y_bottom < height) {
+    SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_bottom, spanWidth, packedColor, clipBuffer);
+}
+```
 
 ### Standard Clipping Check Pattern
 

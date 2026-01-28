@@ -246,7 +246,9 @@ QuadScanOps.fillQuad() ───────────► SpanOps.fill_Opaq / 
 
 **Inline markers provide pixel-level blending** - BLEND_ALPHA and SET_OPAQUE markers are expanded by the preprocessor at build time, used by all shape renderers for 1px semi-transparent strokes
 
-**SpanOps is the span layer** - provides fill_Opaq and fill_Alpha for horizontal span operations, uses inline markers internally. Used by all shape renderers: RectOpsAA, RectOpsRot, CircleOps, LineOps, RoundedRectOpsAA, RoundedRectOpsRot
+**SpanOps is the span layer** - provides fill_Opaq and fill_Alpha for horizontal span operations, uses inline markers internally. Used by all shape renderers: RectOpsAA, RectOpsRot, CircleOps, LineOps, RoundedRectOpsAA, RoundedRectOpsRot, QuadScanOps
+
+**SpanOps bounds contract** - SpanOps TRUSTS that callers provide valid coordinates (y in bounds, startX >= 0, startX + length <= width, length > 0). Callers MUST clamp bounds BEFORE calling SpanOps. This enables early-exit optimizations when spans are entirely off-screen. Debug assertions verify bounds in development builds.
 
 **QuadScanOps is the quad primitive** - used by LineOps (thick diagonal) and RectOpsRot (rotated fills/strokes)
 
@@ -319,7 +321,7 @@ data32[pixelIndex] = packedColor;
 
 ### 6.2 Byte-Skip Optimization for Clipping
 
-Both SpanOps.fillOpaque() and SpanOps.fillAlpha() include byte-skip optimization:
+SpanOps.fill_Opaq() and SpanOps.fill_Alpha() include byte-skip optimization for clipping:
 ```javascript
 if (clipBuffer[byteIndex] === 0) {
     const nextByteBoundary = (byteIndex + 1) << 3;

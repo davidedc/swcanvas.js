@@ -139,6 +139,13 @@ Arc templates use fast cross-product angle checks (10-50x faster than atan2) and
 - Run `npm run build` to expand markers - check `dist/swcanvas.js` to verify expansion
 - Run `node tests/build/test-preprocessor.js` to test the preprocessor (45 tests)
 
+**SpanOps bounds contract**:
+- SpanOps TRUSTS that callers provide valid coordinates (y in bounds, startX >= 0, startX + length <= width, length > 0)
+- Callers MUST clamp bounds BEFORE calling SpanOps methods
+- This enables early-exit optimizations when spans are entirely off-screen
+- Debug assertions verify bounds in development builds (`globalThis.__SWCANVAS_DEBUG__ = true`)
+- See ARCHITECTURE.md "SpanOps Bounds Contract" section for detailed clamping patterns
+
 ### OO Development Patterns
 - **Use proper classes**: Prefer `new SWCanvas.Core.Point(x, y)` over plain objects
 - **Leverage immutability**: Transform2D, Point, Rectangle, Color, BitmapEncodingOptions are immutable - use their methods
