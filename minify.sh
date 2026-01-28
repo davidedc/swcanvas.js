@@ -34,26 +34,28 @@ else
     exit 1
 fi
 
-echo "📦 Stripping assertion markers..."
-
-# Strip assertion markers for production build
-node -e "
-const fs = require('fs');
-const { stripAsserts } = require('./build-scripts/preprocess.js');
-const source = fs.readFileSync('dist/swcanvas.js', 'utf8');
-const stripped = stripAsserts(source);
-fs.writeFileSync('dist/swcanvas.prod.js', stripped);
-console.log('   Stripped ' + (source.match(/\\/\\*@assert:[\\s\\S]*?\\*\\//g) || []).length + ' assertion markers');
-"
-
-echo "📦 Minifying dist/swcanvas.prod.js..."
+echo "📦 Minifying dist/swcanvas.js..."
 
 # Get original file size (before stripping)
 ORIGINAL_SIZE=$(wc -c < dist/swcanvas.js)
 ORIGINAL_LINES=$(wc -l < dist/swcanvas.js)
 
-# Minify with Terser (using the assertion-stripped version)
-$TERSER_CMD dist/swcanvas.prod.js \
+# Create a temporary file with IS_DEBUG set to false for production build
+# This allows Terser's dead code elimination to remove all if (IS_DEBUG) {...} blocks
+TEMP_FILE=$(mktemp)
+trap "rm -f $TEMP_FILE" EXIT
+
+# Replace the runtime IS_DEBUG check with a compile-time false constant
+# Original (spans 2 lines):
+#   const IS_DEBUG = typeof globalThis !== 'undefined' &&
+#                    globalThis.__SWCANVAS_DEBUG__ === true;
+# Replaced: const IS_DEBUG = false;
+# Use perl for multi-line regex replacement
+perl -0777 -pe 's/const IS_DEBUG = typeof globalThis.*?__SWCANVAS_DEBUG__ === true;/const IS_DEBUG = false;/s' dist/swcanvas.js > "$TEMP_FILE"
+
+# Minify with Terser
+# With IS_DEBUG = false, dead code elimination removes all assertion blocks
+$TERSER_CMD "$TEMP_FILE" \
     --compress drop_console=true,drop_debugger=true,dead_code=true,unused=true,pure_funcs=['console.log','console.warn','console.error','console.debug','console.info'] \
     --mangle \
     --output dist/swcanvas.min.js \
@@ -84,9 +86,6 @@ echo "   dist/swcanvas.min.js     - Minified library"
 echo "   dist/swcanvas.min.js.map - Source map"
 echo ""
 echo "🎉 Ready for production use!"
-
-# Clean up intermediate file
-rm -f dist/swcanvas.prod.js
 
 # Generate build info metadata for minified build
 node build-scripts/generate-build-info.js min dist/swcanvas.min.build-info.js
