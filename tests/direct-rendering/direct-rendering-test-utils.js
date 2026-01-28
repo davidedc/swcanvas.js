@@ -532,7 +532,8 @@ function calculateArcTestParameters(options) {
     const circleParams = calculateCircleTestParameters(options);
 
     // Generate arc angles with gap in single quadrant
-    // Quadrant bases: Q1=0°, Q2=90°, Q3=180°, Q4=270°
+    // Quadrant bases (screen coords, Y-down): Q1=0°, Q2=90°, Q3=180°, Q4=270°
+    // (In standard math Y-up notation: Q4, Q3, Q2, Q1 respectively)
     const quadrantBases = [0, Math.PI / 2, Math.PI, Math.PI * 3 / 2];
     const gapQuadrant = Math.floor(SeededRandom.getRandom() * 4);
     const quadrantStart = quadrantBases[gapQuadrant];
@@ -614,12 +615,14 @@ function calculate90DegQuadrantArcParams(options) {
     const radius = adjustedDiameter / 2;
 
     // Select random quadrant (0-3)
+    // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
+    // Q1 (0-90) = math Q4, Q2 (90-180) = math Q3, Q3 (180-270) = math Q2, Q4 (270-360) = math Q1
     const quadrantIndex = Math.floor(SeededRandom.getRandom() * 4);
     const quadrants = [
-        { start: 0, end: Math.PI / 2, name: 'Q1 (0-90)' },
-        { start: Math.PI / 2, end: Math.PI, name: 'Q2 (90-180)' },
-        { start: Math.PI, end: Math.PI * 3 / 2, name: 'Q3 (180-270)' },
-        { start: Math.PI * 3 / 2, end: Math.PI * 2, name: 'Q4 (270-360)' }
+        { start: 0, end: Math.PI / 2, name: 'Q1 (0-90) [math: Q4]' },
+        { start: Math.PI / 2, end: Math.PI, name: 'Q2 (90-180) [math: Q3]' },
+        { start: Math.PI, end: Math.PI * 3 / 2, name: 'Q3 (180-270) [math: Q2]' },
+        { start: Math.PI * 3 / 2, end: Math.PI * 2, name: 'Q4 (270-360) [math: Q1]' }
     ];
     const quadrant = quadrants[quadrantIndex];
 
@@ -627,26 +630,28 @@ function calculate90DegQuadrantArcParams(options) {
     const effectiveRadius = radius + strokeWidth / 2;
     const checkData = { effectiveRadius };
 
+    // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
+    // Q1 = math Q4, Q2 = math Q3, Q3 = math Q2, Q4 = math Q1
     switch (quadrantIndex) {
-        case 0: // Q1: 0-90 (right, bottom)
+        case 0: // Q1: 0-90 (right, bottom) [math: Q4]
             checkData.leftX = Math.floor(centerX);
             checkData.rightX = Math.floor(centerX + effectiveRadius);
             checkData.topY = Math.floor(centerY);
             checkData.bottomY = Math.floor(centerY + effectiveRadius);
             break;
-        case 1: // Q2: 90-180 (left, bottom)
+        case 1: // Q2: 90-180 (left, bottom) [math: Q3]
             checkData.leftX = Math.floor(centerX - effectiveRadius);
             checkData.rightX = Math.floor(centerX);
             checkData.topY = Math.floor(centerY);
             checkData.bottomY = Math.floor(centerY + effectiveRadius);
             break;
-        case 2: // Q3: 180-270 (left, top)
+        case 2: // Q3: 180-270 (left, top) [math: Q2]
             checkData.leftX = Math.floor(centerX - effectiveRadius);
             checkData.rightX = Math.floor(centerX);
             checkData.topY = Math.floor(centerY - effectiveRadius);
             checkData.bottomY = Math.floor(centerY);
             break;
-        case 3: // Q4: 270-360 (right, top)
+        case 3: // Q4: 270-360 (right, top) [math: Q1]
             checkData.leftX = Math.floor(centerX);
             checkData.rightX = Math.floor(centerX + effectiveRadius);
             checkData.topY = Math.floor(centerY - effectiveRadius);

@@ -656,10 +656,12 @@ class ArcOps {
         while (bx <= by) {
             // Calculate 8 symmetric points with offsets for top/left halves
             // Primary points (A, C, E, G) - always unique from each other
-            const pAx = adjCX + bx, pAy = adjCY + by;                       // bottom-right quadrant
-            const pCx = adjCX + by, pCy = adjCY - bx - yOffset;             // top-right quadrant
-            const pEx = adjCX - bx - xOffset, pEy = adjCY - by - yOffset;   // top-left quadrant
-            const pGx = adjCX - by - xOffset, pGy = adjCY + bx;             // bottom-left quadrant
+            // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
+            // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
+            const pAx = adjCX + bx, pAy = adjCY + by;                       // bottom-right quadrant (math: Q1)
+            const pCx = adjCX + by, pCy = adjCY - bx - yOffset;             // top-right quadrant (math: Q4)
+            const pEx = adjCX - bx - xOffset, pEy = adjCY - by - yOffset;   // top-left quadrant (math: Q3)
+            const pGx = adjCX - by - xOffset, pGy = adjCY + bx;             // bottom-left quadrant (math: Q2)
 
             // Swapped points (B, D, F, H) - duplicate primaries when bx == by
             const pBx = adjCX + by, pBy = adjCY + bx;                       // duplicates A when bx == by
@@ -668,13 +670,15 @@ class ArcOps {
             const pHx = adjCX - bx - xOffset, pHy = adjCY + by;             // duplicates G when bx == by
 
             // Draw primary points (always) - with angle filtering
-            // Point A (bottom-right quadrant)
+            // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
+            // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
+            // Point A (bottom-right quadrant, math: Q1)
             /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, bx, by, startCos, startSin, endCos, endSin, isLargeArc, pAx, pAy, width, height)*/
-            // Point C (top-right quadrant)
+            // Point C (top-right quadrant, math: Q4)
             /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, by, -bx - yOffset, startCos, startSin, endCos, endSin, isLargeArc, pCx, pCy, width, height)*/
-            // Point E (top-left quadrant)
+            // Point E (top-left quadrant, math: Q3)
             /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, -bx - xOffset, -by - yOffset, startCos, startSin, endCos, endSin, isLargeArc, pEx, pEy, width, height)*/
-            // Point G (bottom-left quadrant)
+            // Point G (bottom-left quadrant, math: Q2)
             /*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, effectiveAlpha, invAlpha, clipBuffer, -by - xOffset, bx, startCos, startSin, endCos, endSin, isLargeArc, pGx, pGy, width, height)*/
 
             // Draw swapped points only when bx != by (they duplicate primaries on the diagonal)

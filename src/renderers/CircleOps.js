@@ -255,14 +255,16 @@ class CircleOps {
 
         while (x <= y) {
             // Calculate 8 symmetric points with offsets for top/left halves
-            const p1x = cX + x, p1y = cY + y;                    // bottom-right
-            const p2x = cX + y, p2y = cY + x;                    // bottom-right
-            const p3x = cX + y, p3y = cY - x - yOffset;          // top-right
-            const p4x = cX + x, p4y = cY - y - yOffset;          // top-right
-            const p5x = cX - x - xOffset, p5y = cY - y - yOffset; // top-left
-            const p6x = cX - y - xOffset, p6y = cY - x - yOffset; // top-left
-            const p7x = cX - y - xOffset, p7y = cY + x;          // bottom-left
-            const p8x = cX - x - xOffset, p8y = cY + y;          // bottom-left
+            // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
+            // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
+            const p1x = cX + x, p1y = cY + y;                    // bottom-right (math: Q1)
+            const p2x = cX + y, p2y = cY + x;                    // bottom-right (math: Q1)
+            const p3x = cX + y, p3y = cY - x - yOffset;          // top-right (math: Q4)
+            const p4x = cX + x, p4y = cY - y - yOffset;          // top-right (math: Q4)
+            const p5x = cX - x - xOffset, p5y = cY - y - yOffset; // top-left (math: Q3)
+            const p6x = cX - y - xOffset, p6y = cY - x - yOffset; // top-left (math: Q3)
+            const p7x = cX - y - xOffset, p7y = cY + x;          // bottom-left (math: Q2)
+            const p8x = cX - x - xOffset, p8y = cY + y;          // bottom-left (math: Q2)
 
             // Plot points with bounds checking
             if (p1x >= 0 && p1x < width && p1y >= 0 && p1y < height) {
@@ -385,10 +387,12 @@ class CircleOps {
         while (x <= y) {
             // Calculate 8 symmetric points with offsets for top/left halves
             // Primary points (A, C, E, G) - always unique from each other
-            const pAx = cX + x, pAy = cY + y;                       // bottom-right quadrant
-            const pCx = cX + y, pCy = cY - x - yOffset;             // top-right quadrant
-            const pEx = cX - x - xOffset, pEy = cY - y - yOffset;   // top-left quadrant
-            const pGx = cX - y - xOffset, pGy = cY + x;             // bottom-left quadrant
+            // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
+            // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
+            const pAx = cX + x, pAy = cY + y;                       // bottom-right quadrant (math: Q1)
+            const pCx = cX + y, pCy = cY - x - yOffset;             // top-right quadrant (math: Q4)
+            const pEx = cX - x - xOffset, pEy = cY - y - yOffset;   // top-left quadrant (math: Q3)
+            const pGx = cX - y - xOffset, pGy = cY + x;             // bottom-left quadrant (math: Q2)
 
             // Swapped points (B, D, F, H) - duplicate primaries when x == y
             const pBx = cX + y, pBy = cY + x;                       // duplicates A when x == y

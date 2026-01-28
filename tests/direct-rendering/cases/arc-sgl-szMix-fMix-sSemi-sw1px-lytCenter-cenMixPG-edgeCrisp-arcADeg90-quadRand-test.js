@@ -21,7 +21,7 @@
  * | EdgeAlignment          | crisp              | Diameter adjusted via `adjustDimensionsForCrispStrokeRendering()` for sharp edges.
  * | Orientation            | N/A                | Arc orientation determined by quadrant selection.
  * | ArcAngleExtent         | 90-deg             | Arc spans exactly 90 degrees (one quadrant).
- * | Quadrant               | random             | Randomly selects one of four quadrants: Q1 (0-90), Q2 (90-180), Q3 (180-270), Q4 (270-360).
+ * | Quadrant               | random             | Randomly selects one of four quadrants: Q1 (0-90), Q2 (90-180), Q3 (180-270), Q4 (270-360). (In standard math Y-up: Q4, Q3, Q2, Q1 respectively.)
  * | RoundRectRadius        | N/A                | Not applicable to arcs.
  * | ContextTranslation     | none               | `ctx.translate()` is not used in this test.
  * | ContextRotation        | none               | `ctx.rotate()` is not used in this test.
