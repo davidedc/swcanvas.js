@@ -131,13 +131,14 @@ class BitBuffer {
      * @param {BitBuffer} other - Other BitBuffer to AND with
      */
     and(other) {
-        /*@assert:if (!(other instanceof BitBuffer)) {
-            throw new Error('Argument must be a BitBuffer instance');
-        }*/
-
-        /*@assert:if (other._width !== this._width || other._height !== this._height) {
-            throw new Error('BitBuffer dimensions must match for AND operation');
-        }*/
+        if (IS_DEBUG) {
+            if (!(other instanceof BitBuffer)) {
+                throw new Error('Argument must be a BitBuffer instance');
+            }
+            if (other._width !== this._width || other._height !== this._height) {
+                throw new Error('BitBuffer dimensions must match for AND operation');
+            }
+        }
 
         // Perform bitwise AND on each byte
         for (let i = 0; i < this._numBytes; i++) {
@@ -150,13 +151,14 @@ class BitBuffer {
      * @param {BitBuffer} other - Source BitBuffer to copy from
      */
     copyFrom(other) {
-        /*@assert:if (!(other instanceof BitBuffer)) {
-            throw new Error('Argument must be a BitBuffer instance');
-        }*/
-
-        /*@assert:if (other._width !== this._width || other._height !== this._height) {
-            throw new Error('BitBuffer dimensions must match for copy operation');
-        }*/
+        if (IS_DEBUG) {
+            if (!(other instanceof BitBuffer)) {
+                throw new Error('Argument must be a BitBuffer instance');
+            }
+            if (other._width !== this._width || other._height !== this._height) {
+                throw new Error('BitBuffer dimensions must match for copy operation');
+            }
+        }
 
         this._buffer.set(other._buffer);
     }

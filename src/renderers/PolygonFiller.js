@@ -31,9 +31,11 @@ class PolygonFiller {
      */
     static fillPolygons(surface, polygons, paintSource, fillRule, transform, clipMask, globalAlpha = 1.0, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
         if (polygons.length === 0) return;
-        /*@assert:if (!PolygonFiller._isValidPaintSource(paintSource)) {
-            throw new Error('Paint source must be a Color, Gradient, or Pattern instance');
-        }*/
+        if (IS_DEBUG) {
+            if (!PolygonFiller._isValidPaintSource(paintSource)) {
+                throw new Error('Paint source must be a Color, Gradient, or Pattern instance');
+            }
+        }
 
         // Check if we can use direct rendering (opaque solid color with source-over)
         const canUseDirectRendering =

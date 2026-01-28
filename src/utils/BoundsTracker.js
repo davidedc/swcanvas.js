@@ -201,9 +201,11 @@ class BoundsTracker {
      * @param {BoundsTracker} other - Other BoundsTracker to merge with
      */
     mergeWith(other) {
-        /*@assert:if (!(other instanceof BoundsTracker)) {
-            throw new Error('BoundsTracker merge requires another BoundsTracker instance');
-        }*/
+        if (IS_DEBUG) {
+            if (!(other instanceof BoundsTracker)) {
+                throw new Error('BoundsTracker merge requires another BoundsTracker instance');
+            }
+        }
 
         if (other._bounds.isEmpty) {
             return; // Nothing to merge
