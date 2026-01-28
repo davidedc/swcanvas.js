@@ -1677,13 +1677,24 @@ class Surface {
 /**
  * SpanOps - Static utility methods for horizontal span filling
  * Used by all shape *Ops classes for optimized pixel rendering.
- * Follows PolygonFiller pattern with static methods.
  *
  * CALL HIERARCHY:
  * ---------------
  * Layer 0 (Foundation): Uses inline markers for pixel blending.
  *   - Called by: RectOpsAA, RectOpsRot, CircleOps, LineOps, ArcOps,
- *                RoundedRectOpsAA, RoundedRectOpsRot
+ *                RoundedRectOpsAA, RoundedRectOpsRot, QuadScanOps
+ *
+ * BOUNDS CONTRACT:
+ * ----------------
+ * SpanOps TRUSTS that callers provide valid coordinates:
+ *   1. y must be in [0, surfaceHeight)
+ *   2. startX must be in [0, surfaceWidth)
+ *   3. startX + length must be <= surfaceWidth
+ *   4. length must be > 0
+ *
+ * In development builds, assertions verify these invariants and throw
+ * descriptive errors if violated. In production builds, assertions are
+ * stripped for maximum performance.
  *
  * CLIPPING CONTRACT:
  * ------------------
@@ -1704,31 +1715,34 @@ class SpanOps {
      * @param {Uint32Array} data32 - 32-bit view of surface pixel data
      * @param {number} surfaceWidth - Surface width in pixels
      * @param {number} surfaceHeight - Surface height in pixels
-     * @param {number} startX - Starting X coordinate
-     * @param {number} y - Y coordinate of the span
-     * @param {number} length - Length of the span in pixels
+     * @param {number} startX - Starting X coordinate (must be >= 0)
+     * @param {number} y - Y coordinate of the span (must be in [0, surfaceHeight))
+     * @param {number} length - Length of the span in pixels (must be > 0, startX + length <= surfaceWidth)
      * @param {number} packedColor - Pre-packed 32-bit RGBA color
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled here with byte-skip optimization)
      */
     static fill_Opaq(data32, surfaceWidth, surfaceHeight, startX, y, length, packedColor, clipBuffer) {
-        // Y bounds check - use floor for consistent pixel alignment
+        if (IS_DEBUG) {
+            const yi = Math.floor(y);
+            const x = Math.floor(startX);
+            if (yi < 0 || yi >= surfaceHeight) {
+                throw new Error(`SpanOps.fill_Opaq: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`);
+            }
+            if (x < 0) {
+                throw new Error(`SpanOps.fill_Opaq: startX out of bounds: startX=${startX} (x=${x}), must be >= 0`);
+            }
+            if (x + length > surfaceWidth) {
+                throw new Error(`SpanOps.fill_Opaq: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`);
+            }
+            if (length <= 0) {
+                throw new Error(`SpanOps.fill_Opaq: invalid length: ${length}, must be > 0`);
+            }
+        }
+
         const yi = Math.floor(y);
-        if (yi < 0 || yi >= surfaceHeight) return;
-
-        // X clipping to surface bounds - use floor for consistent pixel alignment
-        let x = Math.floor(startX);
-        let len = length;
-        if (x < 0) {
-            len += x;
-            x = 0;
-        }
-        if (x + len > surfaceWidth) {
-            len = surfaceWidth - x;
-        }
-        if (len <= 0) return;
-
+        const x = Math.floor(startX);
         let pixelIndex = yi * surfaceWidth + x;
-        const endIndex = pixelIndex + len;
+        const endIndex = pixelIndex + length;
 
         if (clipBuffer) {
             // With clipping
@@ -1761,9 +1775,9 @@ class SpanOps {
      * @param {Uint8Array|Uint8ClampedArray} data - 8-bit view of surface pixel data
      * @param {number} surfaceWidth - Surface width in pixels
      * @param {number} surfaceHeight - Surface height in pixels
-     * @param {number} startX - Starting X coordinate
-     * @param {number} y - Y coordinate of the span
-     * @param {number} length - Length of the span in pixels
+     * @param {number} startX - Starting X coordinate (must be >= 0)
+     * @param {number} y - Y coordinate of the span (must be in [0, surfaceHeight))
+     * @param {number} length - Length of the span in pixels (must be > 0, startX + length <= surfaceWidth)
      * @param {number} r - Red component (0-255)
      * @param {number} g - Green component (0-255)
      * @param {number} b - Blue component (0-255)
@@ -1772,23 +1786,26 @@ class SpanOps {
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled here with byte-skip optimization)
      */
     static fill_Alpha(data, surfaceWidth, surfaceHeight, startX, y, length, r, g, b, alpha, invAlpha, clipBuffer) {
-        // Y bounds check - use floor for consistent pixel alignment
+        if (IS_DEBUG) {
+            const yi = Math.floor(y);
+            const x = Math.floor(startX);
+            if (yi < 0 || yi >= surfaceHeight) {
+                throw new Error(`SpanOps.fill_Alpha: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`);
+            }
+            if (x < 0) {
+                throw new Error(`SpanOps.fill_Alpha: startX out of bounds: startX=${startX} (x=${x}), must be >= 0`);
+            }
+            if (x + length > surfaceWidth) {
+                throw new Error(`SpanOps.fill_Alpha: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`);
+            }
+            if (length <= 0) {
+                throw new Error(`SpanOps.fill_Alpha: invalid length: ${length}, must be > 0`);
+            }
+        }
+
         const yi = Math.floor(y);
-        if (yi < 0 || yi >= surfaceHeight) return;
-
-        // X clipping to surface bounds - use floor for consistent pixel alignment
-        let x = Math.floor(startX);
-        let len = length;
-        if (x < 0) {
-            len += x;
-            x = 0;
-        }
-        if (x + len > surfaceWidth) {
-            len = surfaceWidth - x;
-        }
-        if (len <= 0) return;
-
-        const endX = x + len;
+        const x = Math.floor(startX);
+        const endX = x + length;
         const rowStart = yi * surfaceWidth;
 
         if (clipBuffer) {
@@ -3442,17 +3459,23 @@ class CircleOps {
             const abs_y_bottom = adjCenterY + rel_y;
             const abs_y_top = adjCenterY - rel_y - yOffset + 1;
 
-            const spanWidth = abs_x_max - abs_x_min + 1;
+            // Clamp X coordinates to canvas bounds to prevent memory wrap-around
+            const clampedStartX = Math.max(0, abs_x_min);
+            const clampedEndX = Math.min(width - 1, abs_x_max);
+            const spanWidth = clampedEndX - clampedStartX + 1;
+
+            // Skip if span is entirely off-screen
+            if (spanWidth <= 0) continue;
 
             // Draw bottom scanline
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
-                SpanOps.fill_Opaq(data32, width, height, abs_x_min, abs_y_bottom, spanWidth, packedColor, clipBuffer);
+                SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_bottom, spanWidth, packedColor, clipBuffer);
             }
 
             // Draw top scanline (skip overdraw conditions)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
-                SpanOps.fill_Opaq(data32, width, height, abs_x_min, abs_y_top, spanWidth, packedColor, clipBuffer);
+                SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_top, spanWidth, packedColor, clipBuffer);
             }
         }
     }
@@ -3501,18 +3524,24 @@ class CircleOps {
             const abs_y_bottom = adjCenterY + rel_y;
             const abs_y_top = adjCenterY - rel_y - yOffset + 1;
 
-            const spanWidth = abs_x_max - abs_x_min + 1;
+            // Clamp X coordinates to canvas bounds to prevent memory wrap-around
+            const clampedStartX = Math.max(0, abs_x_min);
+            const clampedEndX = Math.min(width - 1, abs_x_max);
+            const spanWidth = clampedEndX - clampedStartX + 1;
+
+            // Skip if span is entirely off-screen
+            if (spanWidth <= 0) continue;
 
             // Draw bottom scanline
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
-                SpanOps.fill_Alpha(data, width, height, abs_x_min, abs_y_bottom, spanWidth,
+                SpanOps.fill_Alpha(data, width, height, clampedStartX, abs_y_bottom, spanWidth,
                     r, g, b, effectiveAlpha, invAlpha, clipBuffer);
             }
 
             // Draw top scanline (skip overdraw conditions)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
-                SpanOps.fill_Alpha(data, width, height, abs_x_min, abs_y_top, spanWidth,
+                SpanOps.fill_Alpha(data, width, height, clampedStartX, abs_y_top, spanWidth,
                     r, g, b, effectiveAlpha, invAlpha, clipBuffer);
             }
         }
@@ -5653,12 +5682,16 @@ class LineOps {
 
             // Optimize thin horizontal lines: use span-based rendering
             if (y1i === y2i) {
-                const leftX = Math.min(x1i, x2i);
-                const rightX = Math.max(x1i, x2i);
+                // Y bounds check - skip if entirely off-screen
+                if (y1i < 0 || y1i >= height) return true;
+
+                // X bounds clamping
+                const leftX = Math.max(0, Math.min(x1i, x2i));
+                const rightX = Math.min(width - 1, Math.max(x1i, x2i));
+                if (leftX > rightX) return true;
+
                 const spanLength = rightX - leftX + 1;
-                if (spanLength > 0) {
-                    SpanOps.fill_Opaq(data32, width, height, leftX, y1i, spanLength, packedColor, clipBuffer);
-                }
+                SpanOps.fill_Opaq(data32, width, height, leftX, y1i, spanLength, packedColor, clipBuffer);
                 return true;
             }
 
@@ -5716,8 +5749,19 @@ class LineOps {
                 const rightX = Math.max(x1i, x2i);
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
-                for (let y = topY; y < bottomY; y++) {
-                    SpanOps.fill_Opaq(data32, width, height, leftX, y, rightX - leftX + 1, packedColor, clipBuffer);
+                // Y bounds clamping for the loop
+                const clampedTopY = Math.max(0, topY);
+                const clampedBottomY = Math.min(height, bottomY);
+                if (clampedTopY >= clampedBottomY) return true;
+
+                // X bounds clamping
+                const clampedLeftX = Math.max(0, leftX);
+                const clampedRightX = Math.min(width - 1, rightX);
+                if (clampedLeftX > clampedRightX) return true;
+
+                const spanLength = clampedRightX - clampedLeftX + 1;
+                for (let y = clampedTopY; y < clampedBottomY; y++) {
+                    SpanOps.fill_Opaq(data32, width, height, clampedLeftX, y, spanLength, packedColor, clipBuffer);
                 }
                 return true;
             } else if (x1i === x2i) {
@@ -5729,8 +5773,21 @@ class LineOps {
                 const bottomY = Math.max(y1i, y2i);
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
-                for (let y = topY; y < bottomY; y++) {
-                    SpanOps.fill_Opaq(data32, width, height, leftX, y, rightX - leftX, packedColor, clipBuffer);
+                // Y bounds clamping for the loop
+                const clampedTopY = Math.max(0, topY);
+                const clampedBottomY = Math.min(height, bottomY);
+                if (clampedTopY >= clampedBottomY) return true;
+
+                // X bounds clamping (for span width)
+                // Note: rightX - leftX is the span width (not +1) because leftX/rightX
+                // are computed from floor(x - halfWidth) / floor(x + halfWidth)
+                const clampedLeftX = Math.max(0, leftX);
+                const clampedRightX = Math.min(width, rightX);  // Use width (not width-1) since rightX is already exclusive
+                const spanLength = clampedRightX - clampedLeftX;
+                if (spanLength <= 0) return true;
+
+                for (let y = clampedTopY; y < clampedBottomY; y++) {
+                    SpanOps.fill_Opaq(data32, width, height, clampedLeftX, y, spanLength, packedColor, clipBuffer);
                 }
                 return true;
             } else {
@@ -5760,12 +5817,16 @@ class LineOps {
 
             // Optimize thin horizontal lines: use span-based rendering
             if (y1i === y2i) {
-                const leftX = Math.min(x1i, x2i);
-                const rightX = Math.max(x1i, x2i);
+                // Y bounds check - skip if entirely off-screen
+                if (y1i < 0 || y1i >= height) return true;
+
+                // X bounds clamping
+                const leftX = Math.max(0, Math.min(x1i, x2i));
+                const rightX = Math.min(width - 1, Math.max(x1i, x2i));
+                if (leftX > rightX) return true;
+
                 const spanLength = rightX - leftX + 1;
-                if (spanLength > 0) {
-                    SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
-                }
+                SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
                 return true;
             }
 
@@ -10414,9 +10475,11 @@ class PolygonFiller {
      */
     static fillPolygons(surface, polygons, paintSource, fillRule, transform, clipMask, globalAlpha = 1.0, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
         if (polygons.length === 0) return;
-        /*@assert:if (!PolygonFiller._isValidPaintSource(paintSource)) {
-            throw new Error('Paint source must be a Color, Gradient, or Pattern instance');
-        }*/
+        if (IS_DEBUG) {
+            if (!PolygonFiller._isValidPaintSource(paintSource)) {
+                throw new Error('Paint source must be a Color, Gradient, or Pattern instance');
+            }
+        }
 
         // Check if we can use direct rendering (opaque solid color with source-over)
         const canUseDirectRendering =
@@ -11103,21 +11166,20 @@ class StrokeGenerator {
 
         const validated = { ...defaults, ...props };
 
-        /*@assert:if (validated.lineWidth < 0) {
-            throw new Error('lineWidth must not be negative');
-        }*/
-
-        /*@assert:if (!['miter', 'round', 'bevel'].includes(validated.lineJoin)) {
-            throw new Error('Invalid lineJoin');
-        }*/
-
-        /*@assert:if (!['butt', 'round', 'square'].includes(validated.lineCap)) {
-            throw new Error('Invalid lineCap');
-        }*/
-
-        /*@assert:if (validated.miterLimit <= 0) {
-            throw new Error('miterLimit must be positive');
-        }*/
+        if (IS_DEBUG) {
+            if (validated.lineWidth < 0) {
+                throw new Error('lineWidth must not be negative');
+            }
+            if (!['miter', 'round', 'bevel'].includes(validated.lineJoin)) {
+                throw new Error('Invalid lineJoin');
+            }
+            if (!['butt', 'round', 'square'].includes(validated.lineCap)) {
+                throw new Error('Invalid lineCap');
+            }
+            if (validated.miterLimit <= 0) {
+                throw new Error('miterLimit must be positive');
+            }
+        }
 
         return validated;
     }
@@ -11969,13 +12031,14 @@ class BitBuffer {
      * @param {BitBuffer} other - Other BitBuffer to AND with
      */
     and(other) {
-        /*@assert:if (!(other instanceof BitBuffer)) {
-            throw new Error('Argument must be a BitBuffer instance');
-        }*/
-
-        /*@assert:if (other._width !== this._width || other._height !== this._height) {
-            throw new Error('BitBuffer dimensions must match for AND operation');
-        }*/
+        if (IS_DEBUG) {
+            if (!(other instanceof BitBuffer)) {
+                throw new Error('Argument must be a BitBuffer instance');
+            }
+            if (other._width !== this._width || other._height !== this._height) {
+                throw new Error('BitBuffer dimensions must match for AND operation');
+            }
+        }
 
         // Perform bitwise AND on each byte
         for (let i = 0; i < this._numBytes; i++) {
@@ -11988,13 +12051,14 @@ class BitBuffer {
      * @param {BitBuffer} other - Source BitBuffer to copy from
      */
     copyFrom(other) {
-        /*@assert:if (!(other instanceof BitBuffer)) {
-            throw new Error('Argument must be a BitBuffer instance');
-        }*/
-
-        /*@assert:if (other._width !== this._width || other._height !== this._height) {
-            throw new Error('BitBuffer dimensions must match for copy operation');
-        }*/
+        if (IS_DEBUG) {
+            if (!(other instanceof BitBuffer)) {
+                throw new Error('Argument must be a BitBuffer instance');
+            }
+            if (other._width !== this._width || other._height !== this._height) {
+                throw new Error('BitBuffer dimensions must match for copy operation');
+            }
+        }
 
         this._buffer.set(other._buffer);
     }
@@ -12317,9 +12381,11 @@ class BoundsTracker {
      * @param {BoundsTracker} other - Other BoundsTracker to merge with
      */
     mergeWith(other) {
-        /*@assert:if (!(other instanceof BoundsTracker)) {
-            throw new Error('BoundsTracker merge requires another BoundsTracker instance');
-        }*/
+        if (IS_DEBUG) {
+            if (!(other instanceof BoundsTracker)) {
+                throw new Error('BoundsTracker merge requires another BoundsTracker instance');
+            }
+        }
 
         if (other._bounds.isEmpty) {
             return; // Nothing to merge
@@ -12455,9 +12521,11 @@ class ClipMask {
      * @param {ClipMask} other - Other clip mask to intersect with
      */
     intersectWith(other) {
-        /*@assert:if (!(other instanceof ClipMask)) {
-            throw new Error('Argument must be a ClipMask instance');
-        }*/
+        if (IS_DEBUG) {
+            if (!(other instanceof ClipMask)) {
+                throw new Error('Argument must be a ClipMask instance');
+            }
+        }
 
         this._bitBuffer.and(other._bitBuffer);
     }
@@ -12721,17 +12789,17 @@ class ShadowBuffer {
     constructor(width, height, maxBlurRadius = 0) {
         // Validate parameters - these are internal assertions since ShadowBuffer
         // is only created by Context2D internally
-        /*@assert:if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
-            throw new Error('ShadowBuffer width must be a positive integer');
-        }*/
-
-        /*@assert:if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
-            throw new Error('ShadowBuffer height must be a positive integer');
-        }*/
-
-        /*@assert:if (typeof maxBlurRadius !== 'number' || maxBlurRadius < 0) {
-            throw new Error('ShadowBuffer maxBlurRadius must be a non-negative number');
-        }*/
+        if (IS_DEBUG) {
+            if (typeof width !== 'number' || !Number.isInteger(width) || width <= 0) {
+                throw new Error('ShadowBuffer width must be a positive integer');
+            }
+            if (typeof height !== 'number' || !Number.isInteger(height) || height <= 0) {
+                throw new Error('ShadowBuffer height must be a positive integer');
+            }
+            if (typeof maxBlurRadius !== 'number' || maxBlurRadius < 0) {
+                throw new Error('ShadowBuffer maxBlurRadius must be a non-negative number');
+            }
+        }
 
         // Original surface dimensions
         this._originalWidth = width;
@@ -12992,25 +13060,23 @@ class BoxBlur {
      */
     static blur(data, width, height, blurRadius, passes = 3) {
         // Validate parameters - internal assertions since BoxBlur is only called by ShadowBuffer
-        /*@assert:if (!data || !(data instanceof Float32Array)) {
-            throw new Error('BoxBlur requires Float32Array data');
-        }*/
-
-        /*@assert:if (typeof width !== 'number' || width <= 0 || typeof height !== 'number' || height <= 0) {
-            throw new Error('BoxBlur width and height must be positive numbers');
-        }*/
-
-        /*@assert:if (data.length !== width * height) {
-            throw new Error('BoxBlur data length must match width * height');
-        }*/
-
-        /*@assert:if (typeof blurRadius !== 'number' || blurRadius < 0) {
-            throw new Error('BoxBlur radius must be a non-negative number');
-        }*/
-
-        /*@assert:if (typeof passes !== 'number' || passes < 1) {
-            throw new Error('BoxBlur passes must be at least 1');
-        }*/
+        if (IS_DEBUG) {
+            if (!data || !(data instanceof Float32Array)) {
+                throw new Error('BoxBlur requires Float32Array data');
+            }
+            if (typeof width !== 'number' || width <= 0 || typeof height !== 'number' || height <= 0) {
+                throw new Error('BoxBlur width and height must be positive numbers');
+            }
+            if (data.length !== width * height) {
+                throw new Error('BoxBlur data length must match width * height');
+            }
+            if (typeof blurRadius !== 'number' || blurRadius < 0) {
+                throw new Error('BoxBlur radius must be a non-negative number');
+            }
+            if (typeof passes !== 'number' || passes < 1) {
+                throw new Error('BoxBlur passes must be at least 1');
+            }
+        }
 
         // No blur needed for zero radius
         if (blurRadius === 0) {
@@ -14665,19 +14731,19 @@ class Rasterizer {
      * @private
      */
     _validateParams(params) {
-        /*@assert:if (params.globalAlpha !== undefined) {
-            if (typeof params.globalAlpha !== 'number' || params.globalAlpha < 0 || params.globalAlpha > 1) {
-                throw new Error('globalAlpha must be a number between 0 and 1');
+        if (IS_DEBUG) {
+            if (params.globalAlpha !== undefined) {
+                if (typeof params.globalAlpha !== 'number' || params.globalAlpha < 0 || params.globalAlpha > 1) {
+                    throw new Error('globalAlpha must be a number between 0 and 1');
+                }
             }
-        }*/
-
-        /*@assert:if (params.composite && !CompositeOperations.isSupported(params.composite)) {
-            throw new Error('Invalid composite operation');
-        }*/
-
-        /*@assert:if (params.transform && !(params.transform instanceof Transform2D)) {
-            throw new Error('transform must be a Transform2D instance');
-        }*/
+            if (params.composite && !CompositeOperations.isSupported(params.composite)) {
+                throw new Error('Invalid composite operation');
+            }
+            if (params.transform && !(params.transform instanceof Transform2D)) {
+                throw new Error('transform must be a Transform2D instance');
+            }
+        }
     }
 
     /**
@@ -14685,9 +14751,11 @@ class Rasterizer {
      * @private
      */
     _requireActiveOp() {
-        /*@assert:if (!this._currentOp) {
-            throw new Error('Must call beginOp() before drawing operations');
-        }*/
+        if (IS_DEBUG) {
+            if (!this._currentOp) {
+                throw new Error('Must call beginOp() before drawing operations');
+            }
+        }
     }
 
     /**
