@@ -126,7 +126,7 @@ class LineOps {
                 const topY = Math.floor(y1 - halfWidth);
                 const bottomY = Math.floor(y1 + halfWidth);
                 const leftX = Math.min(x1i, x2i);
-                const rightX = Math.max(x1i, x2i);
+                const rightX = Math.max(x1i, x2i) - 1;
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 // Y bounds clamping for the loop
