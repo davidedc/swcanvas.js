@@ -111,7 +111,7 @@ try {
             global.adjustDimensionsForCrispStrokeRendering = directRenderingTestUtils.adjustDimensionsForCrispStrokeRendering;
             global.calculateCircleTestParameters = directRenderingTestUtils.calculateCircleTestParameters;
             global.calculateArcTestParameters = directRenderingTestUtils.calculateArcTestParameters;
-            global.calculate90DegQuadrantArcParams = directRenderingTestUtils.calculate90DegQuadrantArcParams;
+            global.calculate90DegFillStrokeArcParams = directRenderingTestUtils.calculate90DegFillStrokeArcParams;
             global.generateConstrainedArcAngles = directRenderingTestUtils.generateConstrainedArcAngles;
             global.registerDirectRenderingTest = directRenderingTestUtils.registerDirectRenderingTest;
             global.roundPoint = directRenderingTestUtils.roundPoint;

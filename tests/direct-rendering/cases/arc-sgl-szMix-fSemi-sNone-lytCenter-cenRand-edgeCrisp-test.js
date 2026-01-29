@@ -79,7 +79,7 @@ registerDirectRenderingTest(
     },
     'arcs',
     {
-        extremes: { colorTolerance: 36, tolerance: 0.03, skipOnIterations: [115, 179, 189, 204, 339, 362, 395, 408, 445, 484, 511, 513, 542, 588, 595, 597, 635, 636, 702, 750, 811, 821] },
+        extremes: { alphaThreshold: 30, skipOnIterations: [115, 179, 189, 204, 339, 362, 395, 408, 445, 484, 511, 513, 542, 588, 595, 597, 635, 636, 702, 750, 811, 821] },
         totalUniqueColors: 2, // background + fill (blended)
         allowPathBasedRendering: true // Semi-transparent may use path-based rendering
     },

@@ -86,7 +86,7 @@ registerDirectRenderingTest(
     },
     'arcs',
     {
-        extremes: { colorTolerance: 40, tolerance: 0.03 },
+        extremes: { alphaThreshold: 31 },
         noGapsInStrokeEdges: true,
         totalUniqueColors: 4,
         speckles: { maxSpeckles: 5 },

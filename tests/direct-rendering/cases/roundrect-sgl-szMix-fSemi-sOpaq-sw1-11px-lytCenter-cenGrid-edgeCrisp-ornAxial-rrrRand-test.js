@@ -130,7 +130,7 @@ registerDirectRenderingTest(
     drawTest,
     'rounded-rects',
     {
-        extremes: { colorTolerance: 8 },
+        extremes: { alphaThreshold: 3 },
         uniqueColors: {
             middleRow: { count: 3, skipOnIterations: [817] },
             middleColumn: { count: 3 }

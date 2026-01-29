@@ -78,7 +78,7 @@ registerDirectRenderingTest(
     },
     'arcs',
     {
-        extremes: { colorTolerance: 36, tolerance: 0.03, skipOnIterations: [228, 488] },
+        extremes: { alphaThreshold: 62, skipOnIterations: [228, 488] },
         totalUniqueColors: 2, // background + fill
         // Direct rendering is expected - no allowPathBasedRendering flag
     },

@@ -79,7 +79,7 @@ registerDirectRenderingTest(
     },
     'arcs',
     {
-        extremes: { colorTolerance: 63, tolerance: 0.03 },
+        extremes: { alphaThreshold: 63 },
         totalUniqueColors: 2
     },
     {

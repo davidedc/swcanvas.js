@@ -461,12 +461,12 @@ const params = calculateArcTestParameters({
 // Returns: { ...circleParams, startAngle, endAngle, gapQuadrant, gapSizeDeg }
 ```
 
-#### `calculate90DegQuadrantArcParams(options)`
+#### `calculate90DegFillStrokeArcParams(options)`
 
-Calculates parameters for a single 90-degree arc.
+Calculates parameters for a single 90-degree fill+stroke arc.
 
 ```javascript
-const params = calculate90DegQuadrantArcParams({
+const params = calculate90DegFillStrokeArcParams({
     canvasWidth: 400,
     canvasHeight: 300,
     minDiameter: 40,

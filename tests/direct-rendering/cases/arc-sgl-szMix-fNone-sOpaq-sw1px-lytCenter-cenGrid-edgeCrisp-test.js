@@ -81,7 +81,7 @@ registerDirectRenderingTest(
     },
     'arcs',
     {
-        extremes: { colorTolerance: 129, tolerance: 0.03 }, // HTML5Canvas drawing is actually quite suspicious for 1px arcs, hence the higher tolerance
+        extremes: { alphaThreshold: 49 }, // HTML5Canvas drawing is actually quite suspicious for 1px arcs, hence the higher tolerance
         totalUniqueColors: 2,
         shapeIntegrity: true
     },

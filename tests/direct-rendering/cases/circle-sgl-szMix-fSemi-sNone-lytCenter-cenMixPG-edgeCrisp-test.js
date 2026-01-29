@@ -77,7 +77,7 @@ registerDirectRenderingTest(
     },
     'circles',
     {
-        extremes: { colorTolerance: 8, tolerance: 0.03 },
+        extremes: { alphaThreshold: 4 },
         noGapsInFillEdges: true,
         totalUniqueColors: 2,
         speckles: true,

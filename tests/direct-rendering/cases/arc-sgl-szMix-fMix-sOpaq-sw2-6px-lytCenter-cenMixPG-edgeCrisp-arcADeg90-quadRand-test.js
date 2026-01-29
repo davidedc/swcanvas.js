@@ -52,7 +52,7 @@ registerDirectRenderingTest(
         const strokeWidth = 2 + Math.floor(SeededRandom.getRandom() * 5);
 
         // Use shared helper for crisp 90° arc parameters
-        const params = calculate90DegQuadrantArcParams({
+        const params = calculate90DegFillStrokeArcParams({
             canvasWidth,
             canvasHeight,
             minDiameter: 40,
@@ -83,7 +83,7 @@ registerDirectRenderingTest(
     },
     'arcs',
     {
-        extremes: { colorTolerance: 10, tolerance: 0.03 },
+        extremes: { alphaThreshold: 2 },
         maxUniqueColors: 4,  // background + fill + stroke + blend (may be fewer if colors overlap)
         speckles: { maxSpeckles: 4 }
     },

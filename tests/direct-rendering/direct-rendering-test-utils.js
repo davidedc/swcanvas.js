@@ -566,18 +566,46 @@ function calculateArcTestParameters(options) {
 }
 
 /**
- * Calculates parameters for a single 90-degree arc spanning one quadrant.
- * Used for crisp 90° arc tests with extent validation.
+ * Calculates parameters for a single 90-degree FILL+STROKE arc spanning one quadrant.
+ * Used for crisp 90° arc tests with fill and stroke rendered together.
+ *
+ * IMPORTANT: This function is for FILL+STROKE arcs, not stroke-only!
+ *
+ * For fill+stroke 90° arcs at cardinal angles:
+ * - Fill radial edges are at x=centerX and y=centerY
+ * - These must be INTEGER for crisp rendering
+ * - Stroke edges must also align with pixel boundaries
+ *
+ * Constraints:
+ * - center: ALWAYS INTEGER (for crisp fill radial edges)
+ * - radius: half-integer (*.5) for odd strokeWidth, integer for even strokeWidth
+ *
+ * This ensures:
+ * - Fill radial edges at integer x/y → crisp
+ * - Stroke outer: center + radius + strokeWidth/2 = integer
+ * - Stroke inner: center + radius - strokeWidth/2 = integer
+ *
+ * Example with odd strokeWidth = 1:
+ *   center = (200, 150), radius = 65.5
+ *   Stroke outer: 200 + 65.5 + 0.5 = 266 ✓
+ *   Stroke inner: 200 + 65.5 - 0.5 = 265 ✓
+ *   Fill radial edges: y=150, x=200 ✓
+ *
+ * Example with even strokeWidth = 2:
+ *   center = (200, 150), radius = 66
+ *   Stroke outer: 200 + 66 + 1 = 267 ✓
+ *   Stroke inner: 200 + 66 - 1 = 265 ✓
+ *   Fill radial edges: y=150, x=200 ✓
  *
  * @param {Object} options
  * @param {number} options.canvasWidth - Canvas width
  * @param {number} options.canvasHeight - Canvas height
  * @param {number} options.minDiameter - Minimum diameter (default 40)
  * @param {number} options.maxDiameter - Maximum diameter (default 200)
- * @param {number} options.strokeWidth - Stroke width for crisp adjustment (default 1)
+ * @param {number} options.strokeWidth - Stroke width (determines radius type)
  * @returns {Object} {centerX, centerY, radius, atPixel, quadrantIndex, quadrant, startAngle, endAngle, checkData}
  */
-function calculate90DegQuadrantArcParams(options) {
+function calculate90DegFillStrokeArcParams(options) {
     const {
         canvasWidth,
         canvasHeight,
@@ -586,37 +614,26 @@ function calculate90DegQuadrantArcParams(options) {
         strokeWidth = 1
     } = options;
 
-    // Determine center type: pixel (*.5) or grid (integer)
-    const atPixel = SeededRandom.getRandom() < 0.5;
+    // Step 1: For fill+stroke arcs, center must be INTEGER for crisp fill radial edges
+    // The fill radial edges are at x=centerX and y=centerY (cardinal angles)
+    const pos = placeCloseToCenterAtGrid(canvasWidth, canvasHeight);
+    const centerX = pos.centerX;
+    const centerY = pos.centerY;
+    const atPixel = false; // Always grid-centered for fill+stroke arcs
 
-    // Calculate center position
-    let centerX, centerY;
-    if (atPixel) {
-        const pos = placeCloseToCenterAtPixel(canvasWidth, canvasHeight);
-        centerX = pos.centerX;
-        centerY = pos.centerY;
-    } else {
-        const pos = placeCloseToCenterAtGrid(canvasWidth, canvasHeight);
-        centerX = pos.centerX;
-        centerY = pos.centerY;
-    }
+    // Step 2: Generate radius based on strokeWidth parity
+    // For integer center, stroke edges need: center ± (radius ± strokeWidth/2) = integer
+    // - Odd sw (strokeWidth/2 = X.5): radius must be half-integer (*.5)
+    // - Even sw (strokeWidth/2 = integer): radius must be integer
+    const minRadius = minDiameter / 2;
+    const maxRadius = maxDiameter / 2;
+    const radiusRange = maxRadius - minRadius;
+    const rawRadius = minRadius + SeededRandom.getRandom() * radiusRange;
+    const radius = (strokeWidth % 2 !== 0)
+        ? Math.floor(rawRadius) + 0.5  // Odd sw → half-integer radius
+        : Math.round(rawRadius);        // Even sw → integer radius
 
-    // Generate random base diameter
-    const diameterRange = maxDiameter - minDiameter;
-    const baseDiameter = minDiameter + Math.floor(SeededRandom.getRandom() * diameterRange);
-
-    // Adjust diameter for crisp rendering
-    const center = { x: centerX, y: centerY };
-    const adjustedDiameter = adjustDimensionsForCrispStrokeRendering(
-        baseDiameter, baseDiameter, strokeWidth, center
-    ).width;
-
-    // Calculate final radius
-    const radius = adjustedDiameter / 2;
-
-    // Select random quadrant (0-3)
-    // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
-    // Q1 (0-90) = math Q4, Q2 (90-180) = math Q3, Q3 (180-270) = math Q2, Q4 (270-360) = math Q1
+    // Step 4: Select random quadrant
     const quadrantIndex = Math.floor(SeededRandom.getRandom() * 4);
     const quadrants = [
         { start: 0, end: Math.PI / 2, name: 'Q1 (0-90) [math: Q4]' },
@@ -626,32 +643,30 @@ function calculate90DegQuadrantArcParams(options) {
     ];
     const quadrant = quadrants[quadrantIndex];
 
-    // Calculate extent bounds based on quadrant
+    // Step 5: Calculate extent bounds based on quadrant
     const effectiveRadius = radius + strokeWidth / 2;
     const checkData = { effectiveRadius };
 
-    // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
-    // Q1 = math Q4, Q2 = math Q3, Q3 = math Q2, Q4 = math Q1
     switch (quadrantIndex) {
-        case 0: // Q1: 0-90 (right, bottom) [math: Q4]
+        case 0: // Q1: 0-90 (right, bottom)
             checkData.leftX = Math.floor(centerX);
             checkData.rightX = Math.floor(centerX + effectiveRadius);
             checkData.topY = Math.floor(centerY);
             checkData.bottomY = Math.floor(centerY + effectiveRadius);
             break;
-        case 1: // Q2: 90-180 (left, bottom) [math: Q3]
+        case 1: // Q2: 90-180 (left, bottom)
             checkData.leftX = Math.floor(centerX - effectiveRadius);
             checkData.rightX = Math.floor(centerX);
             checkData.topY = Math.floor(centerY);
             checkData.bottomY = Math.floor(centerY + effectiveRadius);
             break;
-        case 2: // Q3: 180-270 (left, top) [math: Q2]
+        case 2: // Q3: 180-270 (left, top)
             checkData.leftX = Math.floor(centerX - effectiveRadius);
             checkData.rightX = Math.floor(centerX);
             checkData.topY = Math.floor(centerY - effectiveRadius);
             checkData.bottomY = Math.floor(centerY);
             break;
-        case 3: // Q4: 270-360 (right, top) [math: Q1]
+        case 3: // Q4: 270-360 (right, top)
             checkData.leftX = Math.floor(centerX);
             checkData.rightX = Math.floor(centerX + effectiveRadius);
             checkData.topY = Math.floor(centerY - effectiveRadius);
@@ -662,7 +677,7 @@ function calculate90DegQuadrantArcParams(options) {
     return {
         centerX,
         centerY,
-        radius,
+        radius,  // Half-integer for odd sw, integer for even sw
         atPixel,
         quadrantIndex,
         quadrant,
@@ -709,8 +724,10 @@ function registerDirectRenderingTest(name, drawFunction, category, checks, metad
  * @param {Object} surface - Surface with data, width, height, stride
  * @param {Object} backgroundColor - Background color {r, g, b, a}
  * @param {number} colorTolerance - Max difference from background to still be considered background (0-255)
+ * @param {number} alphaThreshold - If background is transparent (a=0), pixels with alpha <= this value
+ *                                  are treated as background regardless of RGB (handles AA ghost pixels)
  */
-function analyzeExtremes(surface, backgroundColor = { r: 255, g: 255, b: 255, a: 255 }, colorTolerance = 0) {
+function analyzeExtremes(surface, backgroundColor = { r: 255, g: 255, b: 255, a: 255 }, colorTolerance = 0, alphaThreshold = 0) {
     let topY = surface.height;
     let bottomY = -1;
     let leftX = surface.width;
@@ -723,6 +740,12 @@ function analyzeExtremes(surface, backgroundColor = { r: 255, g: 255, b: 255, a:
             const g = surface.data[offset + 1];
             const b = surface.data[offset + 2];
             const a = surface.data[offset + 3];
+
+            // If background is transparent and pixel alpha is below threshold,
+            // treat as background regardless of RGB (handles AA ghost pixels like rgba(0,0,255,8))
+            if (backgroundColor.a === 0 && a <= alphaThreshold) {
+                continue;  // Skip this pixel - it's effectively transparent
+            }
 
             // Check if pixel differs from background (with tolerance)
             const rDiff = Math.abs(r - backgroundColor.r);
@@ -1881,7 +1904,7 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateCrispFillAndStrokeRectParams,
         calculateCircleTestParameters,
         calculateArcTestParameters,
-        calculate90DegQuadrantArcParams,
+        calculate90DegFillStrokeArcParams,
         generateConstrainedArcAngles,
         registerDirectRenderingTest,
         analyzeExtremes,
@@ -1929,7 +1952,7 @@ if (typeof window !== 'undefined') {
     window.calculateCrispFillAndStrokeRectParams = calculateCrispFillAndStrokeRectParams;
     window.calculateCircleTestParameters = calculateCircleTestParameters;
     window.calculateArcTestParameters = calculateArcTestParameters;
-    window.calculate90DegQuadrantArcParams = calculate90DegQuadrantArcParams;
+    window.calculate90DegFillStrokeArcParams = calculate90DegFillStrokeArcParams;
     window.generateConstrainedArcAngles = generateConstrainedArcAngles;
     window.registerDirectRenderingTest = registerDirectRenderingTest;
     window.analyzeExtremes = analyzeExtremes;

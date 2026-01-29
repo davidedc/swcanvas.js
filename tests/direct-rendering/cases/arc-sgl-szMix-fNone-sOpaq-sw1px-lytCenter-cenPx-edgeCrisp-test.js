@@ -81,7 +81,7 @@ registerDirectRenderingTest(
     },
     'arcs',
     {
-        extremes: { colorTolerance: 77, tolerance: 0.03 }, // HTML5Canvas arc draw is pretty bad, so we need to be lenient
+        extremes: { alphaThreshold: 53 }, // HTML5Canvas arc draw is pretty bad, so we need to be lenient
         totalUniqueColors: 2,
         shapeIntegrity: true
     },

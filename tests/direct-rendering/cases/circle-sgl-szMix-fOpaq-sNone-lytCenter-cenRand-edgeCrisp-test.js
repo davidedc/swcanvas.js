@@ -101,7 +101,7 @@ registerDirectRenderingTest(
     },
     'circles',
     {
-        extremes: { colorTolerance: 8, tolerance: 0.05 },
+        extremes: { alphaThreshold: 8 },
         totalUniqueColors: 2, // background + fill
         shapeIntegrity: { hasFill: true, hasStroke: false }
         // Direct rendering is expected - no allowPathBasedRendering flag

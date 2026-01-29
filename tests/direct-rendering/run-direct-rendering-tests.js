@@ -35,7 +35,7 @@ const {
     calculateCrispFillAndStrokeRectParams,
     calculateCircleTestParameters,
     calculateArcTestParameters,
-    calculate90DegQuadrantArcParams,
+    calculate90DegFillStrokeArcParams,
     generateConstrainedArcAngles,
     registerDirectRenderingTest,
     analyzeExtremes,
@@ -63,7 +63,7 @@ global.adjustCenterForCrispStrokeRendering = adjustCenterForCrispStrokeRendering
 global.calculateCrispFillAndStrokeRectParams = calculateCrispFillAndStrokeRectParams;
 global.calculateCircleTestParameters = calculateCircleTestParameters;
 global.calculateArcTestParameters = calculateArcTestParameters;
-global.calculate90DegQuadrantArcParams = calculate90DegQuadrantArcParams;
+global.calculate90DegFillStrokeArcParams = calculate90DegFillStrokeArcParams;
 global.generateConstrainedArcAngles = generateConstrainedArcAngles;
 global.registerDirectRenderingTest = registerDirectRenderingTest;
 global.countUniqueColorsInMiddleRow = countUniqueColorsInMiddleRow;

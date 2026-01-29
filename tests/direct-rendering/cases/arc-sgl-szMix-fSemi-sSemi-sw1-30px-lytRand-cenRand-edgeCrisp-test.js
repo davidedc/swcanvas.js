@@ -85,7 +85,7 @@ registerDirectRenderingTest(
     },
     'arcs',
     {
-        extremes: { colorTolerance: 65, tolerance: 0.03 },
+        extremes: { alphaThreshold: 30 },
         totalUniqueColors: 4,
         speckles: { maxSpeckles: 5 },
         allowPathBasedRendering: true  // Semi-transparent may use path-based rendering
