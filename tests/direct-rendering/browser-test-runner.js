@@ -652,18 +652,24 @@ class DirectRenderingTestRunner {
                     details: `Skipped on iteration ${iterationNumber} (known HTML5 Canvas issue)`
                 });
             } else {
-                // Get color tolerance for HTML5 Canvas (to handle faint overspill)
+                // Get tolerances for HTML5 Canvas (to handle faint overspill and AA ghost pixels)
                 const colorTolerance = typeof checks.extremes === 'object' && checks.extremes.colorTolerance
                     ? checks.extremes.colorTolerance
                     : 0;
+                const alphaThreshold = typeof checks.extremes === 'object' && checks.extremes.alphaThreshold
+                    ? checks.extremes.alphaThreshold
+                    : 0;
 
-                // Analyze SWCanvas (no tolerance - should be pixel-perfect)
+                // Analyze SWCanvas with detected background (no tolerance - should be pixel-perfect)
                 const swSurface = createSurface(swCanvas);
-                const swExtremes = analyzeExtremes(swSurface);
+                const swBackgroundColor = detectBackgroundColor(swSurface);
+                const swExtremes = analyzeExtremes(swSurface, swBackgroundColor, 0, 0);
 
-                // Analyze HTML5 Canvas (with tolerance for overspill artifacts)
+                // Analyze HTML5 Canvas with detected background (with tolerance for overspill artifacts)
+                // alphaThreshold handles AA ghost pixels like rgba(0,0,255,8) on transparent backgrounds
                 const canvasSurface = createSurface(html5Canvas);
-                const canvasExtremes = analyzeExtremes(canvasSurface, { r: 255, g: 255, b: 255, a: 255 }, colorTolerance);
+                const canvasBackgroundColor = detectBackgroundColor(canvasSurface);
+                const canvasExtremes = analyzeExtremes(canvasSurface, canvasBackgroundColor, colorTolerance, alphaThreshold);
 
                 let passed = true;
                 let details = '';
