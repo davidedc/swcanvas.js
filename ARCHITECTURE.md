@@ -26,20 +26,28 @@ SWCanvas resolves these competing paradigms through a three-layer architecture:
 
 ### Layer 1: Core Engine (Performance)
 ```
+src/SWCanvasConstants.js → Centralized constants (loaded first)
+
 src/core/           → Core engine primitives
   Transform2D.js    → Immutable transformation mathematics
   Color.js          → Immutable color handling
   Surface.js        → Raw pixel buffer management
   Context2D.js      → High-performance rendering engine
+  Rasterizer.js     → Rendering pipeline orchestration
   SWPath2D.js       → Path definition and command recording
   ClipMask.js       → Stencil-based clipping using BitBuffer composition
   SourceMask.js     → Source coverage tracking using BitBuffer and BoundsTracker composition
+  StateStack.js     → Context state save/restore management
+  Debug.js          → Debug assertions and logging utilities
 
 src/utils/          → Shared utilities
   Point.js          → Immutable 2D point operations
   Rectangle.js      → Immutable rectangle operations
   BitBuffer.js      → 1-bit per pixel utility for memory-efficient mask operations
   BoundsTracker.js  → Reusable bounds tracking utility for optimization
+  CompositeOperations.js → Porter-Duff composite blending operations
+  ImageProcessor.js → Image format validation and conversion
+  Validators.js     → Parameter validation utilities
 
 src/paint/          → Paint sources
   Gradient.js       → Linear, radial, and conic gradient paint sources
@@ -49,6 +57,13 @@ src/paint/          → Paint sources
 src/filters/        → Effects
   ShadowBuffer.js   → Sparse shadow alpha storage with extended bounds
   BoxBlur.js        → Multi-pass box blur algorithm approximating Gaussian blur
+  ShadowPipeline.js → Shadow rendering pipeline coordination
+
+src/io/             → File format encoders
+  BitmapEncoder.js  → BMP file format encoding
+  BitmapEncodingOptions.js → Immutable BMP encoding configuration
+  PngEncoder.js     → PNG file format encoding with transparency
+  PngEncodingOptions.js → Immutable PNG encoding configuration
 
 src/renderers/      → Shape-Specific Direct Renderers (static utility classes)
   SpanOps.js        → Horizontal span fill utilities (shared by shape renderers)
@@ -174,28 +189,55 @@ SWCanvas.createCanvas(width, height) → SWCanvasElement
 - CSS color parsing and string-based properties
 - Automatic surface recreation on dimension changes
 
-### Core API Namespace  
+### Core API Namespace
 ```javascript
 SWCanvas.Core.* → Direct access to all engine classes
 ```
-- `Surface()` - Raw pixel buffer
+**Core Classes:**
+- `Surface()` - Raw pixel buffer factory
 - `Context2D()` - High-performance rendering context
 - `Transform2D()` - Immutable transformation matrices
-- `Point()`, `Rectangle()` - Geometric value objects
+- `SWPath2D()` - Path definition and command recording
+- `StateStack()` - Context state save/restore management
+
+**Value Objects:**
+- `Point()`, `Rectangle()` - Immutable geometric value objects
 - `Color()` - Immutable color handling
+
+**Mask Classes:**
 - `BitBuffer()` - 1-bit per pixel utility for efficient bit manipulation
 - `BoundsTracker()` - Reusable bounds tracking utility for optimization
 - `ClipMask()` - Stencil-based clipping using BitBuffer composition
 - `SourceMask()` - Source coverage tracking using BitBuffer and BoundsTracker composition
-- `LinearGradient()`, `RadialGradient()`, `ConicGradient()` - Gradient paint sources
+
+**Paint Sources:**
+- `Gradient()`, `LinearGradient()`, `RadialGradient()`, `ConicGradient()` - Gradient paint sources
 - `Pattern()` - Repeating image pattern paint sources
+
+**Effects:**
 - `ShadowBuffer()` - Sparse shadow alpha storage with extended bounds and BoundsTracker composition
 - `BoxBlur` - Multi-pass box blur algorithms (static methods)
-- `BitmapEncoder` - File format export utilities
-- `BitmapEncodingOptions()` - Immutable encoding configuration (Joshua Bloch patterns)
+- `ShadowPipeline` - Shadow rendering pipeline coordination
+
+**File I/O:**
+- `BitmapEncoder` - BMP file format export
+- `BitmapEncodingOptions()` - Immutable BMP encoding configuration (Joshua Bloch patterns)
 - `PngEncoder` - PNG file format encoding with transparency support
-- `PngEncodingOptions()` - PNG encoding configuration (immutable options)
+- `PngEncodingOptions()` - Immutable PNG encoding configuration
+
+**Utilities:**
+- `ImageProcessor` - Image format validation and conversion
 - `CompositeOperations` - Porter-Duff blending operations
+- `Validators` - Parameter validation utilities
+- `Rasterizer` - Rendering pipeline orchestration
+- `PathFlattener` - Converts paths to polygons
+- `PolygonFiller` - Scanline polygon filling
+- `StrokeGenerator` - Geometric stroke path generation
+- `RoundedRectOpsAA` - Axis-aligned rounded rectangle rendering
+
+**Debug:**
+- `IS_DEBUG` - Debug mode flag
+- `assertDebug()`, `debugLog()`, `debugWarn()` - Debug utilities
 
 ## Path Hit Testing System
 

@@ -13,7 +13,7 @@ This file provides Claude with essential context about the SWCanvas.js project f
 - **Drop-in replacement**: True HTML5 Canvas 2D Context compatibility
 - **Memory efficient**: 1-bit stencil clipping, optimized algorithms
 - **Sub-pixel accurate**: Thin strokes render with proportional opacity (no anti-aliasing)
-- **Well-tested**: 36 core tests + 140 visual tests + 79 direct rendering tests with pixel-level validation
+- **Well-tested**: 37 core tests + 144 visual tests + 79 direct rendering tests with pixel-level validation
 - **Paint Sources**: Full HTML5-compatible gradients (linear, radial, conic) and patterns
 
 ## API Usage

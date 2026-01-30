@@ -1,17 +1,17 @@
 # SWCanvas.js Test Suite
 
-This directory contains the comprehensive **modular test infrastructure** for SWCanvas, with 36 core tests + 140 visual tests + 79 direct rendering tests and cross-platform compatibility.
+This directory contains the comprehensive **modular test infrastructure** for SWCanvas, with 37 core tests + 144 visual tests + 79 direct rendering tests and cross-platform compatibility.
 
 ## Modular Test Architecture
 
 ```
 tests/
-├── core/                          # 36 individual core test files (001-036)
+├── core/                          # 37 individual core test files (001-036)
 │   ├── 001-surface-creation-valid.js
 │   ├── 015-alpha-blending-test.js  
 │   ├── 031-transform-matrix-order-dependency.js
 │   └── ... (33 more files)
-├── visual/                        # 140 individual visual test files (001-140)
+├── visual/                        # 144 individual visual test files (001-140)
 │   ├── 001-simple-rectangle-test.js
 │   ├── 027-fill-rule-complex-test.js
 │   ├── 056-stroke-pixel-analysis-test.js
@@ -41,7 +41,7 @@ tests/
 ├── core-functionality-tests.js          # Original (fallback/reference)
 ├── visual-rendering-tests.js            # Original (fallback/reference)
 ├── run-tests.js                         # Smart test runner with auto-detection
-├── output/                              # Generated PNG test images (140+ files)
+├── output/                              # Generated PNG test images (144+ files)
 └── README.md                            # This file
 ```
 
@@ -51,7 +51,7 @@ tests/
 ```bash
 # Build modular tests + run complete test suite
 npm run build  # Concatenates individual test files
-npm test       # Runs 36 core + 140 visual tests
+npm test       # Runs 37 core + 144 visual tests
 
 # Direct rendering tests (run separately)
 npm run test:direct-rendering  # Runs 79 direct rendering path verification tests
@@ -61,8 +61,8 @@ npm run test:direct-rendering  # Runs 79 direct rendering path verification test
 
 ### Browser Tests
 1. Open `tests/browser/index.html` in a web browser (automatically runs all tests on page load)
-2. Automatically runs 36 modular core functionality tests from `/tests/core/` 
-3. Automatically runs all 140 visual rendering tests with side-by-side HTML5 Canvas vs SWCanvas comparison
+2. Automatically runs 37 modular core functionality tests from `/tests/core/` 
+3. Automatically runs all 144 visual rendering tests with side-by-side HTML5 Canvas vs SWCanvas comparison
 4. Use interactive visual comparison tools for real-time testing
 5. Minimal example: Open `tests/browser/minimal-example.html` to see a minimal usage example
 
@@ -76,13 +76,13 @@ SWCanvas uses a **modular complementary dual test system** where individual test
 **Location**: `/tests/core/` (individual files) → `/tests/dist/core-functionality-tests.js` (concatenated)
 
 **Modular Structure**:
-- **36 individual test files** numbered 001-036 with descriptive names
+- **37 individual test files** numbered 001-037 with descriptive names
 - **Build-time concatenation** into single optimized file
 - **Smart test runner** automatically uses built version
 - **Development benefit**: No merge conflicts, focused editing
 
 **Characteristics**:
-- **36 unit tests** using `assertEquals()`, `assertThrows()` assertions
+- **37 unit tests** using `assertEquals()`, `assertThrows()` assertions
 - **Output**: Console logs with ✓ pass/✗ fail status + detailed error messages
 - **Environment**: Runs identically in both Node.js and browser
 - **Focus**: API correctness, error handling, data validation, mathematical accuracy
@@ -112,13 +112,13 @@ test('Surface creation with valid dimensions', () => {
 **Location**: `/tests/visual/` (individual files) → `/tests/dist/visual-rendering-tests.js` (concatenated)
 
 **Modular Structure**:
-- **140 individual test files** numbered 001-140 with descriptive names
+- **144 individual test files** numbered 001-144 with descriptive names
 - **Build-time concatenation** preserves registerVisualTest pattern
 - **Smart test runner** with automatic fallback to original
 - **Development benefit**: Isolated test development, clear organization
 
 **Characteristics**:
-- **140 visual tests** that generate actual rendered images
+- **144 visual tests** that generate actual rendered images
 - **Output**: PNG files (Node.js) + side-by-side comparison (browser)
 - **Environment**: PNG generation in Node.js, visual comparison in browser
 - **Focus**: Rendering accuracy, visual consistency
@@ -338,8 +338,8 @@ Add interactive tests to `tests/browser/index.html` for features requiring DOM i
 For architectural details about clipping systems and color handling, see ARCHITECTURE.md.
 
 ### Comprehensive Modular Test Coverage
-- **36 modular core tests** covering all API functionality with individual files
-- **140 modular visual tests** covering all major Canvas2D features
+- **37 modular core tests** covering all API functionality with individual files
+- **144 modular visual tests** covering all major Canvas2D features
 - **79 direct rendering tests** verifying optimized rendering path invocation
 - **Build-time concatenation** for optimal performance
 - **Smart test runner** with automatic fallback system
