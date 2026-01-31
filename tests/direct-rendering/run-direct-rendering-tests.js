@@ -37,6 +37,11 @@ const {
     calculateArcTestParameters,
     calculate90DegFillStrokeArcParams,
     generateConstrainedArcAngles,
+    // Bounds calculation utilities
+    calculateCircleBounds,
+    calculateRectangleBounds,
+    calculateLineBounds,
+    aggregateBounds,
     registerDirectRenderingTest,
     clampBoundsToCanvas,
     analyzeExtremes,
@@ -67,6 +72,11 @@ global.calculateCircleTestParameters = calculateCircleTestParameters;
 global.calculateArcTestParameters = calculateArcTestParameters;
 global.calculate90DegFillStrokeArcParams = calculate90DegFillStrokeArcParams;
 global.generateConstrainedArcAngles = generateConstrainedArcAngles;
+// Bounds calculation utilities
+global.calculateCircleBounds = calculateCircleBounds;
+global.calculateRectangleBounds = calculateRectangleBounds;
+global.calculateLineBounds = calculateLineBounds;
+global.aggregateBounds = aggregateBounds;
 global.registerDirectRenderingTest = registerDirectRenderingTest;
 global.countUniqueColorsInMiddleRow = countUniqueColorsInMiddleRow;
 global.countUniqueColorsInMiddleColumn = countUniqueColorsInMiddleColumn;

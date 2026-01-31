@@ -118,6 +118,11 @@ try {
             global.ensureHalfPoint = directRenderingTestUtils.ensureHalfPoint;
             global.adjustCenterForCrispStrokeRendering = directRenderingTestUtils.adjustCenterForCrispStrokeRendering;
             global.calculateCrispFillAndStrokeRectParams = directRenderingTestUtils.calculateCrispFillAndStrokeRectParams;
+            // Bounds calculation utilities
+            global.calculateCircleBounds = directRenderingTestUtils.calculateCircleBounds;
+            global.calculateRectangleBounds = directRenderingTestUtils.calculateRectangleBounds;
+            global.calculateLineBounds = directRenderingTestUtils.calculateLineBounds;
+            global.aggregateBounds = directRenderingTestUtils.aggregateBounds;
 
             for (const file of caseFiles) {
                 try {

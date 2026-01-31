@@ -55,16 +55,9 @@ registerDirectRenderingTest(
 
         ctx.fillCircle(centerX, centerY, radius);
 
-        // Pixel bounds: a pixel at position p is painted if its center (p + 0.5) is inside the shape.
-        // For outer edges: last painted pixel is floor(edge - 0.5), first painted pixel is ceil(edge - 0.5)
         return {
             logs: [`Semi-transparent circle at (${centerX}, ${centerY}) radius ${radius}`],
-            checkData: {
-                topY: Math.ceil(centerY - radius - 0.5),
-                bottomY: Math.floor(centerY + radius - 0.5),
-                leftX: Math.ceil(centerX - radius - 0.5),
-                rightX: Math.floor(centerX + radius - 0.5)
-            }
+            checkData: calculateCircleBounds(centerX, centerY, radius)
         };
     },
     'circles',

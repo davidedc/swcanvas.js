@@ -55,7 +55,7 @@ registerDirectRenderingTest(
             // Use opaque fill color (required for direct rendering)
             const fillColor = 'rgb(0, 0, 255)';
 
-            let centerX, centerY, radius;
+            let centerX, centerY, radius, paramsCheckData;
 
             if (isPerformanceRun && i > 0) {
                 // Random position for performance mode (spread shapes)
@@ -75,6 +75,7 @@ registerDirectRenderingTest(
                 centerX = params.centerX;
                 centerY = params.centerY;
                 radius = params.radius;
+                paramsCheckData = params.checkData;
             }
 
             // Draw filled circle using direct shape API
@@ -82,16 +83,9 @@ registerDirectRenderingTest(
             ctx.fillCircle(centerX, centerY, radius);
 
             // Only collect logs and checkData for visual test mode
-            // Pixel bounds: a pixel at position p is painted if its center (p + 0.5) is inside the shape.
-            // For outer edges: last painted pixel is floor(edge - 0.5), first painted pixel is ceil(edge - 0.5)
             if (!isPerformanceRun && i === 0) {
                 logs.push(`Circle at (${centerX}, ${centerY}) radius ${radius} color ${fillColor}`);
-                checkData = {
-                    topY: Math.ceil(centerY - radius - 0.5),
-                    bottomY: Math.floor(centerY + radius - 0.5),
-                    leftX: Math.ceil(centerX - radius - 0.5),
-                    rightX: Math.floor(centerX + radius - 0.5)
-                };
+                checkData = paramsCheckData;
             }
         }
 

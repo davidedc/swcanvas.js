@@ -468,13 +468,19 @@ function calculateCircleTestParameters(options) {
     const finalDiameter = adjustedDimensions.width;
     const radius = finalDiameter / 2;
 
+    // Calculate checkData for bounds validation
+    // For circles with stroke, the effective radius includes half the stroke width
+    const effectiveRadius = radius + (strokeWidth / 2);
+    const checkData = calculateCircleBounds(centerX, centerY, effectiveRadius);
+
     return {
         centerX,
         centerY,
         radius,
         strokeWidth,
         finalDiameter,
-        atPixel
+        atPixel,
+        checkData
     };
 }
 
@@ -563,6 +569,104 @@ function calculateArcTestParameters(options) {
         gapQuadrant,
         gapSizeDeg: gapSize * 180 / Math.PI
     };
+}
+
+// =============================================================================
+// BOUNDS CALCULATION UTILITIES
+// =============================================================================
+// These functions calculate the expected pixel bounds for rendered shapes.
+// They use the pixel-center rule: a pixel at position p is painted if its
+// center (p + 0.5) is inside the shape.
+//
+// For outer edges:
+//   - Last painted pixel: floor(edge - 0.5)
+//   - First painted pixel: ceil(edge - 0.5)
+// =============================================================================
+
+/**
+ * Calculate pixel bounds for a filled circle or arc.
+ * Uses pixel-center logic: a pixel at p is painted if (p + 0.5) is inside the shape.
+ * @param {number} centerX - Circle center X
+ * @param {number} centerY - Circle center Y
+ * @param {number} radius - Circle radius
+ * @returns {Object} {topY, bottomY, leftX, rightX}
+ */
+function calculateCircleBounds(centerX, centerY, radius) {
+    return {
+        topY: Math.ceil(centerY - radius - 0.5),
+        bottomY: Math.floor(centerY + radius - 0.5),
+        leftX: Math.ceil(centerX - radius - 0.5),
+        rightX: Math.floor(centerX + radius - 0.5)
+    };
+}
+
+/**
+ * Calculate pixel bounds for a rectangle with optional stroke.
+ * Uses pixel-center logic for consistent bounds calculation.
+ * @param {number} x - Rectangle top-left X
+ * @param {number} y - Rectangle top-left Y
+ * @param {number} width - Rectangle width
+ * @param {number} height - Rectangle height
+ * @param {number} strokeWidth - Stroke width (default 0 for fill-only)
+ * @returns {Object} {topY, bottomY, leftX, rightX}
+ */
+function calculateRectangleBounds(x, y, width, height, strokeWidth = 0) {
+    const halfStroke = strokeWidth / 2;
+    const leftEdge = x - halfStroke;
+    const rightEdge = x + width + halfStroke;
+    const topEdge = y - halfStroke;
+    const bottomEdge = y + height + halfStroke;
+
+    return {
+        topY: Math.ceil(topEdge - 0.5),
+        bottomY: Math.floor(bottomEdge - 0.5),
+        leftX: Math.ceil(leftEdge - 0.5),
+        rightX: Math.floor(rightEdge - 0.5)
+    };
+}
+
+/**
+ * Calculate pixel bounds for a line.
+ * @param {number} x1 - Start X
+ * @param {number} y1 - Start Y
+ * @param {number} x2 - End X
+ * @param {number} y2 - End Y
+ * @param {number} strokeWidth - Line width (default 1)
+ * @returns {Object} {topY, bottomY, leftX, rightX}
+ */
+function calculateLineBounds(x1, y1, x2, y2, strokeWidth = 1) {
+    const halfStroke = strokeWidth / 2;
+    const minX = Math.min(x1, x2) - halfStroke;
+    const maxX = Math.max(x1, x2) + halfStroke;
+    const minY = Math.min(y1, y2) - halfStroke;
+    const maxY = Math.max(y1, y2) + halfStroke;
+
+    return {
+        topY: Math.ceil(minY - 0.5),
+        bottomY: Math.floor(maxY - 0.5),
+        leftX: Math.ceil(minX - 0.5),
+        rightX: Math.floor(maxX - 0.5)
+    };
+}
+
+/**
+ * Aggregate multiple shape bounds into a single bounding box.
+ * @param {Array<Object>} boundsArray - Array of {topY, bottomY, leftX, rightX}
+ * @returns {Object} Combined {topY, bottomY, leftX, rightX}
+ */
+function aggregateBounds(boundsArray) {
+    if (boundsArray.length === 0) {
+        return { topY: 0, bottomY: 0, leftX: 0, rightX: 0 };
+    }
+
+    let topY = Infinity, bottomY = -Infinity, leftX = Infinity, rightX = -Infinity;
+    for (const bounds of boundsArray) {
+        topY = Math.min(topY, bounds.topY);
+        bottomY = Math.max(bottomY, bounds.bottomY);
+        leftX = Math.min(leftX, bounds.leftX);
+        rightX = Math.max(rightX, bounds.rightX);
+    }
+    return { topY, bottomY, leftX, rightX };
 }
 
 /**
@@ -1933,6 +2037,11 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateArcTestParameters,
         calculate90DegFillStrokeArcParams,
         generateConstrainedArcAngles,
+        // Bounds calculation utilities
+        calculateCircleBounds,
+        calculateRectangleBounds,
+        calculateLineBounds,
+        aggregateBounds,
         registerDirectRenderingTest,
         clampBoundsToCanvas,
         analyzeExtremes,
@@ -1982,6 +2091,11 @@ if (typeof window !== 'undefined') {
     window.calculateArcTestParameters = calculateArcTestParameters;
     window.calculate90DegFillStrokeArcParams = calculate90DegFillStrokeArcParams;
     window.generateConstrainedArcAngles = generateConstrainedArcAngles;
+    // Bounds calculation utilities
+    window.calculateCircleBounds = calculateCircleBounds;
+    window.calculateRectangleBounds = calculateRectangleBounds;
+    window.calculateLineBounds = calculateLineBounds;
+    window.aggregateBounds = aggregateBounds;
     window.registerDirectRenderingTest = registerDirectRenderingTest;
     window.clampBoundsToCanvas = clampBoundsToCanvas;
     window.analyzeExtremes = analyzeExtremes;

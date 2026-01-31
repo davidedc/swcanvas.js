@@ -80,22 +80,13 @@ registerDirectRenderingTest(
             radius: centerRadius
         });
 
-        // Calculate bounds
-        // Pixel bounds: a pixel at position p is painted if its center (p + 0.5) is inside the shape.
-        // For outer edges: last painted pixel is floor(edge - 0.5), first painted pixel is ceil(edge - 0.5)
-        let topY = canvasHeight, bottomY = 0, leftX = canvasWidth, rightX = 0;
-        for (const s of shapes) {
-            if (s.type === 'circle') {
-                topY = Math.min(topY, Math.ceil(s.y - s.radius - 0.5));
-                bottomY = Math.max(bottomY, Math.floor(s.y + s.radius - 0.5));
-                leftX = Math.min(leftX, Math.ceil(s.x - s.radius - 0.5));
-                rightX = Math.max(rightX, Math.floor(s.x + s.radius - 0.5));
-            }
-        }
+        // Calculate bounds using centralized utilities
+        const allBounds = shapes.map(s => calculateCircleBounds(s.x, s.y, s.radius));
+        const checkData = aggregateBounds(allBounds);
 
         return {
             logs: [`Drew ${shapes.length} shapes`],
-            checkData: { topY, bottomY, leftX, rightX }
+            checkData
         };
     },
     'scene',

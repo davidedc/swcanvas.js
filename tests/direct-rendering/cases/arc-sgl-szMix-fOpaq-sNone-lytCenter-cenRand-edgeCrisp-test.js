@@ -65,17 +65,10 @@ registerDirectRenderingTest(
         ctx.fillStyle = fillColor;
         ctx.fillArc(centerX, centerY, radius, startAngle, endAngle);
 
-        // Return check data
-        // Pixel bounds: a pixel at position p is painted if its center (p + 0.5) is inside the shape.
-        // For outer edges: last painted pixel is floor(edge - 0.5), first painted pixel is ceil(edge - 0.5)
+        // Return check data - use calculateCircleBounds since arc > 270° covers all extremes
         return {
             logs: [`Arc at (${centerX}, ${centerY}) radius ${radius} gap ${gapSizeDeg.toFixed(1)}° color ${fillColor}`],
-            checkData: {
-                topY: Math.ceil(centerY - radius - 0.5),
-                bottomY: Math.floor(centerY + radius - 0.5),
-                leftX: Math.ceil(centerX - radius - 0.5),
-                rightX: Math.floor(centerX + radius - 0.5)
-            }
+            checkData: calculateCircleBounds(centerX, centerY, radius)
         };
     },
     'arcs',

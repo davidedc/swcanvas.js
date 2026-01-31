@@ -113,21 +113,8 @@ function drawTest(ctx, iterationNumber, instances) {
                 `TransparentRRect: center=(${center.x.toFixed(1)},${center.y.toFixed(1)}), adjW/H=(${finalRectWidth},${finalRectHeight}), r=${radius}, sw=${strokeWidth.toFixed(1)}`
             );
 
-            // Calculate checkData for extremes validation within the loop
-            // while we have access to the actual values
-            const halfStroke = strokeWidth / 2;
-            const leftEdge = geomX - halfStroke;
-            const rightEdge = geomX + finalRectWidth + halfStroke;
-            const topEdge = geomY - halfStroke;
-            const bottomEdge = geomY + finalRectHeight + halfStroke;
-
-            // Pixel bounds calculation
-            checkData = {
-                topY: Math.ceil(topEdge - 0.5),
-                bottomY: Math.floor(bottomEdge - 0.5),
-                leftX: Math.ceil(leftEdge - 0.5),
-                rightX: Math.floor(rightEdge - 0.5)
-            };
+            // Calculate checkData using centralized utility
+            checkData = calculateRectangleBounds(geomX, geomY, finalRectWidth, finalRectHeight, strokeWidth);
         }
     }
 
