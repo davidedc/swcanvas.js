@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
- * Verifies current test output matches the golden snapshot.
+ * Verifies current test output matches the golden snapshot (logs and bounds).
  * Exit code 0 = match, 1 = mismatch
  *
- * Usage: node verify-snapshot.js [snapshot-file]
+ * Usage: node verify-logs-and-bounds-snapshot.js [snapshot-file]
  *
  * If a full JSON snapshot is provided, shows detailed diff on mismatch.
  * If a hashes-only snapshot is provided, just reports which tests differ.
  *
  * Examples:
- *   node verify-snapshot.js                           # Uses default golden-hashes-100.json
- *   node verify-snapshot.js snapshot-full.json        # Uses full JSON snapshot for detailed diff
- *   node verify-snapshot.js golden-hashes-1000.json   # Uses 1000-iteration snapshot
+ *   node verify-logs-and-bounds-snapshot.js                           # Uses default golden-hashes-100.json
+ *   node verify-logs-and-bounds-snapshot.js snapshot-full.json        # Uses full JSON snapshot for detailed diff
+ *   node verify-logs-and-bounds-snapshot.js golden-hashes-1000.json   # Uses 1000-iteration snapshot
  */
 
 const crypto = require('crypto');
@@ -25,7 +25,7 @@ const snapshotPath = path.join(__dirname, snapshotFile);
 if (!fs.existsSync(snapshotPath)) {
     console.error(`Error: Snapshot file not found: ${snapshotPath}`);
     console.error(`\nTo create a golden snapshot, run:`);
-    console.error(`  node generate-snapshot.js 100`);
+    console.error(`  node generate-logs-and-bounds-snapshot.js 100`);
     console.error(`  cp snapshot-hashes.json golden-hashes-100.json`);
     process.exit(1);
 }

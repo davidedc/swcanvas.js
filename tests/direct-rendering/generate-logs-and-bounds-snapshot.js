@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 /**
- * Generates a deterministic snapshot of all test positioning and checkData.
+ * Generates a deterministic snapshot of all test positioning and checkData (logs and bounds).
  * Used to verify refactoring doesn't change any calculations.
  *
- * Usage: node generate-snapshot.js [iterations] [--save-json]
+ * Usage: node generate-logs-and-bounds-snapshot.js [iterations] [--save-json]
  *
  * Options:
  *   iterations   Number of iterations per test (default: 100)
  *   --save-json  Also save full JSON data (WARNING: large files for high iterations)
  *
  * Examples:
- *   node generate-snapshot.js 10 --save-json   # Quick debug with full data
- *   node generate-snapshot.js 100 --save-json  # Standard run with data for debugging
- *   node generate-snapshot.js 1000             # Full coverage, hashes only (recommended)
+ *   node generate-logs-and-bounds-snapshot.js 10 --save-json   # Quick debug with full data
+ *   node generate-logs-and-bounds-snapshot.js 100 --save-json  # Standard run with data for debugging
+ *   node generate-logs-and-bounds-snapshot.js 1000             # Full coverage, hashes only (recommended)
  */
 
 const crypto = require('crypto');
