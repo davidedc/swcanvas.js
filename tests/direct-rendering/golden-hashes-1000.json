@@ -1,0 +1,324 @@
+{
+  "generated": "2026-01-31T14:07:05.407Z",
+  "iterations": 1000,
+  "hasJsonData": false,
+  "tests": {
+    "arc-m12-szMix-fNone-sOpaq-swMix-lytGrid-cenGrid-edgeNotCrisp-ornHoriz-arcADeg90-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "arc-m12-szMix-fOpaq-sNone-lytSpread-cenRand-edgeCrisp-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "arc-m12-szMix-fSemi-sMix-sw1-4px-lytSpread-cenRand-edgeCrisp-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "arc-m5-szMix-fSemi-sMix-sw1-10px-lytSpread-cenRand-edgeNotCrisp-ornRand-arcARand": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "arc-m8-szMix-fOpaq-sOpaq-sw1-10px-lytSpread-cenRand-edgeNotCrisp-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "arc-sgl-szMix-fMix-sMix-swMix-lytCenter-cenMixPG-edgeCrisp-arcASmall": {
+      "hash": "3195306f8ff035fa",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fMix-sOpaq-sw1px-lytCenter-cenMixPG-edgeCrisp-arcADeg90-quadRand-test": {
+      "hash": "67548680cd59f154",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fMix-sOpaq-sw2-6px-lytCenter-cenMixPG-edgeCrisp-arcADeg90-quadRand-test": {
+      "hash": "5d36bbc0dba49f13",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fMix-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-arcADeg90-quadRand-test": {
+      "hash": "40fc532449c81801",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fMix-sSemi-sw2-6px-lytCenter-cenMixPG-edgeCrisp-arcADeg90-quadRand-test": {
+      "hash": "515b1a567496cdf9",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenGrid-edgeCrisp-test": {
+      "hash": "c2d16b45da867c47",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenPx-edgeCrisp-test": {
+      "hash": "f612f4039ccbde63",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fOpaq-sNone-lytCenter-cenMixPG-edgeCrisp-test": {
+      "hash": "8d40fcdfec4d838b",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fOpaq-sNone-lytCenter-cenRand-edgeCrisp": {
+      "hash": "5043e477def19b0f",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fOpaq-sNone-lytRand-cenRand-edgeCrisp-test": {
+      "hash": "9978c7406317b9cc",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fOpaq-sOpaq-sw1-10px-lytRand-cenRand-edgeNotCrisp-test": {
+      "hash": "ed2f3c77f1a84cbc",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fOpaq-sOpaq-sw1-3px-lytRand-cenRand-edgeNotCrisp-test": {
+      "hash": "8d6065ef752587a3",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fSemi-sNone-lytCenter-cenRand-edgeCrisp": {
+      "hash": "942ae87d01d55336",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fSemi-sSemi-sw1-30px-lytCenter-cenMixPG-edgeCrisp": {
+      "hash": "6d812954da4c7a70",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fSemi-sSemi-sw1-30px-lytRand-cenRand-edgeCrisp-test": {
+      "hash": "db8d4bacde7641d7",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fSemi-sSemi-sw1-3px-lytCenter-cenMixPG-edgeCrisp": {
+      "hash": "c23698919efd0ec1",
+      "iterationsWithData": 1000
+    },
+    "arc-sgl-szMix-fSemi-sSemi-sw1-3px-lytRand-cenRand-edgeCrisp-test": {
+      "hash": "acc2d49348f049b7",
+      "iterationsWithData": 1000
+    },
+    "circle-m12-szMix-fMix-sNone-lytSpread-cenRand-edgeCrisp": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "circle-m12-szMix-fSemi-sMix-sw1-4px-lytSpread-cenRand-edgeCrisp-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "circle-m5-szMix-fOpaq-sNone-lytSpread-cenRand-edgeNotCrisp": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "circle-m8-szMix-fSemi-sMix-sw1-11px-lytRand-cenRand-edgeNotCrisp": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "circle-sgl-m-fSemi-sNone-lytCenter-cenGrid-edgeCrisp": {
+      "hash": "b61efd27c112bba3",
+      "iterationsWithData": 1000
+    },
+    "circle-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenGrid-edgeCrisp-test": {
+      "hash": "663b892dcc1a8766",
+      "iterationsWithData": 1000
+    },
+    "circle-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenPx-edgeCrisp-test": {
+      "hash": "4b5051785fd632e1",
+      "iterationsWithData": 1000
+    },
+    "circle-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp": {
+      "hash": "508d8cce335bd649",
+      "iterationsWithData": 1000
+    },
+    "circle-sgl-szMix-fOpaq-sNone-lytCenter-cenRand-edgeCrisp": {
+      "hash": "2ec910e35da9cbc9",
+      "iterationsWithData": 1000
+    },
+    "circle-sgl-szMix-fSemi-sNone-lytCenter-cenMixPG-edgeCrisp": {
+      "hash": "3689325a9432de8e",
+      "iterationsWithData": 1000
+    },
+    "circle-sgl-szMix-fSemi-sNone-lytRand-cenRand-edgeCrisp": {
+      "hash": "6030aeec31cd4397",
+      "iterationsWithData": 1000
+    },
+    "circle-sgl-szMix-fSemi-sSemi-sw1-11px-lytRand-cenRand-edgeNotCrisp": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "circle-sgl-szMix-fSemi-sSemi-sw1-30px-lytCenter-cenMixPG-edgeCrisp": {
+      "hash": "acc23cac9b8aa7b2",
+      "iterationsWithData": 1000
+    },
+    "circle-sgl-szMix-fSemi-sSemi-sw1-30px-lytRand-cenRand-edgeCrisp-test": {
+      "hash": "dda8546d073be2b0",
+      "iterationsWithData": 1000
+    },
+    "line-m15-szMix-fNone-sMix-sw1-10px-lytSpread-edgeNotCrisp-ornRand": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "line-m20-szMix-fNone-sOpaq-sw10px-lytSpread-edgeNotCrisp-ornRand": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "line-m20-szMix-fNone-sOpaq-sw1px-lytSpread-edgeNotCrisp-ornRand-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "line-m20-szMix-fNone-sOpaq-sw2px-lytSpread-edgeNotCrisp-ornRand-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "line-m20-szMix-fNone-sOpaq-sw3px-lytSpread-edgeNotCrisp-ornRand": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "line-m20-szMix-fNone-sOpaq-sw5px-lytSpread-edgeNotCrisp-ornRand": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "line-sgl-fNone-sSemi-sw1px-ornDiag": {
+      "hash": "643f87e08b7ddc7c",
+      "iterationsWithData": 1000
+    },
+    "line-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-edgeCrisp-ornHoriz": {
+      "hash": "2bacf66414e1227a",
+      "iterationsWithData": 1000
+    },
+    "line-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-edgeCrisp-ornVert": {
+      "hash": "2caf9a69206861ba",
+      "iterationsWithData": 1000
+    },
+    "line-sgl-szMix-fNone-sOpaq-sw2px-lytCenter-edgeCrisp-ornHoriz": {
+      "hash": "f93b6601c40efd25",
+      "iterationsWithData": 1000
+    },
+    "line-sgl-szMix-fNone-sOpaq-sw2px-lytCenter-edgeCrisp-ornVert": {
+      "hash": "c489b9aa06e3ffc6",
+      "iterationsWithData": 1000
+    },
+    "rect-m10-szMix-fSemi-sMix-swMix-lytSpread-cenMixPG-edgeCrisp-ornAxial-test": {
+      "hash": "5fbb860b6de7c4cf",
+      "iterationsWithData": 1000
+    },
+    "rect-m5-szMix-fSemi-sMix-sw1-10px-lytSpread-cenRand-edgeNotCrisp-ornRand-ctxTransRand-ctxRotRand-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "rect-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenGrid-edgeCrisp-ornAxial": {
+      "hash": "0bf6befa1d91e7ff",
+      "iterationsWithData": 1000
+    },
+    "rect-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenPx-edgeCrisp-ornAxial": {
+      "hash": "cd7b809a4a94d782",
+      "iterationsWithData": 1000
+    },
+    "rect-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-ornAxial": {
+      "hash": "c1da78fad3164040",
+      "iterationsWithData": 1000
+    },
+    "rect-sgl-szMix-fOpaq-sNone-lytCenter-cenGrid-edgeCrisp-ornAxial": {
+      "hash": "7039ce4e8e704a23",
+      "iterationsWithData": 1000
+    },
+    "rect-sgl-szMix-fOpaq-sOpaq-sw1-10px-lytRand-cenRand-edgeNotCrisp-ornRand-ctxTransRand-ctxRotRand": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "rect-sgl-szMix-fSemi-sMix-swMix-lytRand-cenMixPG-edgeCrisp-ornAxial-test": {
+      "hash": "f36c81ceb4231037",
+      "iterationsWithData": 1000
+    },
+    "rect-sgl-szMix-fSemi-sOpaq-sw1-10px-lytRand-cenRand-edgeNotCrisp-ornRand-ctxTransRand-ctxRotRand-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "rect-sgl-szMix-fSemi-sSemi-sw1-10px-lytRand-cenRand-edgeNotCrisp-ornRand-ctxTransRand-ctxRotRand-test": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "rect-sgl-szMix-fSemi-sSemi-swMix-lytSpread-cenRand-edgeNotCrisp-ornAxial-nonInt-test": {
+      "hash": "aacc9478772ca427",
+      "iterationsWithData": 1000
+    },
+    "roundrect-m10-szMix-fSemi-sOpaq-sw1px-lytSpread-cenMixPG-edgeCrisp-ornAxial-rrrRand": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "roundrect-m12-szMix-fNone-sOpaq-sw1px-lytSpread-cenMix-edgeNotCrisp-ornRot-rrrMix": {
+      "hash": "f8ec870848b5039d",
+      "iterationsWithData": 1000
+    },
+    "roundrect-m6-szMix-fSemi-sSemi-swMix-lytSpread-cenMixPG-edgeCrisp-ornAxial-rrrLrg": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "roundrect-m8-szMix-fSemi-sMix-swMix-lytSpread-cenMixPG-edgeCrisp-ornAxial-rrrMix": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "roundrect-m8-xl-fSemi-sNone-lytSpread-cenGrid-edgeCrisp-ornAxial-rrrLrg": {
+      "hash": "4f53cda18c2baa0c",
+      "iterationsWithData": 0
+    },
+    "roundrect-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenGrid-edgeCrisp-ornAxial-rrrRand": {
+      "hash": "a37d76f85cad738c",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szMix-fNone-sOpaq-sw1px-lytCenter-cenPx-edgeCrisp-ornAxial-rrrRand": {
+      "hash": "77653aa530fde318",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-ornAxial-rrrRand": {
+      "hash": "8440b17fec120f63",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szMix-fOpaq-sNone-lytCenter-cenMixPG-edgeCrisp-ornAxial-rrrRand": {
+      "hash": "7108681c8493a020",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szMix-fSemi-sOpaq-sw1-11px-lytCenter-cenGrid-edgeCrisp-ornAxial-rrrRand": {
+      "hash": "0e361aa139d276c6",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szMix-fSemi-sSemi-swMix-lytCenter-cenMixPG-edgeCrisp-ornAxial-rrrRand": {
+      "hash": "917fcf0f8b096c0c",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szRand-fNone-sOpaq-sw1px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand": {
+      "hash": "d2e2e08b16e4c23e",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szRand-fNone-sOpaq-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand": {
+      "hash": "e38fabd736e11396",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szRand-fNone-sSemi-sw1px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand": {
+      "hash": "8649353032470124",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szRand-fNone-sSemi-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand": {
+      "hash": "506e0b3e372fe1c5",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szRand-fOpaq-sNone-sw0-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand": {
+      "hash": "6f5f9b0b83c58ad0",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szRand-fOpaq-sOpaq-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand": {
+      "hash": "c177d9f7367b4563",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szRand-fOpaq-sSemi-sw1px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand": {
+      "hash": "97dbd06e4dcaa79d",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szRand-fOpaq-sSemi-sw2-40px-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand": {
+      "hash": "1bb78815e40b1914",
+      "iterationsWithData": 1000
+    },
+    "roundrect-sgl-szRand-fSemi-sNone-sw0-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand": {
+      "hash": "25aab1baf6cea0f1",
+      "iterationsWithData": 1000
+    },
+    "scene-m5-fOpaq-sNone-lytSpread-cenPx-edgeCrisp": {
+      "hash": "10d5d051f4aea0a4",
+      "iterationsWithData": 1000
+    }
+  },
+  "overallHash": "1f1a50e3888037c0"
+}
