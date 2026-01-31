@@ -58,6 +58,7 @@ function drawTest(ctx, iterationNumber, instances) {
     const numToDraw = isPerformanceRun ? instances : 1;
 
     let logs = [];
+    let checkData = null;
 
     const canvasWidth = ctx.canvas.width;
     const canvasHeight = ctx.canvas.height;
@@ -107,18 +108,33 @@ function drawTest(ctx, iterationNumber, instances) {
         // Use unified fillStrokeRoundRect
         ctx.fillStrokeRoundRect(geomX, geomY, finalRectWidth, finalRectHeight, radius);
 
-        if (!isPerformanceRun || i === 0) {
-            const currentLogs = [
+        if (!isPerformanceRun && i === 0) {
+            logs.push(
                 `TransparentRRect: center=(${center.x.toFixed(1)},${center.y.toFixed(1)}), adjW/H=(${finalRectWidth},${finalRectHeight}), r=${radius}, sw=${strokeWidth.toFixed(1)}`
-            ];
-            if (i === 0) logs = logs.concat(currentLogs);
+            );
+
+            // Calculate checkData for extremes validation within the loop
+            // while we have access to the actual values
+            const halfStroke = strokeWidth / 2;
+            const leftEdge = geomX - halfStroke;
+            const rightEdge = geomX + finalRectWidth + halfStroke;
+            const topEdge = geomY - halfStroke;
+            const bottomEdge = geomY + finalRectHeight + halfStroke;
+
+            // Pixel bounds calculation
+            checkData = {
+                topY: Math.ceil(topEdge - 0.5),
+                bottomY: Math.floor(bottomEdge - 0.5),
+                leftX: Math.ceil(leftEdge - 0.5),
+                rightX: Math.floor(rightEdge - 0.5)
+            };
         }
     }
 
     if (isPerformanceRun) {
         return null;
     }
-    return { logs };
+    return { logs, checkData };
 }
 
 // Register the test

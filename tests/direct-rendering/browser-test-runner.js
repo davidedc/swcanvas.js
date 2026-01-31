@@ -699,6 +699,33 @@ class DirectRenderingTestRunner {
                     details = `SW: T=${swExtremes.topY} B=${swExtremes.bottomY} L=${swExtremes.leftX} R=${swExtremes.rightX} | ` +
                         `Canvas: T=${canvasExtremes.topY} B=${canvasExtremes.bottomY} L=${canvasExtremes.leftX} R=${canvasExtremes.rightX}` +
                         (boundsMatch ? '' : ' (MISMATCH)');
+
+                    // Additional validation: compare checkData against both renderers (three-way check)
+                    const checkData = drawResult && drawResult.checkData;
+                    if (checkData && checkData.topY !== undefined && checkData.bottomY !== undefined &&
+                        checkData.leftX !== undefined && checkData.rightX !== undefined) {
+
+                        const expectedBounds = clampBoundsToCanvas(checkData, swCanvas.width, swCanvas.height);
+
+                        const swMatchesCheckData =
+                            swExtremes.topY === expectedBounds.topY &&
+                            swExtremes.bottomY === expectedBounds.bottomY &&
+                            swExtremes.leftX === expectedBounds.leftX &&
+                            swExtremes.rightX === expectedBounds.rightX;
+
+                        const canvasMatchesCheckData =
+                            canvasExtremes.topY === expectedBounds.topY &&
+                            canvasExtremes.bottomY === expectedBounds.bottomY &&
+                            canvasExtremes.leftX === expectedBounds.leftX &&
+                            canvasExtremes.rightX === expectedBounds.rightX;
+
+                        if (!swMatchesCheckData || !canvasMatchesCheckData) {
+                            passed = false;
+                            details += ` | checkData=[T:${expectedBounds.topY} B:${expectedBounds.bottomY} L:${expectedBounds.leftX} R:${expectedBounds.rightX}]`;
+                            if (!swMatchesCheckData) details += ' (SW≠checkData)';
+                            if (!canvasMatchesCheckData) details += ' (Canvas≠checkData)';
+                        }
+                    }
                 }
 
                 results.push({

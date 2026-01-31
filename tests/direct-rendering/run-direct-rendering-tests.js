@@ -38,7 +38,9 @@ const {
     calculate90DegFillStrokeArcParams,
     generateConstrainedArcAngles,
     registerDirectRenderingTest,
+    clampBoundsToCanvas,
     analyzeExtremes,
+    detectBackgroundColor,
     countUniqueColors,
     countUniqueColorsInMiddleRow,
     countUniqueColorsInMiddleColumn,
@@ -209,9 +211,39 @@ function runTest(test, iterationNumber = 1) {
         issues.push('Path-based rendering was used instead of direct rendering');
     }
 
-    // Extremes check - SKIPPED in Node.js
-    // In browser, this compares SWCanvas vs HTML5 Canvas bounds (meaningful).
-    // In Node.js, there's no HTML5 Canvas to compare against, so skip this check.
+    // Extremes check - compare SWCanvas rendered bounds vs checkData
+    const checkData = result && result.checkData;
+    if (checks.extremes && checkData) {
+        const backgroundColor = detectBackgroundColor(surface);
+        const swExtremes = analyzeExtremes(surface, backgroundColor, 0, 0);
+
+        // Validate checkData has required bounds
+        if (checkData.topY === undefined || checkData.bottomY === undefined ||
+            checkData.leftX === undefined || checkData.rightX === undefined) {
+            issues.push(`Extremes check enabled but checkData missing bounds`);
+            testPassed = false;
+        } else {
+            // Clamp checkData to canvas bounds
+            const expectedBounds = clampBoundsToCanvas(checkData, surface.width, surface.height);
+
+            // Exact match required - SWCanvas has no anti-aliasing
+            const boundsMatch =
+                swExtremes.topY === expectedBounds.topY &&
+                swExtremes.bottomY === expectedBounds.bottomY &&
+                swExtremes.leftX === expectedBounds.leftX &&
+                swExtremes.rightX === expectedBounds.rightX;
+
+            if (!boundsMatch) {
+                issues.push(`Extremes mismatch: ` +
+                    `SW=[T:${swExtremes.topY} B:${swExtremes.bottomY} L:${swExtremes.leftX} R:${swExtremes.rightX}] ` +
+                    `Expected=[T:${expectedBounds.topY} B:${expectedBounds.bottomY} L:${expectedBounds.leftX} R:${expectedBounds.rightX}]`);
+                testPassed = false;
+            }
+        }
+    } else if (checks.extremes && !checkData) {
+        issues.push('Extremes check enabled but test returned no checkData');
+        testPassed = false;
+    }
 
     // Run shared validation checks (color counts, speckles, etc.)
     const validationResult = runValidationChecks(surface, checks, iterationNumber);

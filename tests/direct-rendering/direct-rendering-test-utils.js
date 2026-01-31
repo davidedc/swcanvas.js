@@ -644,33 +644,43 @@ function calculate90DegFillStrokeArcParams(options) {
     const quadrant = quadrants[quadrantIndex];
 
     // Step 5: Calculate extent bounds based on quadrant
+    // The effectiveRadius is the distance from center to outer stroke edge.
+    // For rendering, a pixel at position p is painted if its center (p + 0.5) is inside the shape.
+    //
+    // Pixel bounds calculation:
+    // - Outer arc edges (at effectiveRadius from center):
+    //   - Right/bottom: last painted pixel is floor(center + effectiveRadius - 0.5)
+    //   - Left/top: first painted pixel is ceil(center - effectiveRadius - 0.5)
+    // - Radial edges (at center, depending on quadrant orientation):
+    //   - If fill extends TOWARD positive direction: first pixel is ceil(center - 0.5)
+    //   - If fill extends TOWARD negative direction: last pixel is floor(center - 0.5)
     const effectiveRadius = radius + strokeWidth / 2;
     const checkData = { effectiveRadius };
 
     switch (quadrantIndex) {
-        case 0: // Q1: 0-90 (right, bottom)
-            checkData.leftX = Math.floor(centerX);
-            checkData.rightX = Math.floor(centerX + effectiveRadius);
-            checkData.topY = Math.floor(centerY);
-            checkData.bottomY = Math.floor(centerY + effectiveRadius);
+        case 0: // Q1: 0-90 (right, bottom) - fill extends right (+X) and down (+Y) from center
+            checkData.leftX = Math.ceil(centerX - 0.5);      // radial edge: fill goes right
+            checkData.rightX = Math.floor(centerX + effectiveRadius - 0.5);  // arc edge
+            checkData.topY = Math.ceil(centerY - 0.5);       // radial edge: fill goes down
+            checkData.bottomY = Math.floor(centerY + effectiveRadius - 0.5); // arc edge
             break;
-        case 1: // Q2: 90-180 (left, bottom)
-            checkData.leftX = Math.floor(centerX - effectiveRadius);
-            checkData.rightX = Math.floor(centerX);
-            checkData.topY = Math.floor(centerY);
-            checkData.bottomY = Math.floor(centerY + effectiveRadius);
+        case 1: // Q2: 90-180 (left, bottom) - fill extends left (-X) and down (+Y) from center
+            checkData.leftX = Math.ceil(centerX - effectiveRadius - 0.5);    // arc edge
+            checkData.rightX = Math.floor(centerX - 0.5);    // radial edge: fill goes left
+            checkData.topY = Math.ceil(centerY - 0.5);       // radial edge: fill goes down
+            checkData.bottomY = Math.floor(centerY + effectiveRadius - 0.5); // arc edge
             break;
-        case 2: // Q3: 180-270 (left, top)
-            checkData.leftX = Math.floor(centerX - effectiveRadius);
-            checkData.rightX = Math.floor(centerX);
-            checkData.topY = Math.floor(centerY - effectiveRadius);
-            checkData.bottomY = Math.floor(centerY);
+        case 2: // Q3: 180-270 (left, top) - fill extends left (-X) and up (-Y) from center
+            checkData.leftX = Math.ceil(centerX - effectiveRadius - 0.5);    // arc edge
+            checkData.rightX = Math.floor(centerX - 0.5);    // radial edge: fill goes left
+            checkData.topY = Math.ceil(centerY - effectiveRadius - 0.5);     // arc edge
+            checkData.bottomY = Math.floor(centerY - 0.5);   // radial edge: fill goes up
             break;
-        case 3: // Q4: 270-360 (right, top)
-            checkData.leftX = Math.floor(centerX);
-            checkData.rightX = Math.floor(centerX + effectiveRadius);
-            checkData.topY = Math.floor(centerY - effectiveRadius);
-            checkData.bottomY = Math.floor(centerY);
+        case 3: // Q4: 270-360 (right, top) - fill extends right (+X) and up (-Y) from center
+            checkData.leftX = Math.ceil(centerX - 0.5);      // radial edge: fill goes right
+            checkData.rightX = Math.floor(centerX + effectiveRadius - 0.5);  // arc edge
+            checkData.topY = Math.ceil(centerY - effectiveRadius - 0.5);     // arc edge
+            checkData.bottomY = Math.floor(centerY - 0.5);   // radial edge: fill goes up
             break;
     }
 
@@ -717,6 +727,23 @@ function registerDirectRenderingTest(name, drawFunction, category, checks, metad
             metadata: metadata
         });
     }
+}
+
+/**
+ * Clamp checkData bounds to canvas dimensions.
+ * When shapes extend beyond canvas edges, rendered pixels are clamped.
+ * @param {Object} bounds - Object with topY, bottomY, leftX, rightX
+ * @param {number} canvasWidth - Canvas width
+ * @param {number} canvasHeight - Canvas height
+ * @returns {Object} Clamped bounds {topY, bottomY, leftX, rightX}
+ */
+function clampBoundsToCanvas(bounds, canvasWidth, canvasHeight) {
+    return {
+        topY: Math.max(0, Math.floor(bounds.topY)),
+        bottomY: Math.min(canvasHeight - 1, Math.floor(bounds.bottomY)),
+        leftX: Math.max(0, Math.floor(bounds.leftX)),
+        rightX: Math.min(canvasWidth - 1, Math.floor(bounds.rightX))
+    };
 }
 
 /**
@@ -1907,6 +1934,7 @@ if (typeof module !== 'undefined' && module.exports) {
         calculate90DegFillStrokeArcParams,
         generateConstrainedArcAngles,
         registerDirectRenderingTest,
+        clampBoundsToCanvas,
         analyzeExtremes,
         checkDimensionConsistency,
         countUniqueColors,
@@ -1955,6 +1983,7 @@ if (typeof window !== 'undefined') {
     window.calculate90DegFillStrokeArcParams = calculate90DegFillStrokeArcParams;
     window.generateConstrainedArcAngles = generateConstrainedArcAngles;
     window.registerDirectRenderingTest = registerDirectRenderingTest;
+    window.clampBoundsToCanvas = clampBoundsToCanvas;
     window.analyzeExtremes = analyzeExtremes;
     window.checkDimensionConsistency = checkDimensionConsistency;
     window.countUniqueColors = countUniqueColors;

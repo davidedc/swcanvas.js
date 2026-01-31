@@ -81,13 +81,15 @@ registerDirectRenderingTest(
         });
 
         // Calculate bounds
+        // Pixel bounds: a pixel at position p is painted if its center (p + 0.5) is inside the shape.
+        // For outer edges: last painted pixel is floor(edge - 0.5), first painted pixel is ceil(edge - 0.5)
         let topY = canvasHeight, bottomY = 0, leftX = canvasWidth, rightX = 0;
         for (const s of shapes) {
             if (s.type === 'circle') {
-                topY = Math.min(topY, Math.floor(s.y - s.radius));
-                bottomY = Math.max(bottomY, Math.floor(s.y + s.radius));
-                leftX = Math.min(leftX, Math.floor(s.x - s.radius));
-                rightX = Math.max(rightX, Math.floor(s.x + s.radius));
+                topY = Math.min(topY, Math.ceil(s.y - s.radius - 0.5));
+                bottomY = Math.max(bottomY, Math.floor(s.y + s.radius - 0.5));
+                leftX = Math.min(leftX, Math.ceil(s.x - s.radius - 0.5));
+                rightX = Math.max(rightX, Math.floor(s.x + s.radius - 0.5));
             }
         }
 
