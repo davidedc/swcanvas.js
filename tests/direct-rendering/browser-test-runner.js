@@ -719,11 +719,14 @@ class DirectRenderingTestRunner {
                             canvasExtremes.leftX === expectedBounds.leftX &&
                             canvasExtremes.rightX === expectedBounds.rightX;
 
+                        // Always show calculated bounds from checkData
+                        details += ` | Calc: T=${expectedBounds.topY} B=${expectedBounds.bottomY} L=${expectedBounds.leftX} R=${expectedBounds.rightX}`;
+
+                        // Add mismatch indicators if needed
                         if (!swMatchesCheckData || !canvasMatchesCheckData) {
                             passed = false;
-                            details += ` | checkData=[T:${expectedBounds.topY} B:${expectedBounds.bottomY} L:${expectedBounds.leftX} R:${expectedBounds.rightX}]`;
-                            if (!swMatchesCheckData) details += ' (SW≠checkData)';
-                            if (!canvasMatchesCheckData) details += ' (Canvas≠checkData)';
+                            if (!swMatchesCheckData) details += ' (SW≠Calc)';
+                            if (!canvasMatchesCheckData) details += ' (Canvas≠Calc)';
                         }
                     }
                 }
