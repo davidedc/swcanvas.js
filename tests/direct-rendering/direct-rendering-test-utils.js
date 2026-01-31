@@ -619,21 +619,23 @@ function calculateLineTestParameters(options) {
     // Generate random line length
     const lineLength = Math.floor(minLength + SeededRandom.getRandom() * (maxLength - minLength + 1));
 
-    // Calculate center positions based on stroke width parity
-    // Odd strokeWidth (1px): position at X.5 for crisp single-pixel stroke
-    // Even strokeWidth (2px): position at integer for crisp two-pixel stroke
-    const crispCenterX = strokeWidth % 2 === 1
-        ? Math.floor(canvasWidth / 2) + 0.5
-        : Math.floor(canvasWidth / 2);
-    const crispCenterY = strokeWidth % 2 === 1
-        ? Math.floor(canvasHeight / 2) + 0.5
-        : Math.floor(canvasHeight / 2);
+    // Calculate center positions:
+    // - For the perpendicular axis (where stroke extends): apply crisp centering based on strokeWidth parity
+    //   - Odd strokeWidth (1px): position at X.5 for crisp single-pixel stroke
+    //   - Even strokeWidth (2px): position at integer for crisp two-pixel stroke
+    // - For the parallel axis (where line extends): use integer center for visual centering
 
     let x1, y1, x2, y2;
     let checkData;
 
     if (orientation === 'vertical') {
-        const startY = Math.floor(crispCenterY - lineLength / 2);
+        // Vertical line: X is perpendicular (needs crisp), Y is parallel (needs integer center)
+        const crispCenterX = strokeWidth % 2 === 1
+            ? Math.floor(canvasWidth / 2) + 0.5
+            : Math.floor(canvasWidth / 2);
+        const centerY = Math.floor(canvasHeight / 2);  // Integer Y for centering line length
+
+        const startY = Math.floor(centerY - lineLength / 2);
         const endY = startY + lineLength;
 
         x1 = crispCenterX;
@@ -665,8 +667,13 @@ function calculateLineTestParameters(options) {
             };
         }
     } else {
-        // Horizontal
-        const startX = Math.floor(crispCenterX - lineLength / 2);
+        // Horizontal line: Y is perpendicular (needs crisp), X is parallel (needs integer center)
+        const crispCenterY = strokeWidth % 2 === 1
+            ? Math.floor(canvasHeight / 2) + 0.5
+            : Math.floor(canvasHeight / 2);
+        const centerX = Math.floor(canvasWidth / 2);  // Integer X for centering line length
+
+        const startX = Math.floor(centerX - lineLength / 2);
         const endX = startX + lineLength;
 
         x1 = startX;

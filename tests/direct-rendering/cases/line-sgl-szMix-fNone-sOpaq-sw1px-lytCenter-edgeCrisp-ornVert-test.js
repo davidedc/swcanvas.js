@@ -44,37 +44,24 @@ registerDirectRenderingTest(
         const width = ctx.canvas.width;
         const height = ctx.canvas.height;
 
-        // Crisp positioning: center X between pixels (+ 0.5)
-        // This ensures the 1px stroke fills exactly one pixel column
-        const centerX = Math.floor(width / 2) + 0.5;
-
-        // Random line length (spans S, M, L sizes: 20-149px)
-        const lineLength = Math.floor(20 + SeededRandom.getRandom() * 130);
-        const centerY = Math.floor(height / 2);
-        const startY = Math.floor(centerY - lineLength / 2);
-        const endY = startY + lineLength;
-
-        // Randomly swap start/end for variety (tests both directions)
-        let y1 = startY, y2 = endY;
-        if (SeededRandom.getRandom() < 0.5) {
-            [y1, y2] = [y2, y1];
-        }
+        // Use positioning utility for consistent bounds calculation (single source of truth)
+        const params = calculateLineTestParameters({
+            canvasWidth: width,
+            canvasHeight: height,
+            strokeWidth: 1,
+            orientation: 'vertical',
+            minLength: 20,
+            maxLength: 149
+        });
 
         // Draw 1px opaque red vertical line
         ctx.strokeStyle = 'rgb(255, 0, 0)';
         ctx.lineWidth = 1;
-        ctx.strokeLine(centerX, y1, centerX, y2);
+        ctx.strokeLine(params.x1, params.y1, params.x2, params.y2);
 
-        // For crisp vertical lines, the stroke should occupy exactly one pixel column
-        const pixelX = Math.floor(centerX);
         return {
-            logs: [`1px Red vertical line from (${centerX}, ${y1}) to (${centerX}, ${y2}), length=${lineLength}px`],
-            checkData: {
-                topY: Math.min(y1, y2),
-                bottomY: Math.max(y1, y2) - 1,  // Inclusive bottom bound
-                leftX: pixelX,
-                rightX: pixelX
-            }
+            logs: [`1px Red vertical line from (${params.x1}, ${params.y1}) to (${params.x2}, ${params.y2}), length=${params.lineLength}px`],
+            checkData: params.checkData
         };
     },
     'lines',

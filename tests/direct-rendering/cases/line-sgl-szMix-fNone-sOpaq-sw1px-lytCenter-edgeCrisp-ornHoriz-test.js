@@ -46,37 +46,24 @@ registerDirectRenderingTest(
         const width = ctx.canvas.width;
         const height = ctx.canvas.height;
 
-        // Crisp positioning: center Y between pixels (+ 0.5)
-        // This ensures the 1px stroke fills exactly one pixel row
-        const centerY = Math.floor(height / 2) + 0.5;
-
-        // Random line length (spans S, M, L sizes: 20-149px)
-        const lineLength = Math.floor(20 + SeededRandom.getRandom() * 130);
-        const centerX = Math.floor(width / 2);
-        const startX = Math.floor(centerX - lineLength / 2);
-        const endX = startX + lineLength;
-
-        // Randomly swap start/end for variety (tests both directions)
-        let x1 = startX, x2 = endX;
-        if (SeededRandom.getRandom() < 0.5) {
-            [x1, x2] = [x2, x1];
-        }
+        // Use positioning utility for consistent bounds calculation (single source of truth)
+        const params = calculateLineTestParameters({
+            canvasWidth: width,
+            canvasHeight: height,
+            strokeWidth: 1,
+            orientation: 'horizontal',
+            minLength: 20,
+            maxLength: 149
+        });
 
         // Draw 1px opaque red horizontal line
         ctx.strokeStyle = 'rgb(255, 0, 0)';
         ctx.lineWidth = 1;
-        ctx.strokeLine(x1, centerY, x2, centerY);
+        ctx.strokeLine(params.x1, params.y1, params.x2, params.y2);
 
-        // For crisp horizontal lines, the stroke should occupy exactly one pixel row
-        const pixelY = Math.floor(centerY);
         return {
-            logs: [`1px Red line from (${x1}, ${centerY}) to (${x2}, ${centerY}), length=${lineLength}px`],
-            checkData: {
-                topY: pixelY,
-                bottomY: pixelY,
-                leftX: Math.min(x1, x2),
-                rightX: Math.max(x1, x2) - 1  // Inclusive right bound
-            }
+            logs: [`1px Red line from (${params.x1}, ${params.y1}) to (${params.x2}, ${params.y2}), length=${params.lineLength}px`],
+            checkData: params.checkData
         };
     },
     'lines',

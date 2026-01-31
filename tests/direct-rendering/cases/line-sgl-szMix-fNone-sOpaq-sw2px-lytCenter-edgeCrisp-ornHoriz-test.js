@@ -23,39 +23,24 @@ registerDirectRenderingTest(
         const width = ctx.canvas.width;
         const height = ctx.canvas.height;
 
-        // Crisp positioning for 2px line: center at grid crossing (integer Y)
-        // This ensures the 2px stroke fills exactly two pixel rows (Y-1 and Y)
-        const centerY = Math.floor(height / 2);
-
-        // Random line length (spans S, M, L sizes: 20-149px)
-        const lineLength = Math.floor(20 + SeededRandom.getRandom() * 130);
-        const centerX = Math.floor(width / 2);
-        const startX = Math.floor(centerX - lineLength / 2);
-        const endX = startX + lineLength;
-
-        // Randomly swap start/end for variety (tests both directions)
-        let x1 = startX, x2 = endX;
-        if (SeededRandom.getRandom() < 0.5) {
-            [x1, x2] = [x2, x1];
-        }
+        // Use positioning utility for consistent bounds calculation (single source of truth)
+        const params = calculateLineTestParameters({
+            canvasWidth: width,
+            canvasHeight: height,
+            strokeWidth: 2,
+            orientation: 'horizontal',
+            minLength: 20,
+            maxLength: 149
+        });
 
         // Draw 2px opaque red horizontal line
         ctx.strokeStyle = 'rgb(255, 0, 0)';
         ctx.lineWidth = 2;
-        ctx.strokeLine(x1, centerY, x2, centerY);
-
-        // For crisp 2px horizontal lines at grid crossing, stroke occupies two pixel rows
-        const topPixelY = centerY - 1;
-        const bottomPixelY = centerY;
+        ctx.strokeLine(params.x1, params.y1, params.x2, params.y2);
 
         return {
-            logs: [`2px Red line from (${x1}, ${centerY}) to (${x2}, ${centerY}), length=${lineLength}px`],
-            checkData: {
-                topY: topPixelY,
-                bottomY: bottomPixelY,
-                leftX: Math.min(x1, x2),
-                rightX: Math.max(x1, x2) - 1  // Inclusive right bound
-            }
+            logs: [`2px Red line from (${params.x1}, ${params.y1}) to (${params.x2}, ${params.y2}), length=${params.lineLength}px`],
+            checkData: params.checkData
         };
     },
     'lines',
