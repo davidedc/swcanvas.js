@@ -120,12 +120,8 @@ function drawTest(ctx, iterationNumber, instances) {
         } else if (!isPerformanceRun) {
             logs.push(`&#x25A1; 1px Red Stroked Rectangle at (${currentX.toFixed(1)}, ${currentY.toFixed(1)}), size ${archetypeRectWidth}x${archetypeRectHeight}, centered at (${baseCenterX.toFixed(1)}, ${baseCenterY.toFixed(1)})`);
 
-            checkData = {
-                leftX: Math.floor(currentX),
-                rightX: Math.floor(currentX + archetypeRectWidth),
-                topY: Math.floor(currentY),
-                bottomY: Math.floor(currentY + archetypeRectHeight)
-            };
+            // Use centralized utility for bounds calculation (single source of truth)
+            checkData = calculateCrispStrokeRectBounds(currentX, currentY, archetypeRectWidth, archetypeRectHeight);
         }
 
         ctx.strokeRect(currentX, currentY, archetypeRectWidth, archetypeRectHeight);

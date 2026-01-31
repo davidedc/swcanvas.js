@@ -110,12 +110,8 @@ function drawTest(ctx, iterationNumber, instances) {
             if (i === 0) logs = logs.concat(currentLogs);
 
             if (i === 0) {
-                checkData = {
-                    leftX: Math.floor(geomX),
-                    rightX: Math.floor(geomX + finalRectWidth),
-                    topY: Math.floor(geomY),
-                    bottomY: Math.floor(geomY + finalRectHeight)
-                };
+                // Use centralized utility for bounds calculation (single source of truth)
+                checkData = calculateCrispStrokeRectBounds(geomX, geomY, finalRectWidth, finalRectHeight);
             }
         }
     }

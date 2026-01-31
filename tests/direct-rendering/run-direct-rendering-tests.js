@@ -37,9 +37,11 @@ const {
     calculateArcTestParameters,
     calculate90DegFillStrokeArcParams,
     generateConstrainedArcAngles,
+    calculateLineTestParameters,
     // Bounds calculation utilities
     calculateCircleBounds,
     calculateRectangleBounds,
+    calculateCrispStrokeRectBounds,
     calculateLineBounds,
     aggregateBounds,
     registerDirectRenderingTest,
@@ -72,9 +74,11 @@ global.calculateCircleTestParameters = calculateCircleTestParameters;
 global.calculateArcTestParameters = calculateArcTestParameters;
 global.calculate90DegFillStrokeArcParams = calculate90DegFillStrokeArcParams;
 global.generateConstrainedArcAngles = generateConstrainedArcAngles;
+global.calculateLineTestParameters = calculateLineTestParameters;
 // Bounds calculation utilities
 global.calculateCircleBounds = calculateCircleBounds;
 global.calculateRectangleBounds = calculateRectangleBounds;
+global.calculateCrispStrokeRectBounds = calculateCrispStrokeRectBounds;
 global.calculateLineBounds = calculateLineBounds;
 global.aggregateBounds = aggregateBounds;
 global.registerDirectRenderingTest = registerDirectRenderingTest;

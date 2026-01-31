@@ -370,10 +370,25 @@ function calculateCrispFillAndStrokeRectParams(options) {
         baseWidth, baseHeight, strokeWidth, center
     );
 
+    // Calculate top-left coordinates from center
+    const x = center.x - adjusted.width / 2;
+    const y = center.y - adjusted.height / 2;
+
+    // Calculate bounds using formulas that match existing test manual formulas
+    // These are the pixel bounds for stroke rendering (1px strokes from the edge)
+    const checkData = {
+        leftX: Math.floor(x),
+        rightX: Math.floor(x + adjusted.width),
+        topY: Math.floor(y),
+        bottomY: Math.floor(y + adjusted.height)
+    };
+
     return {
         center,
         adjustedDimensions: { width: adjusted.width, height: adjusted.height },
-        strokeWidth
+        strokeWidth,
+        topLeft: { x, y },
+        checkData
     };
 }
 
@@ -571,6 +586,156 @@ function calculateArcTestParameters(options) {
     };
 }
 
+/**
+ * Calculate crisp line test parameters with proper bounds.
+ *
+ * For crisp axis-aligned lines:
+ * - 1px stroke at X.5: occupies single pixel column/row
+ * - 2px (even) stroke at integer: occupies pixels [coord-1, coord] (centered)
+ *
+ * Bounds formulas match existing test patterns:
+ * - Vertical lines: leftX = rightX = pixelX, topY/bottomY from y coords - 1 on max
+ * - Horizontal lines: topY = bottomY or [Y-1, Y], leftX/rightX from x coords - 1 on max
+ *
+ * @param {Object} options - Configuration options
+ * @param {number} options.canvasWidth - Canvas width
+ * @param {number} options.canvasHeight - Canvas height
+ * @param {number} options.strokeWidth - Stroke width (1 or 2 for crisp lines)
+ * @param {'vertical' | 'horizontal'} options.orientation - Line orientation
+ * @param {number} options.minLength - Minimum line length (default 20)
+ * @param {number} options.maxLength - Maximum line length (default 149)
+ * @returns {Object} Line parameters including checkData
+ */
+function calculateLineTestParameters(options) {
+    const {
+        canvasWidth,
+        canvasHeight,
+        strokeWidth = 1,
+        orientation = 'vertical',
+        minLength = 20,
+        maxLength = 149
+    } = options;
+
+    // Generate random line length
+    const lineLength = Math.floor(minLength + SeededRandom.getRandom() * (maxLength - minLength + 1));
+
+    // Calculate center positions based on stroke width parity
+    // Odd strokeWidth (1px): position at X.5 for crisp single-pixel stroke
+    // Even strokeWidth (2px): position at integer for crisp two-pixel stroke
+    const crispCenterX = strokeWidth % 2 === 1
+        ? Math.floor(canvasWidth / 2) + 0.5
+        : Math.floor(canvasWidth / 2);
+    const crispCenterY = strokeWidth % 2 === 1
+        ? Math.floor(canvasHeight / 2) + 0.5
+        : Math.floor(canvasHeight / 2);
+
+    let x1, y1, x2, y2;
+    let checkData;
+
+    if (orientation === 'vertical') {
+        const startY = Math.floor(crispCenterY - lineLength / 2);
+        const endY = startY + lineLength;
+
+        x1 = crispCenterX;
+        x2 = crispCenterX;
+        y1 = startY;
+        y2 = endY;
+
+        // Randomly swap direction
+        if (SeededRandom.getRandom() < 0.5) {
+            [y1, y2] = [y2, y1];
+        }
+
+        // Bounds for vertical lines
+        const pixelX = Math.floor(crispCenterX);
+        if (strokeWidth === 1) {
+            checkData = {
+                topY: Math.min(y1, y2),
+                bottomY: Math.max(y1, y2) - 1,  // Inclusive bottom bound
+                leftX: pixelX,
+                rightX: pixelX
+            };
+        } else {
+            // 2px stroke centered at integer X spans [X-1, X]
+            checkData = {
+                topY: Math.min(y1, y2),
+                bottomY: Math.max(y1, y2) - 1,
+                leftX: pixelX - 1,
+                rightX: pixelX
+            };
+        }
+    } else {
+        // Horizontal
+        const startX = Math.floor(crispCenterX - lineLength / 2);
+        const endX = startX + lineLength;
+
+        x1 = startX;
+        x2 = endX;
+        y1 = crispCenterY;
+        y2 = crispCenterY;
+
+        // Randomly swap direction
+        if (SeededRandom.getRandom() < 0.5) {
+            [x1, x2] = [x2, x1];
+        }
+
+        // Bounds for horizontal lines
+        const pixelY = Math.floor(crispCenterY);
+        if (strokeWidth === 1) {
+            checkData = {
+                topY: pixelY,
+                bottomY: pixelY,
+                leftX: Math.min(x1, x2),
+                rightX: Math.max(x1, x2) - 1  // Inclusive right bound
+            };
+        } else {
+            // 2px stroke centered at integer Y spans [Y-1, Y]
+            checkData = {
+                topY: pixelY - 1,
+                bottomY: pixelY,
+                leftX: Math.min(x1, x2),
+                rightX: Math.max(x1, x2) - 1
+            };
+        }
+    }
+
+    return {
+        x1, y1, x2, y2,
+        strokeWidth,
+        lineLength,
+        orientation,
+        checkData
+    };
+}
+
+// =============================================================================
+// BOUNDS CALCULATION STRATEGY
+// =============================================================================
+// Positioning utilities are the SINGLE SOURCE OF TRUTH for bounds.
+// The bounds formulas in utilities MUST match actual rendering behavior.
+//
+// DO: Use positioning utility's checkData:
+//   const { checkData } = calculateCircleTestParameters({ ... });
+//   return { logs, checkData };
+//
+// DON'T: Compute bounds manually in tests.
+//
+// CRITICAL: Hash changes are NEVER acceptable. If a utility produces
+// different bounds than the manual formula, the UTILITY is wrong.
+//
+// Positioning utilities that return checkData:
+//   - calculateCircleTestParameters() - circles and arcs
+//   - calculateArcTestParameters() - arcs with gap
+//   - calculate90DegFillStrokeArcParams() - 90° fill+stroke arcs
+//   - calculateCrispFillAndStrokeRectParams() - rectangles and rounded rectangles
+//   - calculateLineTestParameters() - lines with crisp positioning
+//
+// Standalone bounds functions (for tests with custom positioning):
+//   - calculateCrispStrokeRectBounds() - crisp stroked rectangles
+//   - calculateCircleBounds() - circles
+//   - calculateLineBounds() - lines
+// =============================================================================
+
 // =============================================================================
 // BOUNDS CALCULATION UTILITIES
 // =============================================================================
@@ -582,6 +747,27 @@ function calculateArcTestParameters(options) {
 //   - Last painted pixel: floor(edge - 0.5)
 //   - First painted pixel: ceil(edge - 0.5)
 // =============================================================================
+
+/**
+ * Calculate pixel bounds for a crisp stroked rectangle from top-left position and dimensions.
+ * This is the authoritative bounds formula for axis-aligned crisp stroke rectangles.
+ *
+ * Used by tests that compute their own positioning but need consistent bounds.
+ *
+ * @param {number} x - Rectangle top-left X coordinate
+ * @param {number} y - Rectangle top-left Y coordinate
+ * @param {number} width - Rectangle width
+ * @param {number} height - Rectangle height
+ * @returns {Object} {leftX, rightX, topY, bottomY} - Pixel bounds for extremes check
+ */
+function calculateCrispStrokeRectBounds(x, y, width, height) {
+    return {
+        leftX: Math.floor(x),
+        rightX: Math.floor(x + width),
+        topY: Math.floor(y),
+        bottomY: Math.floor(y + height)
+    };
+}
 
 /**
  * Calculate pixel bounds for a filled circle or arc.
@@ -2037,9 +2223,11 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateArcTestParameters,
         calculate90DegFillStrokeArcParams,
         generateConstrainedArcAngles,
+        calculateLineTestParameters,
         // Bounds calculation utilities
         calculateCircleBounds,
         calculateRectangleBounds,
+        calculateCrispStrokeRectBounds,
         calculateLineBounds,
         aggregateBounds,
         registerDirectRenderingTest,
@@ -2091,9 +2279,11 @@ if (typeof window !== 'undefined') {
     window.calculateArcTestParameters = calculateArcTestParameters;
     window.calculate90DegFillStrokeArcParams = calculate90DegFillStrokeArcParams;
     window.generateConstrainedArcAngles = generateConstrainedArcAngles;
+    window.calculateLineTestParameters = calculateLineTestParameters;
     // Bounds calculation utilities
     window.calculateCircleBounds = calculateCircleBounds;
     window.calculateRectangleBounds = calculateRectangleBounds;
+    window.calculateCrispStrokeRectBounds = calculateCrispStrokeRectBounds;
     window.calculateLineBounds = calculateLineBounds;
     window.aggregateBounds = aggregateBounds;
     window.registerDirectRenderingTest = registerDirectRenderingTest;

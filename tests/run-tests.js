@@ -113,6 +113,7 @@ try {
             global.calculateArcTestParameters = directRenderingTestUtils.calculateArcTestParameters;
             global.calculate90DegFillStrokeArcParams = directRenderingTestUtils.calculate90DegFillStrokeArcParams;
             global.generateConstrainedArcAngles = directRenderingTestUtils.generateConstrainedArcAngles;
+            global.calculateLineTestParameters = directRenderingTestUtils.calculateLineTestParameters;
             global.registerDirectRenderingTest = directRenderingTestUtils.registerDirectRenderingTest;
             global.roundPoint = directRenderingTestUtils.roundPoint;
             global.ensureHalfPoint = directRenderingTestUtils.ensureHalfPoint;
@@ -121,6 +122,7 @@ try {
             // Bounds calculation utilities
             global.calculateCircleBounds = directRenderingTestUtils.calculateCircleBounds;
             global.calculateRectangleBounds = directRenderingTestUtils.calculateRectangleBounds;
+            global.calculateCrispStrokeRectBounds = directRenderingTestUtils.calculateCrispStrokeRectBounds;
             global.calculateLineBounds = directRenderingTestUtils.calculateLineBounds;
             global.aggregateBounds = directRenderingTestUtils.aggregateBounds;
 
