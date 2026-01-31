@@ -30,3 +30,7 @@ perf-baselines/
 
 # Build-time preprocessed files
 .preprocessed/
+
+# Snapshot verification (debug/full JSON files - large, session-specific)
+tests/direct-rendering/snapshot-full.json
+tests/direct-rendering/snapshot-hashes.json
