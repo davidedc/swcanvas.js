@@ -70,13 +70,7 @@ registerDirectRenderingTest(
 
         return {
             logs: [`Semi-transparent 1px stroked rounded rect at (${x}, ${y}) size ${width}x${height}, radius=${radius}`],
-            checkData: {
-                // x,y are always at .5, so Math.floor gives the starting pixel
-                topY: Math.floor(y),
-                bottomY: Math.floor(y + height),
-                leftX: Math.floor(x),
-                rightX: Math.floor(x + width)
-            }
+            checkData: calculateRectangleBounds(x, y, width, height, 1)
         };
     },
     'rounded-rects',

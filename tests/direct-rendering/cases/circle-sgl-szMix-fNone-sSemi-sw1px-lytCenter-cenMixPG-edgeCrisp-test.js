@@ -67,12 +67,7 @@ registerDirectRenderingTest(
 
         return {
             logs: [`Semi-transparent 1px stroked circle at (${centerX}, ${centerY}) radius ${radius}, atPixel=${atPixel}`],
-            checkData: {
-                topY: Math.floor(centerY - radius),
-                bottomY: Math.floor(centerY + radius),
-                leftX: Math.floor(centerX - radius),
-                rightX: Math.floor(centerX + radius)
-            }
+            checkData: calculateCircleBounds(centerX, centerY, radius)
         };
     },
     'circles',
