@@ -121,7 +121,9 @@ try {
             global.calculateCrispFillAndStrokeRectParams = directRenderingTestUtils.calculateCrispFillAndStrokeRectParams;
             // Bounds calculation utilities
             global.calculateCircleBounds = directRenderingTestUtils.calculateCircleBounds;
+            global.calculateStrokedCircleBounds = directRenderingTestUtils.calculateStrokedCircleBounds;
             global.calculateRectangleBounds = directRenderingTestUtils.calculateRectangleBounds;
+            global.calculateFillRectBounds = directRenderingTestUtils.calculateFillRectBounds;
             global.calculateCrispStrokeRectBounds = directRenderingTestUtils.calculateCrispStrokeRectBounds;
             global.calculateLineBounds = directRenderingTestUtils.calculateLineBounds;
             global.aggregateBounds = directRenderingTestUtils.aggregateBounds;

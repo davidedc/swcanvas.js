@@ -70,13 +70,7 @@ registerDirectRenderingTest(
 
         return {
             logs: [`Stroked arc: center=(${centerX},${centerY}), diameter=${finalDiameter}, radius=${radius}, gap=${gapSizeDeg.toFixed(1)}°`],
-            checkData: {
-                // Bounds formula for pixel-centered arc
-                leftX: centerX - radius - 0.5,
-                rightX: centerX + radius - 0.5,
-                topY: centerY - radius - 0.5,
-                bottomY: centerY + radius - 0.5
-            }
+            checkData: calculateStrokedCircleBounds(centerX, centerY, radius, 1)
         };
     },
     'arcs',

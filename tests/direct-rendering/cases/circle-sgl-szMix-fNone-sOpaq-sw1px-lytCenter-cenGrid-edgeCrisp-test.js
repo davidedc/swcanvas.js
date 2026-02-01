@@ -66,13 +66,7 @@ registerDirectRenderingTest(
 
         return {
             logs: [`Stroked circle: center=(${centerX},${centerY}), diameter=${finalDiameter}, radius=${radius}`],
-            checkData: {
-                // Bounds formula for grid-centered circle
-                leftX: centerX - radius - 0.5,
-                rightX: centerX + radius - 0.5,
-                topY: centerY - radius - 0.5,
-                bottomY: centerY + radius - 0.5
-            }
+            checkData: calculateStrokedCircleBounds(centerX, centerY, radius, 1)
         };
     },
     'circles',

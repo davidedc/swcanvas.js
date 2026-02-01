@@ -77,10 +77,7 @@ registerDirectRenderingTest(
             logs: [`RandPos Circle: center=(${centerX.toFixed(1)},${centerY.toFixed(1)}), r=${radius.toFixed(1)}, sw=${strokeWidth.toFixed(1)}`],
             checkData: {
                 effectiveRadius: radius + strokeWidth / 2,
-                leftX: Math.floor(centerX - radius - strokeWidth / 2),
-                rightX: Math.floor(centerX + radius + strokeWidth / 2 - 1),
-                topY: Math.floor(centerY - radius - strokeWidth / 2),
-                bottomY: Math.floor(centerY + radius + strokeWidth / 2 - 1)
+                ...calculateStrokedCircleBounds(centerX, centerY, radius, strokeWidth)
             }
         };
     },

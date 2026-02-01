@@ -77,12 +77,7 @@ registerDirectRenderingTest(
             // Only collect logs and checkData for visual test mode
             if (!isPerformanceRun && i === 0) {
                 logs.push(`Rect at (${x}, ${y}) size ${rectWidth}x${rectHeight}`);
-                checkData = {
-                    topY: y,
-                    bottomY: y + rectHeight - 1,
-                    leftX: x,
-                    rightX: x + rectWidth - 1
-                };
+                checkData = calculateFillRectBounds(x, y, rectWidth, rectHeight);
             }
         }
 

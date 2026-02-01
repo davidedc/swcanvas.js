@@ -406,6 +406,7 @@ function calculateCrispFillAndStrokeRectParams(options) {
  * @param {boolean} options.randomPosition - Whether to use random positioning (default true)
  * @param {number} options.marginX - Horizontal margin from canvas edges (default 60)
  * @param {number} options.marginY - Vertical margin from canvas edges (default 60)
+ * @param {string|null} options.fixedCenterType - Fixed center type: 'grid', 'pixel', or null for random (default null)
  * @returns {Object} Calculated circle parameters: {centerX, centerY, radius, strokeWidth, finalDiameter, atPixel}
  */
 function calculateCircleTestParameters(options) {
@@ -419,11 +420,15 @@ function calculateCircleTestParameters(options) {
         maxStrokeWidth = 4,
         randomPosition = true,
         marginX = 60,
-        marginY = 60
+        marginY = 60,
+        fixedCenterType = null
     } = options;
 
-    // Randomly choose between grid-centered and pixel-centered
-    const atPixel = SeededRandom.getRandom() < 0.5;
+    // Choose between grid-centered and pixel-centered
+    // Skip random call if center type is predetermined (preserves SeededRandom sequence)
+    const atPixel = fixedCenterType !== null
+        ? (fixedCenterType === 'pixel')
+        : SeededRandom.getRandom() < 0.5;
 
     // Get initial center point
     let { centerX, centerY } = atPixel
@@ -484,9 +489,10 @@ function calculateCircleTestParameters(options) {
     const radius = finalDiameter / 2;
 
     // Calculate checkData for bounds validation
-    // For circles with stroke, the effective radius includes half the stroke width
-    const effectiveRadius = radius + (strokeWidth / 2);
-    const checkData = calculateCircleBounds(centerX, centerY, effectiveRadius);
+    // Use different formula for stroked vs filled shapes
+    const checkData = hasStroke && strokeWidth > 0
+        ? calculateStrokedCircleBounds(centerX, centerY, radius, strokeWidth)
+        : calculateCircleBounds(centerX, centerY, radius);
 
     return {
         centerX,
@@ -546,6 +552,7 @@ function generateConstrainedArcAngles() {
  * @param {boolean} options.randomPosition - Use random position vs centered
  * @param {number} options.marginX - Horizontal margin (default 60)
  * @param {number} options.marginY - Vertical margin (default 60)
+ * @param {string|null} options.fixedCenterType - Fixed center type: 'grid', 'pixel', or null for random (default null)
  * @returns {Object} Circle params + {startAngle, endAngle, gapQuadrant, gapSizeDeg}
  */
 function calculateArcTestParameters(options) {
@@ -794,6 +801,26 @@ function calculateCircleBounds(centerX, centerY, radius) {
 }
 
 /**
+ * Calculate pixel bounds for a stroked circle/arc.
+ * Strokes have different bounds than fills due to pixel painting rules.
+ * The -1 on right/bottom is required because stroke's last pixel is inside the edge.
+ * @param {number} centerX - Circle center X
+ * @param {number} centerY - Circle center Y
+ * @param {number} radius - Circle radius (without stroke)
+ * @param {number} strokeWidth - Stroke width
+ * @returns {Object} {topY, bottomY, leftX, rightX}
+ */
+function calculateStrokedCircleBounds(centerX, centerY, radius, strokeWidth) {
+    const effectiveRadius = radius + strokeWidth / 2;
+    return {
+        leftX: Math.floor(centerX - effectiveRadius),
+        rightX: Math.floor(centerX + effectiveRadius - 1),
+        topY: Math.floor(centerY - effectiveRadius),
+        bottomY: Math.floor(centerY + effectiveRadius - 1)
+    };
+}
+
+/**
  * Calculate pixel bounds for a rectangle with optional stroke.
  * Uses pixel-center logic for consistent bounds calculation.
  * @param {number} x - Rectangle top-left X
@@ -815,6 +842,24 @@ function calculateRectangleBounds(x, y, width, height, strokeWidth = 0) {
         bottomY: Math.floor(bottomEdge - 0.5),
         leftX: Math.ceil(leftEdge - 0.5),
         rightX: Math.floor(rightEdge - 0.5)
+    };
+}
+
+/**
+ * Calculate pixel bounds for a filled rectangle (no stroke).
+ * Simple formula: edges are at exact integer positions.
+ * @param {number} x - Rectangle top-left X
+ * @param {number} y - Rectangle top-left Y
+ * @param {number} width - Rectangle width
+ * @param {number} height - Rectangle height
+ * @returns {Object} {topY, bottomY, leftX, rightX}
+ */
+function calculateFillRectBounds(x, y, width, height) {
+    return {
+        topY: y,
+        bottomY: y + height - 1,
+        leftX: x,
+        rightX: x + width - 1
     };
 }
 
@@ -2233,7 +2278,9 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateLineTestParameters,
         // Bounds calculation utilities
         calculateCircleBounds,
+        calculateStrokedCircleBounds,
         calculateRectangleBounds,
+        calculateFillRectBounds,
         calculateCrispStrokeRectBounds,
         calculateLineBounds,
         aggregateBounds,

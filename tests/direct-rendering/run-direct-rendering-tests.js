@@ -40,7 +40,9 @@ const {
     calculateLineTestParameters,
     // Bounds calculation utilities
     calculateCircleBounds,
+    calculateStrokedCircleBounds,
     calculateRectangleBounds,
+    calculateFillRectBounds,
     calculateCrispStrokeRectBounds,
     calculateLineBounds,
     aggregateBounds,
@@ -77,7 +79,9 @@ global.generateConstrainedArcAngles = generateConstrainedArcAngles;
 global.calculateLineTestParameters = calculateLineTestParameters;
 // Bounds calculation utilities
 global.calculateCircleBounds = calculateCircleBounds;
+global.calculateStrokedCircleBounds = calculateStrokedCircleBounds;
 global.calculateRectangleBounds = calculateRectangleBounds;
+global.calculateFillRectBounds = calculateFillRectBounds;
 global.calculateCrispStrokeRectBounds = calculateCrispStrokeRectBounds;
 global.calculateLineBounds = calculateLineBounds;
 global.aggregateBounds = aggregateBounds;
