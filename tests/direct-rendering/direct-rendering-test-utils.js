@@ -6,7 +6,12 @@
  */
 
 // Import positioning and bounds utilities from dedicated module
-const positioningAndBounds = require('./positioning-and-bounds.js');
+// In Node.js: use require() to import the module
+// In browsers: positioning-and-bounds.js is loaded via script tag and exports to window
+let positioningAndBounds = {};
+if (typeof module !== 'undefined' && module.exports) {
+    positioningAndBounds = require('./positioning-and-bounds.js');
+}
 
 // Test registry - stores all registered tests
 const DIRECT_RENDERING_TESTS = [];
