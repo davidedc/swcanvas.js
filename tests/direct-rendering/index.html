@@ -27,11 +27,18 @@
     <!-- Load SWCanvas-compatible polyfills for native HTML5 Canvas -->
     <script src="../../lib/swcanvas-compat-polyfill.js"></script>
 
-    <!-- Load positioning and bounds calculation utilities -->
+    <!-- Load test utilities (modular architecture) -->
+    <!-- Dependencies are loaded in order: base modules first, then dependent modules -->
+    <script src="seeded-random.js"></script>
+    <script src="random-test-values.js"></script>
+    <script src="test-registry.js"></script>
+    <script src="surface-analysis.js"></script>
+    <script src="color-matching.js"></script>
+    <script src="stroke-continuity-1px.js"></script>
+    <script src="shape-integrity-checker.js"></script>
+    <script src="validation-runner.js"></script>
+    <script src="performance-size-categories.js"></script>
     <script src="positioning-and-bounds.js"></script>
-
-    <!-- Load test utilities (SeededRandom, validation functions, etc.) -->
-    <script src="direct-rendering-test-utils.js"></script>
 
     <!-- Load browser test runner framework -->
     <script src="browser-test-runner.js"></script>
