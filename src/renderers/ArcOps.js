@@ -17,11 +17,11 @@
  * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), inline markers
  *
  * Layer 1 (Primitives - do atomic rendering):
- *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering via isAngleInRange_Fast)
+ *   fill_Any (unified opaque/alpha fill - branches at SpanOps call site)
+ *   strokeOuter_Any (unified opaque/alpha thick stroke - branches at SpanOps call site)
  *   stroke1px_Opaq (uses SET_OPAQUE_ARC_FAST_CLIPPED inline template)
  *   stroke1px_Alpha (uses BLEND_ALPHA_ARC_FAST_CLIPPED inline template)
  *   stroke1px_Opaq_Exact (uses angle-based iteration for exact endpoints)
- *   strokeOuter_Opaq, strokeOuter_Alpha
  *
  * Layer 2 (Composites):
  *   fillStrokeOuter_Any → inline rendering (single-pass)
@@ -159,8 +159,9 @@ class ArcOps {
     }
 
     /**
-     * Fill an arc (pie slice) with opaque color - direct rendering
+     * Fill an arc (pie slice) with unified opaque/alpha handling.
      * Uses span-based scanline algorithm with cross-product angle checks.
+     * Follows CircleOps.fillStroke_Any pattern - branches at SpanOps call site.
      * @param {Surface} surface - Target surface
      * @param {number} cx - Center X
      * @param {number} cy - Center Y
@@ -168,21 +169,39 @@ class ArcOps {
      * @param {number} startAngle - Start angle in radians
      * @param {number} endAngle - End angle in radians
      * @param {Color} color - Fill color
+     * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static fill_Opaq(surface, cx, cy, radius, startAngle, endAngle, color, clipBuffer = null) {
+    static fill_Any(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer = null) {
+        // Determine rendering mode
+        const isOpaque = color.a === 255 && globalAlpha >= 1.0;
+
+        // Precompute both modes (unused vars are negligible cost vs branch prediction benefit)
+        const packedColor = isOpaque ? Surface.packColor(color.r, color.g, color.b, 255) : 0;
+        const effectiveAlpha = isOpaque ? 0 : (color.a / 255) * globalAlpha;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
+
+        // Early exit for transparent
+        if (!isOpaque && effectiveAlpha <= 0) return;
+
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
-
-        const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+        const data = surface.data;
 
         // Precompute arc parameters
         const params = ArcOps.getArcParams(startAngle, endAngle);
 
         // Fast path: full circle → delegate to CircleOps
         if (params.isFullCircle) {
-            CircleOps.fill_Opaq(surface, cx, cy, radius, color, clipBuffer);
+            if (isOpaque) {
+                CircleOps.fill_Opaq(surface, cx, cy, radius, color, clipBuffer);
+            } else {
+                CircleOps.fill_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer);
+            }
             return;
         }
 
@@ -275,145 +294,24 @@ class ArcOps {
                 const length = xEnd - xStart + 1;
 
                 if (length > 0) {
-                    SpanOps.fill_Opaq(data32, width, height, xStart, y, length, packedColor, clipBuffer);
-                }
-            }
-        }
-    }
-
-    /**
-     * Fill an arc (pie slice) with alpha blending
-     * Uses span-based scanline algorithm with cross-product angle checks.
-     * @param {Surface} surface - Target surface
-     * @param {number} cx - Center X
-     * @param {number} cy - Center Y
-     * @param {number} radius - Arc radius
-     * @param {number} startAngle - Start angle in radians
-     * @param {number} endAngle - End angle in radians
-     * @param {Color} color - Fill color
-     * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
-     */
-    static fill_Alpha(surface, cx, cy, radius, startAngle, endAngle, color, globalAlpha, clipBuffer = null) {
-        const width = surface.width;
-        const height = surface.height;
-        const data = surface.data;
-
-        const effectiveAlpha = (color.a / 255) * globalAlpha;
-        if (effectiveAlpha <= 0) return;
-        const invAlpha = 1 - effectiveAlpha;
-        const r = color.r,
-            g = color.g,
-            b = color.b;
-
-        // Precompute arc parameters
-        const params = ArcOps.getArcParams(startAngle, endAngle);
-
-        // Fast path: full circle → delegate to CircleOps
-        if (params.isFullCircle) {
-            CircleOps.fill_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer);
-            return;
-        }
-
-        const { startCos, startSin, endCos, endSin, isLargeArc } = params;
-
-        // Use floating-point center for correct boundaries
-        const cX = cx - 0.5;
-        const cY = cy - 0.5;
-
-        // Bounds
-        const minY = Math.max(0, Math.floor(cY - radius));
-        const maxY = Math.min(height - 1, Math.ceil(cY + radius));
-
-        const radiusSquared = radius * radius;
-
-        // Precompute ray slopes for intersection calculation
-        const startHasSlope = Math.abs(startSin) > 1e-10;
-        const endHasSlope = Math.abs(endSin) > 1e-10;
-        const startSlope = startHasSlope ? startCos / startSin : 0;
-        const endSlope = endHasSlope ? endCos / endSin : 0;
-
-        // Process each scanline
-        for (let y = minY; y <= maxY; y++) {
-            const dy = y - cY;
-            const dySquared = dy * dy;
-
-            // Skip if outside circle
-            if (dySquared > radiusSquared) continue;
-
-            // Circle intersection with this scanline
-            const xDist = Math.sqrt(radiusSquared - dySquared);
-            const circleLeft = cX - xDist;
-            const circleRight = cX + xDist;
-
-            // Collect events (boundary points): circle edges + ray intersections
-            // Note: Do NOT add cX here - the center is interior, not a boundary
-            // Uses module-level scratch buffer to avoid per-scanline allocation
-            let evtCount = 0;
-            _arcEventBuffer[evtCount++] = circleLeft;
-            _arcEventBuffer[evtCount++] = circleRight;
-
-            // Add start ray intersection if it crosses this scanline
-            if (startHasSlope) {
-                const startX = cX + dy * startSlope;
-                if (startX >= circleLeft && startX <= circleRight) {
-                    _arcEventBuffer[evtCount++] = startX;
-                }
-            } else if (Math.abs(dy) < 1e-10) {
-                _arcEventBuffer[evtCount++] = startCos > 0 ? circleRight : circleLeft;
-            }
-
-            // Add end ray intersection if it crosses this scanline
-            if (endHasSlope) {
-                const endX = cX + dy * endSlope;
-                if (endX >= circleLeft && endX <= circleRight) {
-                    _arcEventBuffer[evtCount++] = endX;
-                }
-            } else if (Math.abs(dy) < 1e-10) {
-                _arcEventBuffer[evtCount++] = endCos > 0 ? circleRight : circleLeft;
-            }
-
-            // Sort events by X using insertion sort (faster than native sort for N < 10)
-            ArcOps._sortEvents(_arcEventBuffer, evtCount);
-
-            // Process each segment between events
-            for (let i = 0; i < evtCount - 1; i++) {
-                const segLeft = _arcEventBuffer[i];
-                const segRight = _arcEventBuffer[i + 1];
-
-                // Skip degenerate segments
-                if (segRight - segLeft < 0.5) continue;
-
-                // Test midpoint
-                const midX = (segLeft + segRight) / 2;
-                const dx = midX - cX;
-
-                // Check if midpoint is within arc angle range (fast cross-product check)
-                if (!ArcOps.isAngleInRange_Fast(dx, dy, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    continue;
-                }
-
-                // Fill this segment via SpanOps
-                // Use half-open interval [segLeft, segRight) to avoid double-including boundary pixels
-                const xStart = Math.max(0, Math.ceil(segLeft));
-                const xEnd = Math.min(width - 1, Math.ceil(segRight) - 1);
-                const length = xEnd - xStart + 1;
-
-                if (length > 0) {
-                    SpanOps.fill_Alpha(
-                        data,
-                        width,
-                        height,
-                        xStart,
-                        y,
-                        length,
-                        r,
-                        g,
-                        b,
-                        effectiveAlpha,
-                        invAlpha,
-                        clipBuffer
-                    );
+                    if (isOpaque) {
+                        SpanOps.fill_Opaq(data32, width, height, xStart, y, length, packedColor, clipBuffer);
+                    } else {
+                        SpanOps.fill_Alpha(
+                            data,
+                            width,
+                            height,
+                            xStart,
+                            y,
+                            length,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
+                    }
                 }
             }
         }
@@ -740,8 +638,9 @@ class ArcOps {
     }
 
     /**
-     * Stroke outer arc with opaque color using span-based scanline algorithm
+     * Stroke outer arc with unified opaque/alpha handling using span-based scanline algorithm.
      * Uses cross-product angle checks and SpanOps for optimal performance.
+     * Follows CircleOps.fillStroke_Any pattern - branches at SpanOps call site.
      * @param {Surface} surface - Target surface
      * @param {number} cx - Center X
      * @param {number} cy - Center Y
@@ -750,21 +649,50 @@ class ArcOps {
      * @param {number} endAngle - End angle in radians
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
+     * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static strokeOuter_Opaq(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, clipBuffer = null) {
+    static strokeOuter_Any(
+        surface,
+        cx,
+        cy,
+        radius,
+        startAngle,
+        endAngle,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer = null
+    ) {
+        // Determine rendering mode
+        const isOpaque = color.a === 255 && globalAlpha >= 1.0;
+
+        // Precompute both modes (unused vars are negligible cost vs branch prediction benefit)
+        const packedColor = isOpaque ? Surface.packColor(color.r, color.g, color.b, 255) : 0;
+        const effectiveAlpha = isOpaque ? 0 : (color.a / 255) * globalAlpha;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
+
+        // Early exit for transparent
+        if (!isOpaque && effectiveAlpha <= 0) return;
+
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
-
-        const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+        const data = surface.data;
 
         // Precompute arc parameters
         const params = ArcOps.getArcParams(startAngle, endAngle);
 
         // Fast path: full circle → delegate to CircleOps
         if (params.isFullCircle) {
-            CircleOps.strokeOuter_Opaq(surface, cx, cy, radius, lineWidth, color, clipBuffer);
+            if (isOpaque) {
+                CircleOps.strokeOuter_Opaq(surface, cx, cy, radius, lineWidth, color, clipBuffer);
+            } else {
+                CircleOps.strokeOuter_Alpha(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer);
+            }
             return;
         }
 
@@ -781,7 +709,11 @@ class ArcOps {
             if (px >= 0 && px < width && py >= 0 && py < height) {
                 const pos = py * width + px;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
-                    data32[pos] = packedColor;
+                    if (isOpaque) {
+                        data32[pos] = packedColor;
+                    } else {
+                        /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
+                    }
                 }
             }
             return;
@@ -889,192 +821,24 @@ class ArcOps {
                 const length = xEnd - xStart + 1;
 
                 if (length > 0) {
-                    SpanOps.fill_Opaq(data32, width, height, xStart, y, length, packedColor, clipBuffer);
-                }
-            }
-        }
-    }
-
-    /**
-     * Stroke outer arc with alpha blending using span-based scanline algorithm
-     * Uses cross-product angle checks and SpanOps for optimal performance.
-     * @param {Surface} surface - Target surface
-     * @param {number} cx - Center X
-     * @param {number} cy - Center Y
-     * @param {number} radius - Arc radius
-     * @param {number} startAngle - Start angle in radians
-     * @param {number} endAngle - End angle in radians
-     * @param {number} lineWidth - Stroke width
-     * @param {Color} color - Stroke color
-     * @param {number} globalAlpha - Context global alpha
-     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
-     */
-    static strokeOuter_Alpha(
-        surface,
-        cx,
-        cy,
-        radius,
-        startAngle,
-        endAngle,
-        lineWidth,
-        color,
-        globalAlpha,
-        clipBuffer = null
-    ) {
-        const width = surface.width;
-        const height = surface.height;
-        const data = surface.data;
-
-        const effectiveAlpha = (color.a / 255) * globalAlpha;
-        if (effectiveAlpha <= 0) return;
-        const invAlpha = 1 - effectiveAlpha;
-        const r = color.r,
-            g = color.g,
-            b = color.b;
-
-        // Precompute arc parameters
-        const params = ArcOps.getArcParams(startAngle, endAngle);
-
-        // Fast path: full circle → delegate to CircleOps
-        if (params.isFullCircle) {
-            CircleOps.strokeOuter_Alpha(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer);
-            return;
-        }
-
-        const { startCos, startSin, endCos, endSin, isLargeArc } = params;
-
-        // Use floating-point center for correct boundaries
-        const cX = cx - 0.5;
-        const cY = cy - 0.5;
-
-        // Handle zero/tiny radius (single pixel)
-        if (radius < 1) {
-            const px = Math.round(cx);
-            const py = Math.round(cy);
-            if (px >= 0 && px < width && py >= 0 && py < height) {
-                const pos = py * width + px;
-                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
-                    /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
-                }
-            }
-            return;
-        }
-
-        // Annulus boundaries - stroke width distributed around the arc path
-        const innerRadius = Math.max(0, radius - lineWidth / 2);
-        const outerRadius = radius + lineWidth / 2;
-
-        // Bounds
-        const minY = Math.max(0, Math.floor(cY - outerRadius));
-        const maxY = Math.min(height - 1, Math.ceil(cY + outerRadius));
-
-        const outerRadiusSq = outerRadius * outerRadius;
-        const innerRadiusSq = innerRadius * innerRadius;
-
-        // Precompute ray slopes for intersection calculation
-        const startHasSlope = Math.abs(startSin) > 1e-10;
-        const endHasSlope = Math.abs(endSin) > 1e-10;
-        const startSlope = startHasSlope ? startCos / startSin : 0;
-        const endSlope = endHasSlope ? endCos / endSin : 0;
-
-        // Process each scanline
-        for (let y = minY; y <= maxY; y++) {
-            const dy = y - cY;
-            const dySquared = dy * dy;
-
-            // Skip if outside outer circle
-            if (dySquared > outerRadiusSq) continue;
-
-            // Outer circle intersection with this scanline
-            const outerXDist = Math.sqrt(outerRadiusSq - dySquared);
-            const outerLeft = cX - outerXDist;
-            const outerRight = cX + outerXDist;
-
-            // Inner circle intersection (if applicable)
-            let innerLeft = outerRight + 1; // Default: no inner circle
-            let innerRight = outerLeft - 1;
-            if (innerRadius > 0 && dySquared < innerRadiusSq) {
-                const innerXDist = Math.sqrt(innerRadiusSq - dySquared);
-                innerLeft = cX - innerXDist;
-                innerRight = cX + innerXDist;
-            }
-
-            // Collect events (boundary points)
-            // Uses module-level scratch buffer to avoid per-scanline allocation
-            let evtCount = 0;
-            _arcEventBuffer[evtCount++] = outerLeft;
-            _arcEventBuffer[evtCount++] = outerRight;
-
-            // Add inner circle boundaries if they exist
-            if (innerRadius > 0 && dySquared < innerRadiusSq) {
-                _arcEventBuffer[evtCount++] = innerLeft;
-                _arcEventBuffer[evtCount++] = innerRight;
-            }
-
-            // Add start ray intersection if it crosses this scanline
-            if (startHasSlope) {
-                const startX = cX + dy * startSlope;
-                if (startX >= outerLeft && startX <= outerRight) {
-                    _arcEventBuffer[evtCount++] = startX;
-                }
-            } else if (Math.abs(dy) < 1e-10) {
-                _arcEventBuffer[evtCount++] = startCos > 0 ? outerRight : outerLeft;
-            }
-
-            // Add end ray intersection if it crosses this scanline
-            if (endHasSlope) {
-                const endX = cX + dy * endSlope;
-                if (endX >= outerLeft && endX <= outerRight) {
-                    _arcEventBuffer[evtCount++] = endX;
-                }
-            } else if (Math.abs(dy) < 1e-10) {
-                _arcEventBuffer[evtCount++] = endCos > 0 ? outerRight : outerLeft;
-            }
-
-            // Sort events by X using insertion sort (faster than native sort for N < 10)
-            ArcOps._sortEvents(_arcEventBuffer, evtCount);
-
-            // Process each segment between events
-            for (let i = 0; i < evtCount - 1; i++) {
-                const segLeft = _arcEventBuffer[i];
-                const segRight = _arcEventBuffer[i + 1];
-
-                // Skip degenerate segments
-                if (segRight - segLeft < 0.5) continue;
-
-                // Test midpoint
-                const midX = (segLeft + segRight) / 2;
-                const dx = midX - cX;
-
-                // Check if midpoint is within annulus (between inner and outer radii)
-                const distSq = dx * dx + dySquared;
-                if (distSq > outerRadiusSq || distSq < innerRadiusSq) continue;
-
-                // Check if midpoint is within arc angle range (fast cross-product check)
-                if (!ArcOps.isAngleInRange_Fast(dx, dy, startCos, startSin, endCos, endSin, isLargeArc)) {
-                    continue;
-                }
-
-                // Fill this segment via SpanOps
-                const xStart = Math.max(0, Math.ceil(segLeft));
-                const xEnd = Math.min(width - 1, Math.ceil(segRight) - 1);
-                const length = xEnd - xStart + 1;
-
-                if (length > 0) {
-                    SpanOps.fill_Alpha(
-                        data,
-                        width,
-                        height,
-                        xStart,
-                        y,
-                        length,
-                        r,
-                        g,
-                        b,
-                        effectiveAlpha,
-                        invAlpha,
-                        clipBuffer
-                    );
+                    if (isOpaque) {
+                        SpanOps.fill_Opaq(data32, width, height, xStart, y, length, packedColor, clipBuffer);
+                    } else {
+                        SpanOps.fill_Alpha(
+                            data,
+                            width,
+                            height,
+                            xStart,
+                            y,
+                            length,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
+                    }
                 }
             }
         }
