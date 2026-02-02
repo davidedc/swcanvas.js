@@ -109,7 +109,9 @@ class RectOpsAA {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Calculate rectangle pixel bounds
         const left = Math.floor(x);
@@ -237,7 +239,9 @@ class RectOpsAA {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const halfStroke = lineWidth / 2;
 
@@ -323,8 +327,7 @@ class RectOpsAA {
     static getRotatedDimensions(width, height, angle) {
         const tolerance = ANGLE_TOLERANCE;
         const normalized = ((angle % TAU) + TAU) % TAU;
-        if (Math.abs(normalized - HALF_PI) < tolerance ||
-            Math.abs(normalized - THREE_HALF_PI) < tolerance) {
+        if (Math.abs(normalized - HALF_PI) < tolerance || Math.abs(normalized - THREE_HALF_PI) < tolerance) {
             return { adjustedWidth: height, adjustedHeight: width };
         }
         return { adjustedWidth: width, adjustedHeight: height };
@@ -385,7 +388,9 @@ class RectOpsAA {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const left = Math.floor(x);
         const top = Math.floor(y);
@@ -427,7 +432,18 @@ class RectOpsAA {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fillStroke_AA_Any(surface, x, y, width, height, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
+    static fillStroke_AA_Any(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -486,8 +502,20 @@ class RectOpsAA {
             if (fillIsOpaque) {
                 SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, spanLeft, py, length, fillPacked, clipBuffer);
             } else {
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, spanLeft, py, length,
-                    fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    spanLeft,
+                    py,
+                    length,
+                    fillColor.r,
+                    fillColor.g,
+                    fillColor.b,
+                    fillEffectiveAlpha,
+                    fillInvAlpha,
+                    clipBuffer
+                );
             }
         };
 
@@ -500,8 +528,20 @@ class RectOpsAA {
             if (strokeIsOpaque) {
                 SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, spanLeft, py, length, strokePacked, clipBuffer);
             } else {
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, spanLeft, py, length,
-                    strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    spanLeft,
+                    py,
+                    length,
+                    strokeColor.r,
+                    strokeColor.g,
+                    strokeColor.b,
+                    strokeEffectiveAlpha,
+                    strokeInvAlpha,
+                    clipBuffer
+                );
             }
         };
 
@@ -517,8 +557,8 @@ class RectOpsAA {
             // For no stroke: fill to PATH extent
             // For semi-transparent strokes, also render fill in vertical stroke zones
             // so the top/bottom stroke can blend with the fill underneath
-            const shouldRenderFill = hasFill && py >= pathTop && py < pathBottom &&
-                (!inVerticalStrokeZone || strokeIsSemiTransparent);
+            const shouldRenderFill =
+                hasFill && py >= pathTop && py < pathBottom && (!inVerticalStrokeZone || strokeIsSemiTransparent);
 
             if (shouldRenderFill) {
                 let fillLeft, fillRight;

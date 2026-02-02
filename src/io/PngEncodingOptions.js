@@ -1,9 +1,9 @@
 /**
  * PngEncodingOptions class for SWCanvas PngEncoder
- * 
+ *
  * Provides configuration options for PNG encoding operations.
  * Follows immutable object-oriented design principles per Joshua Bloch's Effective Java.
- * 
+ *
  * Key Features:
  * - Immutable options objects prevent accidental modification
  * - Static factory methods provide clear API
@@ -22,31 +22,31 @@ class PngEncodingOptions {
         // Set defaults
         const {
             preserveTransparency = true,
-            compressionLevel = 0  // 0 = no compression (stored blocks)
+            compressionLevel = 0 // 0 = no compression (stored blocks)
         } = config;
-        
+
         // Validate parameters
         if (typeof preserveTransparency !== 'boolean') {
             throw new Error('preserveTransparency must be a boolean');
         }
 
         Validators.range(compressionLevel, 'compressionLevel', 0, 9);
-        
+
         // Currently only support compression level 0 (stored blocks)
         if (compressionLevel !== 0) {
             throw new Error('Only compression level 0 (no compression) is currently supported');
         }
-        
+
         // Store immutable configuration
         this._config = Object.freeze({
             preserveTransparency,
             compressionLevel
         });
-        
+
         // Make this instance immutable
         Object.freeze(this);
     }
-    
+
     /**
      * Get whether transparency should be preserved
      * @returns {boolean} True if transparency is preserved
@@ -54,7 +54,7 @@ class PngEncodingOptions {
     get preserveTransparency() {
         return this._config.preserveTransparency;
     }
-    
+
     /**
      * Get compression level
      * @returns {number} Compression level (0-9, currently only 0 supported)
@@ -62,7 +62,7 @@ class PngEncodingOptions {
     get compressionLevel() {
         return this._config.compressionLevel;
     }
-    
+
     /**
      * Create default options (transparency preserved, no compression)
      * @returns {PngEncodingOptions} Default options instance
@@ -70,7 +70,7 @@ class PngEncodingOptions {
     static withDefaults() {
         return new PngEncodingOptions();
     }
-    
+
     /**
      * Create options with transparency preserved (default behavior)
      * @returns {PngEncodingOptions} Options with transparency preserved
@@ -78,7 +78,7 @@ class PngEncodingOptions {
     static withTransparency() {
         return new PngEncodingOptions({ preserveTransparency: true });
     }
-    
+
     /**
      * Create options for opaque images (transparency ignored)
      * Note: This doesn't affect the PNG format (still RGBA), but may be useful for future optimizations
@@ -87,7 +87,7 @@ class PngEncodingOptions {
     static withoutTransparency() {
         return new PngEncodingOptions({ preserveTransparency: false });
     }
-    
+
     /**
      * Create options with specific compression level (future extensibility)
      * @param {number} level - Compression level (0-9, currently only 0 supported)
@@ -96,7 +96,7 @@ class PngEncodingOptions {
     static withCompressionLevel(level) {
         return new PngEncodingOptions({ compressionLevel: level });
     }
-    
+
     /**
      * Create options for maximum compatibility (no compression, preserve transparency)
      * @returns {PngEncodingOptions} Maximum compatibility options
@@ -107,7 +107,7 @@ class PngEncodingOptions {
             compressionLevel: 0
         });
     }
-    
+
     /**
      * Check if two options instances are equal
      * @param {PngEncodingOptions} other - Other options to compare
@@ -117,14 +117,16 @@ class PngEncodingOptions {
         if (!(other instanceof PngEncodingOptions)) {
             return false;
         }
-        
+
         const config1 = this._config;
         const config2 = other._config;
-        
-        return config1.preserveTransparency === config2.preserveTransparency &&
-               config1.compressionLevel === config2.compressionLevel;
+
+        return (
+            config1.preserveTransparency === config2.preserveTransparency &&
+            config1.compressionLevel === config2.compressionLevel
+        );
     }
-    
+
     /**
      * Get string representation for debugging
      * @returns {string} String representation
@@ -133,7 +135,7 @@ class PngEncodingOptions {
         const config = this._config;
         return `PngEncodingOptions(transparency: ${config.preserveTransparency}, compression: ${config.compressionLevel})`;
     }
-    
+
     /**
      * Create a new options instance with modified transparency setting
      * @param {boolean} preserveTransparency - Whether to preserve transparency
@@ -145,7 +147,7 @@ class PngEncodingOptions {
             compressionLevel: this._config.compressionLevel
         });
     }
-    
+
     /**
      * Create a new options instance with modified compression level
      * @param {number} compressionLevel - Compression level (0-9, currently only 0 supported)

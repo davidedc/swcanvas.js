@@ -52,10 +52,12 @@ class RoundedRectOpsAA {
         if (radius <= 0) {
             return { leftX: rectX, rightX: rectX + rectW - 1 };
         }
-        let leftX = rectX, rightX = rectX + rectW - 1;
+        let leftX = rectX,
+            rightX = rectX + rectW - 1;
         if (py < rectY + radius) {
             const dy = rectY + radius - py - 0.5;
-            const dySquared = dy * dy, radiusSquared = radius * radius;
+            const dySquared = dy * dy,
+                radiusSquared = radius * radius;
             if (dySquared < radiusSquared) {
                 const dx = Math.sqrt(radiusSquared - dySquared);
                 leftX = Math.ceil(rectX + radius - dx + epsilon);
@@ -65,7 +67,8 @@ class RoundedRectOpsAA {
             }
         } else if (py >= rectY + rectH - radius) {
             const dy = py - (rectY + rectH - radius) + 0.5;
-            const dySquared = dy * dy, radiusSquared = radius * radius;
+            const dySquared = dy * dy,
+                radiusSquared = radius * radius;
             if (dySquared < radiusSquared) {
                 const dx = Math.sqrt(radiusSquared - dySquared);
                 leftX = Math.ceil(rectX + radius - dx + epsilon);
@@ -222,7 +225,9 @@ class RoundedRectOpsAA {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const posX = x;
         const posY = y;
@@ -248,7 +253,7 @@ class RoundedRectOpsAA {
         // Draw horizontal edges (shortened by 1 pixel at each end to avoid junction overlap)
         const topY = Math.floor(posY);
         const bottomY = Math.floor(posY + posH - 0.5);
-        const horzStart = Math.floor(posX + radius) + 1;  // Skip left junction pixel
+        const horzStart = Math.floor(posX + radius) + 1; // Skip left junction pixel
         const horzEnd = Math.floor(posX + posW - radius); // Stop before right junction pixel
 
         for (let xx = horzStart; xx < horzEnd; xx++) {
@@ -259,7 +264,7 @@ class RoundedRectOpsAA {
         // Draw vertical edges (shortened by 1 pixel at each end to avoid junction overlap)
         const leftX = Math.floor(posX);
         const rightX = Math.floor(posX + posW - 0.5);
-        const vertStart = Math.floor(posY + radius) + 1;  // Skip top junction pixel
+        const vertStart = Math.floor(posY + radius) + 1; // Skip top junction pixel
         const vertEnd = Math.floor(posY + posH - radius); // Stop before bottom junction pixel
 
         for (let yy = vertStart; yy < vertEnd; yy++) {
@@ -319,7 +324,7 @@ class RoundedRectOpsAA {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
@@ -405,7 +410,7 @@ class RoundedRectOpsAA {
         const data = surface.data;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
@@ -416,7 +421,9 @@ class RoundedRectOpsAA {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Calculate integer bounds
         const rectX = Math.floor(x);
@@ -468,7 +475,20 @@ class RoundedRectOpsAA {
 
             // Fill scanline with alpha blending
             const spanLength = rightX - leftX + 1;
-            SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, leftX, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+            SpanOps.fill_Alpha(
+                data,
+                surfaceWidth,
+                surfaceHeight,
+                leftX,
+                py,
+                spanLength,
+                r,
+                g,
+                b,
+                effectiveAlpha,
+                invAlpha,
+                clipBuffer
+            );
         }
     }
 
@@ -492,7 +512,7 @@ class RoundedRectOpsAA {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -542,24 +562,60 @@ class RoundedRectOpsAA {
                     // Left span: from outerLeft to just before innerLeft
                     if (outerLeft < innerLeft) {
                         const leftSpanLength = innerLeft - outerLeft;
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, outerLeft, py, leftSpanLength, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            outerLeft,
+                            py,
+                            leftSpanLength,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
 
                     // Right span: from just after innerRight to outerRight
                     if (innerRight < outerRight) {
                         const rightSpanStart = innerRight + 1;
                         const rightSpanLength = outerRight - innerRight;
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, rightSpanStart, py, rightSpanLength, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            rightSpanStart,
+                            py,
+                            rightSpanLength,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
                 } else {
                     // Inner region invalid at this Y, fill entire outer span
                     const spanLength = outerRight - outerLeft + 1;
-                    SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, packedColor, clipBuffer);
+                    SpanOps.fill_Opaq(
+                        data32,
+                        surfaceWidth,
+                        surfaceHeight,
+                        outerLeft,
+                        py,
+                        spanLength,
+                        packedColor,
+                        clipBuffer
+                    );
                 }
             } else {
                 // Not in inner region, fill entire outer span
                 const spanLength = outerRight - outerLeft + 1;
-                SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, packedColor, clipBuffer);
+                SpanOps.fill_Opaq(
+                    data32,
+                    surfaceWidth,
+                    surfaceHeight,
+                    outerLeft,
+                    py,
+                    spanLength,
+                    packedColor,
+                    clipBuffer
+                );
             }
         }
     }
@@ -585,7 +641,7 @@ class RoundedRectOpsAA {
         const data = surface.data;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -598,7 +654,9 @@ class RoundedRectOpsAA {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Calculate outer and inner bounds
         const outerX = Math.floor(x - halfStroke);
@@ -633,21 +691,73 @@ class RoundedRectOpsAA {
 
                     if (outerLeft < innerLeft) {
                         const leftSpanLength = innerLeft - outerLeft;
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, leftSpanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            outerLeft,
+                            py,
+                            leftSpanLength,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
 
                     if (innerRight < outerRight) {
                         const rightSpanStart = innerRight + 1;
                         const rightSpanLength = outerRight - innerRight;
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, rightSpanStart, py, rightSpanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            rightSpanStart,
+                            py,
+                            rightSpanLength,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
                 } else {
                     const spanLength = outerRight - outerLeft + 1;
-                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        surfaceWidth,
+                        surfaceHeight,
+                        outerLeft,
+                        py,
+                        spanLength,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             } else {
                 const spanLength = outerRight - outerLeft + 1;
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    outerLeft,
+                    py,
+                    spanLength,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             }
         }
     }
@@ -678,7 +788,19 @@ class RoundedRectOpsAA {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static fillStroke_AA_Any(surface, x, y, width, height, radii, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
+    static fillStroke_AA_Any(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        radii,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -691,7 +813,7 @@ class RoundedRectOpsAA {
         if (!hasFill && !hasStroke) return;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to separate methods for zero radius
         if (radius <= 0) {
@@ -706,7 +828,17 @@ class RoundedRectOpsAA {
                 if (strokeColor.a === 255 && globalAlpha >= 1.0) {
                     RectOpsAA.strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, strokeColor, clipBuffer);
                 } else {
-                    RectOpsAA.strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, strokeColor, globalAlpha, clipBuffer);
+                    RectOpsAA.strokeThick_AA_Alpha(
+                        surface,
+                        x,
+                        y,
+                        width,
+                        height,
+                        lineWidth,
+                        strokeColor,
+                        globalAlpha,
+                        clipBuffer
+                    );
                 }
             }
             return;
@@ -722,8 +854,8 @@ class RoundedRectOpsAA {
         const pathRadius = radius;
 
         // Radii for different boundaries
-        const outerRadius = pathRadius + halfStroke;  // Stroke outer edge
-        const innerRadius = Math.max(0, pathRadius - halfStroke);  // Stroke inner edge
+        const outerRadius = pathRadius + halfStroke; // Stroke outer edge
+        const innerRadius = Math.max(0, pathRadius - halfStroke); // Stroke inner edge
 
         // Calculate scan bounds - use original coordinates (not floored pathX/pathY)
         const scanMinY = Math.floor(y - halfStroke);
@@ -753,7 +885,20 @@ class RoundedRectOpsAA {
             if (fillIsOpaque) {
                 SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, py, spanLength, fillPacked, clipBuffer);
             } else {
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, py, spanLength, fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    x0,
+                    py,
+                    spanLength,
+                    fillColor.r,
+                    fillColor.g,
+                    fillColor.b,
+                    fillEffectiveAlpha,
+                    fillInvAlpha,
+                    clipBuffer
+                );
             }
         };
 
@@ -768,7 +913,20 @@ class RoundedRectOpsAA {
             if (strokeIsOpaque) {
                 SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, py, spanLength, strokePacked, clipBuffer);
             } else {
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, py, spanLength, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    x0,
+                    py,
+                    spanLength,
+                    strokeColor.r,
+                    strokeColor.g,
+                    strokeColor.b,
+                    strokeEffectiveAlpha,
+                    strokeInvAlpha,
+                    clipBuffer
+                );
             }
         };
 
@@ -789,10 +947,15 @@ class RoundedRectOpsAA {
             if (py < 0 || py >= surfaceHeight) continue;
 
             // Get outer stroke extent - uses calculated bounds from original coordinates
-            const outerExtent = hasStroke ? RoundedRectOpsAA._getXExtent(py, outerRectX, outerRectW, outerRectY, outerRectH, outerRadius, 0) : { leftX: -1, rightX: -1 };
+            const outerExtent = hasStroke
+                ? RoundedRectOpsAA._getXExtent(py, outerRectX, outerRectW, outerRectY, outerRectH, outerRadius, 0)
+                : { leftX: -1, rightX: -1 };
 
             // Get inner stroke extent - uses calculated bounds from original coordinates
-            const innerExtent = (hasStroke && innerRectH > 0) ? RoundedRectOpsAA._getXExtent(py, innerRectX, innerRectW, innerRectY, innerRectH, innerRadius, 0) : { leftX: -1, rightX: -1 };
+            const innerExtent =
+                hasStroke && innerRectH > 0
+                    ? RoundedRectOpsAA._getXExtent(py, innerRectX, innerRectW, innerRectY, innerRectH, innerRadius, 0)
+                    : { leftX: -1, rightX: -1 };
 
             // Determine fill extent based on stroke transparency
             let fillExtent = { leftX: -1, rightX: -1 };
@@ -804,7 +967,15 @@ class RoundedRectOpsAA {
                     if (strokeIsSemiTransparent && lineWidth > 1) {
                         // Thick semi-transparent stroke: fill to PATH extent
                         // Stroke will blend ON TOP of this fill for correct alpha overlap color
-                        fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, pathRadius, FILL_EPSILON);
+                        fillExtent = RoundedRectOpsAA._getXExtent(
+                            py,
+                            pathX,
+                            pathW,
+                            pathY,
+                            pathH,
+                            pathRadius,
+                            FILL_EPSILON
+                        );
                     } else {
                         // Opaque OR 1px semi-transparent: fill to inner extent
                         // (1px has no visible overlap area; opaque stroke covers fill anyway)

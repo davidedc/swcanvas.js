@@ -117,7 +117,9 @@ class RectOpsRot {
         const data = surface.data;
 
         const packedColor = isOpaqueColor ? Surface.packColor(color.r, color.g, color.b, 255) : 0;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         const invAlpha = 1 - effectiveAlpha;
 
@@ -154,11 +156,11 @@ class RectOpsRot {
                 // Y-major edge: step Y, compute X (matches fill DDA)
                 const yStart = Math.ceil(Math.min(p1.y, p2.y));
                 const yEnd = Math.floor(Math.max(p1.y, p2.y));
-                const slope = dx / dy;  // dX/dY
+                const slope = dx / dy; // dX/dY
 
                 for (let y = yStart; y <= yEnd; y++) {
                     if (y < 0 || y >= height) continue;
-                    const x = (p1.x + (y - p1.y) * slope) | 0;  // floor
+                    const x = (p1.x + (y - p1.y) * slope) | 0; // floor
                     if (x < 0 || x >= width) continue;
 
                     const pixelIndex = y * width + x;
@@ -177,11 +179,11 @@ class RectOpsRot {
                 // X-major edge: step X, compute Y
                 const xStart = Math.ceil(Math.min(p1.x, p2.x));
                 const xEnd = Math.floor(Math.max(p1.x, p2.x));
-                const slope = dy / dx;  // dY/dX
+                const slope = dy / dx; // dY/dX
 
                 for (let x = xStart; x <= xEnd; x++) {
                     if (x < 0 || x >= width) continue;
-                    const y = (p1.y + (x - p1.x) * slope) | 0;  // floor
+                    const y = (p1.y + (x - p1.x) * slope) | 0; // floor
                     if (y < 0 || y >= height) continue;
 
                     const pixelIndex = y * width + x;
@@ -221,7 +223,9 @@ class RectOpsRot {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
         const isOpaque = effectiveAlpha >= 1.0;
 
         const cos = Math.cos(rotation);
@@ -242,7 +246,9 @@ class RectOpsRot {
         // Delegate to optimized scanline algorithm
         QuadScanOps.fillQuad(corners, {
             surface,
-            r, g, b,
+            r,
+            g,
+            b,
             isOpaque,
             packedColor: isOpaque ? Surface.packColor(r, g, b, 255) : 0,
             effectiveAlpha,
@@ -270,12 +276,24 @@ class RectOpsRot {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
-    static _stroke_Rot_Alpha(surface, centerX, centerY, width, height, rotation,
-                              lineWidth, color, globalAlpha, clipBuffer) {
+    static _stroke_Rot_Alpha(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        rotation,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer
+    ) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
@@ -302,7 +320,9 @@ class RectOpsRot {
         // Common params for QuadScanOps
         const baseParams = {
             surface,
-            r, g, b,
+            r,
+            g,
+            b,
             isOpaque: false,
             effectiveAlpha,
             invAlpha,
@@ -313,12 +333,11 @@ class RectOpsRot {
         const processEdge = (i, extend, renderFirst) => {
             const p1 = corners[i];
             const p2 = corners[(i + 1) % 4];
-            const line = extend ? RectOpsRot._extendLine(p1, p2, halfStroke)
-                                : RectOpsRot._shortenLine(p1, p2, halfStroke);
+            const line = extend
+                ? RectOpsRot._extendLine(p1, p2, halfStroke)
+                : RectOpsRot._shortenLine(p1, p2, halfStroke);
 
-            const quadCorners = QuadScanOps.lineToQuad(
-                line.start.x, line.start.y, line.end.x, line.end.y, halfStroke
-            );
+            const quadCorners = QuadScanOps.lineToQuad(line.start.x, line.start.y, line.end.x, line.end.y, halfStroke);
 
             const params = {
                 ...baseParams,
@@ -336,14 +355,14 @@ class RectOpsRot {
 
         if (shortenedLength <= extendedLength) {
             // Shortened edges are shorter: render+add first, then extended with check
-            processEdge(1, false, true);  // shortened
-            processEdge(3, false, true);  // shortened
-            processEdge(0, true, false);  // extended with check
-            processEdge(2, true, false);  // extended with check
+            processEdge(1, false, true); // shortened
+            processEdge(3, false, true); // shortened
+            processEdge(0, true, false); // extended with check
+            processEdge(2, true, false); // extended with check
         } else {
             // Extended edges are shorter: render+add first, then shortened with check
-            processEdge(0, true, true);   // extended
-            processEdge(2, true, true);   // extended
+            processEdge(0, true, true); // extended
+            processEdge(2, true, true); // extended
             processEdge(1, false, false); // shortened with check
             processEdge(3, false, false); // shortened with check
         }
@@ -363,7 +382,18 @@ class RectOpsRot {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
-    static stroke_Rot_Any(surface, centerX, centerY, width, height, rotation, lineWidth, color, globalAlpha, clipBuffer) {
+    static stroke_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        rotation,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer
+    ) {
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
         const hw = width / 2;
@@ -395,8 +425,18 @@ class RectOpsRot {
 
         // For thick semitransparent strokes, use Set-based approach to prevent overdraw
         if (isSemiTransparentColor) {
-            return RectOpsRot._stroke_Rot_Alpha(surface, centerX, centerY, width, height,
-                rotation, lineWidth, color, globalAlpha, clipBuffer);
+            return RectOpsRot._stroke_Rot_Alpha(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                lineWidth,
+                color,
+                globalAlpha,
+                clipBuffer
+            );
         }
 
         // Handle thick opaque strokes using QuadScanOps directly for consistent rasterization.
@@ -407,7 +447,9 @@ class RectOpsRot {
 
         const params = {
             surface,
-            r: color.r, g: color.g, b: color.b,
+            r: color.r,
+            g: color.g,
+            b: color.b,
             isOpaque: true,
             packedColor,
             effectiveAlpha: 0,
@@ -420,9 +462,7 @@ class RectOpsRot {
                 ? RectOpsRot._extendLine(p1, p2, halfStroke)
                 : RectOpsRot._shortenLine(p1, p2, halfStroke);
 
-            const quadCorners = QuadScanOps.lineToQuad(
-                line.start.x, line.start.y, line.end.x, line.end.y, halfStroke
-            );
+            const quadCorners = QuadScanOps.lineToQuad(line.start.x, line.start.y, line.end.x, line.end.y, halfStroke);
 
             if (quadCorners === null) {
                 QuadScanOps.fillSquare(line.start.x, line.start.y, halfStroke, params);
@@ -458,16 +498,46 @@ class RectOpsRot {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
-    static fillStroke_Rot_Any(surface, centerX, centerY, width, height, rotation,
-                                lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
+    static fillStroke_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        rotation,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer
+    ) {
         // Fill first, then stroke on top
         if (fillColor && fillColor.a > 0) {
-            RectOpsRot.fill_Rot_Any(surface, centerX, centerY, width, height,
-                               rotation, fillColor, globalAlpha, clipBuffer);
+            RectOpsRot.fill_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                fillColor,
+                globalAlpha,
+                clipBuffer
+            );
         }
         if (strokeColor && strokeColor.a > 0 && lineWidth > 0) {
-            RectOpsRot.stroke_Rot_Any(surface, centerX, centerY, width, height,
-                                 rotation, lineWidth, strokeColor, globalAlpha, clipBuffer);
+            RectOpsRot.stroke_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                lineWidth,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
+            );
         }
     }
 }

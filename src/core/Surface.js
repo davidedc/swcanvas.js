@@ -21,7 +21,8 @@ class Surface {
         Validators.positiveInteger(height, 'Surface height');
 
         // Check area first (SurfaceTooLarge takes precedence for test compatibility)
-        if (width * height > 268435456) { // 16384 * 16384
+        if (width * height > 268435456) {
+            // 16384 * 16384
             throw new Error('SurfaceTooLarge');
         }
 
@@ -76,7 +77,7 @@ class Surface {
      * @param {number} b - Blue component (0-255)
      */
     setPixelOpaque(pixelIndex, r, g, b) {
-        this.data32[pixelIndex] = 0xFF000000 | (b << 16) | (g << 8) | r;
+        this.data32[pixelIndex] = 0xff000000 | (b << 16) | (g << 8) | r;
     }
 
     /**
@@ -185,5 +186,3 @@ class Surface {
         return `Surface(${this.width}×${this.height}, ${memoryMB}MB)`;
     }
 }
-
-

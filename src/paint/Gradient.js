@@ -1,9 +1,9 @@
 /**
  * Gradient classes for SWCanvas
- * 
+ *
  * Implements HTML5 Canvas gradient support with deterministic rendering.
  * Follows SWCanvas's immutable object-oriented design principles.
- * 
+ *
  * Gradients are paint sources that can replace solid colors in fillStyle/strokeStyle.
  * They work in canvas coordinate space and are affected by current transform.
  */
@@ -99,8 +99,14 @@ class Gradient {
                 const localT = (t - stop1.offset) / range;
 
                 // Interpolate RGBA components
-                const r1 = stop1.color.r, g1 = stop1.color.g, b1 = stop1.color.b, a1 = stop1.color.a;
-                const r2 = stop2.color.r, g2 = stop2.color.g, b2 = stop2.color.b, a2 = stop2.color.a;
+                const r1 = stop1.color.r,
+                    g1 = stop1.color.g,
+                    b1 = stop1.color.b,
+                    a1 = stop1.color.a;
+                const r2 = stop2.color.r,
+                    g2 = stop2.color.g,
+                    b2 = stop2.color.b,
+                    a2 = stop2.color.a;
 
                 const r = Math.round(r1 + (r2 - r1) * localT);
                 const g = Math.round(g1 + (g2 - g1) * localT);
@@ -294,7 +300,7 @@ class ConicGradient extends Gradient {
         }
 
         // Convert angle to parameter t [0, 1]
-        const t = pixelAngle / (TAU);
+        const t = pixelAngle / TAU;
 
         return this._getColorAt(t);
     }

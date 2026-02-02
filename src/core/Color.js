@@ -13,7 +13,7 @@ class Color {
     /**
      * Create a Color instance
      * @param {number} r - Red component (0-255)
-     * @param {number} g - Green component (0-255)  
+     * @param {number} g - Green component (0-255)
      * @param {number} b - Blue component (0-255)
      * @param {number} a - Alpha component (0-255)
      * @param {boolean} isPremultiplied - Whether values are already premultiplied
@@ -41,10 +41,18 @@ class Color {
     }
 
     // Getters for premultiplied components (internal storage format)
-    get premultipliedR() { return this._r; }
-    get premultipliedG() { return this._g; }
-    get premultipliedB() { return this._b; }
-    get premultipliedA() { return this._a; }
+    get premultipliedR() {
+        return this._r;
+    }
+    get premultipliedG() {
+        return this._g;
+    }
+    get premultipliedB() {
+        return this._b;
+    }
+    get premultipliedA() {
+        return this._a;
+    }
 
     // Getters for non-premultiplied components (API-friendly)
     get r() {
@@ -192,11 +200,13 @@ class Color {
      * @returns {boolean} True if colors are equal
      */
     equals(other) {
-        return other instanceof Color &&
+        return (
+            other instanceof Color &&
             this._r === other._r &&
             this._g === other._g &&
             this._b === other._b &&
-            this._a === other._a;
+            this._a === other._a
+        );
     }
 }
 
@@ -214,7 +224,7 @@ Color.black = new Color(0, 0, 0, 255);
  */
 Color.fromCSS = function (cssString, parser) {
     if (!cssString || typeof cssString !== 'string') {
-        throw new Error("Invalid color format: must be a string");
+        throw new Error('Invalid color format: must be a string');
     }
     const parsed = parser.parse(cssString);
     return new Color(parsed.r, parsed.g, parsed.b, parsed.a, false);

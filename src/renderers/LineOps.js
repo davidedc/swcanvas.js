@@ -38,7 +38,19 @@ class LineOps {
      * @param {boolean} isSemiTransparentColor - True if color needs alpha blending
      * @returns {boolean} True if direct rendering was used, false if path-based rendering needed
      */
-    static stroke_Any(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, isOpaqueColor, isSemiTransparentColor) {
+    static stroke_Any(
+        surface,
+        x1,
+        y1,
+        x2,
+        y2,
+        lineWidth,
+        paintSource,
+        globalAlpha,
+        clipBuffer,
+        isOpaqueColor,
+        isSemiTransparentColor
+    ) {
         const width = surface.width;
         const height = surface.height;
 
@@ -54,10 +66,12 @@ class LineOps {
 
             // Shorten horizontal/vertical lines by 1 pixel to match HTML5 Canvas
             if (x1i === x2i) {
-                if (y2i > y1i) y2i--; else y1i--;
+                if (y2i > y1i) y2i--;
+                else y1i--;
             }
             if (y1i === y2i) {
-                if (x2i > x1i) x2i--; else x1i--;
+                if (x2i > x1i) x2i--;
+                else x1i--;
             }
 
             // Optimize thin horizontal lines: use span-based rendering
@@ -75,8 +89,8 @@ class LineOps {
                 return true;
             }
 
-            let dx = Math.abs(x2i - x1i);
-            let dy = Math.abs(y2i - y1i);
+            const dx = Math.abs(x2i - x1i);
+            const dy = Math.abs(y2i - y1i);
             const sx = x1i < x2i ? 1 : -1;
             const sy = y1i < y2i ? 1 : -1;
             let err = dx - dy;
@@ -162,7 +176,7 @@ class LineOps {
                 // Note: rightX - leftX is the span width (not +1) because leftX/rightX
                 // are computed from floor(x - halfWidth) / floor(x + halfWidth)
                 const clampedLeftX = Math.max(0, leftX);
-                const clampedRightX = Math.min(width, rightX);  // Use width (not width-1) since rightX is already exclusive
+                const clampedRightX = Math.min(width, rightX); // Use width (not width-1) since rightX is already exclusive
                 const spanLength = clampedRightX - clampedLeftX;
                 if (spanLength <= 0) return true;
 
@@ -172,7 +186,18 @@ class LineOps {
                 return true;
             } else {
                 // Non-axis-aligned thick line - use polygon scan algorithm
-                LineOps._strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, false);
+                LineOps._strokeThick_PolyScan(
+                    surface,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    lineWidth,
+                    paintSource,
+                    globalAlpha,
+                    clipBuffer,
+                    false
+                );
                 return true;
             }
         } else if (isSemiTransparentColor && lineWidth <= THIN_LINE_THRESHOLD) {
@@ -181,7 +206,9 @@ class LineOps {
             const effectiveAlpha = (paintSource.a / 255) * globalAlpha;
             // Note: No early return - already inside a conditional branch
             const invAlpha = 1 - effectiveAlpha;
-            const r = paintSource.r, g = paintSource.g, b = paintSource.b;
+            const r = paintSource.r,
+                g = paintSource.g,
+                b = paintSource.b;
 
             let x1i = Math.floor(x1);
             let y1i = Math.floor(y1);
@@ -189,10 +216,12 @@ class LineOps {
             let y2i = Math.floor(y2);
 
             if (x1i === x2i) {
-                if (y2i > y1i) y2i--; else y1i--;
+                if (y2i > y1i) y2i--;
+                else y1i--;
             }
             if (y1i === y2i) {
-                if (x2i > x1i) x2i--; else x1i--;
+                if (x2i > x1i) x2i--;
+                else x1i--;
             }
 
             // Optimize thin horizontal lines: use span-based rendering
@@ -206,12 +235,25 @@ class LineOps {
                 if (leftX > rightX) return true;
 
                 const spanLength = rightX - leftX + 1;
-                SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    width,
+                    height,
+                    leftX,
+                    y1i,
+                    spanLength,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
                 return true;
             }
 
-            let dx = Math.abs(x2i - x1i);
-            let dy = Math.abs(y2i - y1i);
+            const dx = Math.abs(x2i - x1i);
+            const dy = Math.abs(y2i - y1i);
             const sx = x1i < x2i ? 1 : -1;
             const sy = y1i < y2i ? 1 : -1;
             let err = dx - dy;
@@ -252,7 +294,18 @@ class LineOps {
             return true;
         } else if (isSemiTransparentColor) {
             // Direct rendering for thick semitransparent lines: polygon scan with alpha blending
-            LineOps._strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, true);
+            LineOps._strokeThick_PolyScan(
+                surface,
+                x1,
+                y1,
+                x2,
+                y2,
+                lineWidth,
+                paintSource,
+                globalAlpha,
+                clipBuffer,
+                true
+            );
             return true;
         }
 
@@ -274,8 +327,21 @@ class LineOps {
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps)
      * @param {boolean} useSemiTransparent - If true, use alpha blending
      */
-    static _strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, useSemiTransparent = false) {
-        const r = paintSource.r, g = paintSource.g, b = paintSource.b;
+    static _strokeThick_PolyScan(
+        surface,
+        x1,
+        y1,
+        x2,
+        y2,
+        lineWidth,
+        paintSource,
+        globalAlpha,
+        clipBuffer,
+        useSemiTransparent = false
+    ) {
+        const r = paintSource.r,
+            g = paintSource.g,
+            b = paintSource.b;
 
         const isOpaque = !useSemiTransparent;
         const packedColor = isOpaque ? Surface.packColor(r, g, b, 255) : 0;
@@ -287,7 +353,9 @@ class LineOps {
 
         const params = {
             surface,
-            r, g, b,
+            r,
+            g,
+            b,
             isOpaque,
             packedColor,
             effectiveAlpha,

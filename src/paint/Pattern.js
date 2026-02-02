@@ -1,9 +1,9 @@
 /**
  * Pattern class for SWCanvas
- * 
+ *
  * Implements HTML5 Canvas pattern support with deterministic rendering.
  * Follows SWCanvas's immutable object-oriented design principles.
- * 
+ *
  * Patterns are paint sources that tile ImageLike objects and can replace solid colors.
  * They work in canvas coordinate space and support repetition modes.
  */
@@ -108,7 +108,7 @@ class Pattern {
             case 'repeat-y':
                 sampleX = x;
                 sampleY = this._repeatCoordinate(y, height);
-                // Check if X is out of bounds  
+                // Check if X is out of bounds
                 if (x < 0 || x >= width) {
                     return Color.transparent; // Transparent
                 }

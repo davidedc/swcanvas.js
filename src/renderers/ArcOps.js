@@ -99,12 +99,12 @@ class ArcOps {
     static isAngleInRange_Fast(px, py, startCos, startSin, endCos, endSin, isLargeArc) {
         // Cross product: V × P = Vx*Py - Vy*Px
         // P is counter-clockwise from V (i.e., "after" V going CCW) if cross >= 0
-        const afterStart = (startCos * py - startSin * px) >= 0;
-        const beforeEnd = (endCos * py - endSin * px) <= 0;
+        const afterStart = startCos * py - startSin * px >= 0;
+        const beforeEnd = endCos * py - endSin * px <= 0;
 
         // For small arcs (<180°): point must be after start AND before end
         // For large arcs (>180°): point must be after start OR before end
-        return isLargeArc ? (afterStart || beforeEnd) : (afterStart && beforeEnd);
+        return isLargeArc ? afterStart || beforeEnd : afterStart && beforeEnd;
     }
 
     /**
@@ -302,7 +302,9 @@ class ArcOps {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Precompute arc parameters
         const params = ArcOps.getArcParams(startAngle, endAngle);
@@ -398,7 +400,20 @@ class ArcOps {
                 const length = xEnd - xStart + 1;
 
                 if (length > 0) {
-                    SpanOps.fill_Alpha(data, width, height, xStart, y, length, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        xStart,
+                        y,
+                        length,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }
@@ -439,7 +454,8 @@ class ArcOps {
         const adjCY = Math.floor(cy);
 
         // Calculate offsets for fractional radii (same as CircleOps)
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -455,7 +471,7 @@ class ArcOps {
                 const py = Math.round(cy);
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         data32[pos] = packedColor;
                     }
                 }
@@ -471,14 +487,14 @@ class ArcOps {
         while (by >= bx) {
             // 8 symmetric points with offset corrections (same pattern as CircleOps)
             const points = [
-                [bx, by],                                    // bottom-right: no offset
-                [by, bx],                                    // bottom-right: no offset
-                [by, -bx - yOffset],                         // top-right: yOffset
-                [bx, -by - yOffset],                         // top-right: yOffset
-                [-bx - xOffset, -by - yOffset],              // top-left: both offsets
-                [-by - xOffset, -bx - yOffset],              // top-left: both offsets
-                [-by - xOffset, bx],                         // bottom-left: xOffset
-                [-bx - xOffset, by]                          // bottom-left: xOffset
+                [bx, by], // bottom-right: no offset
+                [by, bx], // bottom-right: no offset
+                [by, -bx - yOffset], // top-right: yOffset
+                [bx, -by - yOffset], // top-right: yOffset
+                [-bx - xOffset, -by - yOffset], // top-left: both offsets
+                [-by - xOffset, -bx - yOffset], // top-left: both offsets
+                [-by - xOffset, bx], // bottom-left: xOffset
+                [-bx - xOffset, by] // bottom-left: xOffset
             ];
 
             for (const [px, py] of points) {
@@ -541,8 +557,7 @@ class ArcOps {
         // 3. Optimization: Bounds Check Hoisting
         // If the entire circle is safely within the canvas, we can skip individual pixel bounds checks.
         // We use a conservative estimate for safety.
-        const isSafe = (cx - radius >= 0) && (cx + radius < width) &&
-            (cy - radius >= 0) && (cy + radius < height);
+        const isSafe = cx - radius >= 0 && cx + radius < width && cy - radius >= 0 && cy + radius < height;
 
         // Track the last written pixel index to prevent overdraw (expensive memory writes)
         let lastPos = -1;
@@ -556,7 +571,7 @@ class ArcOps {
             }
 
             // Fast floor (Bitwise OR 0) matches Math.floor for positive numbers.
-            // If your inputs can be negative (off-canvas), stick to Math.floor. 
+            // If your inputs can be negative (off-canvas), stick to Math.floor.
             // We use Math.floor here to match the original LineOps consistency requirement.
             const px = Math.floor(cx + x);
             const py = Math.floor(cy + y);
@@ -570,7 +585,7 @@ class ArcOps {
                 // Apply bounds check only if the circle isn't fully contained
                 if (isSafe || (px >= 0 && px < width && py >= 0 && py < height)) {
                     // Clipping check
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         data32[pos] = packedColor;
                         lastPos = pos;
                     }
@@ -605,7 +620,9 @@ class ArcOps {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Precompute arc parameters for fast angle check
         const params = ArcOps.getArcParams(startAngle, endAngle);
@@ -623,7 +640,8 @@ class ArcOps {
         const adjCY = Math.floor(cy);
 
         // Calculate offsets for fractional radii (same as CircleOps)
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -639,7 +657,7 @@ class ArcOps {
                 const py = Math.round(cy);
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
@@ -658,16 +676,24 @@ class ArcOps {
             // Primary points (A, C, E, G) - always unique from each other
             // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
             // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
-            const pAx = adjCX + bx, pAy = adjCY + by;                       // bottom-right quadrant (math: Q1)
-            const pCx = adjCX + by, pCy = adjCY - bx - yOffset;             // top-right quadrant (math: Q4)
-            const pEx = adjCX - bx - xOffset, pEy = adjCY - by - yOffset;   // top-left quadrant (math: Q3)
-            const pGx = adjCX - by - xOffset, pGy = adjCY + bx;             // bottom-left quadrant (math: Q2)
+            const pAx = adjCX + bx,
+                pAy = adjCY + by; // bottom-right quadrant (math: Q1)
+            const pCx = adjCX + by,
+                pCy = adjCY - bx - yOffset; // top-right quadrant (math: Q4)
+            const pEx = adjCX - bx - xOffset,
+                pEy = adjCY - by - yOffset; // top-left quadrant (math: Q3)
+            const pGx = adjCX - by - xOffset,
+                pGy = adjCY + bx; // bottom-left quadrant (math: Q2)
 
             // Swapped points (B, D, F, H) - duplicate primaries when bx == by
-            const pBx = adjCX + by, pBy = adjCY + bx;                       // duplicates A when bx == by
-            const pDx = adjCX + bx, pDy = adjCY - by - yOffset;             // duplicates C when bx == by
-            const pFx = adjCX - by - xOffset, pFy = adjCY - bx - yOffset;   // duplicates E when bx == by
-            const pHx = adjCX - bx - xOffset, pHy = adjCY + by;             // duplicates G when bx == by
+            const pBx = adjCX + by,
+                pBy = adjCY + bx; // duplicates A when bx == by
+            const pDx = adjCX + bx,
+                pDy = adjCY - by - yOffset; // duplicates C when bx == by
+            const pFx = adjCX - by - xOffset,
+                pFy = adjCY - bx - yOffset; // duplicates E when bx == by
+            const pHx = adjCX - bx - xOffset,
+                pHy = adjCY + by; // duplicates G when bx == by
 
             // Draw primary points (always) - with angle filtering
             // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
@@ -754,7 +780,7 @@ class ArcOps {
             const py = Math.round(cy);
             if (px >= 0 && px < width && py >= 0 && py < height) {
                 const pos = py * width + px;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
@@ -883,7 +909,18 @@ class ArcOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static strokeOuter_Alpha(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, globalAlpha, clipBuffer = null) {
+    static strokeOuter_Alpha(
+        surface,
+        cx,
+        cy,
+        radius,
+        startAngle,
+        endAngle,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -891,7 +928,9 @@ class ArcOps {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Precompute arc parameters
         const params = ArcOps.getArcParams(startAngle, endAngle);
@@ -914,7 +953,7 @@ class ArcOps {
             const py = Math.round(cy);
             if (px >= 0 && px < width && py >= 0 && py < height) {
                 const pos = py * width + px;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                 }
             }
@@ -1022,7 +1061,20 @@ class ArcOps {
                 const length = xEnd - xStart + 1;
 
                 if (length > 0) {
-                    SpanOps.fill_Alpha(data, width, height, xStart, y, length, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        xStart,
+                        y,
+                        length,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }
@@ -1044,8 +1096,19 @@ class ArcOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static fillStrokeOuter_Any(surface, cx, cy, radius, startAngle, endAngle, lineWidth,
-        fillColor, strokeColor, globalAlpha, clipBuffer = null) {
+    static fillStrokeOuter_Any(
+        surface,
+        cx,
+        cy,
+        radius,
+        startAngle,
+        endAngle,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -1062,7 +1125,17 @@ class ArcOps {
 
         // Fast path: full circle → delegate to CircleOps
         if (params.isFullCircle) {
-            CircleOps.fillStroke_Any(surface, cx, cy, radius, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer);
+            CircleOps.fillStroke_Any(
+                surface,
+                cx,
+                cy,
+                radius,
+                lineWidth,
+                fillColor,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
@@ -1092,14 +1165,18 @@ class ArcOps {
         const fillIsOpaque = hasFill && fillColor.a === 255 && globalAlpha >= 1.0;
         const fillEffectiveAlpha = hasFill ? (fillColor.a / 255) * globalAlpha : 0;
         const fillInvAlpha = 1 - fillEffectiveAlpha;
-        const fr = hasFill ? fillColor.r : 0, fg = hasFill ? fillColor.g : 0, fb = hasFill ? fillColor.b : 0;
+        const fr = hasFill ? fillColor.r : 0,
+            fg = hasFill ? fillColor.g : 0,
+            fb = hasFill ? fillColor.b : 0;
         const fillPacked = fillIsOpaque ? Surface.packColor(fillColor.r, fillColor.g, fillColor.b, 255) : 0;
 
         // Determine rendering mode for stroke
         const strokeIsOpaque = hasStroke && strokeColor.a === 255 && globalAlpha >= 1.0;
         const strokeEffectiveAlpha = hasStroke ? (strokeColor.a / 255) * globalAlpha : 0;
         const strokeInvAlpha = 1 - strokeEffectiveAlpha;
-        const sr = hasStroke ? strokeColor.r : 0, sg = hasStroke ? strokeColor.g : 0, sb = hasStroke ? strokeColor.b : 0;
+        const sr = hasStroke ? strokeColor.r : 0,
+            sg = hasStroke ? strokeColor.g : 0,
+            sb = hasStroke ? strokeColor.b : 0;
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
         // Precompute ray slopes for intersection calculation
@@ -1122,7 +1199,8 @@ class ArcOps {
             const outerRight = cX + outerXDist;
 
             // Fill circle intersection
-            let fillLeft = outerRight + 1, fillRight = outerLeft - 1;
+            let fillLeft = outerRight + 1,
+                fillRight = outerLeft - 1;
             if (hasFill && dySquared <= fillRadiusSq) {
                 const fillXDist = Math.sqrt(fillRadiusSq - dySquared);
                 fillLeft = cX - fillXDist + FILL_EPSILON;
@@ -1130,7 +1208,8 @@ class ArcOps {
             }
 
             // Inner circle intersection (stroke inner boundary)
-            let innerLeft = outerRight + 1, innerRight = outerLeft - 1;
+            let innerLeft = outerRight + 1,
+                innerRight = outerLeft - 1;
             if (innerRadius > 0 && dySquared < innerRadiusSq) {
                 const innerXDist = Math.sqrt(innerRadiusSq - dySquared);
                 innerLeft = cX - innerXDist;
@@ -1180,7 +1259,20 @@ class ArcOps {
                         if (fillIsOpaque) {
                             SpanOps.fill_Opaq(data32, width, height, xStart, y, length, fillPacked, clipBuffer);
                         } else {
-                            SpanOps.fill_Alpha(data, width, height, xStart, y, length, fr, fg, fb, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                            SpanOps.fill_Alpha(
+                                data,
+                                width,
+                                height,
+                                xStart,
+                                y,
+                                length,
+                                fr,
+                                fg,
+                                fb,
+                                fillEffectiveAlpha,
+                                fillInvAlpha,
+                                clipBuffer
+                            );
                         }
                     }
                 }
@@ -1236,7 +1328,20 @@ class ArcOps {
                         if (strokeIsOpaque) {
                             SpanOps.fill_Opaq(data32, width, height, xStart, y, length, strokePacked, clipBuffer);
                         } else {
-                            SpanOps.fill_Alpha(data, width, height, xStart, y, length, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                            SpanOps.fill_Alpha(
+                                data,
+                                width,
+                                height,
+                                xStart,
+                                y,
+                                length,
+                                sr,
+                                sg,
+                                sb,
+                                strokeEffectiveAlpha,
+                                strokeInvAlpha,
+                                clipBuffer
+                            );
                         }
                     }
                 }
@@ -1244,4 +1349,3 @@ class ArcOps {
         }
     }
 }
-

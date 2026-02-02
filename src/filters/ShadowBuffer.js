@@ -1,9 +1,9 @@
 /**
  * ShadowBuffer class for SWCanvas
- * 
+ *
  * Manages shadow rendering with extended bounds to handle blur overflow.
  * Uses sparse array storage for efficiency when shadows only cover part of the canvas.
- * 
+ *
  * The shadow buffer extends beyond the original canvas bounds to accommodate
  * blur effects that spread pixels beyond the original shape boundary.
  */
@@ -33,21 +33,21 @@ class ShadowBuffer {
         this._originalWidth = width;
         this._originalHeight = height;
         this._maxBlurRadius = Math.ceil(maxBlurRadius);
-        
+
         // Extended bounds to accommodate blur spillover
         const blurPadding = this._maxBlurRadius;
-        this._extendedWidth = width + (blurPadding * 2);
-        this._extendedHeight = height + (blurPadding * 2);
+        this._extendedWidth = width + blurPadding * 2;
+        this._extendedHeight = height + blurPadding * 2;
         this._extendedOffsetX = blurPadding;
         this._extendedOffsetY = blurPadding;
-        
+
         // Sparse storage for alpha values (only stores non-zero pixels)
         // Key format: "x,y" -> alpha value (0-1)
         this._alphaData = {};
-        
+
         // Bounds tracking for optimization using composition
         this._boundsTracker = new BoundsTracker();
-        
+
         // Make properties immutable
         Object.defineProperty(this, 'originalWidth', { value: width, writable: false });
         Object.defineProperty(this, 'originalHeight', { value: height, writable: false });
@@ -56,35 +56,35 @@ class ShadowBuffer {
         Object.defineProperty(this, 'extendedOffsetX', { value: this._extendedOffsetX, writable: false });
         Object.defineProperty(this, 'extendedOffsetY', { value: this._extendedOffsetY, writable: false });
     }
-    
+
     /**
      * Add alpha value to the buffer at specified coordinates
      * @param {number} x - X coordinate (in original surface space)
-     * @param {number} y - Y coordinate (in original surface space) 
+     * @param {number} y - Y coordinate (in original surface space)
      * @param {number} alpha - Alpha value (0-1)
      */
     addAlpha(x, y, alpha) {
         if (alpha <= 0) return; // No need to store zero/negative alpha
-        
+
         // Convert to extended buffer coordinates
         const extX = x + this._extendedOffsetX;
         const extY = y + this._extendedOffsetY;
-        
+
         // Bounds check for extended buffer
         if (extX < 0 || extX >= this._extendedWidth || extY < 0 || extY >= this._extendedHeight) {
             return; // Outside extended bounds
         }
-        
+
         const key = `${extX},${extY}`;
-        
+
         // Accumulate alpha values (for overlapping shapes)
         const currentAlpha = this._alphaData[key] || 0;
         this._alphaData[key] = Math.min(1.0, currentAlpha + alpha);
-        
+
         // Update bounds
         this._boundsTracker.updateBounds(extX, extY);
     }
-    
+
     /**
      * Get alpha value at specified coordinates
      * @param {number} x - X coordinate (in extended buffer space)
@@ -95,11 +95,11 @@ class ShadowBuffer {
         if (x < 0 || x >= this._extendedWidth || y < 0 || y >= this._extendedHeight) {
             return 0;
         }
-        
+
         const key = `${x},${y}`;
         return this._alphaData[key] || 0;
     }
-    
+
     /**
      * Set alpha value at specified coordinates
      * @param {number} x - X coordinate (in extended buffer space)
@@ -110,20 +110,20 @@ class ShadowBuffer {
         if (x < 0 || x >= this._extendedWidth || y < 0 || y >= this._extendedHeight) {
             return; // Outside bounds
         }
-        
+
         const key = `${x},${y}`;
-        
+
         if (alpha <= 0) {
             // Remove zero alpha values to keep sparse storage efficient
             delete this._alphaData[key];
         } else {
             this._alphaData[key] = Math.min(1.0, alpha);
-            
+
             // Update bounds if needed
             this._boundsTracker.updateBounds(x, y);
         }
     }
-    
+
     /**
      * Clear all alpha data
      */
@@ -131,7 +131,7 @@ class ShadowBuffer {
         this._alphaData = {};
         this._boundsTracker.reset();
     }
-    
+
     /**
      * Get bounding box of actual shadow data
      * @returns {Object} Bounds object with minX, maxX, minY, maxY, isEmpty
@@ -139,7 +139,7 @@ class ShadowBuffer {
     getBounds() {
         return this._boundsTracker.getBounds();
     }
-    
+
     /**
      * Get all non-zero alpha pixels as an iterator
      * @returns {Iterator} Iterator over {x, y, alpha} objects
@@ -155,7 +155,7 @@ class ShadowBuffer {
             }
         }
     }
-    
+
     /**
      * Get the number of non-zero alpha pixels
      * @returns {number} Count of pixels with alpha > 0
@@ -169,25 +169,25 @@ class ShadowBuffer {
         }
         return count;
     }
-    
+
     /**
      * Create a copy of this shadow buffer
      * @returns {ShadowBuffer} New ShadowBuffer with copied data
      */
     clone() {
         const clone = new ShadowBuffer(this._originalWidth, this._originalHeight, this._maxBlurRadius);
-        
+
         // Copy alpha data
         for (const key in this._alphaData) {
             clone._alphaData[key] = this._alphaData[key];
         }
-        
+
         // Copy bounds
         clone._boundsTracker = this._boundsTracker.clone();
-        
+
         return clone;
     }
-    
+
     /**
      * Convert shadow buffer to a dense Float32Array for blur processing
      * @returns {Object} Object with {data: Float32Array, width, height, offsetX, offsetY}
@@ -203,7 +203,7 @@ class ShadowBuffer {
                 offsetY: 0
             };
         }
-        
+
         // Expand bounds by blur radius for blur processing
         const bounds = this._boundsTracker.getBounds();
         const padding = this._maxBlurRadius;
@@ -211,11 +211,11 @@ class ShadowBuffer {
         const maxX = Math.min(this._extendedWidth - 1, bounds.maxX + padding);
         const minY = Math.max(0, bounds.minY - padding);
         const maxY = Math.min(this._extendedHeight - 1, bounds.maxY + padding);
-        
+
         const width = maxX - minX + 1;
         const height = maxY - minY + 1;
         const data = new Float32Array(width * height);
-        
+
         // Copy sparse data to dense array
         for (let y = minY; y <= maxY; y++) {
             for (let x = minX; x <= maxX; x++) {
@@ -226,7 +226,7 @@ class ShadowBuffer {
                 }
             }
         }
-        
+
         return {
             data: data,
             width: width,
@@ -235,7 +235,7 @@ class ShadowBuffer {
             offsetY: minY
         };
     }
-    
+
     /**
      * Update shadow buffer from dense array after blur processing
      * @param {Float32Array} data - Dense array data
@@ -247,13 +247,13 @@ class ShadowBuffer {
     fromDenseArray(data, width, height, offsetX, offsetY) {
         // Clear existing data
         this.clear();
-        
+
         // Copy dense data back to sparse storage
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
                 const denseIndex = y * width + x;
                 const alpha = data[denseIndex];
-                
+
                 if (alpha > 0) {
                     const extX = x + offsetX;
                     const extY = y + offsetY;

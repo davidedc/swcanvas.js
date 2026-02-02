@@ -125,17 +125,29 @@ class RoundedRectOpsRot {
      * @private
      */
     static _generateEdgePixels(x0, y0, x1, y1, recorder) {
-        const ix0 = Math.floor(x0), iy0 = Math.floor(y0);
-        const ix1 = Math.floor(x1), iy1 = Math.floor(y1);
-        const dx = Math.abs(ix1 - ix0), dy = Math.abs(iy1 - iy0);
-        const sx = ix0 < ix1 ? 1 : -1, sy = iy0 < iy1 ? 1 : -1;
-        let err = dx - dy, x = ix0, y = iy0;
+        const ix0 = Math.floor(x0),
+            iy0 = Math.floor(y0);
+        const ix1 = Math.floor(x1),
+            iy1 = Math.floor(y1);
+        const dx = Math.abs(ix1 - ix0),
+            dy = Math.abs(iy1 - iy0);
+        const sx = ix0 < ix1 ? 1 : -1,
+            sy = iy0 < iy1 ? 1 : -1;
+        let err = dx - dy,
+            x = ix0,
+            y = iy0;
         while (true) {
             recorder(x, y);
             if (x === ix1 && y === iy1) break;
             const e2 = 2 * err;
-            if (e2 > -dy) { err -= dy; x += sx; }
-            if (e2 < dx) { err += dx; y += sy; }
+            if (e2 > -dy) {
+                err -= dy;
+                x += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                y += sy;
+            }
         }
     }
 
@@ -154,7 +166,8 @@ class RoundedRectOpsRot {
         const arcLength = r * Math.abs(endAngle - startAngle);
         const steps = Math.max(Math.ceil(arcLength), 8);
         const angleStep = (endAngle - startAngle) / steps;
-        let lastPx = null, lastPy = null;
+        let lastPx = null,
+            lastPy = null;
         for (let i = 0; i <= steps; i++) {
             const angle = startAngle + i * angleStep;
             const px = Math.floor(cx + r * Math.cos(angle));
@@ -185,7 +198,8 @@ class RoundedRectOpsRot {
         for (const edge of edges) {
             const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
             const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
-            const dx = end.x - start.x, dy = end.y - start.y;
+            const dx = end.x - start.x,
+                dy = end.y - start.y;
             if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
             RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, recorder);
         }
@@ -193,8 +207,12 @@ class RoundedRectOpsRot {
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
             RoundedRectOpsRot._generateArcPixels(
-                screenCenter.x, screenCenter.y, r,
-                corner.startAngle + rotation, corner.endAngle + rotation, recorder
+                screenCenter.x,
+                screenCenter.y,
+                r,
+                corner.startAngle + rotation,
+                corner.endAngle + rotation,
+                recorder
             );
         }
     }
@@ -221,7 +239,18 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static fill_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, color, globalAlpha, clipBuffer = null) {
+    static fill_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radii,
+        rotation,
+        color,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         // Normalize radius
         const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
@@ -234,9 +263,30 @@ class RoundedRectOpsRot {
         const isOpaqueColor = color.a === 255 && globalAlpha >= 1.0;
 
         if (isOpaqueColor) {
-            RoundedRectOpsRot._fill_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, color, clipBuffer);
+            RoundedRectOpsRot._fill_Rot_Opaq(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                color,
+                clipBuffer
+            );
         } else if (color.a > 0) {
-            RoundedRectOpsRot._fill_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer);
+            RoundedRectOpsRot._fill_Rot_Alpha(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                color,
+                globalAlpha,
+                clipBuffer
+            );
         }
     }
 
@@ -285,8 +335,8 @@ class RoundedRectOpsRot {
         const minX = _rrRotBufferPool.minX;
         const maxX = _rrRotBufferPool.maxX;
         for (let i = 0; i < spanCount; i++) {
-            minX[i] = surfaceWidth;  // Sentinel: larger than any valid x
-            maxX[i] = -1;            // Sentinel: smaller than any valid x
+            minX[i] = surfaceWidth; // Sentinel: larger than any valid x
+            maxX[i] = -1; // Sentinel: smaller than any valid x
         }
 
         // Record perimeter pixel into span arrays
@@ -320,7 +370,8 @@ class RoundedRectOpsRot {
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
             RoundedRectOpsRot._generateArcPixels(
-                screenCenter.x, screenCenter.y,
+                screenCenter.x,
+                screenCenter.y,
                 radius,
                 corner.startAngle + rotation,
                 corner.endAngle + rotation,
@@ -439,7 +490,8 @@ class RoundedRectOpsRot {
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
             RoundedRectOpsRot._generateArcPixels(
-                screenCenter.x, screenCenter.y,
+                screenCenter.x,
+                screenCenter.y,
                 radius,
                 corner.startAngle + rotation,
                 corner.endAngle + rotation,
@@ -451,7 +503,9 @@ class RoundedRectOpsRot {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         for (let row = 0; row < spanCount; row++) {
             const left = minX[row];
@@ -464,7 +518,20 @@ class RoundedRectOpsRot {
 
             if (x0 <= x1) {
                 const spanLength = x1 - x0 + 1;
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    x0,
+                    y,
+                    spanLength,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             }
         }
     }
@@ -492,13 +559,36 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static stroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, color, globalAlpha, clipBuffer = null) {
+    static stroke_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radii,
+        rotation,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOpsRot.stroke_Rot_Any for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsRot.stroke_Rot_Any(surface, centerX, centerY, width, height, rotation, lineWidth, color, globalAlpha, clipBuffer);
+            RectOpsRot.stroke_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                lineWidth,
+                color,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
@@ -508,18 +598,62 @@ class RoundedRectOpsRot {
         // Handle 1px strokes
         if (lineWidth <= 1) {
             if (isOpaqueColor) {
-                RoundedRectOpsRot._stroke1px_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, color, clipBuffer);
+                RoundedRectOpsRot._stroke1px_Rot_Opaq(
+                    surface,
+                    centerX,
+                    centerY,
+                    width,
+                    height,
+                    radius,
+                    rotation,
+                    color,
+                    clipBuffer
+                );
             } else if (isSemiTransparentColor) {
-                RoundedRectOpsRot._stroke1px_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer);
+                RoundedRectOpsRot._stroke1px_Rot_Alpha(
+                    surface,
+                    centerX,
+                    centerY,
+                    width,
+                    height,
+                    radius,
+                    rotation,
+                    color,
+                    globalAlpha,
+                    clipBuffer
+                );
             }
             return;
         }
 
         // Handle thick strokes
         if (isSemiTransparentColor) {
-            RoundedRectOpsRot._strokeThick_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, globalAlpha, clipBuffer);
+            RoundedRectOpsRot._strokeThick_Rot_Alpha(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                lineWidth,
+                color,
+                globalAlpha,
+                clipBuffer
+            );
         } else if (isOpaqueColor) {
-            RoundedRectOpsRot._strokeThick_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, clipBuffer);
+            RoundedRectOpsRot._strokeThick_Rot_Opaq(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                lineWidth,
+                color,
+                clipBuffer
+            );
         }
     }
 
@@ -544,8 +678,8 @@ class RoundedRectOpsRot {
         // Pre-compute rotation
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
-        const hw = width / 2;   // half-width
-        const hh = height / 2;  // half-height
+        const hw = width / 2; // half-width
+        const hh = height / 2; // half-height
 
         // Calculate 8 edge endpoints in local space, then transform to screen space
         // Local coordinates (centered at origin):
@@ -556,13 +690,25 @@ class RoundedRectOpsRot {
 
         const edgeEndpoints = [
             // Top edge
-            { start: RoundedRectOpsRot._transform(-hw + radius, -hh, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(hw - radius, -hh, centerX, centerY, cos, sin) },
+            {
+                start: RoundedRectOpsRot._transform(-hw + radius, -hh, centerX, centerY, cos, sin),
+                end: RoundedRectOpsRot._transform(hw - radius, -hh, centerX, centerY, cos, sin)
+            },
             // Right edge
-            { start: RoundedRectOpsRot._transform(hw, -hh + radius, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(hw, hh - radius, centerX, centerY, cos, sin) },
+            {
+                start: RoundedRectOpsRot._transform(hw, -hh + radius, centerX, centerY, cos, sin),
+                end: RoundedRectOpsRot._transform(hw, hh - radius, centerX, centerY, cos, sin)
+            },
             // Bottom edge
-            { start: RoundedRectOpsRot._transform(hw - radius, hh, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(-hw + radius, hh, centerX, centerY, cos, sin) },
+            {
+                start: RoundedRectOpsRot._transform(hw - radius, hh, centerX, centerY, cos, sin),
+                end: RoundedRectOpsRot._transform(-hw + radius, hh, centerX, centerY, cos, sin)
+            },
             // Left edge
-            { start: RoundedRectOpsRot._transform(-hw, hh - radius, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(-hw, -hh + radius, centerX, centerY, cos, sin) }
+            {
+                start: RoundedRectOpsRot._transform(-hw, hh - radius, centerX, centerY, cos, sin),
+                end: RoundedRectOpsRot._transform(-hw, -hh + radius, centerX, centerY, cos, sin)
+            }
         ];
 
         const surfaceWidth = surface.width;
@@ -588,19 +734,26 @@ class RoundedRectOpsRot {
             const sx = x1i < x2i ? 1 : -1;
             const sy = y1i < y2i ? 1 : -1;
             let err = dxAbs - dyAbs;
-            let x = x1i, y = y1i;
+            let x = x1i,
+                y = y1i;
 
             while (true) {
                 if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
                     const pixelIndex = y * surfaceWidth + x;
-                    if (!clipBuffer || (clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7)))) {
+                    if (!clipBuffer || clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7))) {
                         data32[pixelIndex] = packedColor;
                     }
                 }
                 if (x === x2i && y === y2i) break;
                 const e2 = 2 * err;
-                if (e2 > -dyAbs) { err -= dyAbs; x += sx; }
-                if (e2 < dxAbs) { err += dxAbs; y += sy; }
+                if (e2 > -dyAbs) {
+                    err -= dyAbs;
+                    x += sx;
+                }
+                if (e2 < dxAbs) {
+                    err += dxAbs;
+                    y += sy;
+                }
             }
         }
 
@@ -622,7 +775,8 @@ class RoundedRectOpsRot {
             // Angle-based iteration with exact endpoints (guaranteed junction alignment)
             ArcOps.stroke1px_Opaq_Exact(
                 surface,
-                screenCenter.x, screenCenter.y,
+                screenCenter.x,
+                screenCenter.y,
                 radius,
                 corner.startAngle + rotation,
                 corner.endAngle + rotation,
@@ -648,7 +802,18 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _stroke1px_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer) {
+    static _stroke1px_Rot_Alpha(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        color,
+        globalAlpha,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -657,13 +822,15 @@ class RoundedRectOpsRot {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Pre-compute rotation
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
-        const hw = width / 2;   // half-width
-        const hh = height / 2;  // half-height
+        const hw = width / 2; // half-width
+        const hh = height / 2; // half-height
 
         // Define 4 corner arc centers and angles (needed first for junction calculation)
         const corners = RoundedRectUtils.getCornerDefinitions(hw, hh, radius);
@@ -684,8 +851,10 @@ class RoundedRectOpsRot {
             const startXf = cx + radius * Math.cos(startAngle);
             const startYf = cy + radius * Math.sin(startAngle);
             junctionPixels.push({
-                x: Math.floor(startXf), y: Math.floor(startYf),
-                xf: startXf, yf: startYf  // Float coords for edge length calculation
+                x: Math.floor(startXf),
+                y: Math.floor(startYf),
+                xf: startXf,
+                yf: startYf // Float coords for edge length calculation
             });
 
             // End junction (connects to next edge's start)
@@ -693,8 +862,10 @@ class RoundedRectOpsRot {
             const endXf = cx + radius * Math.cos(endAngle);
             const endYf = cy + radius * Math.sin(endAngle);
             junctionPixels.push({
-                x: Math.floor(endXf), y: Math.floor(endYf),
-                xf: endXf, yf: endYf
+                x: Math.floor(endXf),
+                y: Math.floor(endYf),
+                xf: endXf,
+                yf: endYf
             });
         }
 
@@ -706,10 +877,10 @@ class RoundedRectOpsRot {
         // Edge 2 (Bottom): BR_end (5) → BL_start (6)
         // Edge 3 (Left): BL_end (7) → TL_start (0)
         const edgeEndpoints = [
-            { start: junctionPixels[1], end: junctionPixels[2] },  // Top edge
-            { start: junctionPixels[3], end: junctionPixels[4] },  // Right edge
-            { start: junctionPixels[5], end: junctionPixels[6] },  // Bottom edge
-            { start: junctionPixels[7], end: junctionPixels[0] }   // Left edge
+            { start: junctionPixels[1], end: junctionPixels[2] }, // Top edge
+            { start: junctionPixels[3], end: junctionPixels[4] }, // Right edge
+            { start: junctionPixels[5], end: junctionPixels[6] }, // Bottom edge
+            { start: junctionPixels[7], end: junctionPixels[0] } // Left edge
         ];
 
         // Draw edge pixels via Bresenham, skipping junction pixels by coordinate match
@@ -741,13 +912,13 @@ class RoundedRectOpsRot {
             let y = y1i;
 
             while (true) {
-                const isLast = (x === x2i && y === y2i);
+                const isLast = x === x2i && y === y2i;
 
                 // Skip if current pixel matches either junction pixel (corner will handle it)
                 if (!((x === junc1.x && y === junc1.y) || (x === junc2.x && y === junc2.y))) {
                     if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
                         const pos = y * surfaceWidth + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                             /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                         }
                     }
@@ -811,7 +982,7 @@ class RoundedRectOpsRot {
                     // Skip consecutive duplicates (including cross-corner duplicates)
                     if (pos !== globalLastPos) {
                         globalLastPos = pos;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                             /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                         }
                     }
@@ -841,7 +1012,18 @@ class RoundedRectOpsRot {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _strokeThick_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, clipBuffer) {
+    static _strokeThick_Rot_Opaq(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        lineWidth,
+        color,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
@@ -904,19 +1086,41 @@ class RoundedRectOpsRot {
         };
 
         // Helper to record pixel to inner perimeter
-        const recordInner = hasInnerRect ? (x, y) => {
-            if (y < yMin || y > yMax) return;
-            const row = y - yMin;
-            if (x < innerMinX[row]) innerMinX[row] = x;
-            if (x > innerMaxX[row]) innerMaxX[row] = x;
-        } : null;
+        const recordInner = hasInnerRect
+            ? (x, y) => {
+                  if (y < yMin || y > yMax) return;
+                  const row = y - yMin;
+                  if (x < innerMinX[row]) innerMinX[row] = x;
+                  if (x > innerMaxX[row]) innerMaxX[row] = x;
+              }
+            : null;
 
         // Generate outer perimeter
-        RoundedRectOpsRot._generatePerimeter(outerHW, outerHH, outerRadius, recordOuter, centerX, centerY, cos, sin, rotation);
+        RoundedRectOpsRot._generatePerimeter(
+            outerHW,
+            outerHH,
+            outerRadius,
+            recordOuter,
+            centerX,
+            centerY,
+            cos,
+            sin,
+            rotation
+        );
 
         // Generate inner perimeter (if inner rect exists)
         if (hasInnerRect) {
-            RoundedRectOpsRot._generatePerimeter(innerHW, innerHH, innerRadius, recordInner, centerX, centerY, cos, sin, rotation);
+            RoundedRectOpsRot._generatePerimeter(
+                innerHW,
+                innerHH,
+                innerRadius,
+                recordInner,
+                centerX,
+                centerY,
+                cos,
+                sin,
+                rotation
+            );
         }
 
         // Fill annulus per scanline
@@ -937,21 +1141,48 @@ class RoundedRectOpsRot {
                     const leftStart = Math.max(0, outerLeft);
                     const leftEnd = Math.min(surfaceWidth - 1, innerLeft - 1);
                     if (leftStart <= leftEnd) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, leftStart, y, leftEnd - leftStart + 1, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            leftStart,
+                            y,
+                            leftEnd - leftStart + 1,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
 
                     // Right span
                     const rightStart = Math.max(0, innerRight + 1);
                     const rightEnd = Math.min(surfaceWidth - 1, outerRight);
                     if (rightStart <= rightEnd) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, rightStart, y, rightEnd - rightStart + 1, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            rightStart,
+                            y,
+                            rightEnd - rightStart + 1,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
                 } else {
                     // No inner hole on this row: fill entire outer span
                     const x0 = Math.max(0, outerLeft);
                     const x1 = Math.min(surfaceWidth - 1, outerRight);
                     if (x0 <= x1) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, x1 - x0 + 1, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            x1 - x0 + 1,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
                 }
             } else {
@@ -982,7 +1213,19 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _strokeThick_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, globalAlpha, clipBuffer) {
+    static _strokeThick_Rot_Alpha(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -991,7 +1234,9 @@ class RoundedRectOpsRot {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const halfStroke = lineWidth / 2;
         const cos = Math.cos(rotation);
@@ -1050,19 +1295,41 @@ class RoundedRectOpsRot {
         };
 
         // Helper to record pixel to inner perimeter
-        const recordInner = hasInnerRect ? (x, y) => {
-            if (y < yMin || y > yMax) return;
-            const row = y - yMin;
-            if (x < innerMinX[row]) innerMinX[row] = x;
-            if (x > innerMaxX[row]) innerMaxX[row] = x;
-        } : null;
+        const recordInner = hasInnerRect
+            ? (x, y) => {
+                  if (y < yMin || y > yMax) return;
+                  const row = y - yMin;
+                  if (x < innerMinX[row]) innerMinX[row] = x;
+                  if (x > innerMaxX[row]) innerMaxX[row] = x;
+              }
+            : null;
 
         // Generate outer perimeter
-        RoundedRectOpsRot._generatePerimeter(outerHW, outerHH, outerRadius, recordOuter, centerX, centerY, cos, sin, rotation);
+        RoundedRectOpsRot._generatePerimeter(
+            outerHW,
+            outerHH,
+            outerRadius,
+            recordOuter,
+            centerX,
+            centerY,
+            cos,
+            sin,
+            rotation
+        );
 
         // Generate inner perimeter (if inner rect exists)
         if (hasInnerRect) {
-            RoundedRectOpsRot._generatePerimeter(innerHW, innerHH, innerRadius, recordInner, centerX, centerY, cos, sin, rotation);
+            RoundedRectOpsRot._generatePerimeter(
+                innerHW,
+                innerHH,
+                innerRadius,
+                recordInner,
+                centerX,
+                centerY,
+                cos,
+                sin,
+                rotation
+            );
         }
 
         // Fill annulus per scanline with alpha blending via SpanOps
@@ -1082,20 +1349,59 @@ class RoundedRectOpsRot {
                     const leftStart = Math.max(0, outerLeft);
                     const leftEnd = Math.min(surfaceWidth - 1, innerLeft - 1);
                     if (leftStart <= leftEnd) {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, leftStart, y, leftEnd - leftStart + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            leftStart,
+                            y,
+                            leftEnd - leftStart + 1,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
 
                     const rightStart = Math.max(0, innerRight + 1);
                     const rightEnd = Math.min(surfaceWidth - 1, outerRight);
                     if (rightStart <= rightEnd) {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, rightStart, y, rightEnd - rightStart + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            rightStart,
+                            y,
+                            rightEnd - rightStart + 1,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
                 } else {
                     // No inner hole on this row: fill entire outer span
                     const x0 = Math.max(0, outerLeft);
                     const x1 = Math.min(surfaceWidth - 1, outerRight);
                     if (x0 <= x1) {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, x1 - x0 + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            x1 - x0 + 1,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
                 }
             } else {
@@ -1103,7 +1409,20 @@ class RoundedRectOpsRot {
                 const x0 = Math.max(0, outerLeft);
                 const x1 = Math.min(surfaceWidth - 1, outerRight);
                 if (x0 <= x1) {
-                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, x1 - x0 + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        surfaceWidth,
+                        surfaceHeight,
+                        x0,
+                        y,
+                        x1 - x0 + 1,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }
@@ -1137,7 +1456,20 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static fillStroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
+    static fillStroke_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radii,
+        rotation,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         // Normalize radius
         const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
@@ -1149,19 +1481,54 @@ class RoundedRectOpsRot {
 
         // If no stroke, just do fill
         if (!hasStroke) {
-            RoundedRectOpsRot.fill_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, fillColor, globalAlpha, clipBuffer);
+            RoundedRectOpsRot.fill_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radii,
+                rotation,
+                fillColor,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
         // If no fill, just do stroke
         if (!hasFill) {
-            RoundedRectOpsRot.stroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, strokeColor, globalAlpha, clipBuffer);
+            RoundedRectOpsRot.stroke_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radii,
+                rotation,
+                lineWidth,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
         // Fallback to RectOpsRot for zero radius
         if (radius <= 0) {
-            RectOpsRot.fillStroke_Rot_Any(surface, centerX, centerY, width, height, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer);
+            RectOpsRot.fillStroke_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                lineWidth,
+                fillColor,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
@@ -1169,13 +1536,32 @@ class RoundedRectOpsRot {
         // For thick stroke (>1px), use unified scanline rendering
         if (lineWidth <= 1) {
             RoundedRectOpsRot._fillStroke_Rot_1px(
-                surface, centerX, centerY, width, height, radius, rotation,
-                fillColor, strokeColor, globalAlpha, clipBuffer
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                fillColor,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
             );
         } else {
             RoundedRectOpsRot._fillStroke_Rot_Unified(
-                surface, centerX, centerY, width, height, radius, rotation,
-                lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                lineWidth,
+                fillColor,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
             );
         }
     }
@@ -1203,7 +1589,19 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _fillStroke_Rot_1px(surface, centerX, centerY, width, height, radius, rotation, fillColor, strokeColor, globalAlpha, clipBuffer) {
+    static _fillStroke_Rot_1px(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -1216,8 +1614,10 @@ class RoundedRectOpsRot {
         // Assertion: This method should only be called for non-axis-aligned shapes.
         // If |sin| < TRANSFORM_EPSILON, the shape should have been routed to RoundedRectOpsAA.
         if (Math.abs(sin) < TRANSFORM_EPSILON) {
-            throw new Error(`_fillStroke_Rot_1px called with axis-aligned rotation (sin=${sin}). ` +
-                            `This should have been routed to RoundedRectOpsAA.`);
+            throw new Error(
+                `_fillStroke_Rot_1px called with axis-aligned rotation (sin=${sin}). ` +
+                    `This should have been routed to RoundedRectOpsAA.`
+            );
         }
 
         const hw = width / 2;
@@ -1274,15 +1674,19 @@ class RoundedRectOpsRot {
             for (const edge of edges) {
                 const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
                 const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
-                const dx = end.x - start.x, dy = end.y - start.y;
+                const dx = end.x - start.x,
+                    dy = end.y - start.y;
                 if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
                 RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, recordStrokeBounds);
             }
             for (const corner of corners) {
                 const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
                 RoundedRectOpsRot._generateArcPixels(
-                    screenCenter.x, screenCenter.y, radius,
-                    corner.startAngle + rotation, corner.endAngle + rotation,
+                    screenCenter.x,
+                    screenCenter.y,
+                    radius,
+                    corner.startAngle + rotation,
+                    corner.endAngle + rotation,
                     recordStrokeBounds
                 );
             }
@@ -1315,9 +1719,31 @@ class RoundedRectOpsRot {
                 if (x0 <= x1) {
                     const spanLength = x1 - x0 + 1;
                     if (fillIsOpaque) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, spanLength, fillPacked, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            spanLength,
+                            fillPacked,
+                            clipBuffer
+                        );
                     } else {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            spanLength,
+                            fillColor.r,
+                            fillColor.g,
+                            fillColor.b,
+                            fillEffectiveAlpha,
+                            fillInvAlpha,
+                            clipBuffer
+                        );
                     }
                 }
             }
@@ -1330,7 +1756,9 @@ class RoundedRectOpsRot {
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
         // Extract RGB for inline markers (required by BLEND_ALPHA_CLIPPED)
-        const r = strokeColor.r, g = strokeColor.g, b = strokeColor.b;
+        const r = strokeColor.r,
+            g = strokeColor.g,
+            b = strokeColor.b;
 
         // For opaque strokes, direct rendering is safe (duplicates just overwrite same value)
         // For semi-transparent strokes, use lastPos tracking to prevent overdraw
@@ -1340,15 +1768,21 @@ class RoundedRectOpsRot {
         for (const edge of edges) {
             const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
             const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
-            const dx = end.x - start.x, dy = end.y - start.y;
+            const dx = end.x - start.x,
+                dy = end.y - start.y;
             if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
 
-            const x1i = Math.floor(start.x), y1i = Math.floor(start.y);
-            const x2i = Math.floor(end.x), y2i = Math.floor(end.y);
-            const dxAbs = Math.abs(x2i - x1i), dyAbs = Math.abs(y2i - y1i);
-            const sx = x1i < x2i ? 1 : -1, sy = y1i < y2i ? 1 : -1;
+            const x1i = Math.floor(start.x),
+                y1i = Math.floor(start.y);
+            const x2i = Math.floor(end.x),
+                y2i = Math.floor(end.y);
+            const dxAbs = Math.abs(x2i - x1i),
+                dyAbs = Math.abs(y2i - y1i);
+            const sx = x1i < x2i ? 1 : -1,
+                sy = y1i < y2i ? 1 : -1;
             let err = dxAbs - dyAbs;
-            let x = x1i, y = y1i;
+            let x = x1i,
+                y = y1i;
 
             while (true) {
                 if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
@@ -1364,15 +1798,22 @@ class RoundedRectOpsRot {
                 }
                 if (x === x2i && y === y2i) break;
                 const e2 = 2 * err;
-                if (e2 > -dyAbs) { err -= dyAbs; x += sx; }
-                if (e2 < dxAbs) { err += dxAbs; y += sy; }
+                if (e2 > -dyAbs) {
+                    err -= dyAbs;
+                    x += sx;
+                }
+                if (e2 < dxAbs) {
+                    err += dxAbs;
+                    y += sy;
+                }
             }
         }
 
         // Render corners via inline arc iteration (matching _generateArcPixels parameters)
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
-            const cx = screenCenter.x, cy = screenCenter.y;
+            const cx = screenCenter.x,
+                cy = screenCenter.y;
             const startAngle = corner.startAngle + rotation;
             const endAngle = corner.endAngle + rotation;
 
@@ -1381,7 +1822,8 @@ class RoundedRectOpsRot {
             const angleStep = (endAngle - startAngle) / numSteps;
 
             // Use per-arc pixel deduplication (matching _generateArcPixels behavior)
-            let lastPx = null, lastPy = null;
+            let lastPx = null,
+                lastPy = null;
 
             for (let i = 0; i <= numSteps; i++) {
                 const angle = startAngle + i * angleStep;
@@ -1426,7 +1868,20 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _fillStroke_Rot_Unified(surface, centerX, centerY, width, height, radius, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
+    static _fillStroke_Rot_Unified(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -1509,17 +1964,39 @@ class RoundedRectOpsRot {
             if (x > outerMaxX[row]) outerMaxX[row] = x;
         };
 
-        const recordInner = hasInnerRect ? (x, y) => {
-            if (y < yMin || y > yMax) return;
-            const row = y - yMin;
-            if (x < innerMinX[row]) innerMinX[row] = x;
-            if (x > innerMaxX[row]) innerMaxX[row] = x;
-        } : null;
+        const recordInner = hasInnerRect
+            ? (x, y) => {
+                  if (y < yMin || y > yMax) return;
+                  const row = y - yMin;
+                  if (x < innerMinX[row]) innerMinX[row] = x;
+                  if (x > innerMaxX[row]) innerMaxX[row] = x;
+              }
+            : null;
 
         // Generate outer and inner perimeters
-        RoundedRectOpsRot._generatePerimeter(outerHW, outerHH, outerRadius, recordOuter, centerX, centerY, cos, sin, rotation);
+        RoundedRectOpsRot._generatePerimeter(
+            outerHW,
+            outerHH,
+            outerRadius,
+            recordOuter,
+            centerX,
+            centerY,
+            cos,
+            sin,
+            rotation
+        );
         if (hasInnerRect) {
-            RoundedRectOpsRot._generatePerimeter(innerHW, innerHH, innerRadius, recordInner, centerX, centerY, cos, sin, rotation);
+            RoundedRectOpsRot._generatePerimeter(
+                innerHW,
+                innerHH,
+                innerRadius,
+                recordInner,
+                centerX,
+                centerY,
+                cos,
+                sin,
+                rotation
+            );
         }
 
         // Generate fill perimeter only for semi-transparent strokes
@@ -1538,7 +2015,17 @@ class RoundedRectOpsRot {
                 if (x < fillMinX[row]) fillMinX[row] = x;
                 if (x > fillMaxX[row]) fillMaxX[row] = x;
             };
-            RoundedRectOpsRot._generatePerimeter(fillHW, fillHH, fillRadius, recordFill, centerX, centerY, cos, sin, rotation);
+            RoundedRectOpsRot._generatePerimeter(
+                fillHW,
+                fillHH,
+                fillRadius,
+                recordFill,
+                centerX,
+                centerY,
+                cos,
+                sin,
+                rotation
+            );
         }
 
         // Determine rendering modes
@@ -1559,7 +2046,7 @@ class RoundedRectOpsRot {
             // Get outer stroke extent
             const outerLeft = outerMinX[row];
             const outerRight = outerMaxX[row];
-            if (outerLeft > outerRight) continue;  // No pixels on this row
+            if (outerLeft > outerRight) continue; // No pixels on this row
 
             // Get inner stroke extent
             const innerLeft = hasInnerRect ? innerMinX[row] : surfaceWidth;
@@ -1579,9 +2066,31 @@ class RoundedRectOpsRot {
                 if (x0 <= x1) {
                     const spanLength = x1 - x0 + 1;
                     if (fillIsOpaque) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, spanLength, fillPacked, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            spanLength,
+                            fillPacked,
+                            clipBuffer
+                        );
                     } else {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            spanLength,
+                            fillColor.r,
+                            fillColor.g,
+                            fillColor.b,
+                            fillEffectiveAlpha,
+                            fillInvAlpha,
+                            clipBuffer
+                        );
                     }
                 }
             }
@@ -1597,14 +2106,27 @@ class RoundedRectOpsRot {
                 if (strokeIsOpaque) {
                     SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, spanLength, strokePacked, clipBuffer);
                 } else {
-                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        surfaceWidth,
+                        surfaceHeight,
+                        x0,
+                        y,
+                        spanLength,
+                        strokeColor.r,
+                        strokeColor.g,
+                        strokeColor.b,
+                        strokeEffectiveAlpha,
+                        strokeInvAlpha,
+                        clipBuffer
+                    );
                 }
             };
 
             if (hasInnerRegion) {
                 // Has inner hole: render left and right stroke segments
-                renderStrokeSegment(outerLeft, innerLeft - 1);  // Left segment
-                renderStrokeSegment(innerRight + 1, outerRight);  // Right segment
+                renderStrokeSegment(outerLeft, innerLeft - 1); // Left segment
+                renderStrokeSegment(innerRight + 1, outerRight); // Right segment
             } else {
                 // No inner region: fill entire stroke span
                 renderStrokeSegment(outerLeft, outerRight);

@@ -14,7 +14,7 @@ class RoundedRectUtils {
      * @returns {number} Normalized integer radius
      */
     static normalizeRadius(radii, width, height) {
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        let radius = Array.isArray(radii) ? radii[0] : radii || 0;
         if (width < 2 * radius) radius = width / 2;
         if (height < 2 * radius) radius = height / 2;
         return Math.round(Math.min(radius, Math.min(width, height) / 2));
@@ -31,10 +31,10 @@ class RoundedRectUtils {
      */
     static getEdgeEndpoints(hw, hh, r) {
         return [
-            { start: { x: -hw + r, y: -hh }, end: { x: hw - r, y: -hh } },      // Top
-            { start: { x: hw, y: -hh + r }, end: { x: hw, y: hh - r } },        // Right
-            { start: { x: hw - r, y: hh }, end: { x: -hw + r, y: hh } },        // Bottom
-            { start: { x: -hw, y: hh - r }, end: { x: -hw, y: -hh + r } }       // Left
+            { start: { x: -hw + r, y: -hh }, end: { x: hw - r, y: -hh } }, // Top
+            { start: { x: hw, y: -hh + r }, end: { x: hw, y: hh - r } }, // Right
+            { start: { x: hw - r, y: hh }, end: { x: -hw + r, y: hh } }, // Bottom
+            { start: { x: -hw, y: hh - r }, end: { x: -hw, y: -hh + r } } // Left
         ];
     }
 
@@ -49,10 +49,10 @@ class RoundedRectUtils {
      */
     static getCornerDefinitions(hw, hh, r) {
         return [
-            { cx: -hw + r, cy: -hh + r, startAngle: Math.PI, endAngle: THREE_HALF_PI },    // Top-left
-            { cx: hw - r, cy: -hh + r, startAngle: THREE_HALF_PI, endAngle: TAU },         // Top-right
-            { cx: hw - r, cy: hh - r, startAngle: 0, endAngle: HALF_PI },                  // Bottom-right
-            { cx: -hw + r, cy: hh - r, startAngle: HALF_PI, endAngle: Math.PI }            // Bottom-left
+            { cx: -hw + r, cy: -hh + r, startAngle: Math.PI, endAngle: THREE_HALF_PI }, // Top-left
+            { cx: hw - r, cy: -hh + r, startAngle: THREE_HALF_PI, endAngle: TAU }, // Top-right
+            { cx: hw - r, cy: hh - r, startAngle: 0, endAngle: HALF_PI }, // Bottom-right
+            { cx: -hw + r, cy: hh - r, startAngle: HALF_PI, endAngle: Math.PI } // Bottom-left
         ];
     }
 }

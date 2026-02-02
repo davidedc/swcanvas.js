@@ -19,8 +19,10 @@ class ShadowPipeline {
     static needsShadow(currentOp) {
         if (!currentOp) return false;
 
-        return currentOp.shadowColor.a > 0 &&
-            (currentOp.shadowBlur > 0 || currentOp.shadowOffsetX !== 0 || currentOp.shadowOffsetY !== 0);
+        return (
+            currentOp.shadowColor.a > 0 &&
+            (currentOp.shadowBlur > 0 || currentOp.shadowOffsetX !== 0 || currentOp.shadowOffsetY !== 0)
+        );
     }
 
     /**
@@ -153,7 +155,13 @@ class ShadowPipeline {
             shadowBuffer.originalHeight,
             Math.ceil(blurRadius)
         );
-        blurredBuffer.fromDenseArray(blurredData, denseData.width, denseData.height, denseData.offsetX, denseData.offsetY);
+        blurredBuffer.fromDenseArray(
+            blurredData,
+            denseData.width,
+            denseData.height,
+            denseData.offsetX,
+            denseData.offsetY
+        );
 
         return blurredBuffer;
     }
@@ -194,9 +202,10 @@ class ShadowPipeline {
             // When blur spreads a single pixel over a larger area, the average alpha drops
             // significantly. The multiplier restores visual intensity to match HTML5 Canvas.
             const BLUR_DILUTION_COMPENSATION = 8;
-            const finalShadowAlpha = Math.min(255, Math.round(
-                pixel.alpha * effectiveShadowColor.a * BLUR_DILUTION_COMPENSATION
-            ));
+            const finalShadowAlpha = Math.min(
+                255,
+                Math.round(pixel.alpha * effectiveShadowColor.a * BLUR_DILUTION_COMPENSATION)
+            );
 
             if (finalShadowAlpha <= 0) continue;
 
@@ -210,8 +219,14 @@ class ShadowPipeline {
             // Composite shadow (always uses source-over blending per HTML5 spec)
             const result = CompositeOperations.blendPixel(
                 'source-over',
-                effectiveShadowColor.r, effectiveShadowColor.g, effectiveShadowColor.b, finalShadowAlpha,
-                dstR, dstG, dstB, dstA
+                effectiveShadowColor.r,
+                effectiveShadowColor.g,
+                effectiveShadowColor.b,
+                finalShadowAlpha,
+                dstR,
+                dstG,
+                dstB,
+                dstA
             );
 
             // Write result

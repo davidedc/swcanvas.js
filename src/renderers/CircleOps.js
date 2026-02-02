@@ -45,7 +45,8 @@ class CircleOps {
         if (intRadius < 0) return null;
 
         // Determine offsets for .5 radius case (affects boundary calculations)
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -125,7 +126,16 @@ class CircleOps {
 
             // Draw bottom scanline
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
-                SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_bottom, spanWidth, packedColor, clipBuffer);
+                SpanOps.fill_Opaq(
+                    data32,
+                    width,
+                    height,
+                    clampedStartX,
+                    abs_y_bottom,
+                    spanWidth,
+                    packedColor,
+                    clipBuffer
+                );
             }
 
             // Draw top scanline (skip overdraw conditions)
@@ -190,15 +200,39 @@ class CircleOps {
 
             // Draw bottom scanline
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
-                SpanOps.fill_Alpha(data, width, height, clampedStartX, abs_y_bottom, spanWidth,
-                    r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    width,
+                    height,
+                    clampedStartX,
+                    abs_y_bottom,
+                    spanWidth,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             }
 
             // Draw top scanline (skip overdraw conditions)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
-                SpanOps.fill_Alpha(data, width, height, clampedStartX, abs_y_top, spanWidth,
-                    r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    width,
+                    height,
+                    clampedStartX,
+                    abs_y_top,
+                    spanWidth,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             }
         }
     }
@@ -233,7 +267,7 @@ class CircleOps {
                 const py = Math.round(cy);
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         data32[pos] = packedColor;
                     }
                 }
@@ -242,7 +276,8 @@ class CircleOps {
         }
 
         // Determine offsets for .5 radius case
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -257,61 +292,69 @@ class CircleOps {
             // Calculate 8 symmetric points with offsets for top/left halves
             // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
             // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
-            const p1x = cX + x, p1y = cY + y;                    // bottom-right (math: Q1)
-            const p2x = cX + y, p2y = cY + x;                    // bottom-right (math: Q1)
-            const p3x = cX + y, p3y = cY - x - yOffset;          // top-right (math: Q4)
-            const p4x = cX + x, p4y = cY - y - yOffset;          // top-right (math: Q4)
-            const p5x = cX - x - xOffset, p5y = cY - y - yOffset; // top-left (math: Q3)
-            const p6x = cX - y - xOffset, p6y = cY - x - yOffset; // top-left (math: Q3)
-            const p7x = cX - y - xOffset, p7y = cY + x;          // bottom-left (math: Q2)
-            const p8x = cX - x - xOffset, p8y = cY + y;          // bottom-left (math: Q2)
+            const p1x = cX + x,
+                p1y = cY + y; // bottom-right (math: Q1)
+            const p2x = cX + y,
+                p2y = cY + x; // bottom-right (math: Q1)
+            const p3x = cX + y,
+                p3y = cY - x - yOffset; // top-right (math: Q4)
+            const p4x = cX + x,
+                p4y = cY - y - yOffset; // top-right (math: Q4)
+            const p5x = cX - x - xOffset,
+                p5y = cY - y - yOffset; // top-left (math: Q3)
+            const p6x = cX - y - xOffset,
+                p6y = cY - x - yOffset; // top-left (math: Q3)
+            const p7x = cX - y - xOffset,
+                p7y = cY + x; // bottom-left (math: Q2)
+            const p8x = cX - x - xOffset,
+                p8y = cY + y; // bottom-left (math: Q2)
 
             // Plot points with bounds checking
             if (p1x >= 0 && p1x < width && p1y >= 0 && p1y < height) {
                 const pos = p1y * width + p1x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (x !== y && p2x >= 0 && p2x < width && p2y >= 0 && p2y < height) {
                 const pos = p2y * width + p2x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p3x >= 0 && p3x < width && p3y >= 0 && p3y < height) {
                 const pos = p3y * width + p3x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p4x >= 0 && p4x < width && p4y >= 0 && p4y < height) {
                 const pos = p4y * width + p4x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p5x >= 0 && p5x < width && p5y >= 0 && p5y < height) {
                 const pos = p5y * width + p5x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (x !== y && p6x >= 0 && p6x < width && p6y >= 0 && p6y < height) {
                 const pos = p6y * width + p6x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p7x >= 0 && p7x < width && p7y >= 0 && p7y < height) {
                 const pos = p7y * width + p7x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p8x >= 0 && p8x < width && p8y >= 0 && p8y < height) {
                 const pos = p8y * width + p8x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
@@ -347,7 +390,9 @@ class CircleOps {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Center calculation for stroke (standard Bresenham approach)
         const cX = Math.floor(cx);
@@ -363,7 +408,7 @@ class CircleOps {
                 const py = Math.round(cy);
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
@@ -372,7 +417,8 @@ class CircleOps {
         }
 
         // Determine offsets for .5 radius case
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -389,39 +435,47 @@ class CircleOps {
             // Primary points (A, C, E, G) - always unique from each other
             // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
             // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
-            const pAx = cX + x, pAy = cY + y;                       // bottom-right quadrant (math: Q1)
-            const pCx = cX + y, pCy = cY - x - yOffset;             // top-right quadrant (math: Q4)
-            const pEx = cX - x - xOffset, pEy = cY - y - yOffset;   // top-left quadrant (math: Q3)
-            const pGx = cX - y - xOffset, pGy = cY + x;             // bottom-left quadrant (math: Q2)
+            const pAx = cX + x,
+                pAy = cY + y; // bottom-right quadrant (math: Q1)
+            const pCx = cX + y,
+                pCy = cY - x - yOffset; // top-right quadrant (math: Q4)
+            const pEx = cX - x - xOffset,
+                pEy = cY - y - yOffset; // top-left quadrant (math: Q3)
+            const pGx = cX - y - xOffset,
+                pGy = cY + x; // bottom-left quadrant (math: Q2)
 
             // Swapped points (B, D, F, H) - duplicate primaries when x == y
-            const pBx = cX + y, pBy = cY + x;                       // duplicates A when x == y
-            const pDx = cX + x, pDy = cY - y - yOffset;             // duplicates C when x == y
-            const pFx = cX - y - xOffset, pFy = cY - x - yOffset;   // duplicates E when x == y
-            const pHx = cX - x - xOffset, pHy = cY + y;             // duplicates G when x == y, also A when x == 0 && xOffset == 0
+            const pBx = cX + y,
+                pBy = cY + x; // duplicates A when x == y
+            const pDx = cX + x,
+                pDy = cY - y - yOffset; // duplicates C when x == y
+            const pFx = cX - y - xOffset,
+                pFy = cY - x - yOffset; // duplicates E when x == y
+            const pHx = cX - x - xOffset,
+                pHy = cY + y; // duplicates G when x == y, also A when x == 0 && xOffset == 0
 
             // Draw primary points (always)
             if (pAx >= 0 && pAx < width && pAy >= 0 && pAy < height) {
                 const pos = pAy * width + pAx;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                 }
             }
             if (pCx >= 0 && pCx < width && pCy >= 0 && pCy < height) {
                 const pos = pCy * width + pCx;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                 }
             }
             if (pEx >= 0 && pEx < width && pEy >= 0 && pEy < height) {
                 const pos = pEy * width + pEx;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                 }
             }
             if (pGx >= 0 && pGx < width && pGy >= 0 && pGy < height) {
                 const pos = pGy * width + pGx;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                 }
             }
@@ -432,28 +486,28 @@ class CircleOps {
                 // B duplicates C at right cardinal when x == 0 && yOffset == 0
                 if ((x !== 0 || yOffset !== 0) && pBx >= 0 && pBx < width && pBy >= 0 && pBy < height) {
                     const pos = pBy * width + pBx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
                 // D duplicates E at top cardinal when x == 0 && xOffset == 0
                 if ((x !== 0 || xOffset !== 0) && pDx >= 0 && pDx < width && pDy >= 0 && pDy < height) {
                     const pos = pDy * width + pDx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
                 // F duplicates G at left cardinal when x == 0 && yOffset == 0
                 if ((x !== 0 || yOffset !== 0) && pFx >= 0 && pFx < width && pFy >= 0 && pFy < height) {
                     const pos = pFy * width + pFx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
                 // H duplicates A at bottom cardinal when x == 0 && xOffset == 0
                 if ((x !== 0 || xOffset !== 0) && pHx >= 0 && pHx < width && pHy >= 0 && pHy < height) {
                     const pos = pHy * width + pHx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
@@ -582,8 +636,20 @@ class CircleOps {
                 if (fillIsOpaque) {
                     SpanOps.fill_Opaq(data32, width, height, leftFillX, y, fillSpanLength, fillPacked, clipBuffer);
                 } else {
-                    SpanOps.fill_Alpha(data, width, height, leftFillX, y, fillSpanLength,
-                        fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        leftFillX,
+                        y,
+                        fillSpanLength,
+                        fillColor.r,
+                        fillColor.g,
+                        fillColor.b,
+                        fillEffectiveAlpha,
+                        fillInvAlpha,
+                        clipBuffer
+                    );
                 }
             }
 
@@ -596,8 +662,20 @@ class CircleOps {
                     if (strokeIsOpaque) {
                         SpanOps.fill_Opaq(data32, width, height, startX, y, spanLength, strokePacked, clipBuffer);
                     } else {
-                        SpanOps.fill_Alpha(data, width, height, startX, y, spanLength,
-                            strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            width,
+                            height,
+                            startX,
+                            y,
+                            spanLength,
+                            strokeColor.r,
+                            strokeColor.g,
+                            strokeColor.b,
+                            strokeEffectiveAlpha,
+                            strokeInvAlpha,
+                            clipBuffer
+                        );
                     }
                 };
 
@@ -704,7 +782,9 @@ class CircleOps {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const innerRadius = radius - lineWidth / 2;
         const outerRadius = radius + lineWidth / 2;
@@ -732,7 +812,20 @@ class CircleOps {
             if (innerRadius <= 0 || dySquared > innerRadiusSquared) {
                 // No inner circle intersection - draw full span via SpanOps
                 const spanLength = outerRightX - outerLeftX + 1;
-                SpanOps.fill_Alpha(data, width, height, outerLeftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    width,
+                    height,
+                    outerLeftX,
+                    y,
+                    spanLength,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             } else {
                 const innerXDist = Math.sqrt(innerRadiusSquared - dySquared);
                 const innerLeftX = Math.min(outerRightX, Math.floor(cX - innerXDist));
@@ -741,13 +834,39 @@ class CircleOps {
                 // Left segment via SpanOps
                 const leftLen = innerLeftX - outerLeftX + 1;
                 if (leftLen > 0) {
-                    SpanOps.fill_Alpha(data, width, height, outerLeftX, y, leftLen, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        outerLeftX,
+                        y,
+                        leftLen,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
 
                 // Right segment via SpanOps
                 const rightLen = outerRightX - innerRightX + 1;
                 if (rightLen > 0) {
-                    SpanOps.fill_Alpha(data, width, height, innerRightX, y, rightLen, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        innerRightX,
+                        y,
+                        rightLen,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }

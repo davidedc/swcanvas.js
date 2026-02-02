@@ -23,12 +23,11 @@
  *   use source coverage masks and full-region compositing to correctly handle pixels outside the source area
  */
 class CompositeOperations {
-    
     /**
      * Blend two pixels using the specified composite operation
      * @param {string} operation - Composite operation mode
      * @param {number} srcR - Source red (0-255)
-     * @param {number} srcG - Source green (0-255)  
+     * @param {number} srcG - Source green (0-255)
      * @param {number} srcB - Source blue (0-255)
      * @param {number} srcA - Source alpha (0-255)
      * @param {number} dstR - Destination red (0-255)
@@ -64,7 +63,7 @@ class CompositeOperations {
                     return { r: dstR, g: dstG, b: dstB, a: dstA };
             }
         }
-        
+
         // Early exit for transparent destination
         if (dstA === 0) {
             switch (operation) {
@@ -90,21 +89,21 @@ class CompositeOperations {
                     return { r: srcR, g: srcG, b: srcB, a: srcA };
             }
         }
-        
+
         // Convert to normalized alpha values (0-1)
         const srcAlpha = srcA / 255;
         const dstAlpha = dstA / 255;
-        
+
         let resultR, resultG, resultB, resultA;
-        
+
         switch (operation) {
             case 'source-over':
                 return CompositeOperations._sourceOver(srcR, srcG, srcB, srcA, dstR, dstG, dstB, dstA);
-                
+
             case 'destination-over':
                 // Swap source and destination for destination-over
                 return CompositeOperations._sourceOver(dstR, dstG, dstB, dstA, srcR, srcG, srcB, srcA);
-                
+
             case 'source-atop':
                 // Source appears only where destination exists
                 // αo = αb, Co = αs × Cs + (1 - αs) × Cb
@@ -118,7 +117,7 @@ class CompositeOperations {
                 resultG = Math.round(srcAlpha * srcG + (1 - srcAlpha) * dstG);
                 resultB = Math.round(srcAlpha * srcB + (1 - srcAlpha) * dstB);
                 break;
-                
+
             case 'destination-atop':
                 // Destination appears only where source exists
                 // αo = αs, Co = αb × Cb + (1 - αb) × Cs
@@ -131,7 +130,7 @@ class CompositeOperations {
                 resultG = Math.round(dstAlpha * dstG + (1 - dstAlpha) * srcG);
                 resultB = Math.round(dstAlpha * dstB + (1 - dstAlpha) * srcB);
                 break;
-                
+
             case 'source-in':
                 // Source visible only where destination exists
                 // αo = αs × αb, Co = Cs
@@ -143,7 +142,7 @@ class CompositeOperations {
                 resultG = srcG;
                 resultB = srcB;
                 break;
-                
+
             case 'destination-in':
                 // Destination visible only where source exists
                 // αo = αb × αs, Co = Cb
@@ -155,7 +154,7 @@ class CompositeOperations {
                 resultG = dstG;
                 resultB = dstB;
                 break;
-                
+
             case 'source-out':
                 // Source visible only where destination doesn't exist
                 // αo = αs × (1 - αb), Co = Cs
@@ -167,7 +166,7 @@ class CompositeOperations {
                 resultG = srcG;
                 resultB = srcB;
                 break;
-                
+
             case 'destination-out':
                 // dst * (1 - srcAlpha)
                 resultA = Math.round(dstA * (1 - srcAlpha));
@@ -178,15 +177,15 @@ class CompositeOperations {
                 resultG = dstG;
                 resultB = dstB;
                 break;
-                
+
             case 'xor':
                 // HTML5 Canvas XOR behavior:
                 // - Source over transparent background: show source
-                // - Transparent over destination: show destination  
+                // - Transparent over destination: show destination
                 // - Source over opaque destination: transparent (both disappear)
-                
+
                 if (srcAlpha === 0 && dstAlpha === 0) {
-                    // Both transparent 
+                    // Both transparent
                     return { r: 0, g: 0, b: 0, a: 0 };
                 } else if (srcAlpha === 0) {
                     // No source - show destination unchanged
@@ -198,18 +197,17 @@ class CompositeOperations {
                     // Source over opaque destination - both disappear (XOR effect)
                     return { r: 0, g: 0, b: 0, a: 0 };
                 }
-                break;
-                
+
             case 'copy':
                 // Replace destination completely with source
                 // αo = αs, Co = Cs
                 return { r: srcR, g: srcG, b: srcB, a: srcA };
-                
+
             default:
                 // Default to source-over for unknown operations
                 return CompositeOperations._sourceOver(srcR, srcG, srcB, srcA, dstR, dstG, dstB, dstA);
         }
-        
+
         // Clamp results to valid range
         return {
             r: Math.max(0, Math.min(255, Math.round(resultR))),
@@ -218,7 +216,7 @@ class CompositeOperations {
             a: Math.max(0, Math.min(255, Math.round(resultA)))
         };
     }
-    
+
     /**
      * Optimized source-over implementation
      * @private
@@ -228,11 +226,11 @@ class CompositeOperations {
         if (srcA === 255) {
             return { r: srcR, g: srcG, b: srcB, a: srcA };
         }
-        
+
         // Standard source-over blending
         const srcAlpha = srcA / 255;
         const invSrcAlpha = 1 - srcAlpha;
-        
+
         return {
             r: Math.round(srcR * srcAlpha + dstR * invSrcAlpha),
             g: Math.round(srcG * srcAlpha + dstG * invSrcAlpha),
@@ -240,7 +238,7 @@ class CompositeOperations {
             a: Math.round(srcA + dstA * invSrcAlpha)
         };
     }
-    
+
     /**
      * Get list of supported composite operations
      * @returns {string[]} Array of supported operation names
@@ -248,7 +246,7 @@ class CompositeOperations {
     static getSupportedOperations() {
         return [
             'source-over',
-            'destination-over', 
+            'destination-over',
             'source-atop',
             'destination-atop',
             'source-in',
@@ -259,7 +257,7 @@ class CompositeOperations {
             'copy'
         ];
     }
-    
+
     /**
      * Check if a composite operation is supported
      * @param {string} operation - Operation name to check

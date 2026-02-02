@@ -1,12 +1,12 @@
 /**
  * BitBuffer class for SWCanvas
- * 
+ *
  * A utility class for managing 1-bit per pixel data structures.
  * Used as a composition component by ClipMask and SourceMask to eliminate
  * code duplication while maintaining clear separation of concerns.
- * 
+ *
  * Following Joshua Bloch's principle: "Favor composition over inheritance" (Item 18)
- * 
+ *
  * Memory Layout:
  * - Each pixel is represented by 1 bit
  * - Bits are packed into Uint8Array (8 pixels per byte)
@@ -33,16 +33,16 @@ class BitBuffer {
         this._numPixels = width * height;
         this._numBytes = Math.ceil(this._numPixels / 8);
         this._defaultValue = defaultValue;
-        
+
         // Create buffer and initialize to default value
         this._buffer = new Uint8Array(this._numBytes);
         this._initializeToDefault();
-        
+
         // Make dimensions immutable
         Object.defineProperty(this, 'width', { value: width, writable: false });
         Object.defineProperty(this, 'height', { value: height, writable: false });
     }
-    
+
     /**
      * Initialize buffer to default value
      * @private
@@ -50,8 +50,8 @@ class BitBuffer {
     _initializeToDefault() {
         if (this._defaultValue === 1) {
             // Initialize to all 1s
-            this._buffer.fill(0xFF);
-            
+            this._buffer.fill(0xff);
+
             // Handle partial last byte if width*height is not divisible by 8
             const remainderBits = this._numPixels % 8;
             if (remainderBits !== 0) {
@@ -64,7 +64,7 @@ class BitBuffer {
             this._buffer.fill(0);
         }
     }
-    
+
     /**
      * Get bit value for a pixel
      * @param {number} x - X coordinate
@@ -76,11 +76,11 @@ class BitBuffer {
         if (x < 0 || x >= this._width || y < 0 || y >= this._height) {
             return false; // Out of bounds pixels return 0
         }
-        
+
         const pixelIndex = y * this._width + x;
         return this._getBit(pixelIndex) === 1;
     }
-    
+
     /**
      * Set bit value for a pixel
      * @param {number} x - X coordinate
@@ -92,24 +92,24 @@ class BitBuffer {
         if (x < 0 || x >= this._width || y < 0 || y >= this._height) {
             return; // Ignore out of bounds
         }
-        
+
         const pixelIndex = y * this._width + x;
         this._setBit(pixelIndex, value ? 1 : 0);
     }
-    
+
     /**
      * Clear all bits (set to 0)
      */
     clear() {
         this._buffer.fill(0);
     }
-    
+
     /**
      * Fill all bits (set to 1)
      */
     fill() {
-        this._buffer.fill(0xFF);
-        
+        this._buffer.fill(0xff);
+
         // Handle partial last byte
         const remainderBits = this._numPixels % 8;
         if (remainderBits !== 0) {
@@ -118,14 +118,14 @@ class BitBuffer {
             this._buffer[lastByteIndex] = lastByteMask;
         }
     }
-    
+
     /**
      * Reset buffer to its default value
      */
     reset() {
         this._initializeToDefault();
     }
-    
+
     /**
      * Perform bitwise AND with another BitBuffer
      * @param {BitBuffer} other - Other BitBuffer to AND with
@@ -145,7 +145,7 @@ class BitBuffer {
             this._buffer[i] &= other._buffer[i];
         }
     }
-    
+
     /**
      * Copy data from another BitBuffer
      * @param {BitBuffer} other - Source BitBuffer to copy from
@@ -162,7 +162,7 @@ class BitBuffer {
 
         this._buffer.set(other._buffer);
     }
-    
+
     /**
      * Check if buffer is completely filled (all 1s)
      * @returns {boolean} True if all bits are 1
@@ -170,21 +170,21 @@ class BitBuffer {
     isFull() {
         // Quick check: if all bytes are 0xFF except possibly the last one
         for (let i = 0; i < this._numBytes - 1; i++) {
-            if (this._buffer[i] !== 0xFF) {
+            if (this._buffer[i] !== 0xff) {
                 return false;
             }
         }
-        
+
         // Check last byte accounting for partial bits
         const remainderBits = this._numPixels % 8;
         if (remainderBits === 0) {
-            return this._buffer[this._numBytes - 1] === 0xFF;
+            return this._buffer[this._numBytes - 1] === 0xff;
         } else {
             const lastByteMask = (1 << remainderBits) - 1;
             return this._buffer[this._numBytes - 1] === lastByteMask;
         }
     }
-    
+
     /**
      * Check if buffer is completely empty (all 0s)
      * @returns {boolean} True if all bits are 0
@@ -197,7 +197,7 @@ class BitBuffer {
         }
         return true;
     }
-    
+
     /**
      * Get memory usage in bytes
      * @returns {number} Memory usage of the buffer
@@ -205,7 +205,7 @@ class BitBuffer {
     getMemoryUsage() {
         return this._buffer.byteLength;
     }
-    
+
     /**
      * Get bit value at linear pixel index
      * @param {number} pixelIndex - Linear pixel index
@@ -215,14 +215,14 @@ class BitBuffer {
     _getBit(pixelIndex) {
         const byteIndex = Math.floor(pixelIndex / 8);
         const bitIndex = pixelIndex % 8;
-        
+
         if (byteIndex >= this._buffer.length) {
             return 0; // Out of bounds pixels return 0
         }
-        
+
         return (this._buffer[byteIndex] & (1 << bitIndex)) !== 0 ? 1 : 0;
     }
-    
+
     /**
      * Set bit value at linear pixel index
      * @param {number} pixelIndex - Linear pixel index
@@ -232,18 +232,18 @@ class BitBuffer {
     _setBit(pixelIndex, value) {
         const byteIndex = Math.floor(pixelIndex / 8);
         const bitIndex = pixelIndex % 8;
-        
+
         if (byteIndex >= this._buffer.length) {
             return; // Ignore out of bounds
         }
-        
+
         if (value) {
-            this._buffer[byteIndex] |= (1 << bitIndex);
+            this._buffer[byteIndex] |= 1 << bitIndex;
         } else {
             this._buffer[byteIndex] &= ~(1 << bitIndex);
         }
     }
-    
+
     /**
      * String representation for debugging
      * @returns {string} BitBuffer description
@@ -253,7 +253,7 @@ class BitBuffer {
         const state = this.isEmpty() ? 'empty' : this.isFull() ? 'full' : 'mixed';
         return `BitBuffer(${this._width}×${this._height}, ${memoryKB}KB, ${state})`;
     }
-    
+
     /**
      * Check equality with another BitBuffer
      * @param {BitBuffer} other - Other BitBuffer to compare
@@ -263,18 +263,18 @@ class BitBuffer {
         if (!(other instanceof BitBuffer)) {
             return false;
         }
-        
+
         if (other._width !== this._width || other._height !== this._height) {
             return false;
         }
-        
+
         // Compare buffer contents
         for (let i = 0; i < this._numBytes; i++) {
             if (this._buffer[i] !== other._buffer[i]) {
                 return false;
             }
         }
-        
+
         return true;
     }
 }

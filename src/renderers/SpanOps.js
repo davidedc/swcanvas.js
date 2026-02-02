@@ -50,13 +50,17 @@ class SpanOps {
             const yi = Math.floor(y);
             const x = Math.floor(startX);
             if (yi < 0 || yi >= surfaceHeight) {
-                throw new Error(`SpanOps.fill_Opaq: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`);
+                throw new Error(
+                    `SpanOps.fill_Opaq: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`
+                );
             }
             if (x < 0) {
                 throw new Error(`SpanOps.fill_Opaq: startX out of bounds: startX=${startX} (x=${x}), must be >= 0`);
             }
             if (x + length > surfaceWidth) {
-                throw new Error(`SpanOps.fill_Opaq: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`);
+                throw new Error(
+                    `SpanOps.fill_Opaq: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`
+                );
             }
             if (length <= 0) {
                 throw new Error(`SpanOps.fill_Opaq: invalid length: ${length}, must be > 0`);
@@ -114,13 +118,17 @@ class SpanOps {
             const yi = Math.floor(y);
             const x = Math.floor(startX);
             if (yi < 0 || yi >= surfaceHeight) {
-                throw new Error(`SpanOps.fill_Alpha: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`);
+                throw new Error(
+                    `SpanOps.fill_Alpha: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`
+                );
             }
             if (x < 0) {
                 throw new Error(`SpanOps.fill_Alpha: startX out of bounds: startX=${startX} (x=${x}), must be >= 0`);
             }
             if (x + length > surfaceWidth) {
-                throw new Error(`SpanOps.fill_Alpha: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`);
+                throw new Error(
+                    `SpanOps.fill_Alpha: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`
+                );
             }
             if (length <= 0) {
                 throw new Error(`SpanOps.fill_Alpha: invalid length: ${length}, must be > 0`);

@@ -1,9 +1,9 @@
 /**
  * Transform2D class for SWCanvas
- * 
+ *
  * Represents a 2D affine transformation matrix using homogeneous coordinates.
  * Immutable value object following Joshua Bloch's effective design principles.
- * 
+ *
  * Transform2D format (2x3 affine transformation):
  * | a  c  e |   | x |   | ax + cy + e |
  * | b  d  f | × | y | = | bx + dy + f |
@@ -33,9 +33,12 @@ class Transform2D {
             throw new Error('Transform2D initialization array must have exactly 6 elements');
         } else {
             // Identity transformation
-            this.a = 1; this.b = 0;
-            this.c = 0; this.d = 1;
-            this.e = 0; this.f = 0;
+            this.a = 1;
+            this.b = 0;
+            this.c = 0;
+            this.d = 1;
+            this.e = 0;
+            this.f = 0;
         }
 
         // Pre-compute decomposition values using matrix-based axis detection
@@ -49,19 +52,17 @@ class Transform2D {
             this.is90DegreeRotated = false; // No dimension swap needed
             this.scaleX = Math.abs(this.a); // No sqrt needed
             this.scaleY = Math.abs(this.d); // No sqrt needed
-            this.rotationAngle = (this.a < 0) ? Math.PI : 0;
-        }
-        // 2. Check for Perpendicular Alignment (90° or 270°)
-        // Second common case: 90° rotation where a=0, d=0
-        else if (Math.abs(this.a) < TRANSFORM_EPSILON && Math.abs(this.d) < TRANSFORM_EPSILON) {
+            this.rotationAngle = this.a < 0 ? Math.PI : 0;
+        } else if (Math.abs(this.a) < TRANSFORM_EPSILON && Math.abs(this.d) < TRANSFORM_EPSILON) {
+            // 2. Check for Perpendicular Alignment (90° or 270°)
+            // Second common case: 90° rotation where a=0, d=0
             this.isAxisAligned = true;
             this.is90DegreeRotated = true; // Dimension swap needed
             this.scaleX = Math.abs(this.b); // No sqrt needed
             this.scaleY = Math.abs(this.c); // No sqrt needed
-            this.rotationAngle = (this.b > 0) ? HALF_PI : -HALF_PI;
-        }
-        // 3. Complex Rotation / Skew - fallback to trig
-        else {
+            this.rotationAngle = this.b > 0 ? HALF_PI : -HALF_PI;
+        } else {
+            // 3. Complex Rotation / Skew - fallback to trig
             this.isAxisAligned = false;
             this.is90DegreeRotated = false;
             this.scaleX = Math.sqrt(this.a * this.a + this.b * this.b);
@@ -70,27 +71,20 @@ class Transform2D {
         }
 
         // Pre-compute scaled line width factor (geometric mean of scales)
-        this.scaledLineWidthFactor = Math.max(
-            Math.sqrt(this.scaleX * this.scaleY),
-            TRANSFORM_EPSILON
-        );
+        this.scaledLineWidthFactor = Math.max(Math.sqrt(this.scaleX * this.scaleY), TRANSFORM_EPSILON);
 
         // Pre-compute uniform scale factor (sqrt of absolute determinant)
         // Used for scaling radii and values that transform uniformly in all directions
-        this.uniformScale = Math.max(
-            Math.sqrt(Math.abs(this.a * this.d - this.b * this.c)),
-            TRANSFORM_EPSILON
-        );
+        this.uniformScale = Math.max(Math.sqrt(Math.abs(this.a * this.d - this.b * this.c)), TRANSFORM_EPSILON);
 
         // Pre-compute uniform scale check: a=d, b=-c (rotation + uniform scale)
-        this.isUniformScale = Math.abs(this.a - this.d) < TRANSFORM_EPSILON &&
-                              Math.abs(this.b + this.c) < TRANSFORM_EPSILON;
+        this.isUniformScale =
+            Math.abs(this.a - this.d) < TRANSFORM_EPSILON && Math.abs(this.b + this.c) < TRANSFORM_EPSILON;
 
         // Make transformation immutable
         Object.freeze(this);
     }
 
-    
     /**
      * Create translation transform
      * @param {number} x - X translation
@@ -187,11 +181,11 @@ class Transform2D {
      */
     invert() {
         const det = this.a * this.d - this.b * this.c;
-        
+
         if (Math.abs(det) < FLOAT_EPSILON) {
             throw new Error('Transform2D matrix is not invertible (determinant ≈ 0)');
         }
-        
+
         return new Transform2D([
             this.d / det,
             -this.b / det,
@@ -211,13 +205,13 @@ class Transform2D {
         if (!point || typeof point.x !== 'number' || typeof point.y !== 'number') {
             throw new Error('Point must have numeric x and y properties');
         }
-        
+
         return {
             x: this.a * point.x + this.c * point.y + this.e,
             y: this.b * point.x + this.d * point.y + this.f
         };
     }
-    
+
     /**
      * Transform multiple points efficiently
      * @param {Array} points - Array of points to transform
@@ -226,7 +220,7 @@ class Transform2D {
     transformPoints(points) {
         return points.map(point => this.transformPoint(point));
     }
-    
+
     /**
      * Get transformation as array
      * @returns {number[]} [a, b, c, d, e, f] array
@@ -234,7 +228,7 @@ class Transform2D {
     toArray() {
         return [this.a, this.b, this.c, this.d, this.e, this.f];
     }
-    
+
     /**
      * Check if this is the identity transformation
      * @returns {boolean} True if identity
@@ -243,10 +237,9 @@ class Transform2D {
         // Fast path: reference equality with cached identity
         if (this === Transform2D.IDENTITY) return true;
         // Fallback: component equality (for transforms created with [1,0,0,1,0,0])
-        return this.a === 1 && this.b === 0 && this.c === 0 &&
-               this.d === 1 && this.e === 0 && this.f === 0;
+        return this.a === 1 && this.b === 0 && this.c === 0 && this.d === 1 && this.e === 0 && this.f === 0;
     }
-    
+
     /**
      * Get transformation determinant
      * @returns {number} Transform2D determinant
@@ -276,13 +269,15 @@ class Transform2D {
      * @returns {boolean} True if transforms are equal within tolerance
      */
     equals(other, tolerance = FLOAT_EPSILON) {
-        return other instanceof Transform2D &&
-               Math.abs(this.a - other.a) < tolerance &&
-               Math.abs(this.b - other.b) < tolerance &&
-               Math.abs(this.c - other.c) < tolerance &&
-               Math.abs(this.d - other.d) < tolerance &&
-               Math.abs(this.e - other.e) < tolerance &&
-               Math.abs(this.f - other.f) < tolerance;
+        return (
+            other instanceof Transform2D &&
+            Math.abs(this.a - other.a) < tolerance &&
+            Math.abs(this.b - other.b) < tolerance &&
+            Math.abs(this.c - other.c) < tolerance &&
+            Math.abs(this.d - other.d) < tolerance &&
+            Math.abs(this.e - other.e) < tolerance &&
+            Math.abs(this.f - other.f) < tolerance
+        );
     }
 
     /**
@@ -296,4 +291,3 @@ class Transform2D {
 
 // Cache the identity matrix - immutable, so safe to share
 Transform2D.IDENTITY = new Transform2D();
-

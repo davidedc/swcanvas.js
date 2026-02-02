@@ -109,8 +109,7 @@ class Validators {
      * @param {*} height - Height
      */
     static rectParams(x, y, width, height) {
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle parameters must be numbers');
         }
     }
@@ -123,8 +122,7 @@ class Validators {
      * @param {*} height - Height
      */
     static rectParamsFinite(x, y, width, height) {
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle parameters must be numbers');
         }
         if (!isFinite(x) || !isFinite(y) || !isFinite(width) || !isFinite(height)) {

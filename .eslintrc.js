@@ -184,15 +184,25 @@ module.exports = {
         }],
 
         // === STYLE (match existing) ===
+        // Note: Some rules are disabled because Prettier handles them and has different formatting
         'brace-style': ['error', '1tbs', { allowSingleLine: true }],
         'comma-dangle': ['error', 'never'],
         'comma-style': ['error', 'last'],
         'eol-last': ['error', 'always'],
         'func-call-spacing': ['error', 'never'],
-        'indent': ['error', 4, { SwitchCase: 1 }],
+        'indent': ['error', 4, {
+            SwitchCase: 1,
+            // Ignore nodes where Prettier's formatting differs from ESLint's expectations
+            ignoredNodes: [
+                'ConditionalExpression',
+                'ConditionalExpression > *',
+                'ArrowFunctionExpression > BlockStatement'
+            ]
+        }],
         'quotes': ['error', 'single', { avoidEscape: true, allowTemplateLiterals: true }],
         'semi': ['error', 'always'],
-        'space-before-function-paren': ['error', { anonymous: 'never', named: 'never', asyncArrow: 'always' }],
+        // Disabled: Prettier adds space for anonymous functions, which conflicts with this rule
+        'space-before-function-paren': 'off',
         'space-infix-ops': 'error',
         'keyword-spacing': 'error',
         'space-before-blocks': 'error',
@@ -215,5 +225,29 @@ module.exports = {
         'no-nested-ternary': 'off',
         'no-magic-numbers': 'off',
         'no-underscore-dangle': 'off'  // Private member convention
-    }
+    },
+
+    // Overrides for specific directories with special patterns
+    overrides: [
+        {
+            // Renderer files use preprocessor markers like /*@inline:BLEND_ALPHA(data, pixelIndex, ...)*/
+            // Variables declared for use in these markers appear unused to ESLint since it doesn't
+            // understand that the comment will be expanded to real code that uses them.
+            files: ['src/renderers/**/*.js'],
+            rules: {
+                'no-unused-vars': ['error', {
+                    args: 'none',
+                    ignoreRestSiblings: true,
+                    // Ignore variables commonly used in preprocessor markers
+                    // Includes: data buffers, pixel coordinates, colors, clipping, arc parameters, octant points
+                    varsIgnorePattern: '^(_|data|data32|pixelIndex|packedColor|pos|r|g|b|alpha|invAlpha|effectiveAlpha|clipBuffer|startCos|startSin|endCos|endSin|isLargeArc|px|py|screenX|screenY|width|height|dx|dy|bx|by|adjCX|adjCY|pAx|pAy|pBx|pBy|pCx|pCy|pDx|pDy|pEx|pEy|pFx|pFy|pGx|pGy|pHx|pHy|strokeInvAlpha|strokePacked|strokeEffectiveAlpha|SpanOps|QuadScanOps|RectOpsAA|RectOpsRot|CircleOps|ArcOps|LineOps|RoundedRectOpsAA|RoundedRectOpsRot|RoundedRectUtils|PolygonFiller|PathFlattener|StrokeGenerator)$'
+                }],
+                // PolygonFiller uses intentional while(true) loops for scanline processing
+                'no-constant-condition': 'off',
+                // Early returns before preprocessor markers appear "useless" to ESLint but are needed
+                // to skip pixel blending when clipping fails (the marker expands to real code)
+                'no-useless-return': 'off'
+            }
+        }
+    ]
 };

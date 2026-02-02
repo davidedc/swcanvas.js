@@ -29,7 +29,18 @@ class PolygonFiller {
      * @param {string} composite - Composite operation (default: 'source-over')
      * @param {SourceMask|null} sourceMask - Optional source coverage mask for canvas-wide compositing
      */
-    static fillPolygons(surface, polygons, paintSource, fillRule, transform, clipMask, globalAlpha = 1.0, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
+    static fillPolygons(
+        surface,
+        polygons,
+        paintSource,
+        fillRule,
+        transform,
+        clipMask,
+        globalAlpha = 1.0,
+        subPixelOpacity = 1.0,
+        composite = 'source-over',
+        sourceMask = null
+    ) {
         if (polygons.length === 0) return;
         if (IS_DEBUG) {
             if (!PolygonFiller._isValidPaintSource(paintSource)) {
@@ -49,7 +60,18 @@ class PolygonFiller {
         if (canUseDirectRendering) {
             PolygonFiller._fillPolygonsDirect(surface, polygons, paintSource, fillRule, transform, clipMask);
         } else {
-            PolygonFiller._fillPolygonsStandard(surface, polygons, paintSource, fillRule, transform, clipMask, globalAlpha, subPixelOpacity, composite, sourceMask);
+            PolygonFiller._fillPolygonsStandard(
+                surface,
+                polygons,
+                paintSource,
+                fillRule,
+                transform,
+                clipMask,
+                globalAlpha,
+                subPixelOpacity,
+                composite,
+                sourceMask
+            );
         }
     }
 
@@ -66,9 +88,7 @@ class PolygonFiller {
         const clipBuffer = clipMask ? clipMask.buffer : null;
 
         // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly =>
-            poly.map(point => transform.transformPoint(point))
-        );
+        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
 
         // Find bounding box
         const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
@@ -95,7 +115,7 @@ class PolygonFiller {
                 windingNumber += intersection.winding;
 
                 if (fillRule === 'evenodd') {
-                    inside = (windingNumber % 2) !== 0;
+                    inside = windingNumber % 2 !== 0;
                 } else {
                     inside = windingNumber !== 0;
                 }
@@ -144,7 +164,18 @@ class PolygonFiller {
      * Standard path for all other cases (gradients, patterns, transparency, compositing)
      * @private
      */
-    static _fillPolygonsStandard(surface, polygons, paintSource, fillRule, transform, clipMask, globalAlpha, subPixelOpacity, composite, sourceMask) {
+    static _fillPolygonsStandard(
+        surface,
+        polygons,
+        paintSource,
+        fillRule,
+        transform,
+        clipMask,
+        globalAlpha,
+        subPixelOpacity,
+        composite,
+        sourceMask
+    ) {
         // Mark path-based rendering for testing (helps verify direct rendering is used when expected)
         // Check for Context2D existence since PolygonFiller may be used in isolation (e.g., unit tests)
         if (typeof Context2D !== 'undefined' && Context2D._markPathBasedRendering) {
@@ -152,9 +183,7 @@ class PolygonFiller {
         }
 
         // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly =>
-            poly.map(point => transform.transformPoint(point))
-        );
+        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
 
         // Find bounding box for optimization
         const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
@@ -162,7 +191,17 @@ class PolygonFiller {
         // Process each scanline
         for (let y = bounds.minY; y <= bounds.maxY; y++) {
             PolygonFiller._fillScanline(
-                surface, y, transformedPolygons, paintSource, fillRule, clipMask, transform, globalAlpha, subPixelOpacity, composite, sourceMask
+                surface,
+                y,
+                transformedPolygons,
+                paintSource,
+                fillRule,
+                clipMask,
+                transform,
+                globalAlpha,
+                subPixelOpacity,
+                composite,
+                sourceMask
             );
         }
     }
@@ -175,7 +214,8 @@ class PolygonFiller {
      * @private
      */
     static _calculateBounds(polygons, surface) {
-        let minY = Infinity, maxY = -Infinity;
+        let minY = Infinity,
+            maxY = -Infinity;
 
         for (const poly of polygons) {
             for (const point of poly) {
@@ -206,7 +246,19 @@ class PolygonFiller {
      * @param {SourceMask|null} sourceMask - Optional source coverage mask
      * @private
      */
-    static _fillScanline(surface, y, polygons, paintSource, fillRule, clipMask, transform, globalAlpha, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
+    static _fillScanline(
+        surface,
+        y,
+        polygons,
+        paintSource,
+        fillRule,
+        clipMask,
+        transform,
+        globalAlpha,
+        subPixelOpacity = 1.0,
+        composite = 'source-over',
+        sourceMask = null
+    ) {
         const intersections = [];
 
         // Find all intersections with this scanline
@@ -218,7 +270,19 @@ class PolygonFiller {
         intersections.sort((a, b) => a.x - b.x);
 
         // Fill spans based on winding rule
-        PolygonFiller._fillSpans(surface, y, intersections, paintSource, fillRule, clipMask, transform, globalAlpha, subPixelOpacity, composite, sourceMask);
+        PolygonFiller._fillSpans(
+            surface,
+            y,
+            intersections,
+            paintSource,
+            fillRule,
+            clipMask,
+            transform,
+            globalAlpha,
+            subPixelOpacity,
+            composite,
+            sourceMask
+        );
     }
 
     /**
@@ -240,7 +304,8 @@ class PolygonFiller {
             const minY = Math.min(p1.y, p2.y);
             const maxY = Math.max(p1.y, p2.y);
 
-            if (y >= minY && y < maxY) { // Note: < maxY to avoid double-counting vertices
+            if (y >= minY && y < maxY) {
+                // Note: < maxY to avoid double-counting vertices
                 // Calculate intersection point using linear interpolation
                 const t = (y - p1.y) / (p2.y - p1.y);
                 const x = p1.x + t * (p2.x - p1.x);
@@ -268,7 +333,19 @@ class PolygonFiller {
      * @param {SourceMask|null} sourceMask - Optional source coverage mask
      * @private
      */
-    static _fillSpans(surface, y, intersections, paintSource, fillRule, clipMask, transform, globalAlpha, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
+    static _fillSpans(
+        surface,
+        y,
+        intersections,
+        paintSource,
+        fillRule,
+        clipMask,
+        transform,
+        globalAlpha,
+        subPixelOpacity = 1.0,
+        composite = 'source-over',
+        sourceMask = null
+    ) {
         if (intersections.length === 0) return;
 
         let windingNumber = 0;
@@ -283,8 +360,9 @@ class PolygonFiller {
 
             // Determine if we're inside based on fill rule
             if (fillRule === 'evenodd') {
-                inside = (windingNumber % 2) !== 0;
-            } else { // nonzero
+                inside = windingNumber % 2 !== 0;
+            } else {
+                // nonzero
                 inside = windingNumber !== 0;
             }
 
@@ -294,7 +372,17 @@ class PolygonFiller {
                 const endX = Math.min(surface.width - 1, Math.floor(nextIntersection.x));
 
                 PolygonFiller._fillPixelSpan(
-                    surface, y, startX, endX, paintSource, clipMask, transform, globalAlpha, subPixelOpacity, composite, sourceMask
+                    surface,
+                    y,
+                    startX,
+                    endX,
+                    paintSource,
+                    clipMask,
+                    transform,
+                    globalAlpha,
+                    subPixelOpacity,
+                    composite,
+                    sourceMask
                 );
             }
         }
@@ -315,7 +403,19 @@ class PolygonFiller {
      * @param {SourceMask|null} sourceMask - Optional source coverage mask to record coverage
      * @private
      */
-    static _fillPixelSpan(surface, y, startX, endX, paintSource, clipMask, transform, globalAlpha, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
+    static _fillPixelSpan(
+        surface,
+        y,
+        startX,
+        endX,
+        paintSource,
+        clipMask,
+        transform,
+        globalAlpha,
+        subPixelOpacity = 1.0,
+        composite = 'source-over',
+        sourceMask = null
+    ) {
         for (let x = startX; x <= endX; x++) {
             // Check stencil buffer clipping
             if (clipMask && clipMask.isPixelClipped(x, y)) {
@@ -330,13 +430,19 @@ class PolygonFiller {
             }
 
             // Evaluate paint source at pixel position
-            const pixelColor = PolygonFiller._evaluatePaintSource(paintSource, x, y, transform, globalAlpha, subPixelOpacity);
+            const pixelColor = PolygonFiller._evaluatePaintSource(
+                paintSource,
+                x,
+                y,
+                transform,
+                globalAlpha,
+                subPixelOpacity
+            );
 
             const offset = y * surface.stride + x * 4;
             PolygonFiller._blendPixel(surface, offset, pixelColor, composite);
         }
     }
-
 
     /**
      * Blend a color into a surface pixel using specified composite operation
@@ -356,8 +462,14 @@ class PolygonFiller {
         // Use CompositeOperations for blending
         const result = CompositeOperations.blendPixel(
             composite,
-            color.r, color.g, color.b, color.a,  // source
-            dstR, dstG, dstB, dstA               // destination
+            color.r,
+            color.g,
+            color.b,
+            color.a, // source
+            dstR,
+            dstG,
+            dstB,
+            dstA // destination
         );
 
         // Store result
@@ -407,12 +519,14 @@ class PolygonFiller {
      * @private
      */
     static _isValidPaintSource(paintSource) {
-        return paintSource instanceof Color ||
+        return (
+            paintSource instanceof Color ||
             paintSource instanceof Gradient ||
             paintSource instanceof LinearGradient ||
             paintSource instanceof RadialGradient ||
             paintSource instanceof ConicGradient ||
-            paintSource instanceof Pattern;
+            paintSource instanceof Pattern
+        );
     }
 
     /**
@@ -430,10 +544,12 @@ class PolygonFiller {
         let color;
         if (paintSource instanceof Color) {
             color = paintSource;
-        } else if (paintSource instanceof Gradient ||
+        } else if (
+            paintSource instanceof Gradient ||
             paintSource instanceof LinearGradient ||
             paintSource instanceof RadialGradient ||
-            paintSource instanceof ConicGradient) {
+            paintSource instanceof ConicGradient
+        ) {
             color = paintSource.getColorForPixel(x, y, transform);
         } else if (paintSource instanceof Pattern) {
             color = paintSource.getColorForPixel(x, y, transform);
@@ -448,7 +564,13 @@ class PolygonFiller {
         // Apply sub-pixel opacity for thin strokes
         if (subPixelOpacity < 1.0) {
             const adjustedAlpha = Math.round(resultColor.a * subPixelOpacity);
-            resultColor = new Color(resultColor.r, resultColor.g, resultColor.b, adjustedAlpha, resultColor.premultiplied);
+            resultColor = new Color(
+                resultColor.r,
+                resultColor.g,
+                resultColor.b,
+                adjustedAlpha,
+                resultColor.premultiplied
+            );
         }
 
         return resultColor;
@@ -457,7 +579,7 @@ class PolygonFiller {
     /**
      * Test if a point is inside a set of polygons using the specified fill rule
      * @param {number} x - X coordinate of the point
-     * @param {number} y - Y coordinate of the point  
+     * @param {number} y - Y coordinate of the point
      * @param {Array<Array<Object>>} polygons - Array of polygons, each polygon is array of {x, y} points
      * @param {string} fillRule - Fill rule: 'nonzero' or 'evenodd'
      * @returns {boolean} True if point is inside the polygon set
@@ -502,7 +624,8 @@ class PolygonFiller {
                 const maxY = Math.max(p1.y, p2.y);
 
                 // Ray is at y level, check if it intersects the edge
-                if (y >= minY && y < maxY) { // Note: < maxY to avoid double-counting vertices
+                if (y >= minY && y < maxY) {
+                    // Note: < maxY to avoid double-counting vertices
                     // Calculate intersection point using linear interpolation
                     const t = (y - p1.y) / (p2.y - p1.y);
                     const intersectionX = p1.x + t * (p2.x - p1.x);
@@ -520,8 +643,9 @@ class PolygonFiller {
 
         // Apply fill rule to determine if point is inside
         if (fillRule === 'evenodd') {
-            return (windingNumber % 2) !== 0;
-        } else { // nonzero
+            return windingNumber % 2 !== 0;
+        } else {
+            // nonzero
             return windingNumber !== 0;
         }
     }
@@ -585,12 +709,11 @@ class PolygonFiller {
         const height = clipMask.height;
 
         // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly =>
-            poly.map(point => transform.transformPoint(point))
-        );
+        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
 
         // Find bounding box
-        let minY = Infinity, maxY = -Infinity;
+        let minY = Infinity,
+            maxY = -Infinity;
         for (const poly of transformedPolygons) {
             for (const point of poly) {
                 minY = Math.min(minY, point.y);
@@ -643,8 +766,9 @@ class PolygonFiller {
 
             // Determine if we're inside based on fill rule
             if (fillRule === 'evenodd') {
-                inside = (windingNumber % 2) !== 0;
-            } else { // nonzero
+                inside = windingNumber % 2 !== 0;
+            } else {
+                // nonzero
                 inside = windingNumber !== 0;
             }
 

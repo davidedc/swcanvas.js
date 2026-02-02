@@ -18,8 +18,7 @@
  * Check if debug mode is enabled.
  * @type {boolean}
  */
-const IS_DEBUG = typeof globalThis !== 'undefined' &&
-                 globalThis.__SWCANVAS_DEBUG__ === true;
+const IS_DEBUG = typeof globalThis !== 'undefined' && globalThis.__SWCANVAS_DEBUG__ === true;
 
 /**
  * Assert a condition is true (development only).

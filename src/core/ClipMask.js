@@ -1,10 +1,10 @@
 /**
  * ClipMask class for SWCanvas
- * 
+ *
  * Represents a 1-bit stencil buffer for memory-efficient clipping operations.
  * Uses composition with BitBuffer to eliminate code duplication while maintaining
  * clear separation of concerns (Joshua Bloch Item 18: Favor composition over inheritance).
- * 
+ *
  * Memory Layout:
  * - Each pixel is represented by 1 bit (1 = visible, 0 = clipped)
  * - Bits are packed into Uint8Array (8 pixels per byte)
@@ -20,7 +20,7 @@ class ClipMask {
         // BitBuffer validates parameters and handles bit manipulation
         // Default to 1 (no clipping by default)
         this._bitBuffer = new BitBuffer(width, height, 1);
-        
+
         // Make dimensions immutable
         Object.defineProperty(this, 'width', { value: width, writable: false });
         Object.defineProperty(this, 'height', { value: height, writable: false });
@@ -44,7 +44,7 @@ class ClipMask {
     getPixel(x, y) {
         return this._bitBuffer.getPixel(x, y);
     }
-    
+
     /**
      * Set clip state for a pixel
      * @param {number} x - X coordinate
@@ -54,7 +54,7 @@ class ClipMask {
     setPixel(x, y, visible) {
         this._bitBuffer.setPixel(x, y, visible);
     }
-    
+
     /**
      * Check if a pixel is clipped (convenience method)
      * @param {number} x - X coordinate
@@ -64,21 +64,21 @@ class ClipMask {
     isPixelClipped(x, y) {
         return !this.getPixel(x, y);
     }
-    
+
     /**
      * Clear all clipping (set all pixels to visible)
      */
     clear() {
         this._bitBuffer.fill(); // Fill with 1s (visible)
     }
-    
+
     /**
      * Set all pixels to clipped state
      */
     clipAll() {
         this._bitBuffer.clear(); // Clear to 0s (clipped)
     }
-    
+
     /**
      * Intersect this clip mask with another (AND operation)
      * Only pixels visible in BOTH masks will remain visible
@@ -93,7 +93,7 @@ class ClipMask {
 
         this._bitBuffer.and(other._bitBuffer);
     }
-    
+
     /**
      * Create a deep copy of this clip mask
      * @returns {ClipMask} New ClipMask with copied data
@@ -103,7 +103,7 @@ class ClipMask {
         clone._bitBuffer.copyFrom(this._bitBuffer);
         return clone;
     }
-    
+
     /**
      * Create a clip pixel writer function for path rendering
      * @returns {Function} clipPixel function for coverage-based rendering
@@ -112,13 +112,13 @@ class ClipMask {
         return (x, y, coverage) => {
             // Bounds checking
             if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
-            
+
             // Convert coverage to binary: >0.5 means inside, <=0.5 means outside
             const isInside = coverage > 0.5;
             this.setPixel(x, y, isInside);
         };
     }
-    
+
     /**
      * Get memory usage in bytes
      * @returns {number} Memory usage of the clip mask
@@ -126,7 +126,7 @@ class ClipMask {
     getMemoryUsage() {
         return this._bitBuffer.getMemoryUsage();
     }
-    
+
     /**
      * Check if mask has any clipping (optimization)
      * @returns {boolean} True if any pixels are clipped
@@ -134,7 +134,7 @@ class ClipMask {
     hasClipping() {
         return !this._bitBuffer.isFull();
     }
-    
+
     /**
      * String representation for debugging
      * @returns {string} ClipMask description
@@ -144,7 +144,7 @@ class ClipMask {
         const clippingStatus = this.hasClipping() ? 'with clipping' : 'no clipping';
         return `ClipMask(${this.width}×${this.height}, ${memoryKB}KB, ${clippingStatus})`;
     }
-    
+
     /**
      * Check equality with another ClipMask
      * @param {ClipMask} other - Other ClipMask to compare
@@ -154,7 +154,7 @@ class ClipMask {
         if (!(other instanceof ClipMask)) {
             return false;
         }
-        
+
         return this._bitBuffer.equals(other._bitBuffer);
     }
 }

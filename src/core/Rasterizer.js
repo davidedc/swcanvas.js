@@ -1,6 +1,6 @@
 /**
  * Rasterizer class for SWCanvas
- * 
+ *
  * Handles low-level pixel operations and rendering pipeline.
  * Converted to ES6 class following Joshua Bloch's effective OO principles.
  * Encapsulates rendering state and provides clear separation of concerns.
@@ -50,10 +50,10 @@ class Rasterizer {
             composite: params.composite || 'source-over',
             globalAlpha: params.globalAlpha !== undefined ? params.globalAlpha : 1.0,
             transform: params.transform || Transform2D.IDENTITY,
-            clipMask: params.clipMask || null,  // Stencil-based clipping
+            clipMask: params.clipMask || null, // Stencil-based clipping
             fillStyle: params.fillStyle || null,
             strokeStyle: params.strokeStyle || null,
-            sourceMask: null,  // Will be initialized if needed for canvas-wide compositing
+            sourceMask: null, // Will be initialized if needed for canvas-wide compositing
             // Shadow properties
             shadowColor: params.shadowColor || Color.transparent,
             shadowBlur: params.shadowBlur || 0,
@@ -142,8 +142,7 @@ class Rasterizer {
         this._requireActiveOp();
 
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -202,13 +201,22 @@ class Rasterizer {
 
         // Find bounding box in device space
         const minX = Math.max(0, Math.floor(Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
-        const maxX = Math.min(this._surface.width - 1, Math.floor(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x) - 1));
+        const maxX = Math.min(
+            this._surface.width - 1,
+            Math.floor(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x) - 1)
+        );
         const minY = Math.max(0, Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
-        const maxY = Math.min(this._surface.height - 1, Math.floor(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y) - 1));
+        const maxY = Math.min(
+            this._surface.height - 1,
+            Math.floor(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y) - 1)
+        );
 
         // Optimized path for axis-aligned rectangles with solid colors only
-        if (this._currentOp.transform.b === 0 && this._currentOp.transform.c === 0 &&
-            (color instanceof Color || Array.isArray(color))) {
+        if (
+            this._currentOp.transform.b === 0 &&
+            this._currentOp.transform.c === 0 &&
+            (color instanceof Color || Array.isArray(color))
+        ) {
             this._fillAxisAlignedRect(minX, minY, maxX - minX + 1, maxY - minY + 1, color);
         } else {
             // Handle rotated rectangles by converting to polygon
@@ -221,14 +229,24 @@ class Rasterizer {
 
             // Use existing polygon filling system which handles transforms and stencil clipping
             const rectColor = Array.isArray(color) ? new Color(color[0], color[1], color[2], color[3]) : color;
-            PolygonFiller.fillPolygons(this._surface, [rectPolygon], rectColor, 'nonzero', this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, 1.0, this._currentOp.composite);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                [rectPolygon],
+                rectColor,
+                'nonzero',
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                1.0,
+                this._currentOp.composite
+            );
         }
     }
 
     /**
      * Fill axis-aligned rectangle (optimized path)
      * @param {number} x - Rectangle x
-     * @param {number} y - Rectangle y 
+     * @param {number} y - Rectangle y
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
      * @param {Array|Color} color - Fill color
@@ -268,8 +286,14 @@ class Rasterizer {
                 // Use CompositeOperations for consistent blending
                 const result = CompositeOperations.blendPixel(
                     this._currentOp.composite,
-                    srcR, srcG, srcB, srcA,  // source
-                    dstR, dstG, dstB, dstA   // destination
+                    srcR,
+                    srcG,
+                    srcB,
+                    srcA, // source
+                    dstR,
+                    dstG,
+                    dstB,
+                    dstA // destination
                 );
 
                 surface.data[offset] = result.r;
@@ -318,7 +342,14 @@ class Rasterizer {
 
                 if (Sa > 0) {
                     // Evaluate paint source at covered pixel
-                    srcColor = PolygonFiller._evaluatePaintSource(paintSource, x, y, transform, globalAlpha, subPixelOpacity);
+                    srcColor = PolygonFiller._evaluatePaintSource(
+                        paintSource,
+                        x,
+                        y,
+                        transform,
+                        globalAlpha,
+                        subPixelOpacity
+                    );
                 } else {
                     // Transparent source for uncovered pixels
                     srcColor = Color.transparent;
@@ -334,8 +365,14 @@ class Rasterizer {
                 // Apply composite operation with explicit source coverage
                 const result = CompositeOperations.blendPixel(
                     composite,
-                    srcColor.r, srcColor.g, srcColor.b, srcColor.a,  // source
-                    dstR, dstG, dstB, dstA                           // destination
+                    srcColor.r,
+                    srcColor.g,
+                    srcColor.b,
+                    srcColor.a, // source
+                    dstR,
+                    dstG,
+                    dstB,
+                    dstA // destination
                 );
 
                 // Store result
@@ -377,13 +414,34 @@ class Rasterizer {
 
         if (this._requiresCanvasWideCompositing(this._currentOp.composite)) {
             // Canvas-wide compositing path: build source mask then perform canvas-wide compositing
-            PolygonFiller.fillPolygons(this._surface, polygons, fillStyle, fillRule, this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, 1.0, this._currentOp.composite, this._currentOp.sourceMask);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                polygons,
+                fillStyle,
+                fillRule,
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                1.0,
+                this._currentOp.composite,
+                this._currentOp.sourceMask
+            );
 
             // Perform canvas-wide compositing pass
             this._performCanvasWideCompositing(fillStyle, this._currentOp.globalAlpha, 1.0);
         } else {
             // Source-bounded compositing path: direct rendering (existing behavior)
-            PolygonFiller.fillPolygons(this._surface, polygons, fillStyle, fillRule, this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, 1.0, this._currentOp.composite);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                polygons,
+                fillStyle,
+                fillRule,
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                1.0,
+                this._currentOp.composite
+            );
         }
     }
 
@@ -429,13 +487,34 @@ class Rasterizer {
 
         if (this._requiresCanvasWideCompositing(this._currentOp.composite)) {
             // Canvas-wide compositing path: build source mask then perform canvas-wide compositing
-            PolygonFiller.fillPolygons(this._surface, strokePolygons, strokeStyle, 'nonzero', this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, subPixelOpacity, this._currentOp.composite, this._currentOp.sourceMask);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                strokePolygons,
+                strokeStyle,
+                'nonzero',
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                subPixelOpacity,
+                this._currentOp.composite,
+                this._currentOp.sourceMask
+            );
 
             // Perform canvas-wide compositing pass
             this._performCanvasWideCompositing(strokeStyle, this._currentOp.globalAlpha, subPixelOpacity);
         } else {
             // Source-bounded compositing path: direct rendering (existing behavior)
-            PolygonFiller.fillPolygons(this._surface, strokePolygons, strokeStyle, 'nonzero', this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, subPixelOpacity, this._currentOp.composite);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                strokePolygons,
+                strokeStyle,
+                'nonzero',
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                subPixelOpacity,
+                this._currentOp.composite
+            );
         }
     }
 
@@ -498,7 +577,7 @@ class Rasterizer {
             sourceWidth = imageData.width;
             sourceHeight = imageData.height;
             destX = sx; // Actually dx
-            destY = sy; // Actually dy  
+            destY = sy; // Actually dy
             destWidth = sw; // Actually dw
             destHeight = sh; // Actually dh
         } else if (arguments.length === 9) {
@@ -516,11 +595,16 @@ class Rasterizer {
         }
 
         // Validate source rectangle bounds
-        if (sourceX < 0 || sourceY < 0 || sourceX + sourceWidth > imageData.width || sourceY + sourceHeight > imageData.height) {
+        if (
+            sourceX < 0 ||
+            sourceY < 0 ||
+            sourceX + sourceWidth > imageData.width ||
+            sourceY + sourceHeight > imageData.height
+        ) {
             throw new Error('Source rectangle is outside image bounds');
         }
 
-        // Apply transform to destination rectangle corners  
+        // Apply transform to destination rectangle corners
         const transform = this._currentOp.transform;
         const topLeft = transform.transformPoint({ x: destX, y: destY });
         const topRight = transform.transformPoint({ x: destX + destWidth, y: destY });
@@ -529,11 +613,17 @@ class Rasterizer {
 
         // Find bounding box in device space
         const minX = Math.max(0, Math.floor(Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
-        const maxX = Math.min(this._surface.width - 1, Math.ceil(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
+        const maxX = Math.min(
+            this._surface.width - 1,
+            Math.ceil(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x))
+        );
         const minY = Math.max(0, Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
-        const maxY = Math.min(this._surface.height - 1, Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
+        const maxY = Math.min(
+            this._surface.height - 1,
+            Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y))
+        );
 
-        // Get inverse transform for mapping device pixels back to source  
+        // Get inverse transform for mapping device pixels back to source
         const inverseTransform = transform.invert();
 
         const globalAlpha = this._currentOp.globalAlpha;
@@ -550,14 +640,18 @@ class Rasterizer {
                 const destPoint = inverseTransform.transformPoint({ x: deviceX, y: deviceY });
 
                 // Check if we're inside the destination rectangle
-                if (destPoint.x < destX || destPoint.x >= destX + destWidth ||
-                    destPoint.y < destY || destPoint.y >= destY + destHeight) {
+                if (
+                    destPoint.x < destX ||
+                    destPoint.x >= destX + destWidth ||
+                    destPoint.y < destY ||
+                    destPoint.y >= destY + destHeight
+                ) {
                     continue;
                 }
 
                 // Map destination coordinates to source coordinates
-                const sourceXf = sourceX + (destPoint.x - destX) / destWidth * sourceWidth;
-                const sourceYf = sourceY + (destPoint.y - destY) / destHeight * sourceHeight;
+                const sourceXf = sourceX + ((destPoint.x - destX) / destWidth) * sourceWidth;
+                const sourceYf = sourceY + ((destPoint.y - destY) / destHeight) * sourceHeight;
 
                 // Nearest-neighbor sampling
                 const sourcePX = Math.floor(sourceXf);
@@ -594,8 +688,14 @@ class Rasterizer {
                 // Use CompositeOperations for consistent blending
                 const result = CompositeOperations.blendPixel(
                     this._currentOp.composite,
-                    srcR, srcG, srcB, finalSrcA,  // source
-                    dstR, dstG, dstB, dstA        // destination
+                    srcR,
+                    srcG,
+                    srcB,
+                    finalSrcA, // source
+                    dstR,
+                    dstG,
+                    dstB,
+                    dstA // destination
                 );
 
                 this._surface.data[destOffset] = result.r;
@@ -605,5 +705,4 @@ class Rasterizer {
             }
         }
     }
-
 }

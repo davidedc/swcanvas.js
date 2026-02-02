@@ -11,7 +11,7 @@
 class ColorParser {
     constructor() {
         this._cache = new Map();
-        
+
         // CSS Color names to RGB mapping - Complete MDN specification
         this._namedColors = {
             // CSS Level 1 colors
@@ -31,8 +31,8 @@ class ColorParser {
             blue: { r: 0, g: 0, b: 255 },
             teal: { r: 0, g: 128, b: 128 },
             aqua: { r: 0, g: 255, b: 255 },
-            
-            // CSS Level 2 (X11) colors  
+
+            // CSS Level 2 (X11) colors
             aliceblue: { r: 240, g: 248, b: 255 },
             antiquewhite: { r: 250, g: 235, b: 215 },
             aquamarine: { r: 127, g: 255, b: 212 },
@@ -167,7 +167,7 @@ class ColorParser {
             yellowgreen: { r: 154, g: 205, b: 50 }
         };
     }
-    
+
     /**
      * Parse a CSS color string to RGBA values
      * @param {string} color - CSS color string
@@ -178,14 +178,14 @@ class ColorParser {
         if (this._cache.has(color)) {
             return this._cache.get(color);
         }
-        
+
         let result;
-        
+
         if (typeof color !== 'string') {
             result = { r: 0, g: 0, b: 0, a: 255 };
         } else {
             const trimmed = color.trim().toLowerCase();
-            
+
             if (trimmed.startsWith('#')) {
                 result = this._parseHex(trimmed);
             } else if (trimmed.startsWith('rgb')) {
@@ -198,12 +198,12 @@ class ColorParser {
                 result = { r: 0, g: 0, b: 0, a: 255 };
             }
         }
-        
+
         // Cache the result
         this._cache.set(color, result);
         return result;
     }
-    
+
     /**
      * Parse hex color (#RGB, #RRGGBB, #RRGGBBAA)
      * @private
@@ -211,12 +211,15 @@ class ColorParser {
     _parseHex(hex) {
         // Remove the #
         hex = hex.substring(1);
-        
+
         if (hex.length === 3) {
             // #RGB -> #RRGGBB
-            hex = hex.split('').map(c => c + c).join('');
+            hex = hex
+                .split('')
+                .map(c => c + c)
+                .join('');
         }
-        
+
         if (hex.length === 6) {
             // #RRGGBB
             const r = parseInt(hex.substring(0, 2), 16);
@@ -231,11 +234,11 @@ class ColorParser {
             const a = parseInt(hex.substring(6, 8), 16);
             return { r, g, b, a };
         }
-        
+
         // Invalid hex - default to black
         return { r: 0, g: 0, b: 0, a: 255 };
     }
-    
+
     /**
      * Parse RGB/RGBA function notation
      * @private
@@ -246,17 +249,17 @@ class ColorParser {
         if (!match) {
             return { r: 0, g: 0, b: 0, a: 255 };
         }
-        
+
         const parts = match[1].split(',').map(s => s.trim());
-        
+
         if (parts.length < 3) {
             return { r: 0, g: 0, b: 0, a: 255 };
         }
-        
-        const r = Math.max(0, Math.min(255, parseInt(parts[0]) || 0));
-        const g = Math.max(0, Math.min(255, parseInt(parts[1]) || 0));
-        const b = Math.max(0, Math.min(255, parseInt(parts[2]) || 0));
-        
+
+        const r = Math.max(0, Math.min(255, parseInt(parts[0], 10) || 0));
+        const g = Math.max(0, Math.min(255, parseInt(parts[1], 10) || 0));
+        const b = Math.max(0, Math.min(255, parseInt(parts[2], 10) || 0));
+
         let a = 255;
         if (parts.length >= 4) {
             const alpha = parseFloat(parts[3]);
@@ -264,10 +267,10 @@ class ColorParser {
                 a = Math.max(0, Math.min(255, Math.round(alpha * 255)));
             }
         }
-        
+
         return { r, g, b, a };
     }
-    
+
     /**
      * Clear the color cache
      */

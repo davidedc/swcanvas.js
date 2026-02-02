@@ -1,22 +1,21 @@
 /**
  * STENCIL-BASED CLIPPING SYSTEM
- * 
+ *
  * SWCanvas uses a 1-bit stencil buffer approach for memory-efficient clipping with
  * proper intersection semantics. This system matches HTML5 Canvas behavior exactly.
- * 
+ *
  * Memory Layout:
  * - Each pixel is represented by 1 bit (1 = visible, 0 = clipped)
  * - Bits are packed into Uint8Array (8 pixels per byte)
  * - Memory usage: width × height ÷ 8 bytes (96.9% reduction vs RGBA coverage)
  * - Lazy allocation: only created when first clip() operation is performed
- * 
+ *
  * Clipping Operations:
  * 1. First clip: Creates stencil buffer, renders clip path with 1s where path covers
- * 2. Subsequent clips: Renders to temp buffer, ANDs with existing stencil buffer  
+ * 2. Subsequent clips: Renders to temp buffer, ANDs with existing stencil buffer
  * 3. Intersection semantics: Only pixels covered by ALL clips have bit = 1
  * 4. Save/restore: Stencil buffer is deep-copied during save() and restored
  */
-
 
 class Context2D {
     // Static flag to track path-based rendering usage (for testing)
@@ -63,30 +62,30 @@ class Context2D {
 
         // Stroke properties
         this._lineWidth = 1.0;
-        this.lineJoin = 'miter';  // 'miter', 'round', 'bevel'
-        this.lineCap = 'butt';    // 'butt', 'round', 'square'
+        this.lineJoin = 'miter'; // 'miter', 'round', 'bevel'
+        this.lineCap = 'butt'; // 'butt', 'round', 'square'
         this.miterLimit = DEFAULT_MITER_LIMIT;
 
         // Line dash properties
-        this._lineDash = [];         // Internal working dash pattern (may be duplicated)
+        this._lineDash = []; // Internal working dash pattern (may be duplicated)
         this._originalLineDash = []; // Original pattern as set by user
-        this._lineDashOffset = 0;    // Starting offset into dash pattern
+        this._lineDashOffset = 0; // Starting offset into dash pattern
 
         // Shadow properties - HTML5 Canvas compatible defaults
         this.shadowColor = Color.transparent; // Transparent black (no shadow)
-        this.shadowBlur = 0;       // No blur
-        this.shadowOffsetX = 0;    // No horizontal offset
-        this.shadowOffsetY = 0;    // No vertical offset
+        this.shadowBlur = 0; // No blur
+        this.shadowOffsetX = 0; // No horizontal offset
+        this.shadowOffsetY = 0; // No vertical offset
 
         // Internal path and clipping
         this._currentPath = new SWPath2D();
 
         // Stencil-based clipping system (only clipping mechanism)
-        this._clipMask = null;  // ClipMask instance for 1-bit per pixel clipping
+        this._clipMask = null; // ClipMask instance for 1-bit per pixel clipping
 
         // Cached state flags for direct rendering eligibility (performance optimization)
-        this._noShadow = true;       // Updated when shadow properties change
-        this._isSourceOver = true;   // Updated when globalCompositeOperation changes
+        this._noShadow = true; // Updated when shadow properties change
+        this._isSourceOver = true; // Updated when globalCompositeOperation changes
     }
 
     // HTML5 Canvas-compatible lineWidth property with validation
@@ -96,9 +95,7 @@ class Context2D {
 
     set lineWidth(value) {
         // HTML5 Canvas spec: ignore zero, negative, Infinity, and NaN values
-        if (typeof value === 'number' &&
-            value > 0 &&
-            isFinite(value)) {
+        if (typeof value === 'number' && value > 0 && isFinite(value)) {
             this._lineWidth = value;
         }
         // Otherwise, keep the current value unchanged (ignore invalid input)
@@ -111,7 +108,7 @@ class Context2D {
 
     set globalCompositeOperation(value) {
         this._globalCompositeOperation = value;
-        this._isSourceOver = (value === 'source-over');
+        this._isSourceOver = value === 'source-over';
     }
 
     /**
@@ -119,7 +116,8 @@ class Context2D {
      * @private
      */
     _updateNoShadowFlag() {
-        this._noShadow = !this.shadowColor ||
+        this._noShadow =
+            !this.shadowColor ||
             this.shadowColor === Color.transparent ||
             (this.shadowBlur === 0 && this.shadowOffsetX === 0 && this.shadowOffsetY === 0);
     }
@@ -131,10 +129,7 @@ class Context2D {
      * @private
      */
     _canUseDirectRendering(paintSource) {
-        return this._isSourceOver &&
-            this._noShadow &&
-            (paintSource instanceof Color) &&
-            paintSource.a > 0;
+        return this._isSourceOver && this._noShadow && paintSource instanceof Color && paintSource.a > 0;
     }
 
     /**
@@ -165,8 +160,12 @@ class Context2D {
             globalAlpha: this.globalAlpha,
             globalCompositeOperation: this._globalCompositeOperation,
             transform: new Transform2D([
-                this._transform.a, this._transform.b, this._transform.c,
-                this._transform.d, this._transform.e, this._transform.f
+                this._transform.a,
+                this._transform.b,
+                this._transform.c,
+                this._transform.d,
+                this._transform.e,
+                this._transform.f
             ]),
             fillStyle: this._fillStyle, // Paint sources are immutable, safe to share
             strokeStyle: this._strokeStyle, // Paint sources are immutable, safe to share
@@ -380,16 +379,45 @@ class Context2D {
                     RectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, clip);
                     return;
                 } else {
-                    RectOpsAA.fill_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, this.globalAlpha, clip);
+                    RectOpsAA.fill_AA_Alpha(
+                        this.surface,
+                        tlX,
+                        tlY,
+                        finalW,
+                        finalH,
+                        this._fillStyle,
+                        this.globalAlpha,
+                        clip
+                    );
                     return;
                 }
             } else if (t.isUniformScale) {
                 // Rotated with uniform scale: use edge-function algorithm
                 if (isOpaque) {
-                    RectOpsRot.fill_Rot_Any(this.surface, center.x, center.y, scaledW, scaledH, t.rotationAngle, this._fillStyle, 1.0, clip);
+                    RectOpsRot.fill_Rot_Any(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
+                        t.rotationAngle,
+                        this._fillStyle,
+                        1.0,
+                        clip
+                    );
                     return;
                 } else {
-                    RectOpsRot.fill_Rot_Any(this.surface, center.x, center.y, scaledW, scaledH, t.rotationAngle, this._fillStyle, this.globalAlpha, clip);
+                    RectOpsRot.fill_Rot_Any(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
+                        t.rotationAngle,
+                        this._fillStyle,
+                        this.globalAlpha,
+                        clip
+                    );
                     return;
                 }
             }
@@ -444,21 +472,60 @@ class Context2D {
                         RectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, clip);
                         return;
                     } else {
-                        RectOpsAA.stroke1px_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, this.globalAlpha, clip);
+                        RectOpsAA.stroke1px_AA_Alpha(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            this._strokeStyle,
+                            this.globalAlpha,
+                            clip
+                        );
                         return;
                     }
                 } else if (isThickStroke) {
                     if (isOpaque) {
-                        RectOpsAA.strokeThick_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, scaledLineWidth, this._strokeStyle, clip);
+                        RectOpsAA.strokeThick_AA_Opaq(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            scaledLineWidth,
+                            this._strokeStyle,
+                            clip
+                        );
                         return;
                     } else {
-                        RectOpsAA.strokeThick_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, scaledLineWidth, this._strokeStyle, this.globalAlpha, clip);
+                        RectOpsAA.strokeThick_AA_Alpha(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            scaledLineWidth,
+                            this._strokeStyle,
+                            this.globalAlpha,
+                            clip
+                        );
                         return;
                     }
                 }
             } else if (t.isUniformScale) {
                 // Rotated with uniform scale: use line-based stroke
-                RectOpsRot.stroke_Rot_Any(this.surface, center.x, center.y, scaledW, scaledH, t.rotationAngle, scaledLineWidth, this._strokeStyle, this.globalAlpha, clip);
+                RectOpsRot.stroke_Rot_Any(
+                    this.surface,
+                    center.x,
+                    center.y,
+                    scaledW,
+                    scaledH,
+                    t.rotationAngle,
+                    scaledLineWidth,
+                    this._strokeStyle,
+                    this.globalAlpha,
+                    clip
+                );
                 return;
             }
             // Non-uniform scale + rotation: fall through to path-based rendering (produces parallelogram)
@@ -504,8 +571,7 @@ class Context2D {
      */
     fillStrokeRect(x, y, width, height) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -540,7 +606,10 @@ class Context2D {
 
                 RectOpsAA.fillStroke_AA_Any(
                     this.surface,
-                    tlX, tlY, finalW, finalH,
+                    tlX,
+                    tlY,
+                    finalW,
+                    finalH,
                     scaledLineWidth,
                     hasFill ? this._fillStyle : null,
                     hasStroke ? this._strokeStyle : null,
@@ -552,7 +621,11 @@ class Context2D {
                 // Rotated with uniform scale: use rotated fill+stroke wrapper
                 RectOpsRot.fillStroke_Rot_Any(
                     this.surface,
-                    center.x, center.y, scaledW, scaledH, t.rotationAngle,
+                    center.x,
+                    center.y,
+                    scaledW,
+                    scaledH,
+                    t.rotationAngle,
                     scaledLineWidth,
                     hasFill ? this._fillStyle : null,
                     hasStroke ? this._strokeStyle : null,
@@ -579,15 +652,14 @@ class Context2D {
     /**
      * Clear rectangle directly without canvas-wide compositing
      * @param {number} x - Rectangle x coordinate
-     * @param {number} y - Rectangle y coordinate  
+     * @param {number} y - Rectangle y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
      * @private
      */
     _clearRectDirect(x, y, width, height) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -618,7 +690,7 @@ class Context2D {
         if (transform.b === 0 && transform.c === 0) {
             // Calculate the actual rectangle bounds in surface coordinates
             const rectLeft = transform.e + x * transform.a; // x coordinate with scaling and translation
-            const rectTop = transform.f + y * transform.d;  // y coordinate with scaling and translation  
+            const rectTop = transform.f + y * transform.d; // y coordinate with scaling and translation
             const rectRight = rectLeft + width * transform.a;
             const rectBottom = rectTop + height * transform.d;
 
@@ -636,14 +708,14 @@ class Context2D {
                     }
 
                     const offset = py * surface.stride + px * 4;
-                    surface.data[offset] = 0;     // R
-                    surface.data[offset + 1] = 0; // G  
+                    surface.data[offset] = 0; // R
+                    surface.data[offset + 1] = 0; // G
                     surface.data[offset + 2] = 0; // B
                     surface.data[offset + 3] = 0; // A (transparent)
                 }
             }
         } else {
-            // For rotated/skewed rectangles, we need to test each pixel 
+            // For rotated/skewed rectangles, we need to test each pixel
             // This is more complex but handles all transformation cases correctly
             const invTransform = transform.invert();
 
@@ -658,12 +730,11 @@ class Context2D {
                     const pathPoint = invTransform.transformPoint({ x: px + 0.5, y: py + 0.5 });
 
                     // Check if point is inside the clearRect rectangle
-                    if (pathPoint.x >= x && pathPoint.x < x + width &&
-                        pathPoint.y >= y && pathPoint.y < y + height) {
+                    if (pathPoint.x >= x && pathPoint.x < x + width && pathPoint.y >= y && pathPoint.y < y + height) {
                         const offset = py * surface.stride + px * 4;
-                        surface.data[offset] = 0;     // R
+                        surface.data[offset] = 0; // R
                         surface.data[offset + 1] = 0; // G
-                        surface.data[offset + 2] = 0; // B  
+                        surface.data[offset + 2] = 0; // B
                         surface.data[offset + 3] = 0; // A (transparent)
                     }
                 }
@@ -682,8 +753,7 @@ class Context2D {
      */
     strokeRoundRect(x, y, width, height, radii) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -696,7 +766,7 @@ class Context2D {
         }
 
         // Normalize radius to check for zero
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        const radius = Array.isArray(radii) ? radii[0] : radii || 0;
 
         // Fallback to strokeRect for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -723,15 +793,55 @@ class Context2D {
                     // No transform: use axis-aligned methods with original coordinates
                     if (is1pxStroke) {
                         if (isOpaque) {
-                            RoundedRectOpsAA.stroke1px_AA_Opaq(this.surface, x, y, width, height, radii, this._strokeStyle, clip);
+                            RoundedRectOpsAA.stroke1px_AA_Opaq(
+                                this.surface,
+                                x,
+                                y,
+                                width,
+                                height,
+                                radii,
+                                this._strokeStyle,
+                                clip
+                            );
                         } else {
-                            RoundedRectOpsAA.stroke1px_AA_Alpha(this.surface, x, y, width, height, radii, this._strokeStyle, this.globalAlpha, clip);
+                            RoundedRectOpsAA.stroke1px_AA_Alpha(
+                                this.surface,
+                                x,
+                                y,
+                                width,
+                                height,
+                                radii,
+                                this._strokeStyle,
+                                this.globalAlpha,
+                                clip
+                            );
                         }
                     } else {
                         if (isOpaque) {
-                            RoundedRectOpsAA.strokeThick_AA_Opaq(this.surface, x, y, width, height, radii, this._lineWidth, this._strokeStyle, clip);
+                            RoundedRectOpsAA.strokeThick_AA_Opaq(
+                                this.surface,
+                                x,
+                                y,
+                                width,
+                                height,
+                                radii,
+                                this._lineWidth,
+                                this._strokeStyle,
+                                clip
+                            );
                         } else {
-                            RoundedRectOpsAA.strokeThick_AA_Alpha(this.surface, x, y, width, height, radii, this._lineWidth, this._strokeStyle, this.globalAlpha, clip);
+                            RoundedRectOpsAA.strokeThick_AA_Alpha(
+                                this.surface,
+                                x,
+                                y,
+                                width,
+                                height,
+                                radii,
+                                this._lineWidth,
+                                this._strokeStyle,
+                                this.globalAlpha,
+                                clip
+                            );
                         }
                     }
                     return;
@@ -746,15 +856,55 @@ class Context2D {
 
                     if (is1pxStroke) {
                         if (isOpaque) {
-                            RoundedRectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, scaledRadius, this._strokeStyle, clip);
+                            RoundedRectOpsAA.stroke1px_AA_Opaq(
+                                this.surface,
+                                tlX,
+                                tlY,
+                                finalW,
+                                finalH,
+                                scaledRadius,
+                                this._strokeStyle,
+                                clip
+                            );
                         } else {
-                            RoundedRectOpsAA.stroke1px_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, scaledRadius, this._strokeStyle, this.globalAlpha, clip);
+                            RoundedRectOpsAA.stroke1px_AA_Alpha(
+                                this.surface,
+                                tlX,
+                                tlY,
+                                finalW,
+                                finalH,
+                                scaledRadius,
+                                this._strokeStyle,
+                                this.globalAlpha,
+                                clip
+                            );
                         }
                     } else {
                         if (isOpaque) {
-                            RoundedRectOpsAA.strokeThick_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, scaledRadius, scaledLineWidth, this._strokeStyle, clip);
+                            RoundedRectOpsAA.strokeThick_AA_Opaq(
+                                this.surface,
+                                tlX,
+                                tlY,
+                                finalW,
+                                finalH,
+                                scaledRadius,
+                                scaledLineWidth,
+                                this._strokeStyle,
+                                clip
+                            );
                         } else {
-                            RoundedRectOpsAA.strokeThick_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, scaledRadius, scaledLineWidth, this._strokeStyle, this.globalAlpha, clip);
+                            RoundedRectOpsAA.strokeThick_AA_Alpha(
+                                this.surface,
+                                tlX,
+                                tlY,
+                                finalW,
+                                finalH,
+                                scaledRadius,
+                                scaledLineWidth,
+                                this._strokeStyle,
+                                this.globalAlpha,
+                                clip
+                            );
                         }
                     }
                     return;
@@ -762,7 +912,10 @@ class Context2D {
                     // Rotated with uniform scale: use strokeRotated
                     RoundedRectOpsRot.stroke_Rot_Any(
                         this.surface,
-                        center.x, center.y, scaledW, scaledH,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
                         scaledRadius,
                         t.rotationAngle,
                         scaledLineWidth,
@@ -794,8 +947,7 @@ class Context2D {
      */
     fillRoundRect(x, y, width, height, radii) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -808,7 +960,7 @@ class Context2D {
         }
 
         // Normalize radius to check for zero
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        const radius = Array.isArray(radii) ? radii[0] : radii || 0;
 
         // Fallback to fillRect for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -834,7 +986,17 @@ class Context2D {
                     if (isOpaque) {
                         RoundedRectOpsAA.fill_AA_Opaq(this.surface, x, y, width, height, radii, this._fillStyle, clip);
                     } else {
-                        RoundedRectOpsAA.fill_AA_Alpha(this.surface, x, y, width, height, radii, this._fillStyle, this.globalAlpha, clip);
+                        RoundedRectOpsAA.fill_AA_Alpha(
+                            this.surface,
+                            x,
+                            y,
+                            width,
+                            height,
+                            radii,
+                            this._fillStyle,
+                            this.globalAlpha,
+                            clip
+                        );
                     }
                     return;
                 }
@@ -847,16 +1009,38 @@ class Context2D {
                     const tlY = center.y - finalH / 2;
 
                     if (isOpaque) {
-                        RoundedRectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, scaledRadius, this._fillStyle, clip);
+                        RoundedRectOpsAA.fill_AA_Opaq(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            scaledRadius,
+                            this._fillStyle,
+                            clip
+                        );
                     } else {
-                        RoundedRectOpsAA.fill_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, scaledRadius, this._fillStyle, this.globalAlpha, clip);
+                        RoundedRectOpsAA.fill_AA_Alpha(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            scaledRadius,
+                            this._fillStyle,
+                            this.globalAlpha,
+                            clip
+                        );
                     }
                     return;
                 } else {
                     // Rotated with uniform scale: use fillRotated
                     RoundedRectOpsRot.fill_Rot_Any(
                         this.surface,
-                        center.x, center.y, scaledW, scaledH,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
                         scaledRadius,
                         t.rotationAngle,
                         this._fillStyle,
@@ -887,8 +1071,7 @@ class Context2D {
      */
     fillStrokeRoundRect(x, y, width, height, radii) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -901,7 +1084,7 @@ class Context2D {
         }
 
         // Normalize radius to check for zero
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        const radius = Array.isArray(radii) ? radii[0] : radii || 0;
 
         // Fallback to fillStrokeRect for zero radius
         if (radius <= 0) {
@@ -929,7 +1112,10 @@ class Context2D {
                     // Axis-aligned, no transform: use top-left coordinates
                     RoundedRectOpsAA.fillStroke_AA_Any(
                         this.surface,
-                        x, y, width, height,
+                        x,
+                        y,
+                        width,
+                        height,
                         radii,
                         this._lineWidth,
                         hasFill ? this._fillStyle : null,
@@ -949,7 +1135,10 @@ class Context2D {
 
                     RoundedRectOpsAA.fillStroke_AA_Any(
                         this.surface,
-                        tlX, tlY, finalW, finalH,
+                        tlX,
+                        tlY,
+                        finalW,
+                        finalH,
                         scaledRadius,
                         scaledLineWidth,
                         hasFill ? this._fillStyle : null,
@@ -962,7 +1151,10 @@ class Context2D {
                     // Rotated with uniform scale: use rotated fill+stroke
                     RoundedRectOpsRot.fillStroke_Rot_Any(
                         this.surface,
-                        center.x, center.y, scaledW, scaledH,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
                         scaledRadius,
                         t.rotationAngle,
                         scaledLineWidth,
@@ -989,7 +1181,7 @@ class Context2D {
 
         // Handle different argument combinations:
         // fill() -> path = undefined, rule = undefined
-        // fill('evenodd') -> path = 'evenodd', rule = undefined  
+        // fill('evenodd') -> path = 'evenodd', rule = undefined
         // fill(path2d) -> path = path2d object, rule = undefined
         // fill(path2d, 'evenodd') -> path = path2d object, rule = 'evenodd'
 
@@ -1061,7 +1253,7 @@ class Context2D {
             lineJoin: this.lineJoin,
             lineCap: this.lineCap,
             miterLimit: this.miterLimit,
-            lineDash: this._lineDash.slice(),    // Copy to avoid mutation
+            lineDash: this._lineDash.slice(), // Copy to avoid mutation
             lineDashOffset: this._lineDashOffset
         });
 
@@ -1141,9 +1333,7 @@ class Context2D {
         }
 
         // Transform polygons to match current canvas transform
-        const transformedPolygons = polygons.map(poly =>
-            poly.map(point => this._transform.transformPoint(point))
-        );
+        const transformedPolygons = polygons.map(poly => poly.map(point => this._transform.transformPoint(point)));
 
         // Test point against transformed polygons
         return PolygonFiller.isPointInPolygons(x, y, transformedPolygons, fillRule);
@@ -1204,7 +1394,6 @@ class Context2D {
             lineDashOffset: this._lineDashOffset
         };
 
-
         // Generate stroke polygons using StrokeGenerator
         const strokePolygons = StrokeGenerator.generateStrokePolygons(path, strokeProps);
 
@@ -1255,11 +1444,11 @@ class Context2D {
 
     /**
      * Enhanced clipping support with stencil buffer intersection
-     * 
+     *
      * Implements HTML5 Canvas-compatible clipping with proper intersection semantics.
      * Each clip() operation creates a new clip region that intersects with any existing
      * clipping regions.
-     * 
+     *
      * @param {Path2D} path - Optional path to clip with (uses current path if not provided)
      * @param {string} rule - Fill rule: 'nonzero' (default) or 'evenodd'
      */
@@ -1300,7 +1489,7 @@ class Context2D {
                 hasHeight: image ? typeof image.height : 'N/A',
                 hasData: image ? !!image.data : 'N/A',
                 dataType: image && image.data ? image.data.constructor.name : 'N/A',
-                dataInstanceCheck: image && image.data ? (image.data instanceof Uint8ClampedArray) : 'N/A'
+                dataInstanceCheck: image && image.data ? image.data instanceof Uint8ClampedArray : 'N/A'
             });
         }
 
@@ -1325,9 +1514,12 @@ class Context2D {
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: new Transform2D([
-                this._transform.a, this._transform.b,
-                this._transform.c, this._transform.d,
-                this._transform.e, this._transform.f
+                this._transform.a,
+                this._transform.b,
+                this._transform.c,
+                this._transform.d,
+                this._transform.e,
+                this._transform.f
             ]),
             clipMask: this._clipMask,
             // Shadow properties
@@ -1541,7 +1733,8 @@ class Context2D {
             const clipBuffer = this._clipMask ? this._clipMask.buffer : null;
             CircleOps.fillStroke_Any(
                 this.surface,
-                center.x, center.y,
+                center.x,
+                center.y,
                 scaledRadius,
                 scaledLineWidth,
                 hasFill ? fillPaintSource : null,
@@ -1593,11 +1786,28 @@ class Context2D {
         if (isColor && isSourceOver) {
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
             if (isOpaque) {
-                ArcOps.fill_Opaq(this.surface, center.x, center.y, scaledRadius,
-                    angles.start, angles.end, paintSource, clipBuffer);
+                ArcOps.fill_Opaq(
+                    this.surface,
+                    center.x,
+                    center.y,
+                    scaledRadius,
+                    angles.start,
+                    angles.end,
+                    paintSource,
+                    clipBuffer
+                );
             } else if (paintSource.a > 0) {
-                ArcOps.fill_Alpha(this.surface, center.x, center.y, scaledRadius,
-                    angles.start, angles.end, paintSource, this.globalAlpha, clipBuffer);
+                ArcOps.fill_Alpha(
+                    this.surface,
+                    center.x,
+                    center.y,
+                    scaledRadius,
+                    angles.start,
+                    angles.end,
+                    paintSource,
+                    this.globalAlpha,
+                    clipBuffer
+                );
             }
             return;
         }
@@ -1651,20 +1861,56 @@ class Context2D {
             if (is1pxStroke) {
                 // Optimized 1px stroke path
                 if (isOpaque) {
-                    ArcOps.stroke1px_Opaq(this.surface, center.x, center.y, scaledRadius,
-                        angles.start, angles.end, paintSource, clipBuffer);
+                    ArcOps.stroke1px_Opaq(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        paintSource,
+                        clipBuffer
+                    );
                 } else if (paintSource.a > 0) {
-                    ArcOps.stroke1px_Alpha(this.surface, center.x, center.y, scaledRadius,
-                        angles.start, angles.end, paintSource, this.globalAlpha, clipBuffer);
+                    ArcOps.stroke1px_Alpha(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        paintSource,
+                        this.globalAlpha,
+                        clipBuffer
+                    );
                 }
             } else {
                 // Thick stroke path
                 if (isOpaque) {
-                    ArcOps.strokeOuter_Opaq(this.surface, center.x, center.y, scaledRadius,
-                        angles.start, angles.end, scaledLineWidth, paintSource, clipBuffer);
+                    ArcOps.strokeOuter_Opaq(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        scaledLineWidth,
+                        paintSource,
+                        clipBuffer
+                    );
                 } else if (paintSource.a > 0) {
-                    ArcOps.strokeOuter_Alpha(this.surface, center.x, center.y, scaledRadius,
-                        angles.start, angles.end, scaledLineWidth, paintSource, this.globalAlpha, clipBuffer);
+                    ArcOps.strokeOuter_Alpha(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        scaledLineWidth,
+                        paintSource,
+                        this.globalAlpha,
+                        clipBuffer
+                    );
                 }
             }
             return;
@@ -1718,9 +1964,11 @@ class Context2D {
             // Use unified direct rendering
             ArcOps.fillStrokeOuter_Any(
                 this.surface,
-                center.x, center.y,
+                center.x,
+                center.y,
                 scaledRadius,
-                angles.start, angles.end,
+                angles.start,
+                angles.end,
                 scaledLineWidth,
                 hasFill ? fillPaintSource : null,
                 hasStroke ? strokePaintSource : null,
@@ -1789,14 +2037,9 @@ class Context2D {
         const isColor = paintSource instanceof Color;
         const isSourceOver = this.globalCompositeOperation === 'source-over';
 
-        const isOpaqueColor = isColor &&
-            paintSource.a === 255 &&
-            this.globalAlpha >= 1.0 &&
-            isSourceOver;
+        const isOpaqueColor = isColor && paintSource.a === 255 && this.globalAlpha >= 1.0 && isSourceOver;
 
-        const isSemiTransparentColor = isColor &&
-            paintSource.a < 255 &&
-            isSourceOver;
+        const isSemiTransparentColor = isColor && paintSource.a < 255 && isSourceOver;
 
         if (isOpaqueColor) {
             // Direct rendering 1: 32-bit packed writes for opaque colors
@@ -1845,7 +2088,16 @@ class Context2D {
             if (isOpaqueThick) {
                 CircleOps.strokeThick_Opaq(this.surface, cx, cy, radius, lineWidth, paintSource, clipBuffer);
             } else {
-                CircleOps.strokeThick_Alpha(this.surface, cx, cy, radius, lineWidth, paintSource, this.globalAlpha, clipBuffer);
+                CircleOps.strokeThick_Alpha(
+                    this.surface,
+                    cx,
+                    cy,
+                    radius,
+                    lineWidth,
+                    paintSource,
+                    this.globalAlpha,
+                    clipBuffer
+                );
             }
             return;
         }
@@ -1874,22 +2126,33 @@ class Context2D {
         const isButtCap = this.lineCap === 'butt';
 
         // Get color for solid color direct rendering
-        const isOpaqueColor = paintSource instanceof Color &&
+        const isOpaqueColor =
+            paintSource instanceof Color &&
             paintSource.a === 255 &&
             this.globalAlpha >= 1.0 &&
             this.globalCompositeOperation === 'source-over' &&
             isButtCap;
 
         // Check for semitransparent color direct rendering (Color with alpha blending)
-        const isSemiTransparentColor = paintSource instanceof Color &&
+        const isSemiTransparentColor =
+            paintSource instanceof Color &&
             !isOpaqueColor &&
             this.globalCompositeOperation === 'source-over' &&
             isButtCap;
 
         // Try direct rendering via LineOps
         const directRenderingUsed = LineOps.stroke_Any(
-            this.surface, x1, y1, x2, y2, lineWidth, paintSource,
-            this.globalAlpha, clipBuffer, isOpaqueColor, isSemiTransparentColor
+            this.surface,
+            x1,
+            y1,
+            x2,
+            y2,
+            lineWidth,
+            paintSource,
+            this.globalAlpha,
+            clipBuffer,
+            isOpaqueColor,
+            isSemiTransparentColor
         );
 
         if (!directRenderingUsed) {

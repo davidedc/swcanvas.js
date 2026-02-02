@@ -59,10 +59,14 @@ class QuadScanOps {
 
         // Reuse static corner pool instead of allocating new objects
         const c = QuadScanOps._corners;
-        c[0].x = x1 + perpXHalf; c[0].y = y1 + perpYHalf;
-        c[1].x = x1 - perpXHalf; c[1].y = y1 - perpYHalf;
-        c[2].x = x2 - perpXHalf; c[2].y = y2 - perpYHalf;
-        c[3].x = x2 + perpXHalf; c[3].y = y2 + perpYHalf;
+        c[0].x = x1 + perpXHalf;
+        c[0].y = y1 + perpYHalf;
+        c[1].x = x1 - perpXHalf;
+        c[1].y = y1 - perpYHalf;
+        c[2].x = x2 - perpXHalf;
+        c[2].y = y2 - perpYHalf;
+        c[3].x = x2 + perpXHalf;
+        c[3].y = y2 + perpYHalf;
         return c;
     }
 
@@ -107,7 +111,8 @@ class QuadScanOps {
             const p1 = corners[i];
             const p2 = corners[(i + 1) % 4];
 
-            if (p1.y !== p2.y) { // Skip horizontal edges
+            if (p1.y !== p2.y) {
+                // Skip horizontal edges
                 const edge = QuadScanOps._edges[QuadScanOps._edgeCount++];
                 edge.p1 = p1;
                 edge.p2 = p2;
@@ -137,7 +142,7 @@ class QuadScanOps {
 
                 if ((y >= p1.y && y < p2.y) || (y >= p2.y && y < p1.y)) {
                     intersections.push(edge.currentX);
-                    edge.currentX += edge.slope;  // Incremental update (was: t * deltaX)
+                    edge.currentX += edge.slope; // Incremental update (was: t * deltaX)
                 }
             }
 
@@ -206,7 +211,20 @@ class QuadScanOps {
                         if (isOpaque) {
                             SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
                         } else {
-                            SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                            SpanOps.fill_Alpha(
+                                data,
+                                width,
+                                height,
+                                leftX,
+                                y,
+                                spanLength,
+                                r,
+                                g,
+                                b,
+                                effectiveAlpha,
+                                invAlpha,
+                                clipBuffer
+                            );
                         }
                     }
                 }
@@ -274,7 +292,20 @@ class QuadScanOps {
                 if (isOpaque) {
                     SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
                 } else {
-                    SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        leftX,
+                        y,
+                        spanLength,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }

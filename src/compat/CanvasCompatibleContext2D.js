@@ -1,6 +1,6 @@
 /**
  * CanvasCompatibleContext2D
- * 
+ *
  * HTML5 Canvas 2D Context-compatible wrapper around SWCanvas Core Context2D.
  * Provides the standard HTML5 Canvas API with property setters/getters and
  * CSS color support while delegating actual rendering to the Core implementation.
@@ -89,11 +89,13 @@ class CanvasCompatibleContext2D {
      * @private
      */
     _applyFillStyle() {
-        if (this._fillStyle instanceof Gradient ||
+        if (
+            this._fillStyle instanceof Gradient ||
             this._fillStyle instanceof LinearGradient ||
             this._fillStyle instanceof RadialGradient ||
             this._fillStyle instanceof ConicGradient ||
-            this._fillStyle instanceof Pattern) {
+            this._fillStyle instanceof Pattern
+        ) {
             // Pass gradient/pattern directly to core
             this._core.setFillStyle(this._fillStyle);
         } else {
@@ -108,11 +110,13 @@ class CanvasCompatibleContext2D {
      * @private
      */
     _applyStrokeStyle() {
-        if (this._strokeStyle instanceof Gradient ||
+        if (
+            this._strokeStyle instanceof Gradient ||
             this._strokeStyle instanceof LinearGradient ||
             this._strokeStyle instanceof RadialGradient ||
             this._strokeStyle instanceof ConicGradient ||
-            this._strokeStyle instanceof Pattern) {
+            this._strokeStyle instanceof Pattern
+        ) {
             // Pass gradient/pattern directly to core
             this._core.setStrokeStyle(this._strokeStyle);
         } else {
@@ -137,34 +141,58 @@ class CanvasCompatibleContext2D {
 
     // ===== DIRECT PROPERTY DELEGATION =====
 
-    get globalAlpha() { return this._core.globalAlpha; }
-    set globalAlpha(value) { this._core.globalAlpha = value; }
+    get globalAlpha() {
+        return this._core.globalAlpha;
+    }
+    set globalAlpha(value) {
+        this._core.globalAlpha = value;
+    }
 
-    get globalCompositeOperation() { return this._core.globalCompositeOperation; }
-    set globalCompositeOperation(value) { this._core.globalCompositeOperation = value; }
+    get globalCompositeOperation() {
+        return this._core.globalCompositeOperation;
+    }
+    set globalCompositeOperation(value) {
+        this._core.globalCompositeOperation = value;
+    }
 
-    get lineWidth() { return this._core.lineWidth; }
+    get lineWidth() {
+        return this._core.lineWidth;
+    }
     set lineWidth(value) {
         // HTML5 Canvas spec: ignore zero, negative, Infinity, and NaN values
-        if (typeof value === 'number' &&
-            value > 0 &&
-            isFinite(value)) {
+        if (typeof value === 'number' && value > 0 && isFinite(value)) {
             this._core.lineWidth = value;
         }
         // Otherwise, keep the current value unchanged (ignore invalid input)
     }
 
-    get lineJoin() { return this._core.lineJoin; }
-    set lineJoin(value) { this._core.lineJoin = value; }
+    get lineJoin() {
+        return this._core.lineJoin;
+    }
+    set lineJoin(value) {
+        this._core.lineJoin = value;
+    }
 
-    get lineCap() { return this._core.lineCap; }
-    set lineCap(value) { this._core.lineCap = value; }
+    get lineCap() {
+        return this._core.lineCap;
+    }
+    set lineCap(value) {
+        this._core.lineCap = value;
+    }
 
-    get miterLimit() { return this._core.miterLimit; }
-    set miterLimit(value) { this._core.miterLimit = value; }
+    get miterLimit() {
+        return this._core.miterLimit;
+    }
+    set miterLimit(value) {
+        this._core.miterLimit = value;
+    }
 
-    get lineDashOffset() { return this._core.lineDashOffset; }
-    set lineDashOffset(value) { this._core.lineDashOffset = value; }
+    get lineDashOffset() {
+        return this._core.lineDashOffset;
+    }
+    set lineDashOffset(value) {
+        this._core.lineDashOffset = value;
+    }
 
     // ===== SHADOW PROPERTIES =====
 
@@ -183,7 +211,9 @@ class CanvasCompatibleContext2D {
         }
     }
 
-    get shadowBlur() { return this._core.shadowBlur; }
+    get shadowBlur() {
+        return this._core.shadowBlur;
+    }
     set shadowBlur(value) {
         if (typeof value === 'number' && !isNaN(value) && value >= 0) {
             this._core.setShadowBlur(value);
@@ -191,7 +221,9 @@ class CanvasCompatibleContext2D {
         // Silently ignore invalid values (matches HTML5 Canvas behavior)
     }
 
-    get shadowOffsetX() { return this._core.shadowOffsetX; }
+    get shadowOffsetX() {
+        return this._core.shadowOffsetX;
+    }
     set shadowOffsetX(value) {
         if (typeof value === 'number' && !isNaN(value)) {
             this._core.setShadowOffsetX(value);
@@ -199,7 +231,9 @@ class CanvasCompatibleContext2D {
         // Silently ignore invalid values (matches HTML5 Canvas behavior)
     }
 
-    get shadowOffsetY() { return this._core.shadowOffsetY; }
+    get shadowOffsetY() {
+        return this._core.shadowOffsetY;
+    }
     set shadowOffsetY(value) {
         if (typeof value === 'number' && !isNaN(value)) {
             this._core.setShadowOffsetY(value);
@@ -421,7 +455,7 @@ class CanvasCompatibleContext2D {
     /**
      * Get ImageData from a rectangular region
      * @param {number} x - X coordinate of rectangle
-     * @param {number} y - Y coordinate of rectangle  
+     * @param {number} y - Y coordinate of rectangle
      * @param {number} width - Width of rectangle
      * @param {number} height - Height of rectangle
      * @returns {Object} ImageData-like object
