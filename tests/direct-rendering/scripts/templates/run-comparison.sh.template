@@ -1,0 +1,69 @@
+#!/bin/bash
+#
+# Performance Comparison Script
+# Generated: {{TIMESTAMP}}
+# Baseline: {{BASELINE_FILE}}
+#
+# This script runs post-refactoring benchmarks and compares against the baseline.
+# Run in the same dedicated terminal used for baseline creation.
+#
+
+set -e
+
+# Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+BASELINE_FILE="$PROJECT_ROOT/perf-baselines/{{BASELINE_FILE}}"
+AFTER_FILE="$PROJECT_ROOT/perf-baselines/after-{{SESSION_ID}}.json"
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║           SWCanvas Performance Comparison                    ║"
+echo "╠══════════════════════════════════════════════════════════════╣"
+echo "║ Comparing against: {{BASELINE_FILE}}"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
+# Check baseline exists
+if [ ! -f "$BASELINE_FILE" ]; then
+    echo "✗ ERROR: Baseline file not found: $BASELINE_FILE"
+    echo ""
+    echo "Please run the baseline script first:"
+    echo "  ./create-baseline-{{SESSION_ID}}.sh"
+    exit 1
+fi
+
+# Step 1: Build production version
+echo "[1/3] Building production version..."
+cd "$PROJECT_ROOT"
+npm run build:prod --silent 2>/dev/null || npm run build:prod
+
+# Step 2: Run post-refactoring benchmarks
+echo "[2/3] Running post-refactoring benchmarks..."
+echo "      Filters: {{FILTERS}}"
+echo "      Runs: {{RUNS}}, Shapes: {{SHAPES}}"
+echo ""
+
+node "$PROJECT_ROOT/tests/direct-rendering/scripts/benchmark-session.js" \
+    --filters '{{FILTERS_JSON}}' \
+    --runs {{RUNS}} \
+    --shapes {{SHAPES}} \
+    --output "$AFTER_FILE" \
+    --throttle-check \
+    --warmup-stabilize
+
+# Step 3: Generate comparison report
+echo ""
+echo "[3/3] Generating comparison report..."
+echo ""
+
+node "$PROJECT_ROOT/tests/direct-rendering/compare-baselines.js" \
+    --before "$BASELINE_FILE" \
+    --after "$AFTER_FILE" \
+    --statistical
+
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+echo "Raw data files:"
+echo "  Before: $BASELINE_FILE"
+echo "  After:  $AFTER_FILE"
+echo "═══════════════════════════════════════════════════════════════"

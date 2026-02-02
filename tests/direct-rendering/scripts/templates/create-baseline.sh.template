@@ -1,0 +1,73 @@
+#!/bin/bash
+#
+# Performance Baseline Creation Script
+# Generated: {{TIMESTAMP}}
+# Description: {{DESCRIPTION}}
+#
+# This script creates a baseline for performance comparison.
+# Run in a dedicated terminal to avoid interference from other processes.
+#
+
+set -e
+
+# Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+BASELINE_NAME="${1:-{{BASELINE_NAME}}}"
+OUTPUT_FILE="$PROJECT_ROOT/perf-baselines/${BASELINE_NAME}.json"
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║           SWCanvas Performance Baseline Creation             ║"
+echo "╠══════════════════════════════════════════════════════════════╣"
+echo "║ Description: {{DESCRIPTION}}"
+echo "║ Output: $OUTPUT_FILE"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
+# Step 1: Build production version
+echo "[1/4] Building production version..."
+cd "$PROJECT_ROOT"
+npm run build:prod --silent 2>/dev/null || npm run build:prod
+
+# Step 2: Create output directory
+echo "[2/4] Preparing output directory..."
+mkdir -p "$PROJECT_ROOT/perf-baselines"
+
+# Step 3: Run benchmark session
+echo "[3/4] Running benchmarks..."
+echo "      Filters: {{FILTERS}}"
+echo "      Runs: {{RUNS}}, Shapes: {{SHAPES}}"
+echo ""
+
+# Use node directly to avoid npm stdout pollution
+node "$PROJECT_ROOT/tests/direct-rendering/scripts/benchmark-session.js" \
+    --filters '{{FILTERS_JSON}}' \
+    --runs {{RUNS}} \
+    --shapes {{SHAPES}} \
+    --output "$OUTPUT_FILE" \
+    --throttle-check \
+    --warmup-stabilize
+
+# Step 4: Verify output
+echo ""
+echo "[4/4] Verifying output..."
+if [ -f "$OUTPUT_FILE" ]; then
+    TEST_COUNT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$OUTPUT_FILE')).results.length)")
+    echo "✓ Baseline saved: $OUTPUT_FILE"
+    echo "✓ Tests recorded: $TEST_COUNT"
+    echo ""
+    echo "Throttling summary:"
+    node -e "const d=JSON.parse(require('fs').readFileSync('$OUTPUT_FILE')); console.log(d.throttling?.recommendation || 'No throttling data')"
+else
+    echo "✗ ERROR: Output file not created"
+    exit 1
+fi
+
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+echo "Done. Baseline ready for comparison."
+echo ""
+echo "Next steps:"
+echo "  1. Make your code changes"
+echo "  2. Run the comparison script: run-comparison-{{SESSION_ID}}.sh"
+echo "═══════════════════════════════════════════════════════════════"

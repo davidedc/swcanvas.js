@@ -12,6 +12,10 @@
 const fs = require('fs');
 const path = require('path');
 const { performance } = require('perf_hooks');
+const { execSync } = require('child_process');
+
+// Import enhanced statistics module
+const Statistics = require('./lib/statistics');
 
 // Performance tests require the minified build for accurate production-like benchmarks
 const minifiedPath = path.join(__dirname, '../../dist/swcanvas.min.js');
@@ -118,6 +122,8 @@ let listOnly = false;
 let outputFormat = 'text'; // 'text', 'json', 'csv'
 let compareBaseline = null;
 let adaptiveRuns = false;
+let outputFile = null; // New: write JSON directly to file
+let useEnhancedStats = false; // New: use enhanced statistics module
 
 // Help text
 if (args.includes('--help') || args.includes('-h')) {
@@ -145,6 +151,8 @@ Options:
   --csv                     Output results in CSV format
   --compare=<file>          Compare results against a JSON baseline file
   --adaptive-runs           Automatically increase runs for high-variance tests
+  --output-file=<file>      Write JSON output directly to file (avoids npm pollution)
+  --enhanced-stats          Use enhanced statistics (sample stddev, CI, SEM)
   -h, --help                Show this help message
 
 Stroke Categories:
@@ -266,6 +274,13 @@ for (let i = 0; i < args.length; i++) {
         i++;
     } else if (arg === '--adaptive-runs') {
         adaptiveRuns = true;
+    } else if (arg.startsWith('--output-file=')) {
+        outputFile = arg.split('=')[1];
+    } else if (arg === '--output-file' && args[i + 1]) {
+        outputFile = args[i + 1];
+        i++;
+    } else if (arg === '--enhanced-stats') {
+        useEnhancedStats = true;
     }
 }
 
@@ -326,15 +341,39 @@ function measureRun(test, ctx, shapeCount, runIndex) {
 }
 
 /**
- * Calculate statistics from an array of measurements
+ * Calculate statistics from an array of measurements.
+ * Uses enhanced statistics module when --enhanced-stats is enabled.
  */
 function calculateStats(measurements) {
+    if (useEnhancedStats) {
+        // Use enhanced statistics with sample stddev, CI, SEM
+        const stats = Statistics.analyze(measurements);
+        // Return compatible format with additional enhanced fields
+        return {
+            mean: stats.mean,
+            min: stats.min,
+            max: stats.max,
+            stddev: stats.stddev,
+            stddevPercent: stats.stddevPercent,
+            // Enhanced fields
+            median: stats.median,
+            sem: stats.sem,
+            semPercent: stats.semPercent,
+            ci95: stats.ci95,
+            q1: stats.q1,
+            q3: stats.q3,
+            outliers: stats.outliers,
+            raw: stats.raw
+        };
+    }
+
+    // Legacy calculation (population stddev)
     const n = measurements.length;
     const mean = measurements.reduce((a, b) => a + b, 0) / n;
     const min = Math.min(...measurements);
     const max = Math.max(...measurements);
 
-    // Standard deviation
+    // Standard deviation (population, for backward compatibility)
     const variance = measurements.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / n;
     const stddev = Math.sqrt(variance);
     const stddevPercent = (stddev / mean) * 100;
@@ -448,43 +487,103 @@ function printTestResult(result) {
 }
 
 /**
- * Output results as JSON
+ * Output results as JSON.
+ * Supports v2.0 format with enhanced statistics when --enhanced-stats is enabled.
  */
 function outputJSON(results) {
-    const gitCommit = (() => {
-        try {
-            const { execSync } = require('child_process');
-            return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-        } catch (e) {
-            return 'unknown';
+    let gitCommit = 'unknown';
+    let gitBranch = 'unknown';
+    try {
+        gitCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+        gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
+    } catch (e) {
+        // Git not available
+    }
+
+    let output;
+
+    if (useEnhancedStats) {
+        // v2.0 format with enhanced statistics
+        output = {
+            version: '2.0',
+            metadata: {
+                timestamp: new Date().toISOString(),
+                gitCommit: gitCommit,
+                gitBranch: gitBranch,
+                nodeVersion: process.version,
+                platform: `${process.platform} ${process.arch}`,
+                config: {
+                    shapesPerRun: shapesPerRun,
+                    warmupIterations: warmupIterations,
+                    runs: numRuns,
+                    canvasSize: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT }
+                }
+            },
+            results: results.map(r => ({
+                id: r.test.id,
+                name: r.test.perfName,
+                category: r.test.category,
+                metadata: r.test.metadata || {},
+                statistics: {
+                    n: r.stats.raw ? r.stats.raw.length : numRuns,
+                    mean: r.stats.mean,
+                    median: r.stats.median,
+                    stddev: r.stats.stddev,
+                    stddevPercent: parseFloat(r.stats.stddevPercent.toFixed(2)),
+                    sem: r.stats.sem,
+                    semPercent: parseFloat((r.stats.semPercent || 0).toFixed(2)),
+                    ci95: r.stats.ci95 || null,
+                    min: r.stats.min,
+                    max: r.stats.max,
+                    q1: r.stats.q1,
+                    q3: r.stats.q3,
+                    outliers: r.stats.outliers || 0,
+                    raw: r.stats.raw || r.measurements
+                },
+                shapesPerSec: Math.round(r.shapesPerSecond),
+                usPerShape: parseFloat(r.microsecondsPerShape.toFixed(2))
+            }))
+        };
+    } else {
+        // Legacy format (v1.0)
+        output = {
+            metadata: {
+                timestamp: new Date().toISOString(),
+                gitCommit: gitCommit,
+                config: {
+                    shapesPerRun: shapesPerRun,
+                    warmupIterations: warmupIterations,
+                    numRuns: numRuns,
+                    canvasSize: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT }
+                }
+            },
+            results: results.map(r => ({
+                id: r.test.id,
+                name: r.test.perfName,
+                category: r.test.category,
+                metadata: r.test.metadata || {},
+                shapesPerSec: Math.round(r.shapesPerSecond),
+                usPerShape: parseFloat(r.microsecondsPerShape.toFixed(2)),
+                stddev: parseFloat(r.stats.stddevPercent.toFixed(1)),
+                min: Math.round(r.shapesPerSecondMin),
+                max: Math.round(r.shapesPerSecondMax)
+            }))
+        };
+    }
+
+    const jsonStr = JSON.stringify(output, null, 2);
+
+    if (outputFile) {
+        // Write directly to file (avoids npm stdout pollution)
+        const outputDir = path.dirname(outputFile);
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
         }
-    })();
-
-    const output = {
-        metadata: {
-            timestamp: new Date().toISOString(),
-            gitCommit: gitCommit,
-            config: {
-                shapesPerRun: shapesPerRun,
-                warmupIterations: warmupIterations,
-                numRuns: numRuns,
-                canvasSize: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT }
-            }
-        },
-        results: results.map(r => ({
-            id: r.test.id,
-            name: r.test.perfName,
-            category: r.test.category,
-            metadata: r.test.metadata || {},
-            shapesPerSec: Math.round(r.shapesPerSecond),
-            usPerShape: parseFloat(r.microsecondsPerShape.toFixed(2)),
-            stddev: parseFloat(r.stats.stddevPercent.toFixed(1)),
-            min: Math.round(r.shapesPerSecondMin),
-            max: Math.round(r.shapesPerSecondMax)
-        }))
-    };
-
-    console.log(JSON.stringify(output, null, 2));
+        fs.writeFileSync(outputFile, jsonStr);
+        console.log(`JSON output written to: ${outputFile}`);
+    } else {
+        console.log(jsonStr);
+    }
 }
 
 /**

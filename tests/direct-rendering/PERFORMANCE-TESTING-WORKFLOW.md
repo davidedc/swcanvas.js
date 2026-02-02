@@ -16,7 +16,8 @@ For technical details on how benchmarking works (VSync cliff detection, timing m
 6. [Phase 5: Analyze and Conclude](#6-phase-5-analyze-and-conclude)
 7. [Advanced Techniques](#7-advanced-techniques)
 8. [Case Study: RoundedRect SpanOps Refactoring](#8-case-study-roundedrect-spanops-refactoring)
-9. [Quick Reference](#9-quick-reference)
+9. [Enhanced Benchmarking System (v2.0)](#9-enhanced-benchmarking-system-v20) ← **NEW**
+10. [Quick Reference](#10-quick-reference)
 
 ---
 
@@ -587,7 +588,185 @@ Based on practical observations, use these thresholds:
 
 ---
 
-## 9. Quick Reference
+## 9. Enhanced Benchmarking System (v2.0)
+
+### 9.1 Overview
+
+The enhanced benchmarking system addresses fundamental statistical problems in performance measurement:
+
+- **Sample Standard Deviation**: Uses n-1 divisor for unbiased estimation
+- **Confidence Intervals**: 95% CI using t-distribution
+- **Welch's t-test**: Statistical significance testing for comparisons
+- **Outlier Detection**: IQR-based outlier identification
+- **Raw Measurement Storage**: All measurements preserved for retroactive analysis
+- **Throttle Detection**: Detects CPU thermal throttling during long sessions
+- **Warmup Stabilization**: Adaptive JIT warmup detection
+
+### 9.2 New Tools
+
+#### Benchmark Session Orchestrator
+
+The main tool for running benchmarks with enhanced features:
+
+```bash
+node tests/direct-rendering/scripts/benchmark-session.js \
+  --output perf-baselines/baseline.json \
+  --filters '{"shape":"arc","stroke":"sw1px"}' \
+  --runs 50 \
+  --shapes 5000 \
+  --throttle-check \
+  --warmup-stabilize
+```
+
+**Features:**
+- Writes JSON directly to file (avoids npm stdout pollution)
+- Periodic throttle checks every 10 tests
+- Adaptive warmup until JIT stabilizes
+- Full v2.0 JSON format with raw measurements
+
+#### Enhanced Statistics in run-performance-tests.js
+
+Use the `--enhanced-stats` flag for proper statistical analysis:
+
+```bash
+npm run test:direct-rendering:perf -- \
+  --shape arc \
+  --enhanced-stats \
+  --output-file=perf-baselines/arc-baseline.json
+```
+
+#### Statistical Comparison
+
+Use `--statistical` flag for p-value based significance testing:
+
+```bash
+node tests/direct-rendering/compare-baselines.js \
+  --before baseline-before.json \
+  --after baseline-after.json \
+  --statistical
+```
+
+**Statistical Classifications:**
+- `SIGNIFICANT_FASTER` - p < 0.05, CIs don't overlap, positive change
+- `LIKELY_FASTER` - Significant p-value but CIs overlap
+- `SAME` - Not statistically significant
+- `LIKELY_SLOWER` - Significant p-value but CIs overlap
+- `SIGNIFICANT_SLOWER` - p < 0.05, CIs don't overlap, negative change
+
+### 9.3 JSON Format v2.0
+
+The new JSON format includes full statistical data:
+
+```json
+{
+  "version": "2.0",
+  "metadata": {
+    "timestamp": "2026-02-02T15:30:00.000Z",
+    "gitCommit": "abc1234",
+    "gitBranch": "main",
+    "nodeVersion": "v20.10.0",
+    "platform": "darwin arm64",
+    "config": { "shapesPerRun": 5000, "runs": 50 }
+  },
+  "throttling": {
+    "stable": true,
+    "maxDriftPercent": 3.2,
+    "recommendation": "System performance was stable."
+  },
+  "results": [{
+    "id": "arc-perf-sw1px-szM-angS-stroke-opaque",
+    "name": "Arc Stroke Opaque: 1px, M, Small",
+    "statistics": {
+      "n": 50,
+      "mean": 12.5,
+      "median": 12.3,
+      "stddev": 0.8,
+      "stddevPercent": 6.4,
+      "sem": 0.11,
+      "semPercent": 0.9,
+      "ci95": { "low": 12.28, "high": 12.72 },
+      "outliers": 2,
+      "raw": [12.5, 12.3, ...]
+    },
+    "shapesPerSec": 400000,
+    "usPerShape": 2.5
+  }]
+}
+```
+
+### 9.4 Automated Workflow with Generated Scripts
+
+For complex benchmarking sessions, use the template system:
+
+1. **Templates Location**: `tests/direct-rendering/scripts/templates/`
+2. **Generated Scripts**: `tests/direct-rendering/scripts/generated/`
+
+**Template Variables:**
+- `{{TIMESTAMP}}` - Generation timestamp
+- `{{DESCRIPTION}}` - User-provided description
+- `{{BASELINE_NAME}}` - Name for baseline file
+- `{{FILTERS_JSON}}` - JSON filter string
+- `{{RUNS}}` - Number of runs
+- `{{SHAPES}}` - Shapes per run
+- `{{SESSION_ID}}` - Unique session identifier
+
+**Example Workflow:**
+
+1. Generate scripts from templates (or have Claude generate them)
+2. Run baseline script before making changes:
+   ```bash
+   ./tests/direct-rendering/scripts/generated/create-baseline-20260202.sh
+   ```
+3. Make your code changes
+4. Run comparison script:
+   ```bash
+   ./tests/direct-rendering/scripts/generated/run-comparison-20260202.sh
+   ```
+
+### 9.5 Interpreting Statistical Results
+
+**When is a change real?**
+
+| Condition | Interpretation |
+|-----------|----------------|
+| p < 0.05 AND CIs don't overlap | **Strong evidence** - the change is real |
+| p < 0.05 AND CIs overlap | **Suggestive** - likely real but not conclusive |
+| p > 0.05 | **Not significant** - treat as noise |
+
+**Why the old system was unreliable:**
+
+- Used population stddev (n) instead of sample stddev (n-1)
+- Fixed thresholds (15%/25%) unrelated to actual variance
+- No consideration of statistical significance
+- Raw measurements discarded after computing mean
+- No confidence intervals for comparison
+
+**Example of the problem:**
+
+```
+Test A: Mean=100,000, StdDev=40,000 (40%)
+Test B: Mean=110,000, StdDev=35,000 (35%)
+
+Old system: +10% → SAME (within 15% threshold)
+New system: p=0.42 → SAME (correct, but with reasoning)
+
+If Test B had StdDev=5,000 (5%):
+New system: p=0.001 → SIGNIFICANT_FASTER (different conclusion!)
+```
+
+### 9.6 Best Practices
+
+1. **Use 50+ runs** for statistical significance testing
+2. **Enable throttle checking** for sessions longer than 5 minutes
+3. **Use warmup stabilization** for the first test of a type
+4. **Store raw measurements** (always happens with v2.0 format)
+5. **Compare with `--statistical`** for p-value based decisions
+6. **Close other applications** during benchmarking
+7. **Use a dedicated terminal** in the same thermal state for before/after
+
+---
+
+## 10. Quick Reference
 
 ### Command Cheat Sheet
 
@@ -646,10 +825,15 @@ See [Section 7.4: File Naming Convention](#74-file-naming-convention) for naming
 ### Comparison Commands
 
 ```bash
-# Compare two baselines
+# Compare two baselines (threshold-based, legacy)
 node tests/direct-rendering/compare-baselines.js \
   --before perf-baselines/baseline-before.txt \
   --after perf-baselines/baseline-after.txt
+
+# Statistical significance testing (v2.0 JSON required)
+node tests/direct-rendering/compare-baselines.js \
+  --before baseline1.json --after baseline2.json \
+  --statistical
 
 # Quick comparison with custom thresholds
 node tests/direct-rendering/compare-baselines.js \

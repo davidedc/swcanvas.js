@@ -1,0 +1,3 @@
+# This directory contains generated benchmark scripts.
+# These are ephemeral and should not be committed.
+# Each benchmarking session generates its own scripts here.
