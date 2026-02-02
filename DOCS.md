@@ -13,6 +13,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **tests/direct-rendering/PERFORMANCE-BENCHMARKING.md**: Performance benchmarking mechanics (VSync cliff detection, scaling correction)
 - **tests/direct-rendering/PERFORMANCE-TESTING-WORKFLOW.md**: Workflow guide for benchmarking code changes (regressions, improvements, discovery)
 - **tests/build/README.md**: Build utility scripts documentation (concat-tests.js, renumber-tests.js)
+- **build-scripts/README.md**: Build scripts documentation, inline markers system, preprocessor templates
 - **debug/README.md**: Debug utilities, investigation scripts, and debugging workflows
 - **examples/README.md**: Examples documentation and usage instructions
 - **DIRECT-RENDERING-SUMMARY.MD**: Direct rendering system documentation, APIs, conditions, and implementation details
@@ -28,9 +29,10 @@ Each document has a **single responsibility** to avoid duplication:
 
 **CLAUDE.md should NOT contain:**
 - API usage examples (→ README.md)
-- Test architecture details (→ tests/README.md) 
-- Build instruction details (→ README.md)
+- Test architecture details (→ tests/README.md)
 - Architecture explanations (→ ARCHITECTURE.md)
+- Detailed inline markers documentation (→ build-scripts/README.md)
+- Inferable information (OO patterns, file organization, generic principles)
 
 **ARCHITECTURE.md should NOT contain:**
 - API usage examples (→ README.md)
@@ -57,6 +59,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **Performance benchmarking mechanics**: tests/direct-rendering/PERFORMANCE-BENCHMARKING.md only
 - **Performance testing workflow**: tests/direct-rendering/PERFORMANCE-TESTING-WORKFLOW.md only
 - **Build utilities**: tests/build/README.md only
+- **Inline markers/preprocessor**: build-scripts/README.md only
 - **Debug utilities**: debug/README.md only
 - **Direct rendering system**: DIRECT-RENDERING-SUMMARY.MD only
 - **Test naming conventions**: test_naming_convention.md only
@@ -71,6 +74,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **Performance benchmarking** → tests/direct-rendering/PERFORMANCE-BENCHMARKING.md
 - **Performance testing workflow** → tests/direct-rendering/PERFORMANCE-TESTING-WORKFLOW.md
 - **Build utilities** → tests/build/README.md
+- **Build scripts & inline markers** → build-scripts/README.md
 - **Debug utilities** → debug/README.md
 - **Examples and demos** → examples/README.md
 - **Direct rendering system** → DIRECT-RENDERING-SUMMARY.MD
