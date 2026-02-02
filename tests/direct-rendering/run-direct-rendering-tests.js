@@ -26,26 +26,26 @@ const {
     getRandomOpaqueColor,
     getRandomOpaqueVisibleColor,
     getRandomPoint,
-    placeCloseToCenterAtPixel,
-    placeCloseToCenterAtGrid,
+    calculateCenterAtPixel,
+    calculateCenterAtGrid,
     adjustDimensionsForCrispStrokeRendering,
     roundPoint,
     ensureHalfPoint,
     adjustCenterForCrispStrokeRendering,
-    calculateCrispFillAndStrokeRectParams,
-    calculateCircleTestParameters,
-    calculateArcTestParameters,
-    calculate90DegFillStrokeArcParams,
+    calculateCrispRectTestParams,
+    calculateCircleTestParams,
+    calculateArcTestParams,
+    calculate90DegArcTestParams,
     generateConstrainedArcAngles,
-    calculateLineTestParameters,
+    calculateLineTestParams,
     // Bounds calculation utilities
-    calculateCircleBounds,
+    calculateFilledCircleBounds,
     calculateStrokedCircleBounds,
-    calculateRectangleBounds,
-    calculateFillRectBounds,
-    calculateCrispStrokeRectBounds,
-    calculateLineBounds,
-    aggregateBounds,
+    calculateStrokedRectBounds,
+    calculateFilledRectBounds,
+    calculateCrispStrokedRectBounds,
+    calculateStrokedLineBounds,
+    calculateAggregateBounds,
     registerDirectRenderingTest,
     clampBoundsToCanvas,
     analyzeExtremes,
@@ -65,26 +65,26 @@ global.getRandomColor = getRandomColor;
 global.getRandomOpaqueColor = getRandomOpaqueColor;
 global.getRandomOpaqueVisibleColor = getRandomOpaqueVisibleColor;
 global.getRandomPoint = getRandomPoint;
-global.placeCloseToCenterAtPixel = placeCloseToCenterAtPixel;
-global.placeCloseToCenterAtGrid = placeCloseToCenterAtGrid;
+global.calculateCenterAtPixel = calculateCenterAtPixel;
+global.calculateCenterAtGrid = calculateCenterAtGrid;
 global.adjustDimensionsForCrispStrokeRendering = adjustDimensionsForCrispStrokeRendering;
 global.roundPoint = roundPoint;
 global.ensureHalfPoint = ensureHalfPoint;
 global.adjustCenterForCrispStrokeRendering = adjustCenterForCrispStrokeRendering;
-global.calculateCrispFillAndStrokeRectParams = calculateCrispFillAndStrokeRectParams;
-global.calculateCircleTestParameters = calculateCircleTestParameters;
-global.calculateArcTestParameters = calculateArcTestParameters;
-global.calculate90DegFillStrokeArcParams = calculate90DegFillStrokeArcParams;
+global.calculateCrispRectTestParams = calculateCrispRectTestParams;
+global.calculateCircleTestParams = calculateCircleTestParams;
+global.calculateArcTestParams = calculateArcTestParams;
+global.calculate90DegArcTestParams = calculate90DegArcTestParams;
 global.generateConstrainedArcAngles = generateConstrainedArcAngles;
-global.calculateLineTestParameters = calculateLineTestParameters;
+global.calculateLineTestParams = calculateLineTestParams;
 // Bounds calculation utilities
-global.calculateCircleBounds = calculateCircleBounds;
+global.calculateFilledCircleBounds = calculateFilledCircleBounds;
 global.calculateStrokedCircleBounds = calculateStrokedCircleBounds;
-global.calculateRectangleBounds = calculateRectangleBounds;
-global.calculateFillRectBounds = calculateFillRectBounds;
-global.calculateCrispStrokeRectBounds = calculateCrispStrokeRectBounds;
-global.calculateLineBounds = calculateLineBounds;
-global.aggregateBounds = aggregateBounds;
+global.calculateStrokedRectBounds = calculateStrokedRectBounds;
+global.calculateFilledRectBounds = calculateFilledRectBounds;
+global.calculateCrispStrokedRectBounds = calculateCrispStrokedRectBounds;
+global.calculateStrokedLineBounds = calculateStrokedLineBounds;
+global.calculateAggregateBounds = calculateAggregateBounds;
 global.registerDirectRenderingTest = registerDirectRenderingTest;
 global.countUniqueColorsInMiddleRow = countUniqueColorsInMiddleRow;
 global.countUniqueColorsInMiddleColumn = countUniqueColorsInMiddleColumn;

@@ -46,8 +46,8 @@ registerDirectRenderingTest(
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 
-        // Use calculateCircleTestParameters for proper setup
-        const params = calculateCircleTestParameters({
+        // Use calculateCircleTestParams for proper setup
+        const params = calculateCircleTestParams({
             canvasWidth,
             canvasHeight,
             minRadius: 10,

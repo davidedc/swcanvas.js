@@ -57,7 +57,7 @@ registerDirectRenderingTest(
 
         return {
             logs: [`Semi-transparent circle at (${centerX}, ${centerY}) radius ${radius}`],
-            checkData: calculateCircleBounds(centerX, centerY, radius)
+            checkData: calculateFilledCircleBounds(centerX, centerY, radius)
         };
     },
     'circles',

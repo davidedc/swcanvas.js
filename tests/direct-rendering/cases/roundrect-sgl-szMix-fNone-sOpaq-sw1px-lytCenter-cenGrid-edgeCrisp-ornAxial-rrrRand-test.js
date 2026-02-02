@@ -93,7 +93,7 @@ function drawTest(ctx, iterationNumber) {
     logs.push(`RoundedRect: center=(${centerX},${centerY}), base W/H=(${baseRectWidth},${baseRectHeight}), adj W/H=(${finalRectWidth},${finalRectHeight}), r=${radius}`);
 
     // Use centralized utility for bounds calculation (single source of truth)
-    checkData = calculateCrispStrokeRectBounds(geomX, geomY, finalRectWidth, finalRectHeight);
+    checkData = calculateCrispStrokedRectBounds(geomX, geomY, finalRectWidth, finalRectHeight);
 
     return { logs, checkData };
 }

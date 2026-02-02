@@ -14,7 +14,7 @@
  * | SizeCategory           | mixed              | The radius is randomized in a range of [10, 180), which spans multiple T-shirt size categories (S, M, L).
  * | FillStyle              | opaque             | `getRandomColor('semitransparent')` is called for the fill.
  * | StrokeStyle            | opaque             | `getRandomColor('semitransparent')` is called for the stroke.
- * | StrokeThickness        | 1px-3px            | Thin stroke width is randomized within calculateArcTestParameters, resulting in a range of 1-3px.
+ * | StrokeThickness        | 1px-3px            | Thin stroke width is randomized within calculateArcTestParams, resulting in a range of 1-3px.
  * | Layout                 | centered           | The arc's center coordinates are explicitly calculated to be at the canvas center.
  * | CenteredAt             | mixed-pixel-grid   | A random flag (`atPixel`) determines if the center is on a pixel (`*.5`) or grid (`integer`) line.
  * | EdgeAlignment          | crisp              | The `adjustDimensionsForCrispStrokeRendering()` function is explicitly called to ensure sharp edges.
@@ -46,8 +46,8 @@ registerDirectRenderingTest(
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 
-        // Use calculateArcTestParameters for proper setup
-        const params = calculateArcTestParameters({
+        // Use calculateArcTestParams for proper setup
+        const params = calculateArcTestParams({
             canvasWidth,
             canvasHeight,
             minRadius: 10,

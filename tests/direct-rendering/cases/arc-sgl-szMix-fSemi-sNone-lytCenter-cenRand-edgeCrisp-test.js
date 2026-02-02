@@ -36,7 +36,7 @@
  * ----------------------------------------------
  * - Fill color is fixed semi-transparent blue (rgba(0, 0, 255, 0.49)).
  * - Arc gap is always within a single quadrant.
- * - Uses calculateArcTestParameters helper for position/size calculation.
+ * - Uses calculateArcTestParams helper for position/size calculation.
  * - May use path-based rendering for semi-transparent colors (allowPathBasedRendering: true).
  *
  */
@@ -51,7 +51,7 @@ registerDirectRenderingTest(
         const fillColor = 'rgba(0, 0, 255, 0.49)';
 
         // Calculate arc parameters
-        const params = calculateArcTestParameters({
+        const params = calculateArcTestParams({
             canvasWidth,
             canvasHeight,
             minRadius: 30,
@@ -66,10 +66,10 @@ registerDirectRenderingTest(
         ctx.fillStyle = fillColor;
         ctx.fillArc(centerX, centerY, radius, startAngle, endAngle);
 
-        // Return check data - use calculateCircleBounds since arc > 270° covers all extremes
+        // Return check data - use calculateFilledCircleBounds since arc > 270° covers all extremes
         return {
             logs: [`Arc at (${centerX}, ${centerY}) radius ${radius} gap ${gapSizeDeg.toFixed(1)}° color ${fillColor}`],
-            checkData: calculateCircleBounds(centerX, centerY, radius)
+            checkData: calculateFilledCircleBounds(centerX, centerY, radius)
         };
     },
     'arcs',

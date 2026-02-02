@@ -54,12 +54,7 @@ function runValidationChecks(surface, checks, iterationNumber = 0) {
     // Total unique colors check (exactly N)
     if (checks.totalUniqueColors) {
         const isObject = typeof checks.totalUniqueColors === 'object';
-        // Support both .expected and .count for backwards compatibility
-        const expected = isObject
-            ? (checks.totalUniqueColors.expected !== undefined
-                ? checks.totalUniqueColors.expected
-                : checks.totalUniqueColors.count)
-            : checks.totalUniqueColors;
+        const expected = isObject ? checks.totalUniqueColors.expected : checks.totalUniqueColors;
         const skipIterations = (isObject && checks.totalUniqueColors.skipOnIterations) || [];
 
         if (!skipIterations.includes(iterationNumber)) {

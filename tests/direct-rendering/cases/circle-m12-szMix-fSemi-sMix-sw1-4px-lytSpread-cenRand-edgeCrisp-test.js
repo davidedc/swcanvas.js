@@ -14,10 +14,10 @@
  * | SizeCategory           | mixed          | The radius is randomized in the range [8, 42], spanning multiple size categories.
  * | FillStyle              | semitransparent| `getRandomColor('semitransparent')` is called for the fill.
  * | StrokeStyle            | mixed          | `getRandomColor('mixed')` is called for the stroke.
- * | StrokeThickness        | 1px-4px        | `strokeWidth` is randomized between 1 and 4 via calculateCircleTestParameters.
+ * | StrokeThickness        | 1px-4px        | `strokeWidth` is randomized between 1 and 4 via calculateCircleTestParams.
  * | Layout                 | spread         | Circles are positioned randomly across the canvas with 60px margins.
- * | CenteredAt             | random         | The final center coordinates are randomized via calculateCircleTestParameters.
- * | EdgeAlignment          | crisp          | calculateCircleTestParameters ensures proper pixel alignment.
+ * | CenteredAt             | random         | The final center coordinates are randomized via calculateCircleTestParams.
+ * | EdgeAlignment          | crisp          | calculateCircleTestParams ensures proper pixel alignment.
  * | Orientation            | N/A            | Not applicable to circles, which are rotationally symmetrical.
  * | ArcAngleExtent         | N/A            | Not applicable to circles.
  * | RoundRectRadius        | N/A            | Not applicable to circles.
@@ -49,8 +49,8 @@ registerDirectRenderingTest(
         const logs = [];
 
         for (let i = 0; i < numToDraw; i++) {
-            // Use calculateCircleTestParameters for each circle
-            const params = calculateCircleTestParameters({
+            // Use calculateCircleTestParams for each circle
+            const params = calculateCircleTestParams({
                 canvasWidth,
                 canvasHeight,
                 minRadius: 8,

@@ -111,7 +111,7 @@ function drawTest(ctx, iterationNumber, instances) {
 
             if (i === 0) {
                 // Use centralized utility for bounds calculation (single source of truth)
-                checkData = calculateCrispStrokeRectBounds(geomX, geomY, finalRectWidth, finalRectHeight);
+                checkData = calculateCrispStrokedRectBounds(geomX, geomY, finalRectWidth, finalRectHeight);
             }
         }
     }

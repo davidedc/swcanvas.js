@@ -81,8 +81,8 @@ registerDirectRenderingTest(
         });
 
         // Calculate bounds using centralized utilities
-        const allBounds = shapes.map(s => calculateCircleBounds(s.x, s.y, s.radius));
-        const checkData = aggregateBounds(allBounds);
+        const allBounds = shapes.map(s => calculateFilledCircleBounds(s.x, s.y, s.radius));
+        const checkData = calculateAggregateBounds(allBounds);
 
         return {
             logs: [`Drew ${shapes.length} shapes`],

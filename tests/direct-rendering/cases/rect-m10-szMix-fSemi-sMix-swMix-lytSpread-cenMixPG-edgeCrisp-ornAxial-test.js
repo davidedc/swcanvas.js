@@ -16,7 +16,7 @@
  * | StrokeStyle            | mixed              | `strokeColorObj` is generated with an alpha range of `[200, 255]`, including both semi-transparent and opaque values.
  * | StrokeThickness        | mixed              | `strokeWidth` is randomized to an even integer in `[2, 12]`, a discrete set of values.
  * | Layout                 | spread             | Rectangles are distributed by applying a random offset to each instance's calculated center point.
- * | CenteredAt             | mixed-pixel-grid   | The initial placement logic in `calculateCrispFillAndStrokeRectParams` centers on a grid or pixel center.
+ * | CenteredAt             | mixed-pixel-grid   | The initial placement logic in `calculateCrispRectTestParams` centers on a grid or pixel center.
  * | EdgeAlignment          | crisp              | The test explicitly uses the `adjustDimensionsForCrispStrokeRendering` helper to ensure crisp edges.
  * | Orientation            | square             | Rectangles are axis-aligned (`ornAxial` in new convention).
  * | ArcAngleExtent         | N/A                | Not applicable to rectangles.
@@ -80,7 +80,7 @@ function drawTest(ctx, iterationNumber, instances) {
     const maxStrokeWidth = 10;
 
     for (let i = 0; i < numToDraw; i++) {
-        // Inline calculateCrispFillAndStrokeRectParams logic:
+        // Inline calculateCrispRectTestParams logic:
 
         // 1. Generate stroke width (even, 2-12)
         let strokeWidth = Math.round(SeededRandom.getRandom() * maxStrokeWidth + 1);

@@ -106,27 +106,27 @@ try {
             global.getRandomOpaqueColor = directRenderingTestUtils.getRandomOpaqueColor;
             global.getRandomOpaqueVisibleColor = directRenderingTestUtils.getRandomOpaqueVisibleColor;
             global.getRandomPoint = directRenderingTestUtils.getRandomPoint;
-            global.placeCloseToCenterAtPixel = directRenderingTestUtils.placeCloseToCenterAtPixel;
-            global.placeCloseToCenterAtGrid = directRenderingTestUtils.placeCloseToCenterAtGrid;
+            global.calculateCenterAtPixel = directRenderingTestUtils.calculateCenterAtPixel;
+            global.calculateCenterAtGrid = directRenderingTestUtils.calculateCenterAtGrid;
             global.adjustDimensionsForCrispStrokeRendering = directRenderingTestUtils.adjustDimensionsForCrispStrokeRendering;
-            global.calculateCircleTestParameters = directRenderingTestUtils.calculateCircleTestParameters;
-            global.calculateArcTestParameters = directRenderingTestUtils.calculateArcTestParameters;
-            global.calculate90DegFillStrokeArcParams = directRenderingTestUtils.calculate90DegFillStrokeArcParams;
+            global.calculateCircleTestParams = directRenderingTestUtils.calculateCircleTestParams;
+            global.calculateArcTestParams = directRenderingTestUtils.calculateArcTestParams;
+            global.calculate90DegArcTestParams = directRenderingTestUtils.calculate90DegArcTestParams;
             global.generateConstrainedArcAngles = directRenderingTestUtils.generateConstrainedArcAngles;
-            global.calculateLineTestParameters = directRenderingTestUtils.calculateLineTestParameters;
+            global.calculateLineTestParams = directRenderingTestUtils.calculateLineTestParams;
             global.registerDirectRenderingTest = directRenderingTestUtils.registerDirectRenderingTest;
             global.roundPoint = directRenderingTestUtils.roundPoint;
             global.ensureHalfPoint = directRenderingTestUtils.ensureHalfPoint;
             global.adjustCenterForCrispStrokeRendering = directRenderingTestUtils.adjustCenterForCrispStrokeRendering;
-            global.calculateCrispFillAndStrokeRectParams = directRenderingTestUtils.calculateCrispFillAndStrokeRectParams;
+            global.calculateCrispRectTestParams = directRenderingTestUtils.calculateCrispRectTestParams;
             // Bounds calculation utilities
-            global.calculateCircleBounds = directRenderingTestUtils.calculateCircleBounds;
+            global.calculateFilledCircleBounds = directRenderingTestUtils.calculateFilledCircleBounds;
             global.calculateStrokedCircleBounds = directRenderingTestUtils.calculateStrokedCircleBounds;
-            global.calculateRectangleBounds = directRenderingTestUtils.calculateRectangleBounds;
-            global.calculateFillRectBounds = directRenderingTestUtils.calculateFillRectBounds;
-            global.calculateCrispStrokeRectBounds = directRenderingTestUtils.calculateCrispStrokeRectBounds;
-            global.calculateLineBounds = directRenderingTestUtils.calculateLineBounds;
-            global.aggregateBounds = directRenderingTestUtils.aggregateBounds;
+            global.calculateStrokedRectBounds = directRenderingTestUtils.calculateStrokedRectBounds;
+            global.calculateFilledRectBounds = directRenderingTestUtils.calculateFilledRectBounds;
+            global.calculateCrispStrokedRectBounds = directRenderingTestUtils.calculateCrispStrokedRectBounds;
+            global.calculateStrokedLineBounds = directRenderingTestUtils.calculateStrokedLineBounds;
+            global.calculateAggregateBounds = directRenderingTestUtils.calculateAggregateBounds;
 
             for (const file of caseFiles) {
                 try {

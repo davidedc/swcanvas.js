@@ -14,7 +14,7 @@
  * | SizeCategory           | mixed              | The radius is randomized in a range of [10, 225), spanning multiple size categories.
  * | FillStyle              | semitransparent    | `getRandomColor('semitransparent')` is called for the fill.
  * | StrokeStyle            | semitransparent    | `getRandomColor('semitransparent')` is called for the stroke.
- * | StrokeThickness        | 1px-3px            | Thin stroke width is randomized within calculateArcTestParameters.
+ * | StrokeThickness        | 1px-3px            | Thin stroke width is randomized within calculateArcTestParams.
  * | Layout                 | random             | The arc is positioned randomly within canvas bounds.
  * | CenteredAt             | random             | Center coordinates are random floating-point values.
  * | EdgeAlignment          | crisp              | Crisp edge alignment is used.
@@ -46,8 +46,8 @@ registerDirectRenderingTest(
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 
-        // Use calculateArcTestParameters for proper setup with random position
-        const params = calculateArcTestParameters({
+        // Use calculateArcTestParams for proper setup with random position
+        const params = calculateArcTestParams({
             canvasWidth,
             canvasHeight,
             minRadius: 10,

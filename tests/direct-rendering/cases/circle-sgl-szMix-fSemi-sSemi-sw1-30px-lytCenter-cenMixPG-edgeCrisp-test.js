@@ -14,7 +14,7 @@
  * | SizeCategory           | mixed              | The radius is randomized in a range of [10, 225), which spans multiple T-shirt size categories (S, M, L, XL).
  * | FillStyle              | semitransparent    | `getRandomColor('semitransparent')` is called for the fill.
  * | StrokeStyle            | semitransparent    | `getRandomColor('semitransparent')` is called for the stroke.
- * | StrokeThickness        | 1px-30px           | Stroke width is randomized within calculateCircleTestParameters, resulting in a range of 1-30px.
+ * | StrokeThickness        | 1px-30px           | Stroke width is randomized within calculateCircleTestParams, resulting in a range of 1-30px.
  * | Layout                 | centered           | The circle's center coordinates are explicitly calculated to be at the canvas center.
  * | CenteredAt             | mixed-pixel-grid   | A random flag (`atPixel`) determines if the center is on a pixel (`*.5`) or grid (`integer`) line.
  * | EdgeAlignment          | crisp              | The `adjustDimensionsForCrispStrokeRendering()` function is explicitly called to ensure sharp edges.
@@ -36,7 +36,7 @@
  * ----------------------------------------------
  * - The fill and stroke colors are randomized semitransparent colors.
  * - Uses SWCanvas direct API method `ctx.fillStrokeCircle()` for unified fill+stroke rendering.
- * - The stroke width's dependency on the circle's radius is handled by calculateCircleTestParameters.
+ * - The stroke width's dependency on the circle's radius is handled by calculateCircleTestParams.
  *
  */
 
@@ -46,8 +46,8 @@ registerDirectRenderingTest(
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 
-        // Use calculateCircleTestParameters for proper setup
-        const params = calculateCircleTestParameters({
+        // Use calculateCircleTestParams for proper setup
+        const params = calculateCircleTestParams({
             canvasWidth,
             canvasHeight,
             minRadius: 10,

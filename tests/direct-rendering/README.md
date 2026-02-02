@@ -45,7 +45,7 @@ registerDirectRenderingTest(
         const canvasHeight = ctx.canvas.height;
 
         const fillColor = getRandomOpaqueColor();
-        const params = calculateCircleTestParameters({
+        const params = calculateCircleTestParams({
             canvasWidth, canvasHeight,
             minRadius: 30, maxRadius: 80,
             hasStroke: false, randomPosition: false
@@ -371,21 +371,21 @@ const pt = getRandomPoint(1, 400, 300, 50);  // 50px margin from edges
 
 ### Positioning Utilities
 
-#### `placeCloseToCenterAtPixel(width, height)`
+#### `calculateCenterAtPixel(width, height)`
 
 Returns center at pixel boundary (*.5 coordinates) for crisp 1px strokes.
 
 ```javascript
-const { centerX, centerY } = placeCloseToCenterAtPixel(400, 300);
+const { centerX, centerY } = calculateCenterAtPixel(400, 300);
 // { centerX: 200.5, centerY: 150.5 }
 ```
 
-#### `placeCloseToCenterAtGrid(width, height)`
+#### `calculateCenterAtGrid(width, height)`
 
 Returns center at grid intersection (integer coordinates).
 
 ```javascript
-const { centerX, centerY } = placeCloseToCenterAtGrid(400, 300);
+const { centerX, centerY } = calculateCenterAtGrid(400, 300);
 // { centerX: 200, centerY: 150 }
 ```
 
@@ -427,12 +427,12 @@ roundPoint({ x: 123.7, y: 45.2 });  // { x: 124, y: 45 }
 
 ### Shape Parameter Calculators
 
-#### `calculateCircleTestParameters(options)`
+#### `calculateCircleTestParams(options)`
 
 Calculates circle parameters with proper positioning.
 
 ```javascript
-const params = calculateCircleTestParameters({
+const params = calculateCircleTestParams({
     canvasWidth: 400,
     canvasHeight: 300,
     minRadius: 8,          // default: 8
@@ -447,12 +447,12 @@ const params = calculateCircleTestParameters({
 // Returns: { centerX, centerY, radius, strokeWidth, finalDiameter, atPixel }
 ```
 
-#### `calculateArcTestParameters(options)`
+#### `calculateArcTestParams(options)`
 
 Extends circle parameters with arc angles (gap constrained to single quadrant).
 
 ```javascript
-const params = calculateArcTestParameters({
+const params = calculateArcTestParams({
     canvasWidth: 400,
     canvasHeight: 300,
     minRadius: 20,
@@ -461,12 +461,12 @@ const params = calculateArcTestParameters({
 // Returns: { ...circleParams, startAngle, endAngle, gapQuadrant, gapSizeDeg }
 ```
 
-#### `calculate90DegFillStrokeArcParams(options)`
+#### `calculate90DegArcTestParams(options)`
 
 Calculates parameters for a single 90-degree fill+stroke arc.
 
 ```javascript
-const params = calculate90DegFillStrokeArcParams({
+const params = calculate90DegArcTestParams({
     canvasWidth: 400,
     canvasHeight: 300,
     minDiameter: 40,
@@ -477,12 +477,12 @@ const params = calculate90DegFillStrokeArcParams({
 //            startAngle, endAngle, checkData }
 ```
 
-#### `calculateCrispFillAndStrokeRectParams(options)`
+#### `calculateCrispRectTestParams(options)`
 
 Calculates rectangle parameters with crisp stroke adjustment.
 
 ```javascript
-const params = calculateCrispFillAndStrokeRectParams({
+const params = calculateCrispRectTestParams({
     canvasWidth: 400,
     canvasHeight: 300,
     minWidth: 50,

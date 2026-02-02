@@ -75,7 +75,7 @@ function drawTest(ctx, iterationNumber, instances) {
     let checkData = null; // Only to be populated for the single, non-performance run instance
 
     // --- Base calculations for the archetype rectangle (using SeededRandom for reproducibility) ---
-    // Logic adapted from placeCloseToCenterAtGrid
+    // Logic adapted from calculateCenterAtGrid
     const cXBase = Math.floor(canvasWidth / 2);
     const cYBase = Math.floor(canvasHeight / 2);
     const baseCenterX = (cXBase % 2 === 0) ? cXBase : cXBase + 1;
@@ -130,7 +130,7 @@ function drawTest(ctx, iterationNumber, instances) {
             logs.push(`&#x25A1; 1px Red Stroked Rectangle at (${currentX.toFixed(1)}, ${currentY.toFixed(1)}), size ${archetypeRectWidth}x${archetypeRectHeight}, centered at (${currentCenterX.toFixed(1)}, ${currentCenterY.toFixed(1)})`);
 
             // Use centralized utility for bounds calculation (single source of truth)
-            checkData = calculateCrispStrokeRectBounds(currentX, currentY, archetypeRectWidth, archetypeRectHeight);
+            checkData = calculateCrispStrokedRectBounds(currentX, currentY, archetypeRectWidth, archetypeRectHeight);
         }
 
         // --- Single Drawing Block ---

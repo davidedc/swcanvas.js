@@ -70,7 +70,7 @@ registerDirectRenderingTest(
 
         return {
             logs: [`Semi-transparent 1px stroked rounded rect at (${x}, ${y}) size ${width}x${height}, radius=${radius}`],
-            checkData: calculateRectangleBounds(x, y, width, height, 1)
+            checkData: calculateStrokedRectBounds(x, y, width, height, 1)
         };
     },
     'rounded-rects',

@@ -46,8 +46,8 @@ registerDirectRenderingTest(
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 
-        // Use calculateArcTestParameters for proper setup with random position
-        const params = calculateArcTestParameters({
+        // Use calculateArcTestParams for proper setup with random position
+        const params = calculateArcTestParams({
             canvasWidth,
             canvasHeight,
             minRadius: 10,

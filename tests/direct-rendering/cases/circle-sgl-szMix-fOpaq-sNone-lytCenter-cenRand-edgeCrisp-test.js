@@ -35,7 +35,7 @@
  * UNCAPTURED ASPECTS IN FILENAME / FACETS ABOVE:
  * ----------------------------------------------
  * - Fill color is fixed opaque blue (rgb(0, 0, 255)).
- * - Uses calculateCircleTestParameters helper for position/size calculation.
+ * - Uses calculateCircleTestParams helper for position/size calculation.
  *
  */
 
@@ -64,7 +64,7 @@ registerDirectRenderingTest(
                 centerY = radius + Math.random() * (canvasHeight - 2 * radius);
             } else {
                 // Calculate circle parameters for visual test or first perf instance
-                const params = calculateCircleTestParameters({
+                const params = calculateCircleTestParams({
                     canvasWidth,
                     canvasHeight,
                     minRadius: 30,

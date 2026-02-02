@@ -61,8 +61,8 @@ function drawTest(ctx, iterationNumber, instances) {
     const canvasHeight = ctx.canvas.height;
 
     for (let i = 0; i < numToDraw; i++) {
-        // Calls 1-4 for SeededRandom happen inside calculateCrispFillAndStrokeRectParams
-        const placement = calculateCrispFillAndStrokeRectParams({
+        // Calls 1-4 for SeededRandom happen inside calculateCrispRectTestParams
+        const placement = calculateCrispRectTestParams({
             canvasWidth,
             canvasHeight,
             minWidth: 50,

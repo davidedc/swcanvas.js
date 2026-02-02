@@ -14,10 +14,10 @@
  * | SizeCategory           | mixed          | The radius is randomized in the range [8, 42], spanning multiple size categories.
  * | FillStyle              | semitransparent| `getRandomColor('semitransparent')` is called for the fill.
  * | StrokeStyle            | mixed          | `getRandomColor('mixed')` is called for the stroke.
- * | StrokeThickness        | 1px-4px        | `strokeWidth` is randomized between 1 and 4 via calculateArcTestParameters.
+ * | StrokeThickness        | 1px-4px        | `strokeWidth` is randomized between 1 and 4 via calculateArcTestParams.
  * | Layout                 | spread         | Arcs are positioned randomly across the canvas with 60px margins.
- * | CenteredAt             | random         | The final center coordinates are randomized via calculateArcTestParameters.
- * | EdgeAlignment          | crisp          | calculateArcTestParameters ensures proper pixel alignment.
+ * | CenteredAt             | random         | The final center coordinates are randomized via calculateArcTestParams.
+ * | EdgeAlignment          | crisp          | calculateArcTestParams ensures proper pixel alignment.
  * | Orientation            | N/A            | Arc orientation determined by angle parameters.
  * | ArcAngleExtent         | >270°          | Gap < 90° ensures all cardinal points included for extremes check.
  * | RoundRectRadius        | N/A            | Not applicable to arcs.
@@ -50,8 +50,8 @@ registerDirectRenderingTest(
         const logs = [];
 
         for (let i = 0; i < numToDraw; i++) {
-            // Use calculateArcTestParameters for each arc
-            const params = calculateArcTestParameters({
+            // Use calculateArcTestParams for each arc
+            const params = calculateArcTestParams({
                 canvasWidth,
                 canvasHeight,
                 minRadius: 8,

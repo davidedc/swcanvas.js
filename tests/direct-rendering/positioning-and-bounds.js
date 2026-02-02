@@ -10,6 +10,18 @@
  * - getRandomPoint - Random point generator (from direct-rendering-test-utils.js)
  */
 
+// Node.js: import SeededRandom (browser uses window.SeededRandom at call time)
+// Variable name suffixed with _pab to avoid collision with random-test-values.js
+let _nodeSeededRandom_pab;
+if (typeof module !== 'undefined' && module.exports) {
+    _nodeSeededRandom_pab = require('./seeded-random.js').SeededRandom;
+}
+
+// Helper to get SeededRandom (Node.js module or browser window)
+function _getSeededRandom() {
+    return _nodeSeededRandom_pab || (typeof window !== 'undefined' && window.SeededRandom);
+}
+
 // ============================================================
 // HELPER FUNCTIONS
 // ============================================================
@@ -122,7 +134,7 @@ function adjustCenterForCrispStrokeRendering(centerX, centerY, width, height, st
  */
 function generateConstrainedArcAngles() {
     const quadrantBases = [0, Math.PI / 2, Math.PI, Math.PI * 3 / 2];
-    const gapQuadrant = Math.floor(SeededRandom.getRandom() * 4);
+    const gapQuadrant = Math.floor(_getSeededRandom().getRandom() * 4);
     const quadrantStart = quadrantBases[gapQuadrant];
 
     const margin = 5 * Math.PI / 180;  // 5° margin from quadrant edges
@@ -131,12 +143,12 @@ function generateConstrainedArcAngles() {
 
     // Calculate available space for gap start (leaving room for minimum gap + margins)
     const availableForStart = Math.PI / 2 - margin * 2 - minGapSize;
-    const gapStartOffset = margin + SeededRandom.getRandom() * Math.max(0, availableForStart);
+    const gapStartOffset = margin + _getSeededRandom().getRandom() * Math.max(0, availableForStart);
     const gapStart = quadrantStart + gapStartOffset;
 
     // Constrain gap size to stay within quadrant
     const maxAllowedGap = Math.min(maxGapSize, quadrantStart + Math.PI / 2 - gapStart - margin);
-    const gapSize = minGapSize + SeededRandom.getRandom() * Math.max(0, maxAllowedGap - minGapSize);
+    const gapSize = minGapSize + _getSeededRandom().getRandom() * Math.max(0, maxAllowedGap - minGapSize);
     const gapEnd = gapStart + gapSize;
 
     return {
@@ -206,16 +218,16 @@ function calculateCrispRectTestParams(options) {
     } = options;
 
     // SeededRandom Call 1: baseWidth
-    const baseWidth = Math.round(minWidth + SeededRandom.getRandom() * (maxWidth - minWidth));
+    const baseWidth = Math.round(minWidth + _getSeededRandom().getRandom() * (maxWidth - minWidth));
     // SeededRandom Call 2: baseHeight
-    const baseHeight = Math.round(minHeight + SeededRandom.getRandom() * (maxHeight - minHeight));
+    const baseHeight = Math.round(minHeight + _getSeededRandom().getRandom() * (maxHeight - minHeight));
     // SeededRandom Call 3: strokeWidth (optionally ensure even)
-    let strokeWidth = Math.round(2 + SeededRandom.getRandom() * (maxStrokeWidth - 2));
+    let strokeWidth = Math.round(2 + _getSeededRandom().getRandom() * (maxStrokeWidth - 2));
     if (ensureEvenStroke && strokeWidth % 2 !== 0) {
         strokeWidth++;
     }
     // SeededRandom Call 4: center type (grid vs pixel)
-    const atPixel = SeededRandom.getRandom() < 0.5;
+    const atPixel = _getSeededRandom().getRandom() < 0.5;
 
     // Calculate center
     let center;
@@ -292,7 +304,7 @@ function calculateCircleTestParams(options) {
     // Skip random call if center type is predetermined (preserves SeededRandom sequence)
     const atPixel = fixedCenterType !== null
         ? (fixedCenterType === 'pixel')
-        : SeededRandom.getRandom() < 0.5;
+        : _getSeededRandom().getRandom() < 0.5;
 
     // Get initial center point
     let { centerX, centerY } = atPixel
@@ -300,13 +312,13 @@ function calculateCircleTestParams(options) {
         : calculateCenterAtGrid(canvasWidth, canvasHeight);
 
     // Calculate base diameter
-    const diameter = Math.floor(minRadius * 2 + SeededRandom.getRandom() * (maxRadius * 2 - minRadius * 2));
+    const diameter = Math.floor(minRadius * 2 + _getSeededRandom().getRandom() * (maxRadius * 2 - minRadius * 2));
     const baseRadius = diameter / 2;
 
     // Calculate stroke width
     const maxAllowedStrokeWidth = Math.floor(baseRadius / 1);
     const strokeWidth = hasStroke
-        ? (minStrokeWidth + Math.floor(SeededRandom.getRandom() * Math.min(maxStrokeWidth - minStrokeWidth + 1, maxAllowedStrokeWidth)))
+        ? (minStrokeWidth + Math.floor(_getSeededRandom().getRandom() * Math.min(maxStrokeWidth - minStrokeWidth + 1, maxAllowedStrokeWidth)))
         : 0;
 
     // Handle random positioning if requested
@@ -336,12 +348,12 @@ function calculateCircleTestParams(options) {
             const newMaxY = Math.floor(canvasHeight - newTotalRadius - marginY);
 
             // Generate random position within new safe bounds
-            centerX = newMinX + Math.floor(SeededRandom.getRandom() * (newMaxX - newMinX + 1));
-            centerY = newMinY + Math.floor(SeededRandom.getRandom() * (newMaxY - newMinY + 1));
+            centerX = newMinX + Math.floor(_getSeededRandom().getRandom() * (newMaxX - newMinX + 1));
+            centerY = newMinY + Math.floor(_getSeededRandom().getRandom() * (newMaxY - newMinY + 1));
         } else {
             // Generate random position within original safe bounds
-            centerX = minX + Math.floor(SeededRandom.getRandom() * (maxX - minX + 1));
-            centerY = minY + Math.floor(SeededRandom.getRandom() * (maxY - minY + 1));
+            centerX = minX + Math.floor(_getSeededRandom().getRandom() * (maxX - minX + 1));
+            centerY = minY + Math.floor(_getSeededRandom().getRandom() * (maxY - minY + 1));
         }
     }
 
@@ -394,7 +406,7 @@ function calculateArcTestParams(options) {
     // Quadrant bases (screen coords, Y-down): Q1=0°, Q2=90°, Q3=180°, Q4=270°
     // (In standard math Y-up notation: Q4, Q3, Q2, Q1 respectively)
     const quadrantBases = [0, Math.PI / 2, Math.PI, Math.PI * 3 / 2];
-    const gapQuadrant = Math.floor(SeededRandom.getRandom() * 4);
+    const gapQuadrant = Math.floor(_getSeededRandom().getRandom() * 4);
     const quadrantStart = quadrantBases[gapQuadrant];
 
     // Gap position within quadrant (with 5° margin from quadrant edges)
@@ -405,12 +417,12 @@ function calculateArcTestParams(options) {
     // Calculate available space for gap start within quadrant
     // quadrant is 90° (PI/2), we need margin at start and space for gap at end
     const availableForStart = Math.PI / 2 - margin * 2 - minGapSize;
-    const gapStartOffset = margin + SeededRandom.getRandom() * Math.max(0, availableForStart);
+    const gapStartOffset = margin + _getSeededRandom().getRandom() * Math.max(0, availableForStart);
     const gapStart = quadrantStart + gapStartOffset;
 
     // Gap size: 30° to 85° (ensures arc > 275°), but must fit within quadrant
     const maxAllowedGap = Math.min(maxGapSize, quadrantStart + Math.PI / 2 - gapStart - margin);
-    const gapSize = minGapSize + SeededRandom.getRandom() * Math.max(0, maxAllowedGap - minGapSize);
+    const gapSize = minGapSize + _getSeededRandom().getRandom() * Math.max(0, maxAllowedGap - minGapSize);
     const gapEnd = gapStart + gapSize;
 
     // Arc draws the non-gap portion: startAngle = gapEnd, endAngle = gapStart + 2π
@@ -455,7 +467,7 @@ function calculateLineTestParams(options) {
     } = options;
 
     // Generate random line length
-    const lineLength = Math.floor(minLength + SeededRandom.getRandom() * (maxLength - minLength + 1));
+    const lineLength = Math.floor(minLength + _getSeededRandom().getRandom() * (maxLength - minLength + 1));
 
     // Calculate center positions:
     // - For the perpendicular axis (where stroke extends): apply crisp centering based on strokeWidth parity
@@ -482,7 +494,7 @@ function calculateLineTestParams(options) {
         y2 = endY;
 
         // Randomly swap direction
-        if (SeededRandom.getRandom() < 0.5) {
+        if (_getSeededRandom().getRandom() < 0.5) {
             [y1, y2] = [y2, y1];
         }
 
@@ -520,7 +532,7 @@ function calculateLineTestParams(options) {
         y2 = crispCenterY;
 
         // Randomly swap direction
-        if (SeededRandom.getRandom() < 0.5) {
+        if (_getSeededRandom().getRandom() < 0.5) {
             [x1, x2] = [x2, x1];
         }
 
@@ -616,13 +628,13 @@ function calculate90DegArcTestParams(options) {
     const minRadius = minDiameter / 2;
     const maxRadius = maxDiameter / 2;
     const radiusRange = maxRadius - minRadius;
-    const rawRadius = minRadius + SeededRandom.getRandom() * radiusRange;
+    const rawRadius = minRadius + _getSeededRandom().getRandom() * radiusRange;
     const radius = (strokeWidth % 2 !== 0)
         ? Math.floor(rawRadius) + 0.5  // Odd sw → half-integer radius
         : Math.round(rawRadius);        // Even sw → integer radius
 
     // Step 4: Select random quadrant
-    const quadrantIndex = Math.floor(SeededRandom.getRandom() * 4);
+    const quadrantIndex = Math.floor(_getSeededRandom().getRandom() * 4);
     const quadrants = [
         { start: 0, end: Math.PI / 2, name: 'Q1 (0-90) [math: Q4]' },
         { start: Math.PI / 2, end: Math.PI, name: 'Q2 (90-180) [math: Q3]' },
@@ -861,22 +873,7 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateStrokedRectBounds,
         calculateCrispStrokedRectBounds,
         calculateStrokedLineBounds,
-        calculateAggregateBounds,
-        // Legacy aliases for backwards compatibility during transition
-        // These map old names to new implementations
-        placeCloseToCenterAtPixel: calculateCenterAtPixel,
-        placeCloseToCenterAtGrid: calculateCenterAtGrid,
-        calculateCircleTestParameters: calculateCircleTestParams,
-        calculateArcTestParameters: calculateArcTestParams,
-        calculateLineTestParameters: calculateLineTestParams,
-        calculateCrispFillAndStrokeRectParams: calculateCrispRectTestParams,
-        calculate90DegFillStrokeArcParams: calculate90DegArcTestParams,
-        calculateCircleBounds: calculateFilledCircleBounds,
-        calculateRectangleBounds: calculateStrokedRectBounds,
-        calculateCrispStrokeRectBounds: calculateCrispStrokedRectBounds,
-        calculateFillRectBounds: calculateFilledRectBounds,
-        calculateLineBounds: calculateStrokedLineBounds,
-        aggregateBounds: calculateAggregateBounds
+        calculateAggregateBounds
     };
 }
 
@@ -904,18 +901,4 @@ if (typeof window !== 'undefined') {
     window.calculateCrispStrokedRectBounds = calculateCrispStrokedRectBounds;
     window.calculateStrokedLineBounds = calculateStrokedLineBounds;
     window.calculateAggregateBounds = calculateAggregateBounds;
-    // Legacy aliases for backwards compatibility
-    window.placeCloseToCenterAtPixel = calculateCenterAtPixel;
-    window.placeCloseToCenterAtGrid = calculateCenterAtGrid;
-    window.calculateCircleTestParameters = calculateCircleTestParams;
-    window.calculateArcTestParameters = calculateArcTestParams;
-    window.calculateLineTestParameters = calculateLineTestParams;
-    window.calculateCrispFillAndStrokeRectParams = calculateCrispRectTestParams;
-    window.calculate90DegFillStrokeArcParams = calculate90DegArcTestParams;
-    window.calculateCircleBounds = calculateFilledCircleBounds;
-    window.calculateRectangleBounds = calculateStrokedRectBounds;
-    window.calculateCrispStrokeRectBounds = calculateCrispStrokedRectBounds;
-    window.calculateFillRectBounds = calculateFilledRectBounds;
-    window.calculateLineBounds = calculateStrokedLineBounds;
-    window.aggregateBounds = calculateAggregateBounds;
 }

@@ -24,7 +24,7 @@ registerDirectRenderingTest(
         const height = ctx.canvas.height;
 
         // Use positioning utility for consistent bounds calculation (single source of truth)
-        const params = calculateLineTestParameters({
+        const params = calculateLineTestParams({
             canvasWidth: width,
             canvasHeight: height,
             strokeWidth: 2,

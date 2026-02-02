@@ -52,7 +52,7 @@ registerDirectRenderingTest(
         const strokeWidth = 2 + Math.floor(SeededRandom.getRandom() * 5);
 
         // Use shared helper for crisp 90° arc parameters
-        const params = calculate90DegFillStrokeArcParams({
+        const params = calculate90DegArcTestParams({
             canvasWidth,
             canvasHeight,
             minDiameter: 40,

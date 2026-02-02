@@ -70,8 +70,8 @@ function drawTest(ctx, iterationNumber, instances) {
     }
 
     for (let i = 0; i < numToDraw; i++) {
-        // Calls 1-4 for SeededRandom happen inside calculateCrispFillAndStrokeRectParams
-        const placement = calculateCrispFillAndStrokeRectParams({
+        // Calls 1-4 for SeededRandom happen inside calculateCrispRectTestParams
+        const placement = calculateCrispRectTestParams({
             canvasWidth,
             canvasHeight,
             minWidth: 50,
@@ -114,7 +114,7 @@ function drawTest(ctx, iterationNumber, instances) {
             );
 
             // Calculate checkData using centralized utility
-            checkData = calculateRectangleBounds(geomX, geomY, finalRectWidth, finalRectHeight, strokeWidth);
+            checkData = calculateStrokedRectBounds(geomX, geomY, finalRectWidth, finalRectHeight, strokeWidth);
         }
     }
 

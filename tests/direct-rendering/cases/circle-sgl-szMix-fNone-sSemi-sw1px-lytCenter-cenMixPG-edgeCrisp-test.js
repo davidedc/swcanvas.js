@@ -16,8 +16,8 @@
  * | StrokeStyle            | semi-transparent | Stroke color is rgba(255, 0, 0, 0.5) with 50% alpha.
  * | StrokeThickness        | 1px            | lineWidth is set to 1.
  * | Layout                 | centered       | Circle is positioned at canvas center.
- * | CenteredAt             | mixed P/G      | Centering randomly chosen via calculateCircleTestParameters.
- * | EdgeAlignment          | crisp          | Uses calculateCircleTestParameters for proper crisp positioning.
+ * | CenteredAt             | mixed P/G      | Centering randomly chosen via calculateCircleTestParams.
+ * | EdgeAlignment          | crisp          | Uses calculateCircleTestParams for proper crisp positioning.
  * | Orientation            | N/A            | Circles are rotationally symmetric.
  * | ArcAngleExtent         | N/A            | Not applicable to full circles.
  * | RoundRectRadius        | N/A            | Not applicable to circles.
@@ -45,8 +45,8 @@ registerDirectRenderingTest(
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
 
-        // Use calculateCircleTestParameters for proper crisp positioning and size variation
-        const params = calculateCircleTestParameters({
+        // Use calculateCircleTestParams for proper crisp positioning and size variation
+        const params = calculateCircleTestParams({
             canvasWidth,
             canvasHeight,
             minRadius: 30,
@@ -67,7 +67,7 @@ registerDirectRenderingTest(
 
         return {
             logs: [`Semi-transparent 1px stroked circle at (${centerX}, ${centerY}) radius ${radius}, atPixel=${atPixel}`],
-            checkData: calculateCircleBounds(centerX, centerY, radius)
+            checkData: calculateFilledCircleBounds(centerX, centerY, radius)
         };
     },
     'circles',

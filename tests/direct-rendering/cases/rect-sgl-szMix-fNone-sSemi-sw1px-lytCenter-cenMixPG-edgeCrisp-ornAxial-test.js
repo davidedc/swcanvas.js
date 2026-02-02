@@ -65,7 +65,7 @@ registerDirectRenderingTest(
 
         return {
             logs: [`Semi-transparent 1px stroked rect at (${x}, ${y}) size ${width}x${height}`],
-            checkData: calculateRectangleBounds(x, y, width, height, 1)
+            checkData: calculateStrokedRectBounds(x, y, width, height, 1)
         };
     },
     'rectangles',

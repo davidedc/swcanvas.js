@@ -116,7 +116,7 @@ function drawTest(ctx, iterationNumber, instances) {
             );
 
             // Calculate checkData using centralized utility
-            checkData = calculateRectangleBounds(geomX, geomY, finalRectWidth, finalRectHeight, strokeWidth);
+            checkData = calculateStrokedRectBounds(geomX, geomY, finalRectWidth, finalRectHeight, strokeWidth);
         }
     }
 

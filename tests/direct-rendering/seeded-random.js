@@ -7,10 +7,6 @@
  * @module seeded-random
  */
 
-/**
- * SeededRandom - Deterministic random number generator for reproducible tests
- * Uses Small Fast Counter (SFC) 32-bit implementation
- */
 class SeededRandom {
     static #currentRandom = null;
 

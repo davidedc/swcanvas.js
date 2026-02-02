@@ -70,7 +70,6 @@ if (typeof module !== 'undefined' && module.exports) {
 
         // From stroke-continuity-1px.js
         check1pxClosedStrokeContinuity: strokeContinuity.check1pxClosedStrokeContinuity,
-        checkStroke8Connectivity: strokeContinuity.check1pxClosedStrokeContinuity, // Alias
 
         // From shape-integrity-checker.js
         checkShapeIntegrity: shapeIntegrityChecker.checkShapeIntegrity,

@@ -33,16 +33,16 @@ const {
     getRandomOpaqueColor,
     getRandomOpaqueVisibleColor,
     getRandomPoint,
-    placeCloseToCenterAtPixel,
-    placeCloseToCenterAtGrid,
+    calculateCenterAtPixel,
+    calculateCenterAtGrid,
     adjustDimensionsForCrispStrokeRendering,
     roundPoint,
     ensureHalfPoint,
     adjustCenterForCrispStrokeRendering,
-    calculateCrispFillAndStrokeRectParams,
-    calculateCircleTestParameters,
-    calculateArcTestParameters,
-    calculate90DegFillStrokeArcParams,
+    calculateCrispRectTestParams,
+    calculateCircleTestParams,
+    calculateArcTestParams,
+    calculate90DegArcTestParams,
     generateConstrainedArcAngles,
     registerDirectRenderingTest,
     PERF_SIZE_CATEGORIES,
@@ -69,16 +69,16 @@ global.getRandomColor = getRandomColor;
 global.getRandomOpaqueColor = getRandomOpaqueColor;
 global.getRandomOpaqueVisibleColor = getRandomOpaqueVisibleColor;
 global.getRandomPoint = getRandomPoint;
-global.placeCloseToCenterAtPixel = placeCloseToCenterAtPixel;
-global.placeCloseToCenterAtGrid = placeCloseToCenterAtGrid;
+global.calculateCenterAtPixel = calculateCenterAtPixel;
+global.calculateCenterAtGrid = calculateCenterAtGrid;
 global.adjustDimensionsForCrispStrokeRendering = adjustDimensionsForCrispStrokeRendering;
 global.roundPoint = roundPoint;
 global.ensureHalfPoint = ensureHalfPoint;
 global.adjustCenterForCrispStrokeRendering = adjustCenterForCrispStrokeRendering;
-global.calculateCrispFillAndStrokeRectParams = calculateCrispFillAndStrokeRectParams;
-global.calculateCircleTestParameters = calculateCircleTestParameters;
-global.calculateArcTestParameters = calculateArcTestParameters;
-global.calculate90DegFillStrokeArcParams = calculate90DegFillStrokeArcParams;
+global.calculateCrispRectTestParams = calculateCrispRectTestParams;
+global.calculateCircleTestParams = calculateCircleTestParams;
+global.calculateArcTestParams = calculateArcTestParams;
+global.calculate90DegArcTestParams = calculate90DegArcTestParams;
 global.generateConstrainedArcAngles = generateConstrainedArcAngles;
 global.registerDirectRenderingTest = registerDirectRenderingTest;
 // Parametric performance test utilities
@@ -727,24 +727,11 @@ function main() {
         );
     }
 
-    // Apply operation filter (supports new 8-value system + legacy compatibility)
+    // Apply operation filter (exact match for 8-value operation system)
     if (operationFilter) {
         testsToRun = testsToRun.filter(test => {
             if (!test.metadata || !test.metadata.operation) return false;
-            const op = test.metadata.operation;
-
-            // Legacy compatibility
-            if (operationFilter === 'stroke') {
-                // Legacy 'stroke' matches any operation containing "stroke"
-                return op.includes('stroke');
-            }
-            if (operationFilter === 'fill') {
-                // Legacy 'fill' matches any operation starting with "fill"
-                return op.startsWith('fill');
-            }
-
-            // Exact match for new operation names
-            return op === operationFilter;
+            return test.metadata.operation === operationFilter;
         });
     }
 

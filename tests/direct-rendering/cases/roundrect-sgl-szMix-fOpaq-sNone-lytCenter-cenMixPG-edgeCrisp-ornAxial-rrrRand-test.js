@@ -91,7 +91,7 @@ registerDirectRenderingTest(
 
         return {
             logs: [`Opaque filled rounded rect at (${x}, ${y}) size ${rectWidth}x${rectHeight}, radius=${radius}, atPixelX=${atPixelX}, atPixelY=${atPixelY}`],
-            checkData: calculateFillRectBounds(x, y, rectWidth, rectHeight)
+            checkData: calculateFilledRectBounds(x, y, rectWidth, rectHeight)
         };
     },
     'rounded-rects',
