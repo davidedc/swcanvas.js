@@ -23,12 +23,20 @@
     "update-test-counts": "node tests/build/update-test-counts.js",
     "debug:source-out": "npm run build && node debug-composite-source-out.js",
     "debug:xor": "npm run build && node debug-composite-xor.js",
-    "debug:composite": "npm run debug:source-out && npm run debug:xor"
+    "debug:composite": "npm run debug:source-out && npm run debug:xor",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/"
   },
   "keywords": ["canvas", "2d", "deterministic", "raster"],
   "author": "",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5"
   }
 }

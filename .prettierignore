@@ -1,0 +1,8 @@
+dist/
+.preprocessed/
+node_modules/
+tests/
+*.min.js
+*.build-info.js
+*.sh
+*.md

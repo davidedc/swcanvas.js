@@ -50,6 +50,12 @@ See README.md for complete build commands and test instructions.
 - `npm run test:direct-rendering:perf` - Performance benchmarking for direct rendering (Node.js)
 - `node tests/direct-rendering/verify-logs-and-bounds-snapshot.js` - Verify test positioning hasn't regressed
 
+**Code quality commands** (on-demand, no hooks):
+- `npm run lint` - Check source files for issues (catches unused vars, unreachable code, etc.)
+- `npm run lint:fix` - Auto-fix fixable ESLint issues
+- `npm run format` - Format all source files with Prettier
+- `npm run format:check` - Check which files need formatting
+
 ## Common Tasks
 
 ### Adding New Tests
@@ -107,6 +113,7 @@ Uses object-oriented ES6 class design throughout. See ARCHITECTURE.md for comple
 - **Check all phases** - changes may affect multiple test categories
 - **Build before testing** - `npm run build` then `npm test`
 - **Test with different backgrounds** - Use `BitmapEncodingOptions` to test transparency handling
+- **Optional quality check** - Run `npm run lint` to catch subtle bugs (unused vars, unreachable code, invalid typeof)
 
 ### Inline Markers for Hot Pixel Loops
 

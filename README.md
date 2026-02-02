@@ -597,6 +597,19 @@ For direct rendering system documentation (RectOps, CircleOps, LineOps, ArcOps, 
 
 ## Development
 
+### Code Quality (On-Demand)
+
+Linting and formatting tools are available for on-demand quality checks:
+
+```bash
+npm run lint           # Check for code issues
+npm run lint:fix       # Auto-fix fixable issues
+npm run format         # Format all source files
+npm run format:check   # Check which files need formatting
+```
+
+These tools are configured to match existing code style (4-space indent, single quotes, no trailing commas) and handle project-specific patterns (preprocessor markers, build concatenation globals).
+
 ### Debug Mode
 
 Enable debug assertions in development to catch contract violations and trace execution:
