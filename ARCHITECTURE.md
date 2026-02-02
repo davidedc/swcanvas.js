@@ -637,6 +637,33 @@ Forcing composition would violate Item 51: "Make interfaces easy to use correctl
 
 These composition patterns demonstrate how to systematically eliminate code duplication through clean object-oriented design while respecting fundamental differences between abstractions.
 
+## Test Utility Module Pattern
+
+The direct rendering test utilities use a **dual-environment export pattern** that enables the same modules to work in both Node.js and browser contexts without bundlers:
+
+```javascript
+// Example from test utility modules (e.g., seeded-random.js)
+
+// Node.js exports (CommonJS)
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { SeededRandom };
+}
+
+// Browser exports (attach to window)
+if (typeof window !== 'undefined') {
+    window.SeededRandom = SeededRandom;
+}
+```
+
+### Pattern Benefits
+
+1. **No Build Step Required**: Test utilities work directly in browser via `<script>` tags
+2. **Node.js Compatibility**: Same code runs in Node.js test runner without modification
+3. **Facade Re-export**: Main `direct-rendering-test-utils.js` re-exports all modules for backwards compatibility
+4. **Dependency Order**: Browser loading respects module dependencies via script tag ordering
+
+For complete documentation of the modular test utility architecture, see [tests/direct-rendering/README.md](tests/direct-rendering/README.md#5-modular-utility-architecture).
+
 ## Shape-Specific Direct Renderers
 
 SWCanvas implements a **static utility class pattern** (following the existing `PolygonFiller` approach) to organize shape-specific rendering optimizations into maintainable, testable modules.

@@ -48,6 +48,7 @@ See README.md for complete build commands and test instructions.
 - `npm run check:test-metadata` - Validate test metadata, signatures, filename parsing
 - `npm run check:register-consistency` - Quick filename/registration check
 - `npm run test:direct-rendering:perf` - Performance benchmarking for direct rendering (Node.js)
+- `node tests/direct-rendering/verify-logs-and-bounds-snapshot.js` - Verify test positioning hasn't regressed
 
 ## Common Tasks
 
@@ -97,7 +98,8 @@ Uses object-oriented ES6 class design throughout. See ARCHITECTURE.md for comple
 - **Coordinate expectations** - test pixel positions are carefully calculated
 - **ImageData API available** - use `ctx.getImageData()` for pixel analysis (works on both APIs)
 - **Image creation helpers** - use `createCompatibleImage()` for unified image handling in tests
-- **Separate test architectures** - Visual tests (`/cases/`) verify rendering correctness; parametric performance tests (`/perf-cases/`) benchmark throughput. See tests/direct-rendering/README.md.
+- **Separate test architectures** - Visual tests (`/cases/`) verify rendering correctness; parametric performance tests (`/perf-cases/`) benchmark throughput. Test utilities are modularized into 10 focused modules. See tests/direct-rendering/README.md.
+- **Snapshot verification** - Use `node tests/direct-rendering/verify-logs-and-bounds-snapshot.js` to verify refactoring didn't change test bounds/positioning calculations
 
 ### When Making Changes
 - **Update both paths** - SWCanvas and HTML5Canvas implementations in visual tests

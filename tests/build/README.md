@@ -131,6 +131,82 @@ registerVisualTest('test-id', {
 });
 ```
 
+---
+
+## Snapshot Verification Tools
+
+These tools verify that test utility refactoring doesn't change test behavior by comparing positioning calculations and checkData outputs.
+
+### `generate-logs-and-bounds-snapshot.js`
+
+**Purpose**: Generates deterministic snapshots of test positioning and checkData for regression verification.
+
+**Location**: `tests/direct-rendering/generate-logs-and-bounds-snapshot.js`
+
+**What it does**:
+- Runs all registered tests for a specified number of iterations
+- Captures logs and checkData output from each test run
+- Generates cryptographic hashes for quick comparison
+- Outputs both hash summary and full JSON details
+
+**Usage**:
+```bash
+# Generate snapshot with default 100 iterations
+node tests/direct-rendering/generate-logs-and-bounds-snapshot.js
+
+# Generate snapshot with custom iteration count
+node tests/direct-rendering/generate-logs-and-bounds-snapshot.js 500
+```
+
+**Output files** (in `tests/direct-rendering/`):
+- `snapshot-hashes.json` - Compact hash summary for quick verification
+- `snapshot-full.json` - Complete logs and checkData for detailed diff analysis
+
+**When to use**:
+- Before refactoring test utility code
+- After completing refactoring to verify no behavioral changes
+- To establish a golden baseline for CI verification
+
+### `verify-logs-and-bounds-snapshot.js`
+
+**Purpose**: Verifies current test output against a golden snapshot to detect regressions.
+
+**Location**: `tests/direct-rendering/verify-logs-and-bounds-snapshot.js`
+
+**What it does**:
+- Runs all registered tests with the same parameters as the snapshot
+- Compares output hashes against the golden snapshot
+- Reports any differences with detailed context
+- Returns appropriate exit codes for CI integration
+
+**Exit codes**:
+| Code | Meaning |
+|------|---------|
+| 0 | All tests match snapshot |
+| 1 | Differences detected |
+| 2 | Snapshot file not found |
+
+**Usage**:
+```bash
+# Verify against snapshot with default iterations
+node tests/direct-rendering/verify-logs-and-bounds-snapshot.js
+
+# Verify with custom iteration count (must match snapshot)
+node tests/direct-rendering/verify-logs-and-bounds-snapshot.js 500
+
+# Use with full JSON for detailed diff analysis
+# First generate full snapshot, then compare
+diff tests/direct-rendering/snapshot-full.json <(node tests/direct-rendering/generate-logs-and-bounds-snapshot.js --format=json)
+```
+
+**CI Integration**:
+```bash
+# In CI pipeline, fail build if snapshot doesn't match
+node tests/direct-rendering/verify-logs-and-bounds-snapshot.js || exit 1
+```
+
+---
+
 ## Directory Structure
 
 ```
@@ -139,6 +215,12 @@ tests/build/
 ├── concat-tests.js        # Test concatenation utility
 ├── update-test-counts.js  # Automated test count updater
 └── renumber-tests.js      # Test renumbering utility
+
+tests/direct-rendering/
+├── generate-logs-and-bounds-snapshot.js  # Snapshot generation tool
+├── verify-logs-and-bounds-snapshot.js    # Snapshot verification tool
+├── snapshot-hashes.json                  # Golden hash snapshot (generated)
+└── snapshot-full.json                    # Full output snapshot (generated)
 ```
 
 ## Error Handling and Safety

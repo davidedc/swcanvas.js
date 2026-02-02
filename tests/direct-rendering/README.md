@@ -10,10 +10,11 @@ For an overview of how direct rendering works internally, see [DIRECT-RENDERING-
 2. [Draw Function Pattern](#2-draw-function-pattern)
 3. [Check Options](#3-check-options)
 4. [Utility Functions](#4-utility-functions)
-5. [File Naming Convention](#5-file-naming-convention)
-6. [Categories](#6-categories)
-7. [Performance Testing](#7-performance-testing)
-8. [Test Metadata Validation](#8-test-metadata-validation)
+5. [Modular Utility Architecture](#5-modular-utility-architecture)
+6. [File Naming Convention](#6-file-naming-convention)
+7. [Categories](#7-categories)
+8. [Performance Testing](#8-performance-testing)
+9. [Test Metadata Validation](#9-test-metadata-validation)
 
 ---
 
@@ -274,6 +275,8 @@ Use when testing scenarios that may fall back to the polygon pipeline.
 
 ## 4. Utility Functions
 
+Test utilities are organized into 10 focused modules following a facade pattern. The main `direct-rendering-test-utils.js` file re-exports all modules for Node.js compatibility, while browser tests load modules directly via `<script>` tags.
+
 All utilities use `SeededRandom` for reproducibility. Seed before use:
 
 ```javascript
@@ -526,7 +529,127 @@ const result = countSpeckles(surface);
 
 ---
 
-## 5. File Naming Convention
+## 5. Modular Utility Architecture
+
+The test utilities have been modularized into 10 focused modules, each with a single responsibility. This architecture improves maintainability, testability, and enables three-way verification in the browser (SWCanvas ↔ HTML5 Canvas ↔ checkData).
+
+### Architecture Overview
+
+The `direct-rendering-test-utils.js` file acts as a **facade** that re-exports all modules for Node.js compatibility:
+
+```
+direct-rendering-test-utils.js (facade)
+├── Re-exports all functions from modular files
+└── Provides backwards compatibility for existing imports
+```
+
+### Module Reference
+
+| Module | Purpose | Key Exports |
+|--------|---------|-------------|
+| `seeded-random.js` | Deterministic RNG using SFC32 algorithm | `SeededRandom` |
+| `random-test-values.js` | Random color/point generators | `getRandomColor()`, `getRandomOpaqueColor()`, `getRandomPoint()` |
+| `test-registry.js` | Test registration and registries | `registerDirectRenderingTest()`, `DIRECT_RENDERING_TESTS` |
+| `surface-analysis.js` | Pixel-level analysis (bounds, color counting) | `analyzeExtremes()`, `countUniqueColors()`, `countSpeckles()` |
+| `color-matching.js` | Color comparison and pixel classification | `colorsMatch()`, `isBackgroundPixel()` |
+| `stroke-continuity-1px.js` | 8-connectivity validation for 1px strokes | `checkStroke8Connectivity()` |
+| `shape-integrity-checker.js` | Universal validation for closed convex shapes | `ShapeIntegrityChecker` |
+| `validation-runner.js` | Validation orchestrator | `runValidationChecks()` |
+| `performance-size-categories.js` | Performance test size configurations | `STROKE_WIDTH_CATEGORIES`, `SHAPE_SIZE_CATEGORIES` |
+| `positioning-and-bounds.js` | Shape positioning and bounds calculations (921 lines) | `calculateCircleTestParams()`, `calculateFilledCircleBounds()`, etc. |
+
+### Browser Script Loading Order
+
+When loading in browser (`index.html`), scripts must be loaded in dependency order:
+
+```html
+<!-- Base modules (no dependencies) -->
+<script src="seeded-random.js"></script>
+<script src="random-test-values.js"></script>
+<script src="test-registry.js"></script>
+<script src="surface-analysis.js"></script>
+<script src="color-matching.js"></script>
+<script src="stroke-continuity-1px.js"></script>
+<script src="shape-integrity-checker.js"></script>
+<script src="validation-runner.js"></script>
+<script src="performance-size-categories.js"></script>
+<script src="positioning-and-bounds.js"></script>
+```
+
+### Module Dependency Diagram
+
+```
+┌─────────────────────────┐
+│    seeded-random.js     │ ← No dependencies (foundation)
+└───────────┬─────────────┘
+            │
+┌───────────▼─────────────┐
+│  random-test-values.js  │ ← Uses SeededRandom
+└─────────────────────────┘
+
+┌─────────────────────────┐
+│    color-matching.js    │ ← No dependencies
+└───────────┬─────────────┘
+            │
+┌───────────▼─────────────┐
+│   surface-analysis.js   │ ← Uses color-matching
+└─────────────────────────┘
+
+┌─────────────────────────┐
+│stroke-continuity-1px.js │ ← Uses color-matching
+└─────────────────────────┘
+
+┌─────────────────────────┐
+│shape-integrity-checker.js│ ← Uses surface-analysis
+└─────────────────────────┘
+
+┌─────────────────────────┐
+│   validation-runner.js  │ ← Orchestrates all validators
+└─────────────────────────┘
+
+┌─────────────────────────┐
+│positioning-and-bounds.js│ ← Uses seeded-random (921 lines)
+└─────────────────────────┘
+```
+
+### Dual-Environment Exports
+
+All modules use a dual-export pattern for Node.js and browser compatibility:
+
+```javascript
+// Node.js exports
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { functionName, anotherFunction };
+}
+
+// Browser exports (attach to window)
+if (typeof window !== 'undefined') {
+    window.functionName = functionName;
+    window.anotherFunction = anotherFunction;
+}
+```
+
+### Function Name Standardization
+
+The modularization standardized function names. Legacy aliases have been removed:
+
+| Old Name (Removed) | New Standardized Name |
+|-------------------|----------------------|
+| `calculateCircleTestParameters` | `calculateCircleTestParams` |
+| `calculateArcTestParameters` | `calculateArcTestParams` |
+| `calculateLineTestParameters` | `calculateLineTestParams` |
+| `placeCloseToCenterAtPixel` | `calculateCenterAtPixel` |
+| `placeCloseToCenterAtGrid` | `calculateCenterAtGrid` |
+| `calculateCircleBounds` | `calculateFilledCircleBounds` |
+| `calculateRectangleBounds` | `calculateStrokedRectBounds` |
+| `calculateCrispStrokeRectBounds` | `calculateCrispStrokedRectBounds` |
+| `calculateFillRectBounds` | `calculateFilledRectBounds` |
+| `calculateLineBounds` | `calculateStrokedLineBounds` |
+| `aggregateBounds` | `calculateAggregateBounds` |
+
+---
+
+## 6. File Naming Convention
 
 Test files use a parametrized naming scheme encoding test characteristics:
 
@@ -588,7 +711,7 @@ arc-sgl-szMix-fOpaq-sOpaq-sw1-10px-lytCenter-cenMixPG-edgeCrisp-arcADeg90-quadRa
 
 ---
 
-## 6. Categories
+## 7. Categories
 
 Tests are organized into five categories matching direct rendering shape types:
 
@@ -628,7 +751,7 @@ Tests are organized into five categories matching direct rendering shape types:
 
 ---
 
-## 7. Performance Testing
+## 8. Performance Testing
 
 Performance tests compare SWCanvas direct rendering against native HTML5 Canvas using ramp-up methodology.
 
@@ -830,7 +953,7 @@ npm run test:direct-rendering:perf -- -q              # Quiet mode
 
 ---
 
-## 8. Test Metadata Validation
+## 9. Test Metadata Validation
 
 Validation tools ensure test files follow naming conventions and include required metadata.
 
@@ -883,4 +1006,4 @@ Parsing errors are displayed in red below the test description.
 - [tests/README.md](../README.md) - Main test documentation
 - [PERFORMANCE-BENCHMARKING.md](PERFORMANCE-BENCHMARKING.md) - Performance benchmarking mechanics (VSync cliff detection, scaling)
 - [DIRECT-RENDERING-SUMMARY.MD](../../DIRECT-RENDERING-SUMMARY.MD) - Direct rendering implementation details
-- [tests/build/README.md](../build/README.md) - Build utilities for test management
+- [tests/build/README.md](../build/README.md) - Build utilities for test management (includes snapshot verification tools)
