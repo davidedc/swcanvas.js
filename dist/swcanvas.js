@@ -118,8 +118,7 @@ const DEFAULT_MITER_LIMIT = SWCanvasConstants.DEFAULT_MITER_LIMIT;
  * Check if debug mode is enabled.
  * @type {boolean}
  */
-const IS_DEBUG = typeof globalThis !== 'undefined' &&
-                 globalThis.__SWCANVAS_DEBUG__ === true;
+const IS_DEBUG = typeof globalThis !== 'undefined' && globalThis.__SWCANVAS_DEBUG__ === true;
 
 /**
  * Assert a condition is true (development only).
@@ -275,8 +274,7 @@ class Validators {
      * @param {*} height - Height
      */
     static rectParams(x, y, width, height) {
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle parameters must be numbers');
         }
     }
@@ -289,8 +287,7 @@ class Validators {
      * @param {*} height - Height
      */
     static rectParamsFinite(x, y, width, height) {
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle parameters must be numbers');
         }
         if (!isFinite(x) || !isFinite(y) || !isFinite(width) || !isFinite(height)) {
@@ -359,7 +356,7 @@ class Color {
     /**
      * Create a Color instance
      * @param {number} r - Red component (0-255)
-     * @param {number} g - Green component (0-255)  
+     * @param {number} g - Green component (0-255)
      * @param {number} b - Blue component (0-255)
      * @param {number} a - Alpha component (0-255)
      * @param {boolean} isPremultiplied - Whether values are already premultiplied
@@ -387,10 +384,18 @@ class Color {
     }
 
     // Getters for premultiplied components (internal storage format)
-    get premultipliedR() { return this._r; }
-    get premultipliedG() { return this._g; }
-    get premultipliedB() { return this._b; }
-    get premultipliedA() { return this._a; }
+    get premultipliedR() {
+        return this._r;
+    }
+    get premultipliedG() {
+        return this._g;
+    }
+    get premultipliedB() {
+        return this._b;
+    }
+    get premultipliedA() {
+        return this._a;
+    }
 
     // Getters for non-premultiplied components (API-friendly)
     get r() {
@@ -538,11 +543,13 @@ class Color {
      * @returns {boolean} True if colors are equal
      */
     equals(other) {
-        return other instanceof Color &&
+        return (
+            other instanceof Color &&
             this._r === other._r &&
             this._g === other._g &&
             this._b === other._b &&
-            this._a === other._a;
+            this._a === other._a
+        );
     }
 }
 
@@ -560,11 +567,12 @@ Color.black = new Color(0, 0, 0, 255);
  */
 Color.fromCSS = function (cssString, parser) {
     if (!cssString || typeof cssString !== 'string') {
-        throw new Error("Invalid color format: must be a string");
+        throw new Error('Invalid color format: must be a string');
     }
     const parsed = parser.parse(cssString);
     return new Color(parsed.r, parsed.g, parsed.b, parsed.a, false);
 };
+
 /**
  * StateStack - Manages save/restore state snapshots for Context2D
  *
@@ -616,7 +624,7 @@ class StateStack {
 
 /**
  * Point class for SWCanvas
- * 
+ *
  * Immutable 2D point representing a coordinate pair.
  * Following Joshua Bloch's principle of making small, focused, immutable classes.
  */
@@ -633,14 +641,18 @@ class Point {
 
         this._x = x;
         this._y = y;
-        
+
         // Make point immutable
         Object.freeze(this);
     }
-    
-    get x() { return this._x; }
-    get y() { return this._y; }
-    
+
+    get x() {
+        return this._x;
+    }
+    get y() {
+        return this._y;
+    }
+
     /**
      * Create Point from object with x,y properties
      * @param {Object} obj - Object with x and y properties
@@ -652,8 +664,7 @@ class Point {
         }
         return new Point(obj.x, obj.y);
     }
-    
-    
+
     /**
      * Calculate distance to another point
      * @param {Point} other - Other point
@@ -663,13 +674,12 @@ class Point {
         if (!(other instanceof Point)) {
             throw new Error('Argument must be a Point instance');
         }
-        
+
         const dx = this._x - other._x;
         const dy = this._y - other._y;
         return Math.sqrt(dx * dx + dy * dy);
     }
-    
-    
+
     /**
      * Add vector to this point (immutable)
      * @param {number} dx - X offset
@@ -679,7 +689,7 @@ class Point {
     translate(dx, dy) {
         return new Point(this._x + dx, this._y + dy);
     }
-    
+
     /**
      * Add another point to this point (immutable)
      * @param {Point} other - Other point to add
@@ -689,10 +699,10 @@ class Point {
         if (!(other instanceof Point)) {
             throw new Error('Argument must be a Point instance');
         }
-        
+
         return new Point(this._x + other._x, this._y + other._y);
     }
-    
+
     /**
      * Subtract another point from this point (immutable)
      * @param {Point} other - Other point to subtract
@@ -702,10 +712,10 @@ class Point {
         if (!(other instanceof Point)) {
             throw new Error('Argument must be a Point instance');
         }
-        
+
         return new Point(this._x - other._x, this._y - other._y);
     }
-    
+
     /**
      * Scale this point by a factor (immutable)
      * @param {number} factor - Scale factor
@@ -715,10 +725,10 @@ class Point {
         if (typeof factor !== 'number') {
             throw new Error('Scale factor must be a number');
         }
-        
+
         return new Point(this._x * factor, this._y * factor);
     }
-    
+
     /**
      * Scale this point by separate X and Y factors (immutable)
      * @param {number} sx - X scale factor
@@ -729,10 +739,10 @@ class Point {
         if (typeof sx !== 'number' || typeof sy !== 'number') {
             throw new Error('Scale factors must be numbers');
         }
-        
+
         return new Point(this._x * sx, this._y * sy);
     }
-    
+
     /**
      * Rotate this point around origin (immutable)
      * @param {number} angle - Rotation angle in radians
@@ -742,15 +752,12 @@ class Point {
         if (typeof angle !== 'number') {
             throw new Error('Angle must be a number');
         }
-        
+
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
-        return new Point(
-            this._x * cos - this._y * sin,
-            this._x * sin + this._y * cos
-        );
+        return new Point(this._x * cos - this._y * sin, this._x * sin + this._y * cos);
     }
-    
+
     /**
      * Rotate this point around a center point (immutable)
      * @param {Point} center - Center of rotation
@@ -761,10 +768,10 @@ class Point {
         if (!(center instanceof Point)) {
             throw new Error('Center must be a Point instance');
         }
-        
+
         return this.subtract(center).rotate(angle).add(center);
     }
-    
+
     /**
      * Get magnitude (distance from origin)
      * @returns {number} Vector magnitude
@@ -772,7 +779,7 @@ class Point {
     get magnitude() {
         return Math.sqrt(this._x * this._x + this._y * this._y);
     }
-    
+
     /**
      * Get squared magnitude (avoids sqrt for performance)
      * @returns {number} Squared vector magnitude
@@ -780,7 +787,7 @@ class Point {
     get magnitudeSquared() {
         return this._x * this._x + this._y * this._y;
     }
-    
+
     /**
      * Normalize to unit vector (immutable)
      * @returns {Point} New normalized point
@@ -792,7 +799,7 @@ class Point {
         }
         return new Point(this._x / mag, this._y / mag);
     }
-    
+
     /**
      * Calculate dot product with another point
      * @param {Point} other - Other point/vector
@@ -802,10 +809,10 @@ class Point {
         if (!(other instanceof Point)) {
             throw new Error('Argument must be a Point instance');
         }
-        
+
         return this._x * other._x + this._y * other._y;
     }
-    
+
     /**
      * Calculate cross product with another point (2D cross returns scalar)
      * @param {Point} other - Other point/vector
@@ -815,10 +822,10 @@ class Point {
         if (!(other instanceof Point)) {
             throw new Error('Argument must be a Point instance');
         }
-        
+
         return this._x * other._y - this._y * other._x;
     }
-    
+
     /**
      * Round coordinates to integers (immutable)
      * @returns {Point} New point with rounded coordinates
@@ -826,7 +833,7 @@ class Point {
     round() {
         return new Point(Math.round(this._x), Math.round(this._y));
     }
-    
+
     /**
      * Floor coordinates to integers (immutable)
      * @returns {Point} New point with floored coordinates
@@ -834,7 +841,7 @@ class Point {
     floor() {
         return new Point(Math.floor(this._x), Math.floor(this._y));
     }
-    
+
     /**
      * Ceiling coordinates to integers (immutable)
      * @returns {Point} New point with ceiling coordinates
@@ -842,7 +849,7 @@ class Point {
     ceil() {
         return new Point(Math.ceil(this._x), Math.ceil(this._y));
     }
-    
+
     /**
      * Clamp coordinates to a range (immutable)
      * @param {number} minX - Minimum X value
@@ -852,12 +859,9 @@ class Point {
      * @returns {Point} New clamped point
      */
     clamp(minX, minY, maxX, maxY) {
-        return new Point(
-            Math.max(minX, Math.min(maxX, this._x)),
-            Math.max(minY, Math.min(maxY, this._y))
-        );
+        return new Point(Math.max(minX, Math.min(maxX, this._x)), Math.max(minY, Math.min(maxY, this._y)));
     }
-    
+
     /**
      * Interpolate between this point and another (immutable)
      * @param {Point} other - Target point
@@ -868,17 +872,14 @@ class Point {
         if (!(other instanceof Point)) {
             throw new Error('Target must be a Point instance');
         }
-        
+
         if (typeof t !== 'number' || t < 0 || t > 1) {
             throw new Error('Interpolation factor must be between 0 and 1');
         }
-        
-        return new Point(
-            this._x + (other._x - this._x) * t,
-            this._y + (other._y - this._y) * t
-        );
+
+        return new Point(this._x + (other._x - this._x) * t, this._y + (other._y - this._y) * t);
     }
-    
+
     /**
      * Convert to plain object
      * @returns {Object} {x, y} object
@@ -886,7 +887,7 @@ class Point {
     toObject() {
         return { x: this._x, y: this._y };
     }
-    
+
     /**
      * Convert to array
      * @returns {number[]} [x, y] array
@@ -894,7 +895,7 @@ class Point {
     toArray() {
         return [this._x, this._y];
     }
-    
+
     /**
      * Check equality with another point
      * @param {Point} other - Other point
@@ -902,11 +903,13 @@ class Point {
      * @returns {boolean} True if points are equal within tolerance
      */
     equals(other, tolerance = FLOAT_EPSILON) {
-        return other instanceof Point &&
-               Math.abs(this._x - other._x) < tolerance &&
-               Math.abs(this._y - other._y) < tolerance;
+        return (
+            other instanceof Point &&
+            Math.abs(this._x - other._x) < tolerance &&
+            Math.abs(this._y - other._y) < tolerance
+        );
     }
-    
+
     /**
      * Check if point is at origin (0, 0)
      * @param {number} tolerance - Tolerance for floating point comparison
@@ -915,7 +918,7 @@ class Point {
     isOrigin(tolerance = FLOAT_EPSILON) {
         return Math.abs(this._x) < tolerance && Math.abs(this._y) < tolerance;
     }
-    
+
     /**
      * String representation for debugging
      * @returns {string} Point description
@@ -924,9 +927,10 @@ class Point {
         return `Point(${this._x}, ${this._y})`;
     }
 }
+
 /**
  * Rectangle class for SWCanvas
- * 
+ *
  * Immutable Rectangle class representing an axis-aligned bounding box.
  * Following Joshua Bloch's principle of making small, focused, immutable classes.
  */
@@ -950,21 +954,37 @@ class Rectangle {
         this._y = y;
         this._width = width;
         this._height = height;
-        
+
         // Make rectangle immutable
         Object.freeze(this);
     }
-    
-    get x() { return this._x; }
-    get y() { return this._y; }
-    get width() { return this._width; }
-    get height() { return this._height; }
-    
-    get left() { return this._x; }
-    get top() { return this._y; }
-    get right() { return this._x + this._width; }
-    get bottom() { return this._y + this._height; }
-    
+
+    get x() {
+        return this._x;
+    }
+    get y() {
+        return this._y;
+    }
+    get width() {
+        return this._width;
+    }
+    get height() {
+        return this._height;
+    }
+
+    get left() {
+        return this._x;
+    }
+    get top() {
+        return this._y;
+    }
+    get right() {
+        return this._x + this._width;
+    }
+    get bottom() {
+        return this._y + this._height;
+    }
+
     /**
      * Create rectangle that bounds a set of points
      * @param {Point[]} points - Array of points
@@ -974,42 +994,41 @@ class Rectangle {
         if (!Array.isArray(points)) {
             throw new Error('Points must be an array');
         }
-        
+
         if (points.length === 0) {
             return new Rectangle(0, 0, 0, 0);
         }
-        
+
         // Validate all points
         for (const point of points) {
             if (!(point instanceof Point)) {
                 throw new Error('All items must be Point instances');
             }
         }
-        
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-        
+
+        let minX = Infinity,
+            minY = Infinity;
+        let maxX = -Infinity,
+            maxY = -Infinity;
+
         for (const point of points) {
             minX = Math.min(minX, point.x);
             minY = Math.min(minY, point.y);
             maxX = Math.max(maxX, point.x);
             maxY = Math.max(maxY, point.y);
         }
-        
+
         return new Rectangle(minX, minY, maxX - minX, maxY - minY);
     }
-    
+
     /**
      * Get center point of rectangle
      * @returns {Point} Center point
      */
     get center() {
-        return new Point(
-            this._x + this._width / 2,
-            this._y + this._height / 2
-        );
+        return new Point(this._x + this._width / 2, this._y + this._height / 2);
     }
-    
+
     /**
      * Get area of rectangle
      * @returns {number} Area
@@ -1017,7 +1036,7 @@ class Rectangle {
     get area() {
         return this._width * this._height;
     }
-    
+
     /**
      * Get perimeter of rectangle
      * @returns {number} Perimeter
@@ -1025,7 +1044,7 @@ class Rectangle {
     get perimeter() {
         return 2 * (this._width + this._height);
     }
-    
+
     /**
      * Check if rectangle is empty (zero area)
      * @returns {boolean} True if empty
@@ -1033,7 +1052,7 @@ class Rectangle {
     get isEmpty() {
         return this._width === 0 || this._height === 0;
     }
-    
+
     /**
      * Check if rectangle is a square
      * @returns {boolean} True if square
@@ -1041,7 +1060,7 @@ class Rectangle {
     get isSquare() {
         return this._width === this._height && this._width > 0;
     }
-    
+
     /**
      * String representation for debugging
      * @returns {string} Rectangle description
@@ -1050,12 +1069,13 @@ class Rectangle {
         return `Rectangle(${this._x}, ${this._y}, ${this._width}, ${this._height})`;
     }
 }
+
 /**
  * Transform2D class for SWCanvas
- * 
+ *
  * Represents a 2D affine transformation matrix using homogeneous coordinates.
  * Immutable value object following Joshua Bloch's effective design principles.
- * 
+ *
  * Transform2D format (2x3 affine transformation):
  * | a  c  e |   | x |   | ax + cy + e |
  * | b  d  f | × | y | = | bx + dy + f |
@@ -1085,9 +1105,12 @@ class Transform2D {
             throw new Error('Transform2D initialization array must have exactly 6 elements');
         } else {
             // Identity transformation
-            this.a = 1; this.b = 0;
-            this.c = 0; this.d = 1;
-            this.e = 0; this.f = 0;
+            this.a = 1;
+            this.b = 0;
+            this.c = 0;
+            this.d = 1;
+            this.e = 0;
+            this.f = 0;
         }
 
         // Pre-compute decomposition values using matrix-based axis detection
@@ -1101,19 +1124,17 @@ class Transform2D {
             this.is90DegreeRotated = false; // No dimension swap needed
             this.scaleX = Math.abs(this.a); // No sqrt needed
             this.scaleY = Math.abs(this.d); // No sqrt needed
-            this.rotationAngle = (this.a < 0) ? Math.PI : 0;
-        }
-        // 2. Check for Perpendicular Alignment (90° or 270°)
-        // Second common case: 90° rotation where a=0, d=0
-        else if (Math.abs(this.a) < TRANSFORM_EPSILON && Math.abs(this.d) < TRANSFORM_EPSILON) {
+            this.rotationAngle = this.a < 0 ? Math.PI : 0;
+        } else if (Math.abs(this.a) < TRANSFORM_EPSILON && Math.abs(this.d) < TRANSFORM_EPSILON) {
+            // 2. Check for Perpendicular Alignment (90° or 270°)
+            // Second common case: 90° rotation where a=0, d=0
             this.isAxisAligned = true;
             this.is90DegreeRotated = true; // Dimension swap needed
             this.scaleX = Math.abs(this.b); // No sqrt needed
             this.scaleY = Math.abs(this.c); // No sqrt needed
-            this.rotationAngle = (this.b > 0) ? HALF_PI : -HALF_PI;
-        }
-        // 3. Complex Rotation / Skew - fallback to trig
-        else {
+            this.rotationAngle = this.b > 0 ? HALF_PI : -HALF_PI;
+        } else {
+            // 3. Complex Rotation / Skew - fallback to trig
             this.isAxisAligned = false;
             this.is90DegreeRotated = false;
             this.scaleX = Math.sqrt(this.a * this.a + this.b * this.b);
@@ -1122,27 +1143,20 @@ class Transform2D {
         }
 
         // Pre-compute scaled line width factor (geometric mean of scales)
-        this.scaledLineWidthFactor = Math.max(
-            Math.sqrt(this.scaleX * this.scaleY),
-            TRANSFORM_EPSILON
-        );
+        this.scaledLineWidthFactor = Math.max(Math.sqrt(this.scaleX * this.scaleY), TRANSFORM_EPSILON);
 
         // Pre-compute uniform scale factor (sqrt of absolute determinant)
         // Used for scaling radii and values that transform uniformly in all directions
-        this.uniformScale = Math.max(
-            Math.sqrt(Math.abs(this.a * this.d - this.b * this.c)),
-            TRANSFORM_EPSILON
-        );
+        this.uniformScale = Math.max(Math.sqrt(Math.abs(this.a * this.d - this.b * this.c)), TRANSFORM_EPSILON);
 
         // Pre-compute uniform scale check: a=d, b=-c (rotation + uniform scale)
-        this.isUniformScale = Math.abs(this.a - this.d) < TRANSFORM_EPSILON &&
-                              Math.abs(this.b + this.c) < TRANSFORM_EPSILON;
+        this.isUniformScale =
+            Math.abs(this.a - this.d) < TRANSFORM_EPSILON && Math.abs(this.b + this.c) < TRANSFORM_EPSILON;
 
         // Make transformation immutable
         Object.freeze(this);
     }
 
-    
     /**
      * Create translation transform
      * @param {number} x - X translation
@@ -1239,11 +1253,11 @@ class Transform2D {
      */
     invert() {
         const det = this.a * this.d - this.b * this.c;
-        
+
         if (Math.abs(det) < FLOAT_EPSILON) {
             throw new Error('Transform2D matrix is not invertible (determinant ≈ 0)');
         }
-        
+
         return new Transform2D([
             this.d / det,
             -this.b / det,
@@ -1263,13 +1277,13 @@ class Transform2D {
         if (!point || typeof point.x !== 'number' || typeof point.y !== 'number') {
             throw new Error('Point must have numeric x and y properties');
         }
-        
+
         return {
             x: this.a * point.x + this.c * point.y + this.e,
             y: this.b * point.x + this.d * point.y + this.f
         };
     }
-    
+
     /**
      * Transform multiple points efficiently
      * @param {Array} points - Array of points to transform
@@ -1278,7 +1292,7 @@ class Transform2D {
     transformPoints(points) {
         return points.map(point => this.transformPoint(point));
     }
-    
+
     /**
      * Get transformation as array
      * @returns {number[]} [a, b, c, d, e, f] array
@@ -1286,7 +1300,7 @@ class Transform2D {
     toArray() {
         return [this.a, this.b, this.c, this.d, this.e, this.f];
     }
-    
+
     /**
      * Check if this is the identity transformation
      * @returns {boolean} True if identity
@@ -1295,10 +1309,9 @@ class Transform2D {
         // Fast path: reference equality with cached identity
         if (this === Transform2D.IDENTITY) return true;
         // Fallback: component equality (for transforms created with [1,0,0,1,0,0])
-        return this.a === 1 && this.b === 0 && this.c === 0 &&
-               this.d === 1 && this.e === 0 && this.f === 0;
+        return this.a === 1 && this.b === 0 && this.c === 0 && this.d === 1 && this.e === 0 && this.f === 0;
     }
-    
+
     /**
      * Get transformation determinant
      * @returns {number} Transform2D determinant
@@ -1328,13 +1341,15 @@ class Transform2D {
      * @returns {boolean} True if transforms are equal within tolerance
      */
     equals(other, tolerance = FLOAT_EPSILON) {
-        return other instanceof Transform2D &&
-               Math.abs(this.a - other.a) < tolerance &&
-               Math.abs(this.b - other.b) < tolerance &&
-               Math.abs(this.c - other.c) < tolerance &&
-               Math.abs(this.d - other.d) < tolerance &&
-               Math.abs(this.e - other.e) < tolerance &&
-               Math.abs(this.f - other.f) < tolerance;
+        return (
+            other instanceof Transform2D &&
+            Math.abs(this.a - other.a) < tolerance &&
+            Math.abs(this.b - other.b) < tolerance &&
+            Math.abs(this.c - other.c) < tolerance &&
+            Math.abs(this.d - other.d) < tolerance &&
+            Math.abs(this.e - other.e) < tolerance &&
+            Math.abs(this.f - other.f) < tolerance
+        );
     }
 
     /**
@@ -1349,7 +1364,6 @@ class Transform2D {
 // Cache the identity matrix - immutable, so safe to share
 Transform2D.IDENTITY = new Transform2D();
 
-
 /**
  * SWPath2D - Path command recorder for 2D drawing operations
  *
@@ -1363,31 +1377,36 @@ class SWPath2D {
     }
 
     closePath() {
-        this.commands.push({type: 'closePath'});
+        this.commands.push({ type: 'closePath' });
     }
 
     moveTo(x, y) {
-        this.commands.push({type: 'moveTo', x: x, y: y});
+        this.commands.push({ type: 'moveTo', x: x, y: y });
     }
 
     lineTo(x, y) {
-        this.commands.push({type: 'lineTo', x: x, y: y});
+        this.commands.push({ type: 'lineTo', x: x, y: y });
     }
 
     bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y) {
         this.commands.push({
             type: 'bezierCurveTo',
-            cp1x: cp1x, cp1y: cp1y,
-            cp2x: cp2x, cp2y: cp2y,
-            x: x, y: y
+            cp1x: cp1x,
+            cp1y: cp1y,
+            cp2x: cp2x,
+            cp2y: cp2y,
+            x: x,
+            y: y
         });
     }
 
     quadraticCurveTo(cpx, cpy, x, y) {
         this.commands.push({
             type: 'quadraticCurveTo',
-            cpx: cpx, cpy: cpy,
-            x: x, y: y
+            cpx: cpx,
+            cpy: cpy,
+            x: x,
+            y: y
         });
     }
 
@@ -1411,7 +1430,7 @@ class SWPath2D {
     roundRect(x, y, width, height, radii) {
         // Normalize radii to a single value for simplicity
         // HTML5 Canvas spec allows array of up to 4 values, but we simplify to single radius
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        let radius = Array.isArray(radii) ? radii[0] : radii || 0;
 
         // Clamp radius to half the smaller dimension
         if (width < 2 * radius) radius = width / 2;
@@ -1435,7 +1454,8 @@ class SWPath2D {
     arc(x, y, radius, startAngle, endAngle, counterclockwise) {
         this.commands.push({
             type: 'arc',
-            x: x, y: y,
+            x: x,
+            y: y,
             radius: radius,
             startAngle: startAngle,
             endAngle: endAngle,
@@ -1446,7 +1466,8 @@ class SWPath2D {
     ellipse(x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise) {
         this.commands.push({
             type: 'ellipse',
-            x: x, y: y,
+            x: x,
+            y: y,
             radiusX: radiusX,
             radiusY: radiusY,
             rotation: rotation,
@@ -1457,33 +1478,41 @@ class SWPath2D {
     }
 
     arcTo(x1, y1, x2, y2, radius) {
-        if (typeof x1 !== 'number' || typeof y1 !== 'number' || 
-            typeof x2 !== 'number' || typeof y2 !== 'number' || typeof radius !== 'number') {
+        if (
+            typeof x1 !== 'number' ||
+            typeof y1 !== 'number' ||
+            typeof x2 !== 'number' ||
+            typeof y2 !== 'number' ||
+            typeof radius !== 'number'
+        ) {
             const error = new TypeError('All parameters must be numbers');
             error.message = 'TypeError: ' + error.message;
             throw error;
         }
-        
+
         if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2) || !isFinite(radius)) {
             const error = new TypeError('All parameters must be finite numbers');
             error.message = 'TypeError: ' + error.message;
             throw error;
         }
-        
+
         if (radius < 0) {
             const error = new Error('IndexSizeError');
             error.name = 'IndexSizeError';
             throw error;
         }
-        
+
         this.commands.push({
             type: 'arcTo',
-            x1: x1, y1: y1,
-            x2: x2, y2: y2,
+            x1: x1,
+            y1: y1,
+            x2: x2,
+            y2: y2,
             radius: radius
         });
     }
 }
+
 /**
  * Surface class for SWCanvas
  *
@@ -1507,7 +1536,8 @@ class Surface {
         Validators.positiveInteger(height, 'Surface height');
 
         // Check area first (SurfaceTooLarge takes precedence for test compatibility)
-        if (width * height > 268435456) { // 16384 * 16384
+        if (width * height > 268435456) {
+            // 16384 * 16384
             throw new Error('SurfaceTooLarge');
         }
 
@@ -1562,7 +1592,7 @@ class Surface {
      * @param {number} b - Blue component (0-255)
      */
     setPixelOpaque(pixelIndex, r, g, b) {
-        this.data32[pixelIndex] = 0xFF000000 | (b << 16) | (g << 8) | r;
+        this.data32[pixelIndex] = 0xff000000 | (b << 16) | (g << 8) | r;
     }
 
     /**
@@ -1672,8 +1702,6 @@ class Surface {
     }
 }
 
-
-
 /**
  * SpanOps - Static utility methods for horizontal span filling
  * Used by all shape *Ops classes for optimized pixel rendering.
@@ -1726,13 +1754,17 @@ class SpanOps {
             const yi = Math.floor(y);
             const x = Math.floor(startX);
             if (yi < 0 || yi >= surfaceHeight) {
-                throw new Error(`SpanOps.fill_Opaq: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`);
+                throw new Error(
+                    `SpanOps.fill_Opaq: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`
+                );
             }
             if (x < 0) {
                 throw new Error(`SpanOps.fill_Opaq: startX out of bounds: startX=${startX} (x=${x}), must be >= 0`);
             }
             if (x + length > surfaceWidth) {
-                throw new Error(`SpanOps.fill_Opaq: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`);
+                throw new Error(
+                    `SpanOps.fill_Opaq: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`
+                );
             }
             if (length <= 0) {
                 throw new Error(`SpanOps.fill_Opaq: invalid length: ${length}, must be > 0`);
@@ -1790,13 +1822,17 @@ class SpanOps {
             const yi = Math.floor(y);
             const x = Math.floor(startX);
             if (yi < 0 || yi >= surfaceHeight) {
-                throw new Error(`SpanOps.fill_Alpha: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`);
+                throw new Error(
+                    `SpanOps.fill_Alpha: y out of bounds: y=${y} (yi=${yi}), surfaceHeight=${surfaceHeight}`
+                );
             }
             if (x < 0) {
                 throw new Error(`SpanOps.fill_Alpha: startX out of bounds: startX=${startX} (x=${x}), must be >= 0`);
             }
             if (x + length > surfaceWidth) {
-                throw new Error(`SpanOps.fill_Alpha: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`);
+                throw new Error(
+                    `SpanOps.fill_Alpha: span exceeds width: startX=${startX}, length=${length}, surfaceWidth=${surfaceWidth}`
+                );
             }
             if (length <= 0) {
                 throw new Error(`SpanOps.fill_Alpha: invalid length: ${length}, must be > 0`);
@@ -1920,10 +1956,14 @@ class QuadScanOps {
 
         // Reuse static corner pool instead of allocating new objects
         const c = QuadScanOps._corners;
-        c[0].x = x1 + perpXHalf; c[0].y = y1 + perpYHalf;
-        c[1].x = x1 - perpXHalf; c[1].y = y1 - perpYHalf;
-        c[2].x = x2 - perpXHalf; c[2].y = y2 - perpYHalf;
-        c[3].x = x2 + perpXHalf; c[3].y = y2 + perpYHalf;
+        c[0].x = x1 + perpXHalf;
+        c[0].y = y1 + perpYHalf;
+        c[1].x = x1 - perpXHalf;
+        c[1].y = y1 - perpYHalf;
+        c[2].x = x2 - perpXHalf;
+        c[2].y = y2 - perpYHalf;
+        c[3].x = x2 + perpXHalf;
+        c[3].y = y2 + perpYHalf;
         return c;
     }
 
@@ -1968,7 +2008,8 @@ class QuadScanOps {
             const p1 = corners[i];
             const p2 = corners[(i + 1) % 4];
 
-            if (p1.y !== p2.y) { // Skip horizontal edges
+            if (p1.y !== p2.y) {
+                // Skip horizontal edges
                 const edge = QuadScanOps._edges[QuadScanOps._edgeCount++];
                 edge.p1 = p1;
                 edge.p2 = p2;
@@ -1998,7 +2039,7 @@ class QuadScanOps {
 
                 if ((y >= p1.y && y < p2.y) || (y >= p2.y && y < p1.y)) {
                     intersections.push(edge.currentX);
-                    edge.currentX += edge.slope;  // Incremental update (was: t * deltaX)
+                    edge.currentX += edge.slope; // Incremental update (was: t * deltaX)
                 }
             }
 
@@ -2087,7 +2128,20 @@ if (__outA > 0) {
                         if (isOpaque) {
                             SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
                         } else {
-                            SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                            SpanOps.fill_Alpha(
+                                data,
+                                width,
+                                height,
+                                leftX,
+                                y,
+                                spanLength,
+                                r,
+                                g,
+                                b,
+                                effectiveAlpha,
+                                invAlpha,
+                                clipBuffer
+                            );
                         }
                     }
                 }
@@ -2165,7 +2219,20 @@ if (__outA > 0) {
                 if (isOpaque) {
                     SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
                 } else {
-                    SpanOps.fill_Alpha(data, width, height, leftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        leftX,
+                        y,
+                        spanLength,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }
@@ -2301,7 +2368,9 @@ if (__outA > 0) {
         const data = surface.data;
 
         const packedColor = isOpaqueColor ? Surface.packColor(color.r, color.g, color.b, 255) : 0;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         const invAlpha = 1 - effectiveAlpha;
 
@@ -2338,11 +2407,11 @@ if (__outA > 0) {
                 // Y-major edge: step Y, compute X (matches fill DDA)
                 const yStart = Math.ceil(Math.min(p1.y, p2.y));
                 const yEnd = Math.floor(Math.max(p1.y, p2.y));
-                const slope = dx / dy;  // dX/dY
+                const slope = dx / dy; // dX/dY
 
                 for (let y = yStart; y <= yEnd; y++) {
                     if (y < 0 || y >= height) continue;
-                    const x = (p1.x + (y - p1.y) * slope) | 0;  // floor
+                    const x = (p1.x + (y - p1.y) * slope) | 0; // floor
                     if (x < 0 || x >= width) continue;
 
                     const pixelIndex = y * width + x;
@@ -2361,11 +2430,11 @@ if (__outA > 0) {
                 // X-major edge: step X, compute Y
                 const xStart = Math.ceil(Math.min(p1.x, p2.x));
                 const xEnd = Math.floor(Math.max(p1.x, p2.x));
-                const slope = dy / dx;  // dY/dX
+                const slope = dy / dx; // dY/dX
 
                 for (let x = xStart; x <= xEnd; x++) {
                     if (x < 0 || x >= width) continue;
-                    const y = (p1.y + (x - p1.x) * slope) | 0;  // floor
+                    const y = (p1.y + (x - p1.x) * slope) | 0; // floor
                     if (y < 0 || y >= height) continue;
 
                     const pixelIndex = y * width + x;
@@ -2405,7 +2474,9 @@ if (__outA > 0) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
         const isOpaque = effectiveAlpha >= 1.0;
 
         const cos = Math.cos(rotation);
@@ -2426,7 +2497,9 @@ if (__outA > 0) {
         // Delegate to optimized scanline algorithm
         QuadScanOps.fillQuad(corners, {
             surface,
-            r, g, b,
+            r,
+            g,
+            b,
             isOpaque,
             packedColor: isOpaque ? Surface.packColor(r, g, b, 255) : 0,
             effectiveAlpha,
@@ -2454,12 +2527,24 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
-    static _stroke_Rot_Alpha(surface, centerX, centerY, width, height, rotation,
-                              lineWidth, color, globalAlpha, clipBuffer) {
+    static _stroke_Rot_Alpha(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        rotation,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer
+    ) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
@@ -2486,7 +2571,9 @@ if (__outA > 0) {
         // Common params for QuadScanOps
         const baseParams = {
             surface,
-            r, g, b,
+            r,
+            g,
+            b,
             isOpaque: false,
             effectiveAlpha,
             invAlpha,
@@ -2497,12 +2584,11 @@ if (__outA > 0) {
         const processEdge = (i, extend, renderFirst) => {
             const p1 = corners[i];
             const p2 = corners[(i + 1) % 4];
-            const line = extend ? RectOpsRot._extendLine(p1, p2, halfStroke)
-                                : RectOpsRot._shortenLine(p1, p2, halfStroke);
+            const line = extend
+                ? RectOpsRot._extendLine(p1, p2, halfStroke)
+                : RectOpsRot._shortenLine(p1, p2, halfStroke);
 
-            const quadCorners = QuadScanOps.lineToQuad(
-                line.start.x, line.start.y, line.end.x, line.end.y, halfStroke
-            );
+            const quadCorners = QuadScanOps.lineToQuad(line.start.x, line.start.y, line.end.x, line.end.y, halfStroke);
 
             const params = {
                 ...baseParams,
@@ -2520,14 +2606,14 @@ if (__outA > 0) {
 
         if (shortenedLength <= extendedLength) {
             // Shortened edges are shorter: render+add first, then extended with check
-            processEdge(1, false, true);  // shortened
-            processEdge(3, false, true);  // shortened
-            processEdge(0, true, false);  // extended with check
-            processEdge(2, true, false);  // extended with check
+            processEdge(1, false, true); // shortened
+            processEdge(3, false, true); // shortened
+            processEdge(0, true, false); // extended with check
+            processEdge(2, true, false); // extended with check
         } else {
             // Extended edges are shorter: render+add first, then shortened with check
-            processEdge(0, true, true);   // extended
-            processEdge(2, true, true);   // extended
+            processEdge(0, true, true); // extended
+            processEdge(2, true, true); // extended
             processEdge(1, false, false); // shortened with check
             processEdge(3, false, false); // shortened with check
         }
@@ -2547,7 +2633,18 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
-    static stroke_Rot_Any(surface, centerX, centerY, width, height, rotation, lineWidth, color, globalAlpha, clipBuffer) {
+    static stroke_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        rotation,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer
+    ) {
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
         const hw = width / 2;
@@ -2579,8 +2676,18 @@ if (__outA > 0) {
 
         // For thick semitransparent strokes, use Set-based approach to prevent overdraw
         if (isSemiTransparentColor) {
-            return RectOpsRot._stroke_Rot_Alpha(surface, centerX, centerY, width, height,
-                rotation, lineWidth, color, globalAlpha, clipBuffer);
+            return RectOpsRot._stroke_Rot_Alpha(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                lineWidth,
+                color,
+                globalAlpha,
+                clipBuffer
+            );
         }
 
         // Handle thick opaque strokes using QuadScanOps directly for consistent rasterization.
@@ -2591,7 +2698,9 @@ if (__outA > 0) {
 
         const params = {
             surface,
-            r: color.r, g: color.g, b: color.b,
+            r: color.r,
+            g: color.g,
+            b: color.b,
             isOpaque: true,
             packedColor,
             effectiveAlpha: 0,
@@ -2604,9 +2713,7 @@ if (__outA > 0) {
                 ? RectOpsRot._extendLine(p1, p2, halfStroke)
                 : RectOpsRot._shortenLine(p1, p2, halfStroke);
 
-            const quadCorners = QuadScanOps.lineToQuad(
-                line.start.x, line.start.y, line.end.x, line.end.y, halfStroke
-            );
+            const quadCorners = QuadScanOps.lineToQuad(line.start.x, line.start.y, line.end.x, line.end.y, halfStroke);
 
             if (quadCorners === null) {
                 QuadScanOps.fillSquare(line.start.x, line.start.y, halfStroke, params);
@@ -2642,16 +2749,46 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps or LineOps)
      */
-    static fillStroke_Rot_Any(surface, centerX, centerY, width, height, rotation,
-                                lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
+    static fillStroke_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        rotation,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer
+    ) {
         // Fill first, then stroke on top
         if (fillColor && fillColor.a > 0) {
-            RectOpsRot.fill_Rot_Any(surface, centerX, centerY, width, height,
-                               rotation, fillColor, globalAlpha, clipBuffer);
+            RectOpsRot.fill_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                fillColor,
+                globalAlpha,
+                clipBuffer
+            );
         }
         if (strokeColor && strokeColor.a > 0 && lineWidth > 0) {
-            RectOpsRot.stroke_Rot_Any(surface, centerX, centerY, width, height,
-                                 rotation, lineWidth, strokeColor, globalAlpha, clipBuffer);
+            RectOpsRot.stroke_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                lineWidth,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
+            );
         }
     }
 }
@@ -2775,7 +2912,9 @@ class RectOpsAA {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Calculate rectangle pixel bounds
         const left = Math.floor(x);
@@ -2959,7 +3098,9 @@ if (__outA > 0) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const halfStroke = lineWidth / 2;
 
@@ -3093,8 +3234,7 @@ if (__outA > 0) {
     static getRotatedDimensions(width, height, angle) {
         const tolerance = ANGLE_TOLERANCE;
         const normalized = ((angle % TAU) + TAU) % TAU;
-        if (Math.abs(normalized - HALF_PI) < tolerance ||
-            Math.abs(normalized - THREE_HALF_PI) < tolerance) {
+        if (Math.abs(normalized - HALF_PI) < tolerance || Math.abs(normalized - THREE_HALF_PI) < tolerance) {
             return { adjustedWidth: height, adjustedHeight: width };
         }
         return { adjustedWidth: width, adjustedHeight: height };
@@ -3155,7 +3295,9 @@ if (__outA > 0) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const left = Math.floor(x);
         const top = Math.floor(y);
@@ -3207,7 +3349,18 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fillStroke_AA_Any(surface, x, y, width, height, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
+    static fillStroke_AA_Any(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -3266,8 +3419,20 @@ if (__outA > 0) {
             if (fillIsOpaque) {
                 SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, spanLeft, py, length, fillPacked, clipBuffer);
             } else {
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, spanLeft, py, length,
-                    fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    spanLeft,
+                    py,
+                    length,
+                    fillColor.r,
+                    fillColor.g,
+                    fillColor.b,
+                    fillEffectiveAlpha,
+                    fillInvAlpha,
+                    clipBuffer
+                );
             }
         };
 
@@ -3280,8 +3445,20 @@ if (__outA > 0) {
             if (strokeIsOpaque) {
                 SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, spanLeft, py, length, strokePacked, clipBuffer);
             } else {
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, spanLeft, py, length,
-                    strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    spanLeft,
+                    py,
+                    length,
+                    strokeColor.r,
+                    strokeColor.g,
+                    strokeColor.b,
+                    strokeEffectiveAlpha,
+                    strokeInvAlpha,
+                    clipBuffer
+                );
             }
         };
 
@@ -3297,8 +3474,8 @@ if (__outA > 0) {
             // For no stroke: fill to PATH extent
             // For semi-transparent strokes, also render fill in vertical stroke zones
             // so the top/bottom stroke can blend with the fill underneath
-            const shouldRenderFill = hasFill && py >= pathTop && py < pathBottom &&
-                (!inVerticalStrokeZone || strokeIsSemiTransparent);
+            const shouldRenderFill =
+                hasFill && py >= pathTop && py < pathBottom && (!inVerticalStrokeZone || strokeIsSemiTransparent);
 
             if (shouldRenderFill) {
                 let fillLeft, fillRight;
@@ -3389,7 +3566,8 @@ class CircleOps {
         if (intRadius < 0) return null;
 
         // Determine offsets for .5 radius case (affects boundary calculations)
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -3469,7 +3647,16 @@ class CircleOps {
 
             // Draw bottom scanline
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
-                SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_bottom, spanWidth, packedColor, clipBuffer);
+                SpanOps.fill_Opaq(
+                    data32,
+                    width,
+                    height,
+                    clampedStartX,
+                    abs_y_bottom,
+                    spanWidth,
+                    packedColor,
+                    clipBuffer
+                );
             }
 
             // Draw top scanline (skip overdraw conditions)
@@ -3534,15 +3721,39 @@ class CircleOps {
 
             // Draw bottom scanline
             if (abs_y_bottom >= 0 && abs_y_bottom < height) {
-                SpanOps.fill_Alpha(data, width, height, clampedStartX, abs_y_bottom, spanWidth,
-                    r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    width,
+                    height,
+                    clampedStartX,
+                    abs_y_bottom,
+                    spanWidth,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             }
 
             // Draw top scanline (skip overdraw conditions)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
             if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
-                SpanOps.fill_Alpha(data, width, height, clampedStartX, abs_y_top, spanWidth,
-                    r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    width,
+                    height,
+                    clampedStartX,
+                    abs_y_top,
+                    spanWidth,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             }
         }
     }
@@ -3577,7 +3788,7 @@ class CircleOps {
                 const py = Math.round(cy);
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         data32[pos] = packedColor;
                     }
                 }
@@ -3586,7 +3797,8 @@ class CircleOps {
         }
 
         // Determine offsets for .5 radius case
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -3601,61 +3813,69 @@ class CircleOps {
             // Calculate 8 symmetric points with offsets for top/left halves
             // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
             // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
-            const p1x = cX + x, p1y = cY + y;                    // bottom-right (math: Q1)
-            const p2x = cX + y, p2y = cY + x;                    // bottom-right (math: Q1)
-            const p3x = cX + y, p3y = cY - x - yOffset;          // top-right (math: Q4)
-            const p4x = cX + x, p4y = cY - y - yOffset;          // top-right (math: Q4)
-            const p5x = cX - x - xOffset, p5y = cY - y - yOffset; // top-left (math: Q3)
-            const p6x = cX - y - xOffset, p6y = cY - x - yOffset; // top-left (math: Q3)
-            const p7x = cX - y - xOffset, p7y = cY + x;          // bottom-left (math: Q2)
-            const p8x = cX - x - xOffset, p8y = cY + y;          // bottom-left (math: Q2)
+            const p1x = cX + x,
+                p1y = cY + y; // bottom-right (math: Q1)
+            const p2x = cX + y,
+                p2y = cY + x; // bottom-right (math: Q1)
+            const p3x = cX + y,
+                p3y = cY - x - yOffset; // top-right (math: Q4)
+            const p4x = cX + x,
+                p4y = cY - y - yOffset; // top-right (math: Q4)
+            const p5x = cX - x - xOffset,
+                p5y = cY - y - yOffset; // top-left (math: Q3)
+            const p6x = cX - y - xOffset,
+                p6y = cY - x - yOffset; // top-left (math: Q3)
+            const p7x = cX - y - xOffset,
+                p7y = cY + x; // bottom-left (math: Q2)
+            const p8x = cX - x - xOffset,
+                p8y = cY + y; // bottom-left (math: Q2)
 
             // Plot points with bounds checking
             if (p1x >= 0 && p1x < width && p1y >= 0 && p1y < height) {
                 const pos = p1y * width + p1x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (x !== y && p2x >= 0 && p2x < width && p2y >= 0 && p2y < height) {
                 const pos = p2y * width + p2x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p3x >= 0 && p3x < width && p3y >= 0 && p3y < height) {
                 const pos = p3y * width + p3x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p4x >= 0 && p4x < width && p4y >= 0 && p4y < height) {
                 const pos = p4y * width + p4x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p5x >= 0 && p5x < width && p5y >= 0 && p5y < height) {
                 const pos = p5y * width + p5x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (x !== y && p6x >= 0 && p6x < width && p6y >= 0 && p6y < height) {
                 const pos = p6y * width + p6x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p7x >= 0 && p7x < width && p7y >= 0 && p7y < height) {
                 const pos = p7y * width + p7x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
             if (p8x >= 0 && p8x < width && p8y >= 0 && p8y < height) {
                 const pos = p8y * width + p8x;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
@@ -3691,7 +3911,9 @@ class CircleOps {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Center calculation for stroke (standard Bresenham approach)
         const cX = Math.floor(cx);
@@ -3707,7 +3929,7 @@ class CircleOps {
                 const py = Math.round(cy);
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -3726,7 +3948,8 @@ if (__outA > 0) {
         }
 
         // Determine offsets for .5 radius case
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -3743,21 +3966,29 @@ if (__outA > 0) {
             // Primary points (A, C, E, G) - always unique from each other
             // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
             // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
-            const pAx = cX + x, pAy = cY + y;                       // bottom-right quadrant (math: Q1)
-            const pCx = cX + y, pCy = cY - x - yOffset;             // top-right quadrant (math: Q4)
-            const pEx = cX - x - xOffset, pEy = cY - y - yOffset;   // top-left quadrant (math: Q3)
-            const pGx = cX - y - xOffset, pGy = cY + x;             // bottom-left quadrant (math: Q2)
+            const pAx = cX + x,
+                pAy = cY + y; // bottom-right quadrant (math: Q1)
+            const pCx = cX + y,
+                pCy = cY - x - yOffset; // top-right quadrant (math: Q4)
+            const pEx = cX - x - xOffset,
+                pEy = cY - y - yOffset; // top-left quadrant (math: Q3)
+            const pGx = cX - y - xOffset,
+                pGy = cY + x; // bottom-left quadrant (math: Q2)
 
             // Swapped points (B, D, F, H) - duplicate primaries when x == y
-            const pBx = cX + y, pBy = cY + x;                       // duplicates A when x == y
-            const pDx = cX + x, pDy = cY - y - yOffset;             // duplicates C when x == y
-            const pFx = cX - y - xOffset, pFy = cY - x - yOffset;   // duplicates E when x == y
-            const pHx = cX - x - xOffset, pHy = cY + y;             // duplicates G when x == y, also A when x == 0 && xOffset == 0
+            const pBx = cX + y,
+                pBy = cY + x; // duplicates A when x == y
+            const pDx = cX + x,
+                pDy = cY - y - yOffset; // duplicates C when x == y
+            const pFx = cX - y - xOffset,
+                pFy = cY - x - yOffset; // duplicates E when x == y
+            const pHx = cX - x - xOffset,
+                pHy = cY + y; // duplicates G when x == y, also A when x == 0 && xOffset == 0
 
             // Draw primary points (always)
             if (pAx >= 0 && pAx < width && pAy >= 0 && pAy < height) {
                 const pos = pAy * width + pAx;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -3773,7 +4004,7 @@ if (__outA > 0) {
             }
             if (pCx >= 0 && pCx < width && pCy >= 0 && pCy < height) {
                 const pos = pCy * width + pCx;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -3789,7 +4020,7 @@ if (__outA > 0) {
             }
             if (pEx >= 0 && pEx < width && pEy >= 0 && pEy < height) {
                 const pos = pEy * width + pEx;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -3805,7 +4036,7 @@ if (__outA > 0) {
             }
             if (pGx >= 0 && pGx < width && pGy >= 0 && pGy < height) {
                 const pos = pGy * width + pGx;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -3826,7 +4057,7 @@ if (__outA > 0) {
                 // B duplicates C at right cardinal when x == 0 && yOffset == 0
                 if ((x !== 0 || yOffset !== 0) && pBx >= 0 && pBx < width && pBy >= 0 && pBy < height) {
                     const pos = pBy * width + pBx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -3843,7 +4074,7 @@ if (__outA > 0) {
                 // D duplicates E at top cardinal when x == 0 && xOffset == 0
                 if ((x !== 0 || xOffset !== 0) && pDx >= 0 && pDx < width && pDy >= 0 && pDy < height) {
                     const pos = pDy * width + pDx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -3860,7 +4091,7 @@ if (__outA > 0) {
                 // F duplicates G at left cardinal when x == 0 && yOffset == 0
                 if ((x !== 0 || yOffset !== 0) && pFx >= 0 && pFx < width && pFy >= 0 && pFy < height) {
                     const pos = pFy * width + pFx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -3877,7 +4108,7 @@ if (__outA > 0) {
                 // H duplicates A at bottom cardinal when x == 0 && xOffset == 0
                 if ((x !== 0 || xOffset !== 0) && pHx >= 0 && pHx < width && pHy >= 0 && pHy < height) {
                     const pos = pHy * width + pHx;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -4016,8 +4247,20 @@ if (__outA > 0) {
                 if (fillIsOpaque) {
                     SpanOps.fill_Opaq(data32, width, height, leftFillX, y, fillSpanLength, fillPacked, clipBuffer);
                 } else {
-                    SpanOps.fill_Alpha(data, width, height, leftFillX, y, fillSpanLength,
-                        fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        leftFillX,
+                        y,
+                        fillSpanLength,
+                        fillColor.r,
+                        fillColor.g,
+                        fillColor.b,
+                        fillEffectiveAlpha,
+                        fillInvAlpha,
+                        clipBuffer
+                    );
                 }
             }
 
@@ -4030,8 +4273,20 @@ if (__outA > 0) {
                     if (strokeIsOpaque) {
                         SpanOps.fill_Opaq(data32, width, height, startX, y, spanLength, strokePacked, clipBuffer);
                     } else {
-                        SpanOps.fill_Alpha(data, width, height, startX, y, spanLength,
-                            strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            width,
+                            height,
+                            startX,
+                            y,
+                            spanLength,
+                            strokeColor.r,
+                            strokeColor.g,
+                            strokeColor.b,
+                            strokeEffectiveAlpha,
+                            strokeInvAlpha,
+                            clipBuffer
+                        );
                     }
                 };
 
@@ -4138,7 +4393,9 @@ if (__outA > 0) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const innerRadius = radius - lineWidth / 2;
         const outerRadius = radius + lineWidth / 2;
@@ -4166,7 +4423,20 @@ if (__outA > 0) {
             if (innerRadius <= 0 || dySquared > innerRadiusSquared) {
                 // No inner circle intersection - draw full span via SpanOps
                 const spanLength = outerRightX - outerLeftX + 1;
-                SpanOps.fill_Alpha(data, width, height, outerLeftX, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    width,
+                    height,
+                    outerLeftX,
+                    y,
+                    spanLength,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             } else {
                 const innerXDist = Math.sqrt(innerRadiusSquared - dySquared);
                 const innerLeftX = Math.min(outerRightX, Math.floor(cX - innerXDist));
@@ -4175,13 +4445,39 @@ if (__outA > 0) {
                 // Left segment via SpanOps
                 const leftLen = innerLeftX - outerLeftX + 1;
                 if (leftLen > 0) {
-                    SpanOps.fill_Alpha(data, width, height, outerLeftX, y, leftLen, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        outerLeftX,
+                        y,
+                        leftLen,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
 
                 // Right segment via SpanOps
                 const rightLen = outerRightX - innerRightX + 1;
                 if (rightLen > 0) {
-                    SpanOps.fill_Alpha(data, width, height, innerRightX, y, rightLen, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        innerRightX,
+                        y,
+                        rightLen,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }
@@ -4289,12 +4585,12 @@ class ArcOps {
     static isAngleInRange_Fast(px, py, startCos, startSin, endCos, endSin, isLargeArc) {
         // Cross product: V × P = Vx*Py - Vy*Px
         // P is counter-clockwise from V (i.e., "after" V going CCW) if cross >= 0
-        const afterStart = (startCos * py - startSin * px) >= 0;
-        const beforeEnd = (endCos * py - endSin * px) <= 0;
+        const afterStart = startCos * py - startSin * px >= 0;
+        const beforeEnd = endCos * py - endSin * px <= 0;
 
         // For small arcs (<180°): point must be after start AND before end
         // For large arcs (>180°): point must be after start OR before end
-        return isLargeArc ? (afterStart || beforeEnd) : (afterStart && beforeEnd);
+        return isLargeArc ? afterStart || beforeEnd : afterStart && beforeEnd;
     }
 
     /**
@@ -4492,7 +4788,9 @@ class ArcOps {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Precompute arc parameters
         const params = ArcOps.getArcParams(startAngle, endAngle);
@@ -4588,7 +4886,20 @@ class ArcOps {
                 const length = xEnd - xStart + 1;
 
                 if (length > 0) {
-                    SpanOps.fill_Alpha(data, width, height, xStart, y, length, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        xStart,
+                        y,
+                        length,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }
@@ -4629,7 +4940,8 @@ class ArcOps {
         const adjCY = Math.floor(cy);
 
         // Calculate offsets for fractional radii (same as CircleOps)
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -4645,7 +4957,7 @@ class ArcOps {
                 const py = Math.round(cy);
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         data32[pos] = packedColor;
                     }
                 }
@@ -4661,14 +4973,14 @@ class ArcOps {
         while (by >= bx) {
             // 8 symmetric points with offset corrections (same pattern as CircleOps)
             const points = [
-                [bx, by],                                    // bottom-right: no offset
-                [by, bx],                                    // bottom-right: no offset
-                [by, -bx - yOffset],                         // top-right: yOffset
-                [bx, -by - yOffset],                         // top-right: yOffset
-                [-bx - xOffset, -by - yOffset],              // top-left: both offsets
-                [-by - xOffset, -bx - yOffset],              // top-left: both offsets
-                [-by - xOffset, bx],                         // bottom-left: xOffset
-                [-bx - xOffset, by]                          // bottom-left: xOffset
+                [bx, by], // bottom-right: no offset
+                [by, bx], // bottom-right: no offset
+                [by, -bx - yOffset], // top-right: yOffset
+                [bx, -by - yOffset], // top-right: yOffset
+                [-bx - xOffset, -by - yOffset], // top-left: both offsets
+                [-by - xOffset, -bx - yOffset], // top-left: both offsets
+                [-by - xOffset, bx], // bottom-left: xOffset
+                [-bx - xOffset, by] // bottom-left: xOffset
             ];
 
             for (const [px, py] of points) {
@@ -4741,8 +5053,7 @@ class ArcOps {
         // 3. Optimization: Bounds Check Hoisting
         // If the entire circle is safely within the canvas, we can skip individual pixel bounds checks.
         // We use a conservative estimate for safety.
-        const isSafe = (cx - radius >= 0) && (cx + radius < width) &&
-            (cy - radius >= 0) && (cy + radius < height);
+        const isSafe = cx - radius >= 0 && cx + radius < width && cy - radius >= 0 && cy + radius < height;
 
         // Track the last written pixel index to prevent overdraw (expensive memory writes)
         let lastPos = -1;
@@ -4756,7 +5067,7 @@ class ArcOps {
             }
 
             // Fast floor (Bitwise OR 0) matches Math.floor for positive numbers.
-            // If your inputs can be negative (off-canvas), stick to Math.floor. 
+            // If your inputs can be negative (off-canvas), stick to Math.floor.
             // We use Math.floor here to match the original LineOps consistency requirement.
             const px = Math.floor(cx + x);
             const py = Math.floor(cy + y);
@@ -4770,7 +5081,7 @@ class ArcOps {
                 // Apply bounds check only if the circle isn't fully contained
                 if (isSafe || (px >= 0 && px < width && py >= 0 && py < height)) {
                     // Clipping check
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         data32[pos] = packedColor;
                         lastPos = pos;
                     }
@@ -4805,7 +5116,9 @@ class ArcOps {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Precompute arc parameters for fast angle check
         const params = ArcOps.getArcParams(startAngle, endAngle);
@@ -4823,7 +5136,8 @@ class ArcOps {
         const adjCY = Math.floor(cy);
 
         // Calculate offsets for fractional radii (same as CircleOps)
-        let xOffset = 0, yOffset = 0;
+        let xOffset = 0,
+            yOffset = 0;
         if (radius > 0 && (radius * 2) % 2 === 1) {
             xOffset = 1;
             yOffset = 1;
@@ -4839,7 +5153,7 @@ class ArcOps {
                 const py = Math.round(cy);
                 if (px >= 0 && px < width && py >= 0 && py < height) {
                     const pos = py * width + px;
-                    if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                    if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -4868,16 +5182,24 @@ if (__outA > 0) {
             // Primary points (A, C, E, G) - always unique from each other
             // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
             // bottom-right = Q1, top-right = Q4, top-left = Q3, bottom-left = Q2
-            const pAx = adjCX + bx, pAy = adjCY + by;                       // bottom-right quadrant (math: Q1)
-            const pCx = adjCX + by, pCy = adjCY - bx - yOffset;             // top-right quadrant (math: Q4)
-            const pEx = adjCX - bx - xOffset, pEy = adjCY - by - yOffset;   // top-left quadrant (math: Q3)
-            const pGx = adjCX - by - xOffset, pGy = adjCY + bx;             // bottom-left quadrant (math: Q2)
+            const pAx = adjCX + bx,
+                pAy = adjCY + by; // bottom-right quadrant (math: Q1)
+            const pCx = adjCX + by,
+                pCy = adjCY - bx - yOffset; // top-right quadrant (math: Q4)
+            const pEx = adjCX - bx - xOffset,
+                pEy = adjCY - by - yOffset; // top-left quadrant (math: Q3)
+            const pGx = adjCX - by - xOffset,
+                pGy = adjCY + bx; // bottom-left quadrant (math: Q2)
 
             // Swapped points (B, D, F, H) - duplicate primaries when bx == by
-            const pBx = adjCX + by, pBy = adjCY + bx;                       // duplicates A when bx == by
-            const pDx = adjCX + bx, pDy = adjCY - by - yOffset;             // duplicates C when bx == by
-            const pFx = adjCX - by - xOffset, pFy = adjCY - bx - yOffset;   // duplicates E when bx == by
-            const pHx = adjCX - bx - xOffset, pHy = adjCY + by;             // duplicates G when bx == by
+            const pBx = adjCX + by,
+                pBy = adjCY + bx; // duplicates A when bx == by
+            const pDx = adjCX + bx,
+                pDy = adjCY - by - yOffset; // duplicates C when bx == by
+            const pFx = adjCX - by - xOffset,
+                pFy = adjCY - bx - yOffset; // duplicates E when bx == by
+            const pHx = adjCX - bx - xOffset,
+                pHy = adjCY + by; // duplicates G when bx == by
 
             // Draw primary points (always) - with angle filtering
             // Note: Quadrant labels use screen coordinates (Y-down). In standard math (Y-up):
@@ -5124,7 +5446,7 @@ if (__outA > 0) {
             const py = Math.round(cy);
             if (px >= 0 && px < width && py >= 0 && py < height) {
                 const pos = py * width + px;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
@@ -5253,7 +5575,18 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static strokeOuter_Alpha(surface, cx, cy, radius, startAngle, endAngle, lineWidth, color, globalAlpha, clipBuffer = null) {
+    static strokeOuter_Alpha(
+        surface,
+        cx,
+        cy,
+        radius,
+        startAngle,
+        endAngle,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -5261,7 +5594,9 @@ if (__outA > 0) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Precompute arc parameters
         const params = ArcOps.getArcParams(startAngle, endAngle);
@@ -5284,7 +5619,7 @@ if (__outA > 0) {
             const py = Math.round(cy);
             if (px >= 0 && px < width && py >= 0 && py < height) {
                 const pos = py * width + px;
-                if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -5402,7 +5737,20 @@ if (__outA > 0) {
                 const length = xEnd - xStart + 1;
 
                 if (length > 0) {
-                    SpanOps.fill_Alpha(data, width, height, xStart, y, length, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        xStart,
+                        y,
+                        length,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }
@@ -5424,8 +5772,19 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: handled by SpanOps)
      */
-    static fillStrokeOuter_Any(surface, cx, cy, radius, startAngle, endAngle, lineWidth,
-        fillColor, strokeColor, globalAlpha, clipBuffer = null) {
+    static fillStrokeOuter_Any(
+        surface,
+        cx,
+        cy,
+        radius,
+        startAngle,
+        endAngle,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -5442,7 +5801,17 @@ if (__outA > 0) {
 
         // Fast path: full circle → delegate to CircleOps
         if (params.isFullCircle) {
-            CircleOps.fillStroke_Any(surface, cx, cy, radius, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer);
+            CircleOps.fillStroke_Any(
+                surface,
+                cx,
+                cy,
+                radius,
+                lineWidth,
+                fillColor,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
@@ -5472,14 +5841,18 @@ if (__outA > 0) {
         const fillIsOpaque = hasFill && fillColor.a === 255 && globalAlpha >= 1.0;
         const fillEffectiveAlpha = hasFill ? (fillColor.a / 255) * globalAlpha : 0;
         const fillInvAlpha = 1 - fillEffectiveAlpha;
-        const fr = hasFill ? fillColor.r : 0, fg = hasFill ? fillColor.g : 0, fb = hasFill ? fillColor.b : 0;
+        const fr = hasFill ? fillColor.r : 0,
+            fg = hasFill ? fillColor.g : 0,
+            fb = hasFill ? fillColor.b : 0;
         const fillPacked = fillIsOpaque ? Surface.packColor(fillColor.r, fillColor.g, fillColor.b, 255) : 0;
 
         // Determine rendering mode for stroke
         const strokeIsOpaque = hasStroke && strokeColor.a === 255 && globalAlpha >= 1.0;
         const strokeEffectiveAlpha = hasStroke ? (strokeColor.a / 255) * globalAlpha : 0;
         const strokeInvAlpha = 1 - strokeEffectiveAlpha;
-        const sr = hasStroke ? strokeColor.r : 0, sg = hasStroke ? strokeColor.g : 0, sb = hasStroke ? strokeColor.b : 0;
+        const sr = hasStroke ? strokeColor.r : 0,
+            sg = hasStroke ? strokeColor.g : 0,
+            sb = hasStroke ? strokeColor.b : 0;
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
         // Precompute ray slopes for intersection calculation
@@ -5502,7 +5875,8 @@ if (__outA > 0) {
             const outerRight = cX + outerXDist;
 
             // Fill circle intersection
-            let fillLeft = outerRight + 1, fillRight = outerLeft - 1;
+            let fillLeft = outerRight + 1,
+                fillRight = outerLeft - 1;
             if (hasFill && dySquared <= fillRadiusSq) {
                 const fillXDist = Math.sqrt(fillRadiusSq - dySquared);
                 fillLeft = cX - fillXDist + FILL_EPSILON;
@@ -5510,7 +5884,8 @@ if (__outA > 0) {
             }
 
             // Inner circle intersection (stroke inner boundary)
-            let innerLeft = outerRight + 1, innerRight = outerLeft - 1;
+            let innerLeft = outerRight + 1,
+                innerRight = outerLeft - 1;
             if (innerRadius > 0 && dySquared < innerRadiusSq) {
                 const innerXDist = Math.sqrt(innerRadiusSq - dySquared);
                 innerLeft = cX - innerXDist;
@@ -5560,7 +5935,20 @@ if (__outA > 0) {
                         if (fillIsOpaque) {
                             SpanOps.fill_Opaq(data32, width, height, xStart, y, length, fillPacked, clipBuffer);
                         } else {
-                            SpanOps.fill_Alpha(data, width, height, xStart, y, length, fr, fg, fb, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                            SpanOps.fill_Alpha(
+                                data,
+                                width,
+                                height,
+                                xStart,
+                                y,
+                                length,
+                                fr,
+                                fg,
+                                fb,
+                                fillEffectiveAlpha,
+                                fillInvAlpha,
+                                clipBuffer
+                            );
                         }
                     }
                 }
@@ -5616,7 +6004,20 @@ if (__outA > 0) {
                         if (strokeIsOpaque) {
                             SpanOps.fill_Opaq(data32, width, height, xStart, y, length, strokePacked, clipBuffer);
                         } else {
-                            SpanOps.fill_Alpha(data, width, height, xStart, y, length, sr, sg, sb, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                            SpanOps.fill_Alpha(
+                                data,
+                                width,
+                                height,
+                                xStart,
+                                y,
+                                length,
+                                sr,
+                                sg,
+                                sb,
+                                strokeEffectiveAlpha,
+                                strokeInvAlpha,
+                                clipBuffer
+                            );
                         }
                     }
                 }
@@ -5624,7 +6025,6 @@ if (__outA > 0) {
         }
     }
 }
-
 
 /**
  * LineOps - Static methods for optimized line rendering
@@ -5666,7 +6066,19 @@ class LineOps {
      * @param {boolean} isSemiTransparentColor - True if color needs alpha blending
      * @returns {boolean} True if direct rendering was used, false if path-based rendering needed
      */
-    static stroke_Any(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, isOpaqueColor, isSemiTransparentColor) {
+    static stroke_Any(
+        surface,
+        x1,
+        y1,
+        x2,
+        y2,
+        lineWidth,
+        paintSource,
+        globalAlpha,
+        clipBuffer,
+        isOpaqueColor,
+        isSemiTransparentColor
+    ) {
         const width = surface.width;
         const height = surface.height;
 
@@ -5682,10 +6094,12 @@ class LineOps {
 
             // Shorten horizontal/vertical lines by 1 pixel to match HTML5 Canvas
             if (x1i === x2i) {
-                if (y2i > y1i) y2i--; else y1i--;
+                if (y2i > y1i) y2i--;
+                else y1i--;
             }
             if (y1i === y2i) {
-                if (x2i > x1i) x2i--; else x1i--;
+                if (x2i > x1i) x2i--;
+                else x1i--;
             }
 
             // Optimize thin horizontal lines: use span-based rendering
@@ -5703,8 +6117,8 @@ class LineOps {
                 return true;
             }
 
-            let dx = Math.abs(x2i - x1i);
-            let dy = Math.abs(y2i - y1i);
+            const dx = Math.abs(x2i - x1i);
+            const dy = Math.abs(y2i - y1i);
             const sx = x1i < x2i ? 1 : -1;
             const sy = y1i < y2i ? 1 : -1;
             let err = dx - dy;
@@ -5790,7 +6204,7 @@ class LineOps {
                 // Note: rightX - leftX is the span width (not +1) because leftX/rightX
                 // are computed from floor(x - halfWidth) / floor(x + halfWidth)
                 const clampedLeftX = Math.max(0, leftX);
-                const clampedRightX = Math.min(width, rightX);  // Use width (not width-1) since rightX is already exclusive
+                const clampedRightX = Math.min(width, rightX); // Use width (not width-1) since rightX is already exclusive
                 const spanLength = clampedRightX - clampedLeftX;
                 if (spanLength <= 0) return true;
 
@@ -5800,7 +6214,18 @@ class LineOps {
                 return true;
             } else {
                 // Non-axis-aligned thick line - use polygon scan algorithm
-                LineOps._strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, false);
+                LineOps._strokeThick_PolyScan(
+                    surface,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    lineWidth,
+                    paintSource,
+                    globalAlpha,
+                    clipBuffer,
+                    false
+                );
                 return true;
             }
         } else if (isSemiTransparentColor && lineWidth <= THIN_LINE_THRESHOLD) {
@@ -5809,7 +6234,9 @@ class LineOps {
             const effectiveAlpha = (paintSource.a / 255) * globalAlpha;
             // Note: No early return - already inside a conditional branch
             const invAlpha = 1 - effectiveAlpha;
-            const r = paintSource.r, g = paintSource.g, b = paintSource.b;
+            const r = paintSource.r,
+                g = paintSource.g,
+                b = paintSource.b;
 
             let x1i = Math.floor(x1);
             let y1i = Math.floor(y1);
@@ -5817,10 +6244,12 @@ class LineOps {
             let y2i = Math.floor(y2);
 
             if (x1i === x2i) {
-                if (y2i > y1i) y2i--; else y1i--;
+                if (y2i > y1i) y2i--;
+                else y1i--;
             }
             if (y1i === y2i) {
-                if (x2i > x1i) x2i--; else x1i--;
+                if (x2i > x1i) x2i--;
+                else x1i--;
             }
 
             // Optimize thin horizontal lines: use span-based rendering
@@ -5834,12 +6263,25 @@ class LineOps {
                 if (leftX > rightX) return true;
 
                 const spanLength = rightX - leftX + 1;
-                SpanOps.fill_Alpha(data, width, height, leftX, y1i, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    width,
+                    height,
+                    leftX,
+                    y1i,
+                    spanLength,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
                 return true;
             }
 
-            let dx = Math.abs(x2i - x1i);
-            let dy = Math.abs(y2i - y1i);
+            const dx = Math.abs(x2i - x1i);
+            const dy = Math.abs(y2i - y1i);
             const sx = x1i < x2i ? 1 : -1;
             const sy = y1i < y2i ? 1 : -1;
             let err = dx - dy;
@@ -5890,7 +6332,18 @@ if (__outA > 0) {
             return true;
         } else if (isSemiTransparentColor) {
             // Direct rendering for thick semitransparent lines: polygon scan with alpha blending
-            LineOps._strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, true);
+            LineOps._strokeThick_PolyScan(
+                surface,
+                x1,
+                y1,
+                x2,
+                y2,
+                lineWidth,
+                paintSource,
+                globalAlpha,
+                clipBuffer,
+                true
+            );
             return true;
         }
 
@@ -5912,8 +6365,21 @@ if (__outA > 0) {
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps)
      * @param {boolean} useSemiTransparent - If true, use alpha blending
      */
-    static _strokeThick_PolyScan(surface, x1, y1, x2, y2, lineWidth, paintSource, globalAlpha, clipBuffer, useSemiTransparent = false) {
-        const r = paintSource.r, g = paintSource.g, b = paintSource.b;
+    static _strokeThick_PolyScan(
+        surface,
+        x1,
+        y1,
+        x2,
+        y2,
+        lineWidth,
+        paintSource,
+        globalAlpha,
+        clipBuffer,
+        useSemiTransparent = false
+    ) {
+        const r = paintSource.r,
+            g = paintSource.g,
+            b = paintSource.b;
 
         const isOpaque = !useSemiTransparent;
         const packedColor = isOpaque ? Surface.packColor(r, g, b, 255) : 0;
@@ -5925,7 +6391,9 @@ if (__outA > 0) {
 
         const params = {
             surface,
-            r, g, b,
+            r,
+            g,
+            b,
             isOpaque,
             packedColor,
             effectiveAlpha,
@@ -5958,7 +6426,7 @@ class RoundedRectUtils {
      * @returns {number} Normalized integer radius
      */
     static normalizeRadius(radii, width, height) {
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        let radius = Array.isArray(radii) ? radii[0] : radii || 0;
         if (width < 2 * radius) radius = width / 2;
         if (height < 2 * radius) radius = height / 2;
         return Math.round(Math.min(radius, Math.min(width, height) / 2));
@@ -5975,10 +6443,10 @@ class RoundedRectUtils {
      */
     static getEdgeEndpoints(hw, hh, r) {
         return [
-            { start: { x: -hw + r, y: -hh }, end: { x: hw - r, y: -hh } },      // Top
-            { start: { x: hw, y: -hh + r }, end: { x: hw, y: hh - r } },        // Right
-            { start: { x: hw - r, y: hh }, end: { x: -hw + r, y: hh } },        // Bottom
-            { start: { x: -hw, y: hh - r }, end: { x: -hw, y: -hh + r } }       // Left
+            { start: { x: -hw + r, y: -hh }, end: { x: hw - r, y: -hh } }, // Top
+            { start: { x: hw, y: -hh + r }, end: { x: hw, y: hh - r } }, // Right
+            { start: { x: hw - r, y: hh }, end: { x: -hw + r, y: hh } }, // Bottom
+            { start: { x: -hw, y: hh - r }, end: { x: -hw, y: -hh + r } } // Left
         ];
     }
 
@@ -5993,10 +6461,10 @@ class RoundedRectUtils {
      */
     static getCornerDefinitions(hw, hh, r) {
         return [
-            { cx: -hw + r, cy: -hh + r, startAngle: Math.PI, endAngle: THREE_HALF_PI },    // Top-left
-            { cx: hw - r, cy: -hh + r, startAngle: THREE_HALF_PI, endAngle: TAU },         // Top-right
-            { cx: hw - r, cy: hh - r, startAngle: 0, endAngle: HALF_PI },                  // Bottom-right
-            { cx: -hw + r, cy: hh - r, startAngle: HALF_PI, endAngle: Math.PI }            // Bottom-left
+            { cx: -hw + r, cy: -hh + r, startAngle: Math.PI, endAngle: THREE_HALF_PI }, // Top-left
+            { cx: hw - r, cy: -hh + r, startAngle: THREE_HALF_PI, endAngle: TAU }, // Top-right
+            { cx: hw - r, cy: hh - r, startAngle: 0, endAngle: HALF_PI }, // Bottom-right
+            { cx: -hw + r, cy: hh - r, startAngle: HALF_PI, endAngle: Math.PI } // Bottom-left
         ];
     }
 }
@@ -6128,17 +6596,29 @@ class RoundedRectOpsRot {
      * @private
      */
     static _generateEdgePixels(x0, y0, x1, y1, recorder) {
-        const ix0 = Math.floor(x0), iy0 = Math.floor(y0);
-        const ix1 = Math.floor(x1), iy1 = Math.floor(y1);
-        const dx = Math.abs(ix1 - ix0), dy = Math.abs(iy1 - iy0);
-        const sx = ix0 < ix1 ? 1 : -1, sy = iy0 < iy1 ? 1 : -1;
-        let err = dx - dy, x = ix0, y = iy0;
+        const ix0 = Math.floor(x0),
+            iy0 = Math.floor(y0);
+        const ix1 = Math.floor(x1),
+            iy1 = Math.floor(y1);
+        const dx = Math.abs(ix1 - ix0),
+            dy = Math.abs(iy1 - iy0);
+        const sx = ix0 < ix1 ? 1 : -1,
+            sy = iy0 < iy1 ? 1 : -1;
+        let err = dx - dy,
+            x = ix0,
+            y = iy0;
         while (true) {
             recorder(x, y);
             if (x === ix1 && y === iy1) break;
             const e2 = 2 * err;
-            if (e2 > -dy) { err -= dy; x += sx; }
-            if (e2 < dx) { err += dx; y += sy; }
+            if (e2 > -dy) {
+                err -= dy;
+                x += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                y += sy;
+            }
         }
     }
 
@@ -6157,7 +6637,8 @@ class RoundedRectOpsRot {
         const arcLength = r * Math.abs(endAngle - startAngle);
         const steps = Math.max(Math.ceil(arcLength), 8);
         const angleStep = (endAngle - startAngle) / steps;
-        let lastPx = null, lastPy = null;
+        let lastPx = null,
+            lastPy = null;
         for (let i = 0; i <= steps; i++) {
             const angle = startAngle + i * angleStep;
             const px = Math.floor(cx + r * Math.cos(angle));
@@ -6188,7 +6669,8 @@ class RoundedRectOpsRot {
         for (const edge of edges) {
             const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
             const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
-            const dx = end.x - start.x, dy = end.y - start.y;
+            const dx = end.x - start.x,
+                dy = end.y - start.y;
             if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
             RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, recorder);
         }
@@ -6196,8 +6678,12 @@ class RoundedRectOpsRot {
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
             RoundedRectOpsRot._generateArcPixels(
-                screenCenter.x, screenCenter.y, r,
-                corner.startAngle + rotation, corner.endAngle + rotation, recorder
+                screenCenter.x,
+                screenCenter.y,
+                r,
+                corner.startAngle + rotation,
+                corner.endAngle + rotation,
+                recorder
             );
         }
     }
@@ -6224,7 +6710,18 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static fill_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, color, globalAlpha, clipBuffer = null) {
+    static fill_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radii,
+        rotation,
+        color,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         // Normalize radius
         const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
@@ -6237,9 +6734,30 @@ class RoundedRectOpsRot {
         const isOpaqueColor = color.a === 255 && globalAlpha >= 1.0;
 
         if (isOpaqueColor) {
-            RoundedRectOpsRot._fill_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, color, clipBuffer);
+            RoundedRectOpsRot._fill_Rot_Opaq(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                color,
+                clipBuffer
+            );
         } else if (color.a > 0) {
-            RoundedRectOpsRot._fill_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer);
+            RoundedRectOpsRot._fill_Rot_Alpha(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                color,
+                globalAlpha,
+                clipBuffer
+            );
         }
     }
 
@@ -6288,8 +6806,8 @@ class RoundedRectOpsRot {
         const minX = _rrRotBufferPool.minX;
         const maxX = _rrRotBufferPool.maxX;
         for (let i = 0; i < spanCount; i++) {
-            minX[i] = surfaceWidth;  // Sentinel: larger than any valid x
-            maxX[i] = -1;            // Sentinel: smaller than any valid x
+            minX[i] = surfaceWidth; // Sentinel: larger than any valid x
+            maxX[i] = -1; // Sentinel: smaller than any valid x
         }
 
         // Record perimeter pixel into span arrays
@@ -6323,7 +6841,8 @@ class RoundedRectOpsRot {
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
             RoundedRectOpsRot._generateArcPixels(
-                screenCenter.x, screenCenter.y,
+                screenCenter.x,
+                screenCenter.y,
                 radius,
                 corner.startAngle + rotation,
                 corner.endAngle + rotation,
@@ -6442,7 +6961,8 @@ class RoundedRectOpsRot {
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
             RoundedRectOpsRot._generateArcPixels(
-                screenCenter.x, screenCenter.y,
+                screenCenter.x,
+                screenCenter.y,
                 radius,
                 corner.startAngle + rotation,
                 corner.endAngle + rotation,
@@ -6454,7 +6974,9 @@ class RoundedRectOpsRot {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         for (let row = 0; row < spanCount; row++) {
             const left = minX[row];
@@ -6467,7 +6989,20 @@ class RoundedRectOpsRot {
 
             if (x0 <= x1) {
                 const spanLength = x1 - x0 + 1;
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    x0,
+                    y,
+                    spanLength,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             }
         }
     }
@@ -6495,13 +7030,36 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static stroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, color, globalAlpha, clipBuffer = null) {
+    static stroke_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radii,
+        rotation,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOpsRot.stroke_Rot_Any for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsRot.stroke_Rot_Any(surface, centerX, centerY, width, height, rotation, lineWidth, color, globalAlpha, clipBuffer);
+            RectOpsRot.stroke_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                lineWidth,
+                color,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
@@ -6511,18 +7069,62 @@ class RoundedRectOpsRot {
         // Handle 1px strokes
         if (lineWidth <= 1) {
             if (isOpaqueColor) {
-                RoundedRectOpsRot._stroke1px_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, color, clipBuffer);
+                RoundedRectOpsRot._stroke1px_Rot_Opaq(
+                    surface,
+                    centerX,
+                    centerY,
+                    width,
+                    height,
+                    radius,
+                    rotation,
+                    color,
+                    clipBuffer
+                );
             } else if (isSemiTransparentColor) {
-                RoundedRectOpsRot._stroke1px_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer);
+                RoundedRectOpsRot._stroke1px_Rot_Alpha(
+                    surface,
+                    centerX,
+                    centerY,
+                    width,
+                    height,
+                    radius,
+                    rotation,
+                    color,
+                    globalAlpha,
+                    clipBuffer
+                );
             }
             return;
         }
 
         // Handle thick strokes
         if (isSemiTransparentColor) {
-            RoundedRectOpsRot._strokeThick_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, globalAlpha, clipBuffer);
+            RoundedRectOpsRot._strokeThick_Rot_Alpha(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                lineWidth,
+                color,
+                globalAlpha,
+                clipBuffer
+            );
         } else if (isOpaqueColor) {
-            RoundedRectOpsRot._strokeThick_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, clipBuffer);
+            RoundedRectOpsRot._strokeThick_Rot_Opaq(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                lineWidth,
+                color,
+                clipBuffer
+            );
         }
     }
 
@@ -6547,8 +7149,8 @@ class RoundedRectOpsRot {
         // Pre-compute rotation
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
-        const hw = width / 2;   // half-width
-        const hh = height / 2;  // half-height
+        const hw = width / 2; // half-width
+        const hh = height / 2; // half-height
 
         // Calculate 8 edge endpoints in local space, then transform to screen space
         // Local coordinates (centered at origin):
@@ -6559,13 +7161,25 @@ class RoundedRectOpsRot {
 
         const edgeEndpoints = [
             // Top edge
-            { start: RoundedRectOpsRot._transform(-hw + radius, -hh, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(hw - radius, -hh, centerX, centerY, cos, sin) },
+            {
+                start: RoundedRectOpsRot._transform(-hw + radius, -hh, centerX, centerY, cos, sin),
+                end: RoundedRectOpsRot._transform(hw - radius, -hh, centerX, centerY, cos, sin)
+            },
             // Right edge
-            { start: RoundedRectOpsRot._transform(hw, -hh + radius, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(hw, hh - radius, centerX, centerY, cos, sin) },
+            {
+                start: RoundedRectOpsRot._transform(hw, -hh + radius, centerX, centerY, cos, sin),
+                end: RoundedRectOpsRot._transform(hw, hh - radius, centerX, centerY, cos, sin)
+            },
             // Bottom edge
-            { start: RoundedRectOpsRot._transform(hw - radius, hh, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(-hw + radius, hh, centerX, centerY, cos, sin) },
+            {
+                start: RoundedRectOpsRot._transform(hw - radius, hh, centerX, centerY, cos, sin),
+                end: RoundedRectOpsRot._transform(-hw + radius, hh, centerX, centerY, cos, sin)
+            },
             // Left edge
-            { start: RoundedRectOpsRot._transform(-hw, hh - radius, centerX, centerY, cos, sin), end: RoundedRectOpsRot._transform(-hw, -hh + radius, centerX, centerY, cos, sin) }
+            {
+                start: RoundedRectOpsRot._transform(-hw, hh - radius, centerX, centerY, cos, sin),
+                end: RoundedRectOpsRot._transform(-hw, -hh + radius, centerX, centerY, cos, sin)
+            }
         ];
 
         const surfaceWidth = surface.width;
@@ -6591,19 +7205,26 @@ class RoundedRectOpsRot {
             const sx = x1i < x2i ? 1 : -1;
             const sy = y1i < y2i ? 1 : -1;
             let err = dxAbs - dyAbs;
-            let x = x1i, y = y1i;
+            let x = x1i,
+                y = y1i;
 
             while (true) {
                 if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
                     const pixelIndex = y * surfaceWidth + x;
-                    if (!clipBuffer || (clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7)))) {
+                    if (!clipBuffer || clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7))) {
                         data32[pixelIndex] = packedColor;
                     }
                 }
                 if (x === x2i && y === y2i) break;
                 const e2 = 2 * err;
-                if (e2 > -dyAbs) { err -= dyAbs; x += sx; }
-                if (e2 < dxAbs) { err += dxAbs; y += sy; }
+                if (e2 > -dyAbs) {
+                    err -= dyAbs;
+                    x += sx;
+                }
+                if (e2 < dxAbs) {
+                    err += dxAbs;
+                    y += sy;
+                }
             }
         }
 
@@ -6625,7 +7246,8 @@ class RoundedRectOpsRot {
             // Angle-based iteration with exact endpoints (guaranteed junction alignment)
             ArcOps.stroke1px_Opaq_Exact(
                 surface,
-                screenCenter.x, screenCenter.y,
+                screenCenter.x,
+                screenCenter.y,
                 radius,
                 corner.startAngle + rotation,
                 corner.endAngle + rotation,
@@ -6651,7 +7273,18 @@ class RoundedRectOpsRot {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _stroke1px_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, color, globalAlpha, clipBuffer) {
+    static _stroke1px_Rot_Alpha(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        color,
+        globalAlpha,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -6660,13 +7293,15 @@ class RoundedRectOpsRot {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Pre-compute rotation
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
-        const hw = width / 2;   // half-width
-        const hh = height / 2;  // half-height
+        const hw = width / 2; // half-width
+        const hh = height / 2; // half-height
 
         // Define 4 corner arc centers and angles (needed first for junction calculation)
         const corners = RoundedRectUtils.getCornerDefinitions(hw, hh, radius);
@@ -6687,8 +7322,10 @@ class RoundedRectOpsRot {
             const startXf = cx + radius * Math.cos(startAngle);
             const startYf = cy + radius * Math.sin(startAngle);
             junctionPixels.push({
-                x: Math.floor(startXf), y: Math.floor(startYf),
-                xf: startXf, yf: startYf  // Float coords for edge length calculation
+                x: Math.floor(startXf),
+                y: Math.floor(startYf),
+                xf: startXf,
+                yf: startYf // Float coords for edge length calculation
             });
 
             // End junction (connects to next edge's start)
@@ -6696,8 +7333,10 @@ class RoundedRectOpsRot {
             const endXf = cx + radius * Math.cos(endAngle);
             const endYf = cy + radius * Math.sin(endAngle);
             junctionPixels.push({
-                x: Math.floor(endXf), y: Math.floor(endYf),
-                xf: endXf, yf: endYf
+                x: Math.floor(endXf),
+                y: Math.floor(endYf),
+                xf: endXf,
+                yf: endYf
             });
         }
 
@@ -6709,10 +7348,10 @@ class RoundedRectOpsRot {
         // Edge 2 (Bottom): BR_end (5) → BL_start (6)
         // Edge 3 (Left): BL_end (7) → TL_start (0)
         const edgeEndpoints = [
-            { start: junctionPixels[1], end: junctionPixels[2] },  // Top edge
-            { start: junctionPixels[3], end: junctionPixels[4] },  // Right edge
-            { start: junctionPixels[5], end: junctionPixels[6] },  // Bottom edge
-            { start: junctionPixels[7], end: junctionPixels[0] }   // Left edge
+            { start: junctionPixels[1], end: junctionPixels[2] }, // Top edge
+            { start: junctionPixels[3], end: junctionPixels[4] }, // Right edge
+            { start: junctionPixels[5], end: junctionPixels[6] }, // Bottom edge
+            { start: junctionPixels[7], end: junctionPixels[0] } // Left edge
         ];
 
         // Draw edge pixels via Bresenham, skipping junction pixels by coordinate match
@@ -6744,13 +7383,13 @@ class RoundedRectOpsRot {
             let y = y1i;
 
             while (true) {
-                const isLast = (x === x2i && y === y2i);
+                const isLast = x === x2i && y === y2i;
 
                 // Skip if current pixel matches either junction pixel (corner will handle it)
                 if (!((x === junc1.x && y === junc1.y) || (x === junc2.x && y === junc2.y))) {
                     if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
                         const pos = y * surfaceWidth + x;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                             const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -6824,7 +7463,7 @@ if (__outA > 0) {
                     // Skip consecutive duplicates (including cross-corner duplicates)
                     if (pos !== globalLastPos) {
                         globalLastPos = pos;
-                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+                        if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                             const __off = pos * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
@@ -6864,7 +7503,18 @@ if (__outA > 0) {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _strokeThick_Rot_Opaq(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, clipBuffer) {
+    static _strokeThick_Rot_Opaq(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        lineWidth,
+        color,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
@@ -6927,19 +7577,41 @@ if (__outA > 0) {
         };
 
         // Helper to record pixel to inner perimeter
-        const recordInner = hasInnerRect ? (x, y) => {
-            if (y < yMin || y > yMax) return;
-            const row = y - yMin;
-            if (x < innerMinX[row]) innerMinX[row] = x;
-            if (x > innerMaxX[row]) innerMaxX[row] = x;
-        } : null;
+        const recordInner = hasInnerRect
+            ? (x, y) => {
+                  if (y < yMin || y > yMax) return;
+                  const row = y - yMin;
+                  if (x < innerMinX[row]) innerMinX[row] = x;
+                  if (x > innerMaxX[row]) innerMaxX[row] = x;
+              }
+            : null;
 
         // Generate outer perimeter
-        RoundedRectOpsRot._generatePerimeter(outerHW, outerHH, outerRadius, recordOuter, centerX, centerY, cos, sin, rotation);
+        RoundedRectOpsRot._generatePerimeter(
+            outerHW,
+            outerHH,
+            outerRadius,
+            recordOuter,
+            centerX,
+            centerY,
+            cos,
+            sin,
+            rotation
+        );
 
         // Generate inner perimeter (if inner rect exists)
         if (hasInnerRect) {
-            RoundedRectOpsRot._generatePerimeter(innerHW, innerHH, innerRadius, recordInner, centerX, centerY, cos, sin, rotation);
+            RoundedRectOpsRot._generatePerimeter(
+                innerHW,
+                innerHH,
+                innerRadius,
+                recordInner,
+                centerX,
+                centerY,
+                cos,
+                sin,
+                rotation
+            );
         }
 
         // Fill annulus per scanline
@@ -6960,21 +7632,48 @@ if (__outA > 0) {
                     const leftStart = Math.max(0, outerLeft);
                     const leftEnd = Math.min(surfaceWidth - 1, innerLeft - 1);
                     if (leftStart <= leftEnd) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, leftStart, y, leftEnd - leftStart + 1, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            leftStart,
+                            y,
+                            leftEnd - leftStart + 1,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
 
                     // Right span
                     const rightStart = Math.max(0, innerRight + 1);
                     const rightEnd = Math.min(surfaceWidth - 1, outerRight);
                     if (rightStart <= rightEnd) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, rightStart, y, rightEnd - rightStart + 1, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            rightStart,
+                            y,
+                            rightEnd - rightStart + 1,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
                 } else {
                     // No inner hole on this row: fill entire outer span
                     const x0 = Math.max(0, outerLeft);
                     const x1 = Math.min(surfaceWidth - 1, outerRight);
                     if (x0 <= x1) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, x1 - x0 + 1, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            x1 - x0 + 1,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
                 }
             } else {
@@ -7005,7 +7704,19 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _strokeThick_Rot_Alpha(surface, centerX, centerY, width, height, radius, rotation, lineWidth, color, globalAlpha, clipBuffer) {
+    static _strokeThick_Rot_Alpha(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -7014,7 +7725,9 @@ if (__outA > 0) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const halfStroke = lineWidth / 2;
         const cos = Math.cos(rotation);
@@ -7073,19 +7786,41 @@ if (__outA > 0) {
         };
 
         // Helper to record pixel to inner perimeter
-        const recordInner = hasInnerRect ? (x, y) => {
-            if (y < yMin || y > yMax) return;
-            const row = y - yMin;
-            if (x < innerMinX[row]) innerMinX[row] = x;
-            if (x > innerMaxX[row]) innerMaxX[row] = x;
-        } : null;
+        const recordInner = hasInnerRect
+            ? (x, y) => {
+                  if (y < yMin || y > yMax) return;
+                  const row = y - yMin;
+                  if (x < innerMinX[row]) innerMinX[row] = x;
+                  if (x > innerMaxX[row]) innerMaxX[row] = x;
+              }
+            : null;
 
         // Generate outer perimeter
-        RoundedRectOpsRot._generatePerimeter(outerHW, outerHH, outerRadius, recordOuter, centerX, centerY, cos, sin, rotation);
+        RoundedRectOpsRot._generatePerimeter(
+            outerHW,
+            outerHH,
+            outerRadius,
+            recordOuter,
+            centerX,
+            centerY,
+            cos,
+            sin,
+            rotation
+        );
 
         // Generate inner perimeter (if inner rect exists)
         if (hasInnerRect) {
-            RoundedRectOpsRot._generatePerimeter(innerHW, innerHH, innerRadius, recordInner, centerX, centerY, cos, sin, rotation);
+            RoundedRectOpsRot._generatePerimeter(
+                innerHW,
+                innerHH,
+                innerRadius,
+                recordInner,
+                centerX,
+                centerY,
+                cos,
+                sin,
+                rotation
+            );
         }
 
         // Fill annulus per scanline with alpha blending via SpanOps
@@ -7105,20 +7840,59 @@ if (__outA > 0) {
                     const leftStart = Math.max(0, outerLeft);
                     const leftEnd = Math.min(surfaceWidth - 1, innerLeft - 1);
                     if (leftStart <= leftEnd) {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, leftStart, y, leftEnd - leftStart + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            leftStart,
+                            y,
+                            leftEnd - leftStart + 1,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
 
                     const rightStart = Math.max(0, innerRight + 1);
                     const rightEnd = Math.min(surfaceWidth - 1, outerRight);
                     if (rightStart <= rightEnd) {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, rightStart, y, rightEnd - rightStart + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            rightStart,
+                            y,
+                            rightEnd - rightStart + 1,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
                 } else {
                     // No inner hole on this row: fill entire outer span
                     const x0 = Math.max(0, outerLeft);
                     const x1 = Math.min(surfaceWidth - 1, outerRight);
                     if (x0 <= x1) {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, x1 - x0 + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            x1 - x0 + 1,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
                 }
             } else {
@@ -7126,7 +7900,20 @@ if (__outA > 0) {
                 const x0 = Math.max(0, outerLeft);
                 const x1 = Math.min(surfaceWidth - 1, outerRight);
                 if (x0 <= x1) {
-                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, x1 - x0 + 1, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        surfaceWidth,
+                        surfaceHeight,
+                        x0,
+                        y,
+                        x1 - x0 + 1,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }
@@ -7160,7 +7947,20 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static fillStroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
+    static fillStroke_Rot_Any(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radii,
+        rotation,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         // Normalize radius
         const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
@@ -7172,19 +7972,54 @@ if (__outA > 0) {
 
         // If no stroke, just do fill
         if (!hasStroke) {
-            RoundedRectOpsRot.fill_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, fillColor, globalAlpha, clipBuffer);
+            RoundedRectOpsRot.fill_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radii,
+                rotation,
+                fillColor,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
         // If no fill, just do stroke
         if (!hasFill) {
-            RoundedRectOpsRot.stroke_Rot_Any(surface, centerX, centerY, width, height, radii, rotation, lineWidth, strokeColor, globalAlpha, clipBuffer);
+            RoundedRectOpsRot.stroke_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radii,
+                rotation,
+                lineWidth,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
         // Fallback to RectOpsRot for zero radius
         if (radius <= 0) {
-            RectOpsRot.fillStroke_Rot_Any(surface, centerX, centerY, width, height, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer);
+            RectOpsRot.fillStroke_Rot_Any(
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                rotation,
+                lineWidth,
+                fillColor,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
+            );
             return;
         }
 
@@ -7192,13 +8027,32 @@ if (__outA > 0) {
         // For thick stroke (>1px), use unified scanline rendering
         if (lineWidth <= 1) {
             RoundedRectOpsRot._fillStroke_Rot_1px(
-                surface, centerX, centerY, width, height, radius, rotation,
-                fillColor, strokeColor, globalAlpha, clipBuffer
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                fillColor,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
             );
         } else {
             RoundedRectOpsRot._fillStroke_Rot_Unified(
-                surface, centerX, centerY, width, height, radius, rotation,
-                lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer
+                surface,
+                centerX,
+                centerY,
+                width,
+                height,
+                radius,
+                rotation,
+                lineWidth,
+                fillColor,
+                strokeColor,
+                globalAlpha,
+                clipBuffer
             );
         }
     }
@@ -7226,7 +8080,19 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _fillStroke_Rot_1px(surface, centerX, centerY, width, height, radius, rotation, fillColor, strokeColor, globalAlpha, clipBuffer) {
+    static _fillStroke_Rot_1px(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -7239,8 +8105,10 @@ if (__outA > 0) {
         // Assertion: This method should only be called for non-axis-aligned shapes.
         // If |sin| < TRANSFORM_EPSILON, the shape should have been routed to RoundedRectOpsAA.
         if (Math.abs(sin) < TRANSFORM_EPSILON) {
-            throw new Error(`_fillStroke_Rot_1px called with axis-aligned rotation (sin=${sin}). ` +
-                            `This should have been routed to RoundedRectOpsAA.`);
+            throw new Error(
+                `_fillStroke_Rot_1px called with axis-aligned rotation (sin=${sin}). ` +
+                    `This should have been routed to RoundedRectOpsAA.`
+            );
         }
 
         const hw = width / 2;
@@ -7297,15 +8165,19 @@ if (__outA > 0) {
             for (const edge of edges) {
                 const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
                 const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
-                const dx = end.x - start.x, dy = end.y - start.y;
+                const dx = end.x - start.x,
+                    dy = end.y - start.y;
                 if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
                 RoundedRectOpsRot._generateEdgePixels(start.x, start.y, end.x, end.y, recordStrokeBounds);
             }
             for (const corner of corners) {
                 const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
                 RoundedRectOpsRot._generateArcPixels(
-                    screenCenter.x, screenCenter.y, radius,
-                    corner.startAngle + rotation, corner.endAngle + rotation,
+                    screenCenter.x,
+                    screenCenter.y,
+                    radius,
+                    corner.startAngle + rotation,
+                    corner.endAngle + rotation,
                     recordStrokeBounds
                 );
             }
@@ -7338,9 +8210,31 @@ if (__outA > 0) {
                 if (x0 <= x1) {
                     const spanLength = x1 - x0 + 1;
                     if (fillIsOpaque) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, spanLength, fillPacked, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            spanLength,
+                            fillPacked,
+                            clipBuffer
+                        );
                     } else {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            spanLength,
+                            fillColor.r,
+                            fillColor.g,
+                            fillColor.b,
+                            fillEffectiveAlpha,
+                            fillInvAlpha,
+                            clipBuffer
+                        );
                     }
                 }
             }
@@ -7353,7 +8247,9 @@ if (__outA > 0) {
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
         // Extract RGB for inline markers (required by BLEND_ALPHA_CLIPPED)
-        const r = strokeColor.r, g = strokeColor.g, b = strokeColor.b;
+        const r = strokeColor.r,
+            g = strokeColor.g,
+            b = strokeColor.b;
 
         // For opaque strokes, direct rendering is safe (duplicates just overwrite same value)
         // For semi-transparent strokes, use lastPos tracking to prevent overdraw
@@ -7363,15 +8259,21 @@ if (__outA > 0) {
         for (const edge of edges) {
             const start = RoundedRectOpsRot._transform(edge.start.x, edge.start.y, centerX, centerY, cos, sin);
             const end = RoundedRectOpsRot._transform(edge.end.x, edge.end.y, centerX, centerY, cos, sin);
-            const dx = end.x - start.x, dy = end.y - start.y;
+            const dx = end.x - start.x,
+                dy = end.y - start.y;
             if (dx * dx + dy * dy < MIN_EDGE_LENGTH_SQUARED) continue;
 
-            const x1i = Math.floor(start.x), y1i = Math.floor(start.y);
-            const x2i = Math.floor(end.x), y2i = Math.floor(end.y);
-            const dxAbs = Math.abs(x2i - x1i), dyAbs = Math.abs(y2i - y1i);
-            const sx = x1i < x2i ? 1 : -1, sy = y1i < y2i ? 1 : -1;
+            const x1i = Math.floor(start.x),
+                y1i = Math.floor(start.y);
+            const x2i = Math.floor(end.x),
+                y2i = Math.floor(end.y);
+            const dxAbs = Math.abs(x2i - x1i),
+                dyAbs = Math.abs(y2i - y1i);
+            const sx = x1i < x2i ? 1 : -1,
+                sy = y1i < y2i ? 1 : -1;
             let err = dxAbs - dyAbs;
-            let x = x1i, y = y1i;
+            let x = x1i,
+                y = y1i;
 
             while (true) {
                 if (x >= 0 && x < surfaceWidth && y >= 0 && y < surfaceHeight) {
@@ -7401,15 +8303,22 @@ if (__outA > 0) {
                 }
                 if (x === x2i && y === y2i) break;
                 const e2 = 2 * err;
-                if (e2 > -dyAbs) { err -= dyAbs; x += sx; }
-                if (e2 < dxAbs) { err += dxAbs; y += sy; }
+                if (e2 > -dyAbs) {
+                    err -= dyAbs;
+                    x += sx;
+                }
+                if (e2 < dxAbs) {
+                    err += dxAbs;
+                    y += sy;
+                }
             }
         }
 
         // Render corners via inline arc iteration (matching _generateArcPixels parameters)
         for (const corner of corners) {
             const screenCenter = RoundedRectOpsRot._transform(corner.cx, corner.cy, centerX, centerY, cos, sin);
-            const cx = screenCenter.x, cy = screenCenter.y;
+            const cx = screenCenter.x,
+                cy = screenCenter.y;
             const startAngle = corner.startAngle + rotation;
             const endAngle = corner.endAngle + rotation;
 
@@ -7418,7 +8327,8 @@ if (__outA > 0) {
             const angleStep = (endAngle - startAngle) / numSteps;
 
             // Use per-arc pixel deduplication (matching _generateArcPixels behavior)
-            let lastPx = null, lastPy = null;
+            let lastPx = null,
+                lastPy = null;
 
             for (let i = 0; i <= numSteps; i++) {
                 const angle = startAngle + i * angleStep;
@@ -7477,7 +8387,20 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps, QuadScanOps, or ArcOps)
      */
-    static _fillStroke_Rot_Unified(surface, centerX, centerY, width, height, radius, rotation, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer) {
+    static _fillStroke_Rot_Unified(
+        surface,
+        centerX,
+        centerY,
+        width,
+        height,
+        radius,
+        rotation,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -7560,17 +8483,39 @@ if (__outA > 0) {
             if (x > outerMaxX[row]) outerMaxX[row] = x;
         };
 
-        const recordInner = hasInnerRect ? (x, y) => {
-            if (y < yMin || y > yMax) return;
-            const row = y - yMin;
-            if (x < innerMinX[row]) innerMinX[row] = x;
-            if (x > innerMaxX[row]) innerMaxX[row] = x;
-        } : null;
+        const recordInner = hasInnerRect
+            ? (x, y) => {
+                  if (y < yMin || y > yMax) return;
+                  const row = y - yMin;
+                  if (x < innerMinX[row]) innerMinX[row] = x;
+                  if (x > innerMaxX[row]) innerMaxX[row] = x;
+              }
+            : null;
 
         // Generate outer and inner perimeters
-        RoundedRectOpsRot._generatePerimeter(outerHW, outerHH, outerRadius, recordOuter, centerX, centerY, cos, sin, rotation);
+        RoundedRectOpsRot._generatePerimeter(
+            outerHW,
+            outerHH,
+            outerRadius,
+            recordOuter,
+            centerX,
+            centerY,
+            cos,
+            sin,
+            rotation
+        );
         if (hasInnerRect) {
-            RoundedRectOpsRot._generatePerimeter(innerHW, innerHH, innerRadius, recordInner, centerX, centerY, cos, sin, rotation);
+            RoundedRectOpsRot._generatePerimeter(
+                innerHW,
+                innerHH,
+                innerRadius,
+                recordInner,
+                centerX,
+                centerY,
+                cos,
+                sin,
+                rotation
+            );
         }
 
         // Generate fill perimeter only for semi-transparent strokes
@@ -7589,7 +8534,17 @@ if (__outA > 0) {
                 if (x < fillMinX[row]) fillMinX[row] = x;
                 if (x > fillMaxX[row]) fillMaxX[row] = x;
             };
-            RoundedRectOpsRot._generatePerimeter(fillHW, fillHH, fillRadius, recordFill, centerX, centerY, cos, sin, rotation);
+            RoundedRectOpsRot._generatePerimeter(
+                fillHW,
+                fillHH,
+                fillRadius,
+                recordFill,
+                centerX,
+                centerY,
+                cos,
+                sin,
+                rotation
+            );
         }
 
         // Determine rendering modes
@@ -7610,7 +8565,7 @@ if (__outA > 0) {
             // Get outer stroke extent
             const outerLeft = outerMinX[row];
             const outerRight = outerMaxX[row];
-            if (outerLeft > outerRight) continue;  // No pixels on this row
+            if (outerLeft > outerRight) continue; // No pixels on this row
 
             // Get inner stroke extent
             const innerLeft = hasInnerRect ? innerMinX[row] : surfaceWidth;
@@ -7630,9 +8585,31 @@ if (__outA > 0) {
                 if (x0 <= x1) {
                     const spanLength = x1 - x0 + 1;
                     if (fillIsOpaque) {
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, spanLength, fillPacked, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            spanLength,
+                            fillPacked,
+                            clipBuffer
+                        );
                     } else {
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            x0,
+                            y,
+                            spanLength,
+                            fillColor.r,
+                            fillColor.g,
+                            fillColor.b,
+                            fillEffectiveAlpha,
+                            fillInvAlpha,
+                            clipBuffer
+                        );
                     }
                 }
             }
@@ -7648,14 +8625,27 @@ if (__outA > 0) {
                 if (strokeIsOpaque) {
                     SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, y, spanLength, strokePacked, clipBuffer);
                 } else {
-                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, y, spanLength, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        surfaceWidth,
+                        surfaceHeight,
+                        x0,
+                        y,
+                        spanLength,
+                        strokeColor.r,
+                        strokeColor.g,
+                        strokeColor.b,
+                        strokeEffectiveAlpha,
+                        strokeInvAlpha,
+                        clipBuffer
+                    );
                 }
             };
 
             if (hasInnerRegion) {
                 // Has inner hole: render left and right stroke segments
-                renderStrokeSegment(outerLeft, innerLeft - 1);  // Left segment
-                renderStrokeSegment(innerRight + 1, outerRight);  // Right segment
+                renderStrokeSegment(outerLeft, innerLeft - 1); // Left segment
+                renderStrokeSegment(innerRight + 1, outerRight); // Right segment
             } else {
                 // No inner region: fill entire stroke span
                 renderStrokeSegment(outerLeft, outerRight);
@@ -7718,10 +8708,12 @@ class RoundedRectOpsAA {
         if (radius <= 0) {
             return { leftX: rectX, rightX: rectX + rectW - 1 };
         }
-        let leftX = rectX, rightX = rectX + rectW - 1;
+        let leftX = rectX,
+            rightX = rectX + rectW - 1;
         if (py < rectY + radius) {
             const dy = rectY + radius - py - 0.5;
-            const dySquared = dy * dy, radiusSquared = radius * radius;
+            const dySquared = dy * dy,
+                radiusSquared = radius * radius;
             if (dySquared < radiusSquared) {
                 const dx = Math.sqrt(radiusSquared - dySquared);
                 leftX = Math.ceil(rectX + radius - dx + epsilon);
@@ -7731,7 +8723,8 @@ class RoundedRectOpsAA {
             }
         } else if (py >= rectY + rectH - radius) {
             const dy = py - (rectY + rectH - radius) + 0.5;
-            const dySquared = dy * dy, radiusSquared = radius * radius;
+            const dySquared = dy * dy,
+                radiusSquared = radius * radius;
             if (dySquared < radiusSquared) {
                 const dx = Math.sqrt(radiusSquared - dySquared);
                 leftX = Math.ceil(rectX + radius - dx + epsilon);
@@ -7898,7 +8891,9 @@ class RoundedRectOpsAA {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         const posX = x;
         const posY = y;
@@ -7934,7 +8929,7 @@ if (__outA > 0) {
         // Draw horizontal edges (shortened by 1 pixel at each end to avoid junction overlap)
         const topY = Math.floor(posY);
         const bottomY = Math.floor(posY + posH - 0.5);
-        const horzStart = Math.floor(posX + radius) + 1;  // Skip left junction pixel
+        const horzStart = Math.floor(posX + radius) + 1; // Skip left junction pixel
         const horzEnd = Math.floor(posX + posW - radius); // Stop before right junction pixel
 
         for (let xx = horzStart; xx < horzEnd; xx++) {
@@ -7945,7 +8940,7 @@ if (__outA > 0) {
         // Draw vertical edges (shortened by 1 pixel at each end to avoid junction overlap)
         const leftX = Math.floor(posX);
         const rightX = Math.floor(posX + posW - 0.5);
-        const vertStart = Math.floor(posY + radius) + 1;  // Skip top junction pixel
+        const vertStart = Math.floor(posY + radius) + 1; // Skip top junction pixel
         const vertEnd = Math.floor(posY + posH - radius); // Stop before bottom junction pixel
 
         for (let yy = vertStart; yy < vertEnd; yy++) {
@@ -8015,7 +9010,7 @@ if (__outA > 0) {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
@@ -8101,7 +9096,7 @@ if (__outA > 0) {
         const data = surface.data;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
@@ -8112,7 +9107,9 @@ if (__outA > 0) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Calculate integer bounds
         const rectX = Math.floor(x);
@@ -8164,7 +9161,20 @@ if (__outA > 0) {
 
             // Fill scanline with alpha blending
             const spanLength = rightX - leftX + 1;
-            SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, leftX, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+            SpanOps.fill_Alpha(
+                data,
+                surfaceWidth,
+                surfaceHeight,
+                leftX,
+                py,
+                spanLength,
+                r,
+                g,
+                b,
+                effectiveAlpha,
+                invAlpha,
+                clipBuffer
+            );
         }
     }
 
@@ -8188,7 +9198,7 @@ if (__outA > 0) {
         const data32 = surface.data32;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -8238,24 +9248,60 @@ if (__outA > 0) {
                     // Left span: from outerLeft to just before innerLeft
                     if (outerLeft < innerLeft) {
                         const leftSpanLength = innerLeft - outerLeft;
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, outerLeft, py, leftSpanLength, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            outerLeft,
+                            py,
+                            leftSpanLength,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
 
                     // Right span: from just after innerRight to outerRight
                     if (innerRight < outerRight) {
                         const rightSpanStart = innerRight + 1;
                         const rightSpanLength = outerRight - innerRight;
-                        SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, rightSpanStart, py, rightSpanLength, packedColor, clipBuffer);
+                        SpanOps.fill_Opaq(
+                            data32,
+                            surfaceWidth,
+                            surfaceHeight,
+                            rightSpanStart,
+                            py,
+                            rightSpanLength,
+                            packedColor,
+                            clipBuffer
+                        );
                     }
                 } else {
                     // Inner region invalid at this Y, fill entire outer span
                     const spanLength = outerRight - outerLeft + 1;
-                    SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, packedColor, clipBuffer);
+                    SpanOps.fill_Opaq(
+                        data32,
+                        surfaceWidth,
+                        surfaceHeight,
+                        outerLeft,
+                        py,
+                        spanLength,
+                        packedColor,
+                        clipBuffer
+                    );
                 }
             } else {
                 // Not in inner region, fill entire outer span
                 const spanLength = outerRight - outerLeft + 1;
-                SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, packedColor, clipBuffer);
+                SpanOps.fill_Opaq(
+                    data32,
+                    surfaceWidth,
+                    surfaceHeight,
+                    outerLeft,
+                    py,
+                    spanLength,
+                    packedColor,
+                    clipBuffer
+                );
             }
         }
     }
@@ -8281,7 +9327,7 @@ if (__outA > 0) {
         const data = surface.data;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -8294,7 +9340,9 @@ if (__outA > 0) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         if (effectiveAlpha <= 0) return;
         const invAlpha = 1 - effectiveAlpha;
-        const r = color.r, g = color.g, b = color.b;
+        const r = color.r,
+            g = color.g,
+            b = color.b;
 
         // Calculate outer and inner bounds
         const outerX = Math.floor(x - halfStroke);
@@ -8329,21 +9377,73 @@ if (__outA > 0) {
 
                     if (outerLeft < innerLeft) {
                         const leftSpanLength = innerLeft - outerLeft;
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, leftSpanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            outerLeft,
+                            py,
+                            leftSpanLength,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
 
                     if (innerRight < outerRight) {
                         const rightSpanStart = innerRight + 1;
                         const rightSpanLength = outerRight - innerRight;
-                        SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, rightSpanStart, py, rightSpanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                        SpanOps.fill_Alpha(
+                            data,
+                            surfaceWidth,
+                            surfaceHeight,
+                            rightSpanStart,
+                            py,
+                            rightSpanLength,
+                            r,
+                            g,
+                            b,
+                            effectiveAlpha,
+                            invAlpha,
+                            clipBuffer
+                        );
                     }
                 } else {
                     const spanLength = outerRight - outerLeft + 1;
-                    SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                    SpanOps.fill_Alpha(
+                        data,
+                        surfaceWidth,
+                        surfaceHeight,
+                        outerLeft,
+                        py,
+                        spanLength,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             } else {
                 const spanLength = outerRight - outerLeft + 1;
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, outerLeft, py, spanLength, r, g, b, effectiveAlpha, invAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    outerLeft,
+                    py,
+                    spanLength,
+                    r,
+                    g,
+                    b,
+                    effectiveAlpha,
+                    invAlpha,
+                    clipBuffer
+                );
             }
         }
     }
@@ -8374,7 +9474,19 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static fillStroke_AA_Any(surface, x, y, width, height, radii, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
+    static fillStroke_AA_Any(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        radii,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -8387,7 +9499,7 @@ if (__outA > 0) {
         if (!hasFill && !hasStroke) return;
 
         // Normalize radius
-        let radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
         // Fallback to separate methods for zero radius
         if (radius <= 0) {
@@ -8402,7 +9514,17 @@ if (__outA > 0) {
                 if (strokeColor.a === 255 && globalAlpha >= 1.0) {
                     RectOpsAA.strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, strokeColor, clipBuffer);
                 } else {
-                    RectOpsAA.strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, strokeColor, globalAlpha, clipBuffer);
+                    RectOpsAA.strokeThick_AA_Alpha(
+                        surface,
+                        x,
+                        y,
+                        width,
+                        height,
+                        lineWidth,
+                        strokeColor,
+                        globalAlpha,
+                        clipBuffer
+                    );
                 }
             }
             return;
@@ -8418,8 +9540,8 @@ if (__outA > 0) {
         const pathRadius = radius;
 
         // Radii for different boundaries
-        const outerRadius = pathRadius + halfStroke;  // Stroke outer edge
-        const innerRadius = Math.max(0, pathRadius - halfStroke);  // Stroke inner edge
+        const outerRadius = pathRadius + halfStroke; // Stroke outer edge
+        const innerRadius = Math.max(0, pathRadius - halfStroke); // Stroke inner edge
 
         // Calculate scan bounds - use original coordinates (not floored pathX/pathY)
         const scanMinY = Math.floor(y - halfStroke);
@@ -8449,7 +9571,20 @@ if (__outA > 0) {
             if (fillIsOpaque) {
                 SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, py, spanLength, fillPacked, clipBuffer);
             } else {
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, py, spanLength, fillColor.r, fillColor.g, fillColor.b, fillEffectiveAlpha, fillInvAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    x0,
+                    py,
+                    spanLength,
+                    fillColor.r,
+                    fillColor.g,
+                    fillColor.b,
+                    fillEffectiveAlpha,
+                    fillInvAlpha,
+                    clipBuffer
+                );
             }
         };
 
@@ -8464,7 +9599,20 @@ if (__outA > 0) {
             if (strokeIsOpaque) {
                 SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, x0, py, spanLength, strokePacked, clipBuffer);
             } else {
-                SpanOps.fill_Alpha(data, surfaceWidth, surfaceHeight, x0, py, spanLength, strokeColor.r, strokeColor.g, strokeColor.b, strokeEffectiveAlpha, strokeInvAlpha, clipBuffer);
+                SpanOps.fill_Alpha(
+                    data,
+                    surfaceWidth,
+                    surfaceHeight,
+                    x0,
+                    py,
+                    spanLength,
+                    strokeColor.r,
+                    strokeColor.g,
+                    strokeColor.b,
+                    strokeEffectiveAlpha,
+                    strokeInvAlpha,
+                    clipBuffer
+                );
             }
         };
 
@@ -8485,10 +9633,15 @@ if (__outA > 0) {
             if (py < 0 || py >= surfaceHeight) continue;
 
             // Get outer stroke extent - uses calculated bounds from original coordinates
-            const outerExtent = hasStroke ? RoundedRectOpsAA._getXExtent(py, outerRectX, outerRectW, outerRectY, outerRectH, outerRadius, 0) : { leftX: -1, rightX: -1 };
+            const outerExtent = hasStroke
+                ? RoundedRectOpsAA._getXExtent(py, outerRectX, outerRectW, outerRectY, outerRectH, outerRadius, 0)
+                : { leftX: -1, rightX: -1 };
 
             // Get inner stroke extent - uses calculated bounds from original coordinates
-            const innerExtent = (hasStroke && innerRectH > 0) ? RoundedRectOpsAA._getXExtent(py, innerRectX, innerRectW, innerRectY, innerRectH, innerRadius, 0) : { leftX: -1, rightX: -1 };
+            const innerExtent =
+                hasStroke && innerRectH > 0
+                    ? RoundedRectOpsAA._getXExtent(py, innerRectX, innerRectW, innerRectY, innerRectH, innerRadius, 0)
+                    : { leftX: -1, rightX: -1 };
 
             // Determine fill extent based on stroke transparency
             let fillExtent = { leftX: -1, rightX: -1 };
@@ -8500,7 +9653,15 @@ if (__outA > 0) {
                     if (strokeIsSemiTransparent && lineWidth > 1) {
                         // Thick semi-transparent stroke: fill to PATH extent
                         // Stroke will blend ON TOP of this fill for correct alpha overlap color
-                        fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, pathRadius, FILL_EPSILON);
+                        fillExtent = RoundedRectOpsAA._getXExtent(
+                            py,
+                            pathX,
+                            pathW,
+                            pathY,
+                            pathH,
+                            pathRadius,
+                            FILL_EPSILON
+                        );
                     } else {
                         // Opaque OR 1px semi-transparent: fill to inner extent
                         // (1px has no visible overlap area; opaque stroke covers fill anyway)
@@ -8575,12 +9736,11 @@ if (__outA > 0) {
  *   use source coverage masks and full-region compositing to correctly handle pixels outside the source area
  */
 class CompositeOperations {
-    
     /**
      * Blend two pixels using the specified composite operation
      * @param {string} operation - Composite operation mode
      * @param {number} srcR - Source red (0-255)
-     * @param {number} srcG - Source green (0-255)  
+     * @param {number} srcG - Source green (0-255)
      * @param {number} srcB - Source blue (0-255)
      * @param {number} srcA - Source alpha (0-255)
      * @param {number} dstR - Destination red (0-255)
@@ -8616,7 +9776,7 @@ class CompositeOperations {
                     return { r: dstR, g: dstG, b: dstB, a: dstA };
             }
         }
-        
+
         // Early exit for transparent destination
         if (dstA === 0) {
             switch (operation) {
@@ -8642,21 +9802,21 @@ class CompositeOperations {
                     return { r: srcR, g: srcG, b: srcB, a: srcA };
             }
         }
-        
+
         // Convert to normalized alpha values (0-1)
         const srcAlpha = srcA / 255;
         const dstAlpha = dstA / 255;
-        
+
         let resultR, resultG, resultB, resultA;
-        
+
         switch (operation) {
             case 'source-over':
                 return CompositeOperations._sourceOver(srcR, srcG, srcB, srcA, dstR, dstG, dstB, dstA);
-                
+
             case 'destination-over':
                 // Swap source and destination for destination-over
                 return CompositeOperations._sourceOver(dstR, dstG, dstB, dstA, srcR, srcG, srcB, srcA);
-                
+
             case 'source-atop':
                 // Source appears only where destination exists
                 // αo = αb, Co = αs × Cs + (1 - αs) × Cb
@@ -8670,7 +9830,7 @@ class CompositeOperations {
                 resultG = Math.round(srcAlpha * srcG + (1 - srcAlpha) * dstG);
                 resultB = Math.round(srcAlpha * srcB + (1 - srcAlpha) * dstB);
                 break;
-                
+
             case 'destination-atop':
                 // Destination appears only where source exists
                 // αo = αs, Co = αb × Cb + (1 - αb) × Cs
@@ -8683,7 +9843,7 @@ class CompositeOperations {
                 resultG = Math.round(dstAlpha * dstG + (1 - dstAlpha) * srcG);
                 resultB = Math.round(dstAlpha * dstB + (1 - dstAlpha) * srcB);
                 break;
-                
+
             case 'source-in':
                 // Source visible only where destination exists
                 // αo = αs × αb, Co = Cs
@@ -8695,7 +9855,7 @@ class CompositeOperations {
                 resultG = srcG;
                 resultB = srcB;
                 break;
-                
+
             case 'destination-in':
                 // Destination visible only where source exists
                 // αo = αb × αs, Co = Cb
@@ -8707,7 +9867,7 @@ class CompositeOperations {
                 resultG = dstG;
                 resultB = dstB;
                 break;
-                
+
             case 'source-out':
                 // Source visible only where destination doesn't exist
                 // αo = αs × (1 - αb), Co = Cs
@@ -8719,7 +9879,7 @@ class CompositeOperations {
                 resultG = srcG;
                 resultB = srcB;
                 break;
-                
+
             case 'destination-out':
                 // dst * (1 - srcAlpha)
                 resultA = Math.round(dstA * (1 - srcAlpha));
@@ -8730,15 +9890,15 @@ class CompositeOperations {
                 resultG = dstG;
                 resultB = dstB;
                 break;
-                
+
             case 'xor':
                 // HTML5 Canvas XOR behavior:
                 // - Source over transparent background: show source
-                // - Transparent over destination: show destination  
+                // - Transparent over destination: show destination
                 // - Source over opaque destination: transparent (both disappear)
-                
+
                 if (srcAlpha === 0 && dstAlpha === 0) {
-                    // Both transparent 
+                    // Both transparent
                     return { r: 0, g: 0, b: 0, a: 0 };
                 } else if (srcAlpha === 0) {
                     // No source - show destination unchanged
@@ -8750,18 +9910,17 @@ class CompositeOperations {
                     // Source over opaque destination - both disappear (XOR effect)
                     return { r: 0, g: 0, b: 0, a: 0 };
                 }
-                break;
-                
+
             case 'copy':
                 // Replace destination completely with source
                 // αo = αs, Co = Cs
                 return { r: srcR, g: srcG, b: srcB, a: srcA };
-                
+
             default:
                 // Default to source-over for unknown operations
                 return CompositeOperations._sourceOver(srcR, srcG, srcB, srcA, dstR, dstG, dstB, dstA);
         }
-        
+
         // Clamp results to valid range
         return {
             r: Math.max(0, Math.min(255, Math.round(resultR))),
@@ -8770,7 +9929,7 @@ class CompositeOperations {
             a: Math.max(0, Math.min(255, Math.round(resultA)))
         };
     }
-    
+
     /**
      * Optimized source-over implementation
      * @private
@@ -8780,11 +9939,11 @@ class CompositeOperations {
         if (srcA === 255) {
             return { r: srcR, g: srcG, b: srcB, a: srcA };
         }
-        
+
         // Standard source-over blending
         const srcAlpha = srcA / 255;
         const invSrcAlpha = 1 - srcAlpha;
-        
+
         return {
             r: Math.round(srcR * srcAlpha + dstR * invSrcAlpha),
             g: Math.round(srcG * srcAlpha + dstG * invSrcAlpha),
@@ -8792,7 +9951,7 @@ class CompositeOperations {
             a: Math.round(srcA + dstA * invSrcAlpha)
         };
     }
-    
+
     /**
      * Get list of supported composite operations
      * @returns {string[]} Array of supported operation names
@@ -8800,7 +9959,7 @@ class CompositeOperations {
     static getSupportedOperations() {
         return [
             'source-over',
-            'destination-over', 
+            'destination-over',
             'source-atop',
             'destination-atop',
             'source-in',
@@ -8811,7 +9970,7 @@ class CompositeOperations {
             'copy'
         ];
     }
-    
+
     /**
      * Check if a composite operation is supported
      * @param {string} operation - Operation name to check
@@ -8821,12 +9980,13 @@ class CompositeOperations {
         return CompositeOperations.getSupportedOperations().includes(operation);
     }
 }
+
 /**
  * BitmapEncodingOptions class for SWCanvas BitmapEncoder
- * 
+ *
  * Provides configuration options for BMP encoding operations.
  * Follows immutable object-oriented design principles per Joshua Bloch's Effective Java.
- * 
+ *
  * Key Features:
  * - Immutable options objects prevent accidental modification
  * - Static factory methods provide clear API
@@ -8857,11 +10017,11 @@ class BitmapEncodingOptions {
             g: Math.round(g),
             b: Math.round(b)
         });
-        
+
         // Make this instance immutable
         Object.freeze(this);
     }
-    
+
     /**
      * Get background color for transparent pixel compositing
      * @returns {Object} {r, g, b} background color (0-255 range)
@@ -8869,18 +10029,18 @@ class BitmapEncodingOptions {
     get backgroundColor() {
         return this._backgroundColor;
     }
-    
+
     /**
      * Create options with specified background color
      * @param {number} r - Red component (0-255)
-     * @param {number} g - Green component (0-255) 
+     * @param {number} g - Green component (0-255)
      * @param {number} b - Blue component (0-255)
      * @returns {BitmapEncodingOptions} New options instance
      */
     static withBackgroundColor(r, g, b) {
         return new BitmapEncodingOptions({ r, g, b });
     }
-    
+
     /**
      * Create options with white background (default)
      * @returns {BitmapEncodingOptions} Options with white background
@@ -8888,7 +10048,7 @@ class BitmapEncodingOptions {
     static withWhiteBackground() {
         return new BitmapEncodingOptions({ r: 255, g: 255, b: 255 });
     }
-    
+
     /**
      * Create options with black background
      * @returns {BitmapEncodingOptions} Options with black background
@@ -8896,7 +10056,7 @@ class BitmapEncodingOptions {
     static withBlackBackground() {
         return new BitmapEncodingOptions({ r: 0, g: 0, b: 0 });
     }
-    
+
     /**
      * Create options with gray background
      * @param {number} intensity - Gray intensity (0-255, default 128)
@@ -8905,7 +10065,7 @@ class BitmapEncodingOptions {
     static withGrayBackground(intensity = 128) {
         return new BitmapEncodingOptions({ r: intensity, g: intensity, b: intensity });
     }
-    
+
     /**
      * Check if two options instances are equal
      * @param {BitmapEncodingOptions} other - Other options to compare
@@ -8915,13 +10075,13 @@ class BitmapEncodingOptions {
         if (!(other instanceof BitmapEncodingOptions)) {
             return false;
         }
-        
+
         const bg1 = this._backgroundColor;
         const bg2 = other._backgroundColor;
-        
+
         return bg1.r === bg2.r && bg1.g === bg2.g && bg1.b === bg2.b;
     }
-    
+
     /**
      * Get string representation for debugging
      * @returns {string} String representation
@@ -8958,38 +10118,38 @@ class BitmapEncoder {
         if (!surface || typeof surface !== 'object') {
             throw new Error('Surface must be a valid Surface object');
         }
-        
+
         if (!surface.width || !surface.height || !surface.data) {
             throw new Error('Surface must have width, height, and data properties');
         }
-        
+
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
-        
+
         // Validate surface data
         const expectedSize = width * height * 4;
         if (data.length !== expectedSize) {
             throw new Error(`Surface data size mismatch. Expected ${expectedSize}, got ${data.length}`);
         }
-        
+
         // Calculate BMP dimensions and sizes
         const dimensions = BitmapEncoder._calculateDimensions(width, height);
-        
+
         // Create output buffer
         const buffer = new ArrayBuffer(dimensions.fileSize);
         const view = new DataView(buffer);
         const bytes = new Uint8Array(buffer);
-        
+
         // Write BMP headers
         BitmapEncoder._writeBMPHeaders(view, dimensions);
-        
+
         // Convert and write pixel data
         BitmapEncoder._writePixelData(bytes, data, surface, dimensions, options);
-        
+
         return buffer;
     }
-    
+
     /**
      * Calculate BMP dimensions and file size
      * @param {number} width - Image width
@@ -9002,7 +10162,7 @@ class BitmapEncoder {
         const rowSize = Math.floor((width * 3 + 3) / 4) * 4;
         const imageSize = rowSize * height;
         const fileSize = BitmapEncoder.BMP_HEADER_SIZE + imageSize;
-        
+
         return {
             width,
             height,
@@ -9011,7 +10171,7 @@ class BitmapEncoder {
             fileSize
         };
     }
-    
+
     /**
      * Write BMP file header and info header
      * @param {DataView} view - DataView for writing binary data
@@ -9021,11 +10181,11 @@ class BitmapEncoder {
     static _writeBMPHeaders(view, dimensions) {
         // BMP File Header (14 bytes)
         BitmapEncoder._writeBMPFileHeader(view, dimensions.fileSize);
-        
-        // BMP Info Header (40 bytes) 
+
+        // BMP Info Header (40 bytes)
         BitmapEncoder._writeBMPInfoHeader(view, dimensions);
     }
-    
+
     /**
      * Write BMP file header
      * @param {DataView} view - DataView for writing
@@ -9034,21 +10194,21 @@ class BitmapEncoder {
      */
     static _writeBMPFileHeader(view, fileSize) {
         const bytes = new Uint8Array(view.buffer);
-        
+
         // BMP signature "BM"
         bytes[0] = 0x42; // 'B'
-        bytes[1] = 0x4D; // 'M'
-        
+        bytes[1] = 0x4d; // 'M'
+
         // File size
         view.setUint32(2, fileSize, true);
-        
+
         // Reserved fields (must be 0)
         view.setUint32(6, 0, true);
-        
+
         // Offset to pixel data
         view.setUint32(10, BitmapEncoder.BMP_HEADER_SIZE, true);
     }
-    
+
     /**
      * Write BMP info header (BITMAPINFOHEADER)
      * @param {DataView} view - DataView for writing
@@ -9057,38 +10217,38 @@ class BitmapEncoder {
      */
     static _writeBMPInfoHeader(view, dimensions) {
         const offset = 14; // After file header
-        
+
         // Header size (40 bytes for BITMAPINFOHEADER)
         view.setUint32(offset + 0, 40, true);
-        
+
         // Width and height
         view.setInt32(offset + 4, dimensions.width, true);
         view.setInt32(offset + 8, -dimensions.height, true); // Negative for top-down
-        
+
         // Color planes (must be 1)
         view.setUint16(offset + 12, 1, true);
-        
+
         // Bits per pixel (24-bit RGB)
         view.setUint16(offset + 14, 24, true);
-        
+
         // Compression method (0 = uncompressed)
         view.setUint32(offset + 16, 0, true);
-        
+
         // Image size
         view.setUint32(offset + 20, dimensions.imageSize, true);
-        
+
         // Pixels per meter (approximately 72 DPI)
         const ppm = 2835; // 72 DPI * 39.3701 inches/meter
         view.setInt32(offset + 24, ppm, true); // X resolution
         view.setInt32(offset + 28, ppm, true); // Y resolution
-        
+
         // Colors in palette (0 for true color)
         view.setUint32(offset + 32, 0, true);
-        
+
         // Important colors (0 = all colors are important)
         view.setUint32(offset + 36, 0, true);
     }
-    
+
     /**
      * Convert RGBA surface data to BMP pixel format and write to buffer
      * @param {Uint8Array} bytes - Byte array for writing
@@ -9100,39 +10260,39 @@ class BitmapEncoder {
      */
     static _writePixelData(bytes, data, surface, dimensions, options) {
         let pixelOffset = BitmapEncoder.BMP_HEADER_SIZE;
-        
+
         for (let y = 0; y < dimensions.height; y++) {
             let rowOffset = pixelOffset;
-            
+
             for (let x = 0; x < dimensions.width; x++) {
-                const srcOffset = (y * surface.stride) + (x * 4);
-                
+                const srcOffset = y * surface.stride + x * 4;
+
                 // Get RGBA values from surface (non-premultiplied)
                 const r = data[srcOffset];
                 const g = data[srcOffset + 1];
                 const b = data[srcOffset + 2];
                 const a = data[srcOffset + 3];
-                
+
                 // Composite with background color for BMP output (which doesn't support alpha)
                 const rgb = BitmapEncoder._unpremultiplyAlpha(r, g, b, a, options.backgroundColor);
-                
+
                 // BMP stores pixels as BGR (not RGB)
                 bytes[rowOffset] = rgb.b;
                 bytes[rowOffset + 1] = rgb.g;
                 bytes[rowOffset + 2] = rgb.r;
                 rowOffset += 3;
             }
-            
+
             // Apply row padding to align to 4-byte boundary
-            while ((rowOffset - pixelOffset) < dimensions.rowSize) {
+            while (rowOffset - pixelOffset < dimensions.rowSize) {
                 bytes[rowOffset] = 0;
                 rowOffset++;
             }
-            
+
             pixelOffset += dimensions.rowSize;
         }
     }
-    
+
     /**
      * Convert premultiplied RGBA to non-premultiplied RGB
      * @param {number} r - Red component (0-255, premultiplied)
@@ -9148,22 +10308,22 @@ class BitmapEncoder {
             // Fully transparent - composite with configured background for BMP
             return { r: backgroundColor.r, g: backgroundColor.g, b: backgroundColor.b };
         }
-        
+
         if (a === 255) {
             // Fully opaque - no unpremultiplication needed
             return { r: r, g: g, b: b };
         }
-        
+
         // For semi-transparent pixels in BMP, composite with configured background
         // Surface data is non-premultiplied, so use standard alpha compositing
         const alpha = a / 255;
         return {
             r: Math.round(r * alpha + backgroundColor.r * (1 - alpha)),
-            g: Math.round(g * alpha + backgroundColor.g * (1 - alpha)), 
+            g: Math.round(g * alpha + backgroundColor.g * (1 - alpha)),
             b: Math.round(b * alpha + backgroundColor.b * (1 - alpha))
         };
     }
-    
+
     /**
      * Get BMP file information without encoding (for debugging/info)
      * @param {Surface} surface - Surface to analyze
@@ -9173,9 +10333,9 @@ class BitmapEncoder {
         if (!surface || !surface.width || !surface.height) {
             throw new Error('Invalid surface');
         }
-        
+
         const dimensions = BitmapEncoder._calculateDimensions(surface.width, surface.height);
-        
+
         return {
             width: dimensions.width,
             height: dimensions.height,
@@ -9187,7 +10347,7 @@ class BitmapEncoder {
             headerSize: BitmapEncoder.BMP_HEADER_SIZE
         };
     }
-    
+
     /**
      * Validate that a surface can be encoded to BMP
      * @param {Surface} surface - Surface to validate
@@ -9198,16 +10358,16 @@ class BitmapEncoder {
             if (!surface || typeof surface !== 'object') return false;
             if (!surface.width || !surface.height || !surface.data) return false;
             if (surface.width <= 0 || surface.height <= 0) return false;
-            if (surface.width > BitmapEncoder.MAX_DIMENSION || 
-                surface.height > BitmapEncoder.MAX_DIMENSION) return false;
-                
+            if (surface.width > BitmapEncoder.MAX_DIMENSION || surface.height > BitmapEncoder.MAX_DIMENSION)
+                return false;
+
             const expectedSize = surface.width * surface.height * 4;
             return surface.data.length === expectedSize;
         } catch (error) {
             return false;
         }
     }
-    
+
     /**
      * Calculate memory usage for BMP encoding
      * @param {number} width - Image width
@@ -9216,7 +10376,7 @@ class BitmapEncoder {
      */
     static calculateMemoryUsage(width, height) {
         if (width <= 0 || height <= 0) return 0;
-        
+
         const dimensions = BitmapEncoder._calculateDimensions(width, height);
         return dimensions.fileSize;
     }
@@ -9226,13 +10386,12 @@ class BitmapEncoder {
 BitmapEncoder.BMP_HEADER_SIZE = 54; // 14 bytes file header + 40 bytes info header
 BitmapEncoder.MAX_DIMENSION = 65535; // Reasonable maximum to prevent memory issues
 
-
 /**
  * PngEncodingOptions class for SWCanvas PngEncoder
- * 
+ *
  * Provides configuration options for PNG encoding operations.
  * Follows immutable object-oriented design principles per Joshua Bloch's Effective Java.
- * 
+ *
  * Key Features:
  * - Immutable options objects prevent accidental modification
  * - Static factory methods provide clear API
@@ -9251,31 +10410,31 @@ class PngEncodingOptions {
         // Set defaults
         const {
             preserveTransparency = true,
-            compressionLevel = 0  // 0 = no compression (stored blocks)
+            compressionLevel = 0 // 0 = no compression (stored blocks)
         } = config;
-        
+
         // Validate parameters
         if (typeof preserveTransparency !== 'boolean') {
             throw new Error('preserveTransparency must be a boolean');
         }
 
         Validators.range(compressionLevel, 'compressionLevel', 0, 9);
-        
+
         // Currently only support compression level 0 (stored blocks)
         if (compressionLevel !== 0) {
             throw new Error('Only compression level 0 (no compression) is currently supported');
         }
-        
+
         // Store immutable configuration
         this._config = Object.freeze({
             preserveTransparency,
             compressionLevel
         });
-        
+
         // Make this instance immutable
         Object.freeze(this);
     }
-    
+
     /**
      * Get whether transparency should be preserved
      * @returns {boolean} True if transparency is preserved
@@ -9283,7 +10442,7 @@ class PngEncodingOptions {
     get preserveTransparency() {
         return this._config.preserveTransparency;
     }
-    
+
     /**
      * Get compression level
      * @returns {number} Compression level (0-9, currently only 0 supported)
@@ -9291,7 +10450,7 @@ class PngEncodingOptions {
     get compressionLevel() {
         return this._config.compressionLevel;
     }
-    
+
     /**
      * Create default options (transparency preserved, no compression)
      * @returns {PngEncodingOptions} Default options instance
@@ -9299,7 +10458,7 @@ class PngEncodingOptions {
     static withDefaults() {
         return new PngEncodingOptions();
     }
-    
+
     /**
      * Create options with transparency preserved (default behavior)
      * @returns {PngEncodingOptions} Options with transparency preserved
@@ -9307,7 +10466,7 @@ class PngEncodingOptions {
     static withTransparency() {
         return new PngEncodingOptions({ preserveTransparency: true });
     }
-    
+
     /**
      * Create options for opaque images (transparency ignored)
      * Note: This doesn't affect the PNG format (still RGBA), but may be useful for future optimizations
@@ -9316,7 +10475,7 @@ class PngEncodingOptions {
     static withoutTransparency() {
         return new PngEncodingOptions({ preserveTransparency: false });
     }
-    
+
     /**
      * Create options with specific compression level (future extensibility)
      * @param {number} level - Compression level (0-9, currently only 0 supported)
@@ -9325,7 +10484,7 @@ class PngEncodingOptions {
     static withCompressionLevel(level) {
         return new PngEncodingOptions({ compressionLevel: level });
     }
-    
+
     /**
      * Create options for maximum compatibility (no compression, preserve transparency)
      * @returns {PngEncodingOptions} Maximum compatibility options
@@ -9336,7 +10495,7 @@ class PngEncodingOptions {
             compressionLevel: 0
         });
     }
-    
+
     /**
      * Check if two options instances are equal
      * @param {PngEncodingOptions} other - Other options to compare
@@ -9346,14 +10505,16 @@ class PngEncodingOptions {
         if (!(other instanceof PngEncodingOptions)) {
             return false;
         }
-        
+
         const config1 = this._config;
         const config2 = other._config;
-        
-        return config1.preserveTransparency === config2.preserveTransparency &&
-               config1.compressionLevel === config2.compressionLevel;
+
+        return (
+            config1.preserveTransparency === config2.preserveTransparency &&
+            config1.compressionLevel === config2.compressionLevel
+        );
     }
-    
+
     /**
      * Get string representation for debugging
      * @returns {string} String representation
@@ -9362,7 +10523,7 @@ class PngEncodingOptions {
         const config = this._config;
         return `PngEncodingOptions(transparency: ${config.preserveTransparency}, compression: ${config.compressionLevel})`;
     }
-    
+
     /**
      * Create a new options instance with modified transparency setting
      * @param {boolean} preserveTransparency - Whether to preserve transparency
@@ -9374,7 +10535,7 @@ class PngEncodingOptions {
             compressionLevel: this._config.compressionLevel
         });
     }
-    
+
     /**
      * Create a new options instance with modified compression level
      * @param {number} compressionLevel - Compression level (0-9, currently only 0 supported)
@@ -9390,13 +10551,14 @@ class PngEncodingOptions {
 
 // Default options instance - preserve transparency, no compression (maintains simplicity)
 PngEncodingOptions.DEFAULT = new PngEncodingOptions();
+
 /**
  * PngEncoder class for SWCanvas
- * 
+ *
  * Handles encoding of Surface data to minimal PNG format with transparency support.
  * Uses uncompressed DEFLATE blocks for simplicity while maintaining PNG compliance.
  * Provides static methods for encoding with proper alpha handling.
- * 
+ *
  * Following OO best practices:
  * - Static methods for stateless encoding operations
  * - Clear separation of PNG chunk generation and pixel processing
@@ -9406,7 +10568,7 @@ PngEncodingOptions.DEFAULT = new PngEncodingOptions();
 class PngEncoder {
     /**
      * Encode a surface to PNG format
-     * @param {Surface} surface - Surface to encode  
+     * @param {Surface} surface - Surface to encode
      * @param {PngEncodingOptions} [options=PngEncodingOptions.DEFAULT] - Encoding options
      * @returns {ArrayBuffer} PNG file data
      */
@@ -9414,46 +10576,46 @@ class PngEncoder {
         if (!surface || typeof surface !== 'object') {
             throw new Error('Surface must be a valid Surface object');
         }
-        
+
         if (!surface.width || !surface.height || !surface.data) {
             throw new Error('Surface must have width, height, and data properties');
         }
-        
+
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
-        
+
         // Validate surface data
         const expectedSize = width * height * 4;
         if (data.length !== expectedSize) {
             throw new Error(`Surface data size mismatch. Expected ${expectedSize}, got ${data.length}`);
         }
-        
+
         // Validate dimensions
         if (width <= 0 || height <= 0) {
             throw new Error('Surface dimensions must be positive');
         }
-        
+
         if (width > PngEncoder.MAX_DIMENSION || height > PngEncoder.MAX_DIMENSION) {
             throw new Error(`Surface dimensions must be ≤ ${PngEncoder.MAX_DIMENSION}x${PngEncoder.MAX_DIMENSION}`);
         }
-        
+
         // Create scanlines with filter bytes (filter 0 = None)
         const scanlines = PngEncoder._createScanlines(width, height, data);
-        
+
         // Create compressed data using stored DEFLATE blocks
         const zlibData = PngEncoder._createZlibData(scanlines);
-        
+
         // Build PNG chunks
         const signature = PngEncoder._createSignature();
         const ihdrChunk = PngEncoder._createIHDRChunk(width, height);
         const idatChunk = PngEncoder._createIDATChunk(zlibData);
         const iendChunk = PngEncoder._createIENDChunk();
-        
+
         // Concatenate all parts
         const totalLength = signature.length + ihdrChunk.length + idatChunk.length + iendChunk.length;
         const result = new Uint8Array(totalLength);
-        
+
         let offset = 0;
         result.set(signature, offset);
         offset += signature.length;
@@ -9462,10 +10624,10 @@ class PngEncoder {
         result.set(idatChunk, offset);
         offset += idatChunk.length;
         result.set(iendChunk, offset);
-        
+
         return result.buffer;
     }
-    
+
     /**
      * Create PNG signature (8 bytes)
      * @returns {Uint8Array} PNG signature
@@ -9474,11 +10636,11 @@ class PngEncoder {
     static _createSignature() {
         return new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
     }
-    
+
     /**
      * Create scanlines with filter bytes
      * @param {number} width - Image width
-     * @param {number} height - Image height  
+     * @param {number} height - Image height
      * @param {Uint8ClampedArray} data - RGBA pixel data (non-premultiplied)
      * @returns {Uint8Array} Scanlines with filter bytes
      * @private
@@ -9488,26 +10650,26 @@ class PngEncoder {
         const stride = width * bytesPerPixel;
         const scanlineLength = stride + 1; // +1 for filter byte
         const result = new Uint8Array(scanlineLength * height);
-        
+
         let srcOffset = 0;
         let destOffset = 0;
-        
+
         for (let y = 0; y < height; y++) {
             // Filter type 0 (None)
             result[destOffset++] = 0;
-            
+
             // Copy scanline (RGBA order, already non-premultiplied)
             for (let x = 0; x < width; x++) {
                 result[destOffset++] = data[srcOffset++]; // R
-                result[destOffset++] = data[srcOffset++]; // G  
+                result[destOffset++] = data[srcOffset++]; // G
                 result[destOffset++] = data[srcOffset++]; // B
                 result[destOffset++] = data[srcOffset++]; // A
             }
         }
-        
+
         return result;
     }
-    
+
     /**
      * Create zlib data with stored DEFLATE blocks
      * @param {Uint8Array} uncompressed - Uncompressed scanline data
@@ -9517,63 +10679,63 @@ class PngEncoder {
     static _createZlibData(uncompressed) {
         // Zlib header (CMF=0x78, FLG=0x01 for stored blocks)
         const header = new Uint8Array([0x78, 0x01]);
-        
+
         // Split into DEFLATE stored blocks (max 65535 bytes per block)
         const blocks = [];
         const maxBlockSize = 65535;
         let offset = 0;
-        
+
         while (offset < uncompressed.length) {
             const remaining = uncompressed.length - offset;
             const blockSize = Math.min(maxBlockSize, remaining);
-            const isLastBlock = (offset + blockSize === uncompressed.length);
-            
+            const isLastBlock = offset + blockSize === uncompressed.length;
+
             // Block header: BFINAL (1 bit) + BTYPE (2 bits, 00 = stored)
             const bfinal = isLastBlock ? 1 : 0;
             const blockHeader = new Uint8Array(5);
             blockHeader[0] = bfinal; // BFINAL=1 if last, BTYPE=00
-            
+
             // LEN (little-endian)
-            blockHeader[1] = blockSize & 0xFF;
-            blockHeader[2] = (blockSize >>> 8) & 0xFF;
-            
+            blockHeader[1] = blockSize & 0xff;
+            blockHeader[2] = (blockSize >>> 8) & 0xff;
+
             // NLEN (bitwise NOT of LEN, little-endian)
-            const nlen = (~blockSize) & 0xFFFF;
-            blockHeader[3] = nlen & 0xFF;
-            blockHeader[4] = (nlen >>> 8) & 0xFF;
-            
+            const nlen = ~blockSize & 0xffff;
+            blockHeader[3] = nlen & 0xff;
+            blockHeader[4] = (nlen >>> 8) & 0xff;
+
             blocks.push(blockHeader);
             blocks.push(uncompressed.subarray(offset, offset + blockSize));
-            
+
             offset += blockSize;
         }
-        
+
         // Calculate Adler-32 checksum
         const adler32 = PngEncoder._calculateAdler32(uncompressed);
         const trailer = PngEncoder._u32be(adler32);
-        
+
         // Concatenate all parts
         let totalLength = header.length + trailer.length;
         for (const block of blocks) {
             totalLength += block.length;
         }
-        
+
         const result = new Uint8Array(totalLength);
         let resultOffset = 0;
-        
+
         result.set(header, resultOffset);
         resultOffset += header.length;
-        
+
         for (const block of blocks) {
             result.set(block, resultOffset);
             resultOffset += block.length;
         }
-        
+
         result.set(trailer, resultOffset);
-        
+
         return result;
     }
-    
+
     /**
      * Create IHDR chunk (image header)
      * @param {number} width - Image width
@@ -9583,35 +10745,35 @@ class PngEncoder {
      */
     static _createIHDRChunk(width, height) {
         const data = new Uint8Array(13);
-        
+
         // Width (4 bytes, big-endian)
         const widthBytes = PngEncoder._u32be(width);
         data.set(widthBytes, 0);
-        
-        // Height (4 bytes, big-endian)  
+
+        // Height (4 bytes, big-endian)
         const heightBytes = PngEncoder._u32be(height);
         data.set(heightBytes, 4);
-        
+
         // Bit depth: 8 bits per channel
         data[8] = 8;
-        
+
         // Color type: 6 = RGBA (RGB + alpha)
         data[9] = 6;
-        
+
         // Compression method: 0 = DEFLATE
         data[10] = 0;
-        
+
         // Filter method: 0 = basic 5-filter set
         data[11] = 0;
-        
+
         // Interlace method: 0 = none
         data[12] = 0;
-        
+
         return PngEncoder._createChunk('IHDR', data);
     }
-    
+
     /**
-     * Create IDAT chunk (image data)  
+     * Create IDAT chunk (image data)
      * @param {Uint8Array} zlibData - Zlib-compressed image data
      * @returns {Uint8Array} IDAT chunk
      * @private
@@ -9619,7 +10781,7 @@ class PngEncoder {
     static _createIDATChunk(zlibData) {
         return PngEncoder._createChunk('IDAT', zlibData);
     }
-    
+
     /**
      * Create IEND chunk (end marker)
      * @returns {Uint8Array} IEND chunk
@@ -9628,7 +10790,7 @@ class PngEncoder {
     static _createIENDChunk() {
         return PngEncoder._createChunk('IEND', new Uint8Array(0));
     }
-    
+
     /**
      * Create a PNG chunk with length, type, data, and CRC
      * @param {string} type - 4-character chunk type
@@ -9640,22 +10802,22 @@ class PngEncoder {
         if (type.length !== 4) {
             throw new Error('Chunk type must be exactly 4 characters');
         }
-        
+
         const typeBytes = new TextEncoder().encode(type);
         const length = data.length;
         const lengthBytes = PngEncoder._u32be(length);
-        
+
         // Calculate CRC over type + data
         const crcInput = new Uint8Array(typeBytes.length + data.length);
         crcInput.set(typeBytes, 0);
         crcInput.set(data, typeBytes.length);
         const crc = PngEncoder._calculateCRC32(crcInput);
         const crcBytes = PngEncoder._u32be(crc);
-        
+
         // Assemble chunk: length + type + data + crc
         const chunk = new Uint8Array(4 + 4 + length + 4);
         let offset = 0;
-        
+
         chunk.set(lengthBytes, offset);
         offset += lengthBytes.length;
         chunk.set(typeBytes, offset);
@@ -9663,10 +10825,10 @@ class PngEncoder {
         chunk.set(data, offset);
         offset += data.length;
         chunk.set(crcBytes, offset);
-        
+
         return chunk;
     }
-    
+
     /**
      * Convert 32-bit unsigned integer to big-endian bytes
      * @param {number} value - Value to convert
@@ -9675,13 +10837,13 @@ class PngEncoder {
      */
     static _u32be(value) {
         const bytes = new Uint8Array(4);
-        bytes[0] = (value >>> 24) & 0xFF;
-        bytes[1] = (value >>> 16) & 0xFF;
-        bytes[2] = (value >>> 8) & 0xFF;
-        bytes[3] = value & 0xFF;
+        bytes[0] = (value >>> 24) & 0xff;
+        bytes[1] = (value >>> 16) & 0xff;
+        bytes[2] = (value >>> 8) & 0xff;
+        bytes[3] = value & 0xff;
         return bytes;
     }
-    
+
     /**
      * Calculate CRC-32 checksum
      * @param {Uint8Array} data - Data to checksum
@@ -9689,38 +10851,38 @@ class PngEncoder {
      * @private
      */
     static _calculateCRC32(data) {
-        let crc = 0xFFFFFFFF;
-        
+        let crc = 0xffffffff;
+
         for (let i = 0; i < data.length; i++) {
             crc ^= data[i];
-            
+
             for (let j = 0; j < 8; j++) {
-                crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+                crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
             }
         }
-        
-        return (crc ^ 0xFFFFFFFF) >>> 0;
+
+        return (crc ^ 0xffffffff) >>> 0;
     }
-    
+
     /**
      * Calculate Adler-32 checksum
      * @param {Uint8Array} data - Data to checksum
-     * @returns {number} Adler-32 value  
+     * @returns {number} Adler-32 value
      * @private
      */
     static _calculateAdler32(data) {
         let s1 = 1;
         let s2 = 0;
         const MOD_ADLER = 65521;
-        
+
         for (let i = 0; i < data.length; i++) {
             s1 = (s1 + data[i]) % MOD_ADLER;
             s2 = (s2 + s1) % MOD_ADLER;
         }
-        
+
         return ((s2 << 16) | s1) >>> 0;
     }
-    
+
     /**
      * Get PNG file information without encoding (for debugging/info)
      * @param {Surface} surface - Surface to analyze
@@ -9730,10 +10892,10 @@ class PngEncoder {
         if (!surface || !surface.width || !surface.height) {
             throw new Error('Invalid surface');
         }
-        
+
         const scanlineBytes = (surface.width * 4 + 1) * surface.height; // +1 for filter bytes
         const approximateFileSize = scanlineBytes + 200; // PNG headers + zlib overhead
-        
+
         return {
             width: surface.width,
             height: surface.height,
@@ -9746,7 +10908,7 @@ class PngEncoder {
             scanlineBytes: scanlineBytes
         };
     }
-    
+
     /**
      * Validate that a surface can be encoded to PNG
      * @param {Surface} surface - Surface to validate
@@ -9757,39 +10919,39 @@ class PngEncoder {
             if (!surface || typeof surface !== 'object') return false;
             if (!surface.width || !surface.height || !surface.data) return false;
             if (surface.width <= 0 || surface.height <= 0) return false;
-            if (surface.width > PngEncoder.MAX_DIMENSION || 
-                surface.height > PngEncoder.MAX_DIMENSION) return false;
-                
+            if (surface.width > PngEncoder.MAX_DIMENSION || surface.height > PngEncoder.MAX_DIMENSION) return false;
+
             const expectedSize = surface.width * surface.height * 4;
             return surface.data.length === expectedSize;
         } catch (error) {
             return false;
         }
     }
-    
+
     /**
      * Calculate memory usage for PNG encoding
      * @param {number} width - Image width
-     * @param {number} height - Image height  
+     * @param {number} height - Image height
      * @returns {number} Approximate memory usage in bytes
      */
     static calculateMemoryUsage(width, height) {
         if (width <= 0 || height <= 0) return 0;
-        
+
         // Scanlines + PNG overhead
-        return (width * height * 4) + (height * 1) + 200;
+        return width * height * 4 + height * 1 + 200;
     }
 }
 
 // Class constants
 PngEncoder.MAX_DIMENSION = 65535; // PNG supports up to 2^31-1, but this is reasonable limit
+
 /**
  * PathFlattener class for SWCanvas
- * 
+ *
  * Converts Path2D curves and arcs into line segments (polygons) for rendering.
  * Implements deterministic curve flattening with 0.25px tolerance to ensure
  * visual consistency across platforms.
- * 
+ *
  * Converted from functional to class-based approach following OO best practices:
  * - Static methods for stateless operations
  * - Immutable parameters and predictable behavior
@@ -9806,7 +10968,7 @@ class PathFlattener {
         let currentPoly = [];
         let currentPoint = new Point(0, 0);
         let subpathStart = new Point(0, 0);
-        
+
         for (const cmd of path2d.commands) {
             switch (cmd.type) {
                 case 'moveTo':
@@ -9815,53 +10977,64 @@ class PathFlattener {
                     subpathStart = new Point(cmd.x, cmd.y);
                     currentPoly = [currentPoint.toObject()]; // Convert to plain object for compatibility
                     break;
-                    
+
                 case 'lineTo':
                     currentPoint = new Point(cmd.x, cmd.y);
                     currentPoly.push(currentPoint.toObject());
                     break;
-                    
+
                 case 'closePath':
                     PathFlattener._handleClosePath(currentPoly, subpathStart, polygons);
                     currentPoly = [];
                     break;
-                    
+
                 case 'quadraticCurveTo':
                     const quadPoints = PathFlattener._flattenQuadraticBezier(
-                        currentPoint.x, currentPoint.y,
-                        cmd.cpx, cmd.cpy,
-                        cmd.x, cmd.y
+                        currentPoint.x,
+                        currentPoint.y,
+                        cmd.cpx,
+                        cmd.cpy,
+                        cmd.x,
+                        cmd.y
                     );
                     PathFlattener._appendPoints(currentPoly, quadPoints, 1); // Skip first point
                     currentPoint = new Point(cmd.x, cmd.y);
                     break;
-                    
+
                 case 'bezierCurveTo':
                     const cubicPoints = PathFlattener._flattenCubicBezier(
-                        currentPoint.x, currentPoint.y,
-                        cmd.cp1x, cmd.cp1y,
-                        cmd.cp2x, cmd.cp2y,
-                        cmd.x, cmd.y
+                        currentPoint.x,
+                        currentPoint.y,
+                        cmd.cp1x,
+                        cmd.cp1y,
+                        cmd.cp2x,
+                        cmd.cp2y,
+                        cmd.x,
+                        cmd.y
                     );
                     PathFlattener._appendPoints(currentPoly, cubicPoints, 1); // Skip first point
                     currentPoint = new Point(cmd.x, cmd.y);
                     break;
-                    
+
                 case 'arc':
-                    const arcResult = PathFlattener._handleArc(
-                        cmd, currentPoly, currentPoint, subpathStart
-                    );
+                    const arcResult = PathFlattener._handleArc(cmd, currentPoly, currentPoint, subpathStart);
                     currentPoint = arcResult.currentPoint;
                     currentPoly = arcResult.currentPoly;
                     if (arcResult.subpathStart) {
                         subpathStart = arcResult.subpathStart;
                     }
                     break;
-                    
+
                 case 'ellipse':
                     const ellipsePoints = PathFlattener._flattenEllipse(
-                        cmd.x, cmd.y, cmd.radiusX, cmd.radiusY, cmd.rotation,
-                        cmd.startAngle, cmd.endAngle, cmd.counterclockwise
+                        cmd.x,
+                        cmd.y,
+                        cmd.radiusX,
+                        cmd.radiusY,
+                        cmd.rotation,
+                        cmd.startAngle,
+                        cmd.endAngle,
+                        cmd.counterclockwise
                     );
                     PathFlattener._handleEllipsePoints(ellipsePoints, currentPoly, currentPoint);
                     if (ellipsePoints.length > 0) {
@@ -9871,11 +11044,9 @@ class PathFlattener {
                         );
                     }
                     break;
-                    
+
                 case 'arcTo':
-                    const arcToResult = PathFlattener._handleArcTo(
-                        cmd, currentPoly, currentPoint, subpathStart
-                    );
+                    const arcToResult = PathFlattener._handleArcTo(cmd, currentPoly, currentPoint, subpathStart);
                     currentPoint = arcToResult.currentPoint;
                     currentPoly = arcToResult.currentPoly;
                     if (arcToResult.subpathStart) {
@@ -9884,15 +11055,15 @@ class PathFlattener {
                     break;
             }
         }
-        
+
         // Add final polygon if exists
         if (currentPoly.length > 0) {
             polygons.push(currentPoly);
         }
-        
+
         return polygons;
     }
-    
+
     /**
      * Handle moveTo command
      * @param {Object} cmd - MoveTo command
@@ -9906,7 +11077,7 @@ class PathFlattener {
             polygons.push(currentPoly);
         }
     }
-    
+
     /**
      * Handle closePath command
      * @param {Array} currentPoly - Current polygon
@@ -9924,7 +11095,7 @@ class PathFlattener {
             polygons.push(currentPoly);
         }
     }
-    
+
     /**
      * Append points to polygon, skipping the first N points
      * @param {Array} currentPoly - Current polygon
@@ -9937,7 +11108,7 @@ class PathFlattener {
             currentPoly.push(points[i]);
         }
     }
-    
+
     /**
      * Handle arc command with path continuity logic
      * @param {Object} cmd - Arc command
@@ -9949,42 +11120,48 @@ class PathFlattener {
      */
     static _handleArc(cmd, currentPoly, currentPoint, subpathStart) {
         const arcPoints = PathFlattener._flattenArc(
-            cmd.x, cmd.y, cmd.radius,
-            cmd.startAngle, cmd.endAngle,
+            cmd.x,
+            cmd.y,
+            cmd.radius,
+            cmd.startAngle,
+            cmd.endAngle,
             cmd.counterclockwise
         );
-        
+
         if (arcPoints.length === 0) {
             return { currentPoint, currentPoly, subpathStart: null };
         }
-        
+
         const arcStart = new Point(arcPoints[0].x, arcPoints[0].y);
-        
+
         // If this is the first command in the subpath, start at arc start
         if (currentPoly.length === 0) {
             currentPoly.push(arcStart.toObject());
             const newCurrentPoint = arcStart;
             const newSubpathStart = arcStart;
-            
+
             // Add remaining arc points
             PathFlattener._appendPoints(currentPoly, arcPoints, 1);
-            
+
             return {
-                currentPoint: arcPoints.length > 1 ? 
-                    new Point(arcPoints[arcPoints.length - 1].x, arcPoints[arcPoints.length - 1].y) : newCurrentPoint,
+                currentPoint:
+                    arcPoints.length > 1
+                        ? new Point(arcPoints[arcPoints.length - 1].x, arcPoints[arcPoints.length - 1].y)
+                        : newCurrentPoint,
                 currentPoly,
                 subpathStart: newSubpathStart
             };
         } else {
             // Move to arc start if we're not already there
             const distance = currentPoint.distanceTo(arcStart);
-            if (distance > 0.01) {  // Add line to arc start if not already there
+            if (distance > 0.01) {
+                // Add line to arc start if not already there
                 currentPoly.push(arcStart.toObject());
             }
-            
+
             // Add all arc points except the first
             PathFlattener._appendPoints(currentPoly, arcPoints, 1);
-            
+
             return {
                 currentPoint: new Point(arcPoints[arcPoints.length - 1].x, arcPoints[arcPoints.length - 1].y),
                 currentPoly,
@@ -9992,7 +11169,7 @@ class PathFlattener {
             };
         }
     }
-    
+
     /**
      * Handle ellipse points
      * @param {Array} ellipsePoints - Ellipse points
@@ -10005,14 +11182,15 @@ class PathFlattener {
             // Move to ellipse start if we're not already there
             const ellipseStart = new Point(ellipsePoints[0].x, ellipsePoints[0].y);
             const distance = currentPoint.distanceTo(ellipseStart);
-            if (distance > 0.01) {  // Add line to ellipse start if not already there
+            if (distance > 0.01) {
+                // Add line to ellipse start if not already there
                 currentPoly.push(ellipseStart.toObject());
             }
             // Add all ellipse points except the first
             PathFlattener._appendPoints(currentPoly, ellipsePoints, 1);
         }
     }
-    
+
     /**
      * Flatten quadratic Bézier curve with fixed tolerance
      * @param {number} x0 - Start x
@@ -10025,13 +11203,11 @@ class PathFlattener {
      * @private
      */
     static _flattenQuadraticBezier(x0, y0, x1, y1, x2, y2) {
-        const points = [{x: x0, y: y0}];
-        PathFlattener._flattenQuadraticBezierRecursive(
-            x0, y0, x1, y1, x2, y2, points, PATH_FLATTENING_TOLERANCE
-        );
+        const points = [{ x: x0, y: y0 }];
+        PathFlattener._flattenQuadraticBezierRecursive(x0, y0, x1, y1, x2, y2, points, PATH_FLATTENING_TOLERANCE);
         return points;
     }
-    
+
     /**
      * Recursive quadratic Bézier flattening
      * @param {number} x0 - Start x
@@ -10049,12 +11225,13 @@ class PathFlattener {
         const dx = x2 - x0;
         const dy = y2 - y0;
         const d = Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / Math.sqrt(dx * dx + dy * dy);
-        
-        if (d <= tolerance || points.length > 1000) { // Safety limit
-            points.push({x: x2, y: y2});
+
+        if (d <= tolerance || points.length > 1000) {
+            // Safety limit
+            points.push({ x: x2, y: y2 });
             return;
         }
-        
+
         // Split curve at t=0.5
         const x01 = (x0 + x1) / 2;
         const y01 = (y0 + y1) / 2;
@@ -10062,12 +11239,12 @@ class PathFlattener {
         const y12 = (y1 + y2) / 2;
         const x012 = (x01 + x12) / 2;
         const y012 = (y01 + y12) / 2;
-        
+
         // Recursively flatten both halves
         PathFlattener._flattenQuadraticBezierRecursive(x0, y0, x01, y01, x012, y012, points, tolerance);
         PathFlattener._flattenQuadraticBezierRecursive(x012, y012, x12, y12, x2, y2, points, tolerance);
     }
-    
+
     /**
      * Flatten cubic Bézier curve with fixed tolerance
      * @param {number} x0 - Start x
@@ -10082,13 +11259,11 @@ class PathFlattener {
      * @private
      */
     static _flattenCubicBezier(x0, y0, x1, y1, x2, y2, x3, y3) {
-        const points = [{x: x0, y: y0}];
-        PathFlattener._flattenCubicBezierRecursive(
-            x0, y0, x1, y1, x2, y2, x3, y3, points, PATH_FLATTENING_TOLERANCE
-        );
+        const points = [{ x: x0, y: y0 }];
+        PathFlattener._flattenCubicBezierRecursive(x0, y0, x1, y1, x2, y2, x3, y3, points, PATH_FLATTENING_TOLERANCE);
         return points;
     }
-    
+
     /**
      * Recursive cubic Bézier flattening using de Casteljau's algorithm
      * @param {number} x0 - Start x
@@ -10108,20 +11283,21 @@ class PathFlattener {
         const dx = x3 - x0;
         const dy = y3 - y0;
         const len = Math.sqrt(dx * dx + dy * dy);
-        
+
         if (len === 0) {
-            points.push({x: x3, y: y3});
+            points.push({ x: x3, y: y3 });
             return;
         }
-        
+
         const d1 = Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / len;
         const d2 = Math.abs((x2 - x0) * dy - (y2 - y0) * dx) / len;
-        
-        if ((d1 + d2) <= tolerance || points.length > 1000) { // Safety limit
-            points.push({x: x3, y: y3});
+
+        if (d1 + d2 <= tolerance || points.length > 1000) {
+            // Safety limit
+            points.push({ x: x3, y: y3 });
             return;
         }
-        
+
         // Split curve at t=0.5 using de Casteljau's algorithm
         const x01 = (x0 + x1) / 2;
         const y01 = (y0 + y1) / 2;
@@ -10129,20 +11305,20 @@ class PathFlattener {
         const y12 = (y1 + y2) / 2;
         const x23 = (x2 + x3) / 2;
         const y23 = (y2 + y3) / 2;
-        
+
         const x012 = (x01 + x12) / 2;
         const y012 = (y01 + y12) / 2;
         const x123 = (x12 + x23) / 2;
         const y123 = (y12 + y23) / 2;
-        
+
         const x0123 = (x012 + x123) / 2;
         const y0123 = (y012 + y123) / 2;
-        
+
         // Recursively flatten both halves
         PathFlattener._flattenCubicBezierRecursive(x0, y0, x01, y01, x012, y012, x0123, y0123, points, tolerance);
         PathFlattener._flattenCubicBezierRecursive(x0123, y0123, x123, y123, x23, y23, x3, y3, points, tolerance);
     }
-    
+
     /**
      * Flatten arc to line segments
      * @param {number} cx - Center x
@@ -10156,26 +11332,26 @@ class PathFlattener {
      */
     static _flattenArc(cx, cy, radius, startAngle, endAngle, counterclockwise) {
         if (radius <= 0) return [];
-        
+
         // Normalize angles
         let start = startAngle;
         let end = endAngle;
-        
+
         if (!counterclockwise && end < start) {
             end += TAU;
         } else if (counterclockwise && start < end) {
             start += TAU;
         }
-        
+
         const totalAngle = Math.abs(end - start);
-        
+
         // Calculate number of segments needed for tolerance
         const maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / radius));
         const segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
-        
+
         const points = [];
         const angleStep = (end - start) / segments;
-        
+
         for (let i = 0; i <= segments; i++) {
             const angle = start + i * angleStep;
             points.push({
@@ -10183,10 +11359,10 @@ class PathFlattener {
                 y: cy + radius * Math.sin(angle)
             });
         }
-        
+
         return points;
     }
-    
+
     /**
      * Flatten ellipse to line segments
      * @param {number} cx - Center x
@@ -10202,48 +11378,48 @@ class PathFlattener {
      */
     static _flattenEllipse(cx, cy, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise) {
         if (radiusX <= 0 || radiusY <= 0) return [];
-        
+
         // Normalize angles
         let start = startAngle;
         let end = endAngle;
-        
+
         if (!counterclockwise && end < start) {
             end += TAU;
         } else if (counterclockwise && start < end) {
             start += TAU;
         }
-        
+
         const totalAngle = Math.abs(end - start);
-        
+
         // Calculate number of segments - use smaller radius for tolerance calculation
         const minRadius = Math.min(radiusX, radiusY);
         const maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / minRadius));
         const segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
-        
+
         const points = [];
         const angleStep = (end - start) / segments;
         const cosRot = Math.cos(rotation);
         const sinRot = Math.sin(rotation);
-        
+
         for (let i = 0; i <= segments; i++) {
             const angle = start + i * angleStep;
             const cos = Math.cos(angle);
             const sin = Math.sin(angle);
-            
+
             // Unrotated ellipse point
             const x = radiusX * cos;
             const y = radiusY * sin;
-            
+
             // Apply rotation and translation
             points.push({
                 x: cx + x * cosRot - y * sinRot,
                 y: cy + x * sinRot + y * cosRot
             });
         }
-        
+
         return points;
     }
-    
+
     /**
      * Flatten arc to line segments with custom tolerance for higher precision
      * @param {number} cx - Center x
@@ -10258,29 +11434,29 @@ class PathFlattener {
      */
     static _flattenArcWithTolerance(cx, cy, radius, startAngle, endAngle, counterclockwise, tolerance) {
         if (radius <= 0) return [];
-        
+
         // Normalize angles
         let start = startAngle;
         let end = endAngle;
-        
+
         if (!counterclockwise && end < start) {
             end += TAU;
         } else if (counterclockwise && start < end) {
             start += TAU;
         }
-        
+
         const totalAngle = Math.abs(end - start);
-        
+
         // Calculate number of segments needed for tolerance with minimum segments for smooth curves
         const maxAngleStep = 2 * Math.acos(Math.max(0, 1 - tolerance / radius));
         const minSegmentsFor90Deg = 16; // Minimum segments for a 90-degree arc
-        const minSegments = Math.ceil((totalAngle / (HALF_PI)) * minSegmentsFor90Deg);
+        const minSegments = Math.ceil((totalAngle / HALF_PI) * minSegmentsFor90Deg);
         const toleranceSegments = Math.ceil(totalAngle / maxAngleStep);
         const segments = Math.max(1, Math.max(minSegments, toleranceSegments));
-        
+
         const points = [];
         const angleStep = (end - start) / segments;
-        
+
         for (let i = 0; i <= segments; i++) {
             const angle = start + i * angleStep;
             points.push({
@@ -10288,10 +11464,10 @@ class PathFlattener {
                 y: cy + radius * Math.sin(angle)
             });
         }
-        
+
         return points;
     }
-    
+
     /**
      * Handle arcTo command - creates arc between two tangent lines
      * @param {Object} cmd - arcTo command {x1, y1, x2, y2, radius}
@@ -10302,8 +11478,8 @@ class PathFlattener {
      * @private
      */
     static _handleArcTo(cmd, currentPoly, currentPoint, subpathStart) {
-        const {x1, y1, x2, y2, radius} = cmd;
-        
+        const { x1, y1, x2, y2, radius } = cmd;
+
         // Early outs / degenerates
         // If no current point has been set yet: moveTo(x1, y1) and return
         if (currentPoly.length === 0) {
@@ -10315,7 +11491,7 @@ class PathFlattener {
                 subpathStart: targetPoint
             };
         }
-        
+
         // If radius <= 0: degrade to lineTo(x1, y1) and return
         if (radius <= 0) {
             const targetPoint = new Point(x1, y1);
@@ -10326,21 +11502,21 @@ class PathFlattener {
                 subpathStart: null
             };
         }
-        
+
         const p0 = currentPoint; // Current point
         const p1 = new Point(x1, y1); // Corner point
         const p2 = new Point(x2, y2); // End control point
-        
+
         // Direction vectors from the corner (pointing OUT of the corner)
         // v1 = normalize(P0 - P1)
         // v2 = normalize(P2 - P1)
         const v1 = new Point(p0.x - p1.x, p0.y - p1.y);
         const v2 = new Point(p2.x - p1.x, p2.y - p1.y);
-        
+
         // Calculate lengths
         const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
         const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-        
+
         // If any vectors are zero-length (P0==P1, or P1==P2): degrade to lineTo(x1, y1)
         if (len1 < FLOAT_EPSILON || len2 < FLOAT_EPSILON) {
             const targetPoint = new Point(x1, y1);
@@ -10351,20 +11527,20 @@ class PathFlattener {
                 subpathStart: null
             };
         }
-        
+
         // Normalize vectors
         const u1 = new Point(v1.x / len1, v1.y / len1);
         const u2 = new Point(v2.x / len2, v2.y / len2);
-        
+
         // Turn angle and tangent distance
         // Compute the turn angle φ between u1 and u2
         const dot = u1.x * u2.x + u1.y * u2.y;
         const cross = u1.x * u2.y - u1.y * u2.x;
-        
+
         // Clamp dot product to avoid NaN from acos
         const clampedDot = Math.max(-1, Math.min(1, dot));
         const turnAngle = Math.acos(clampedDot);
-        
+
         // If the three points are collinear (turn angle is ~0° or ~180°): just lineTo(x1, y1)
         if (Math.abs(Math.sin(turnAngle)) < FLOAT_EPSILON) {
             const targetPoint = new Point(x1, y1);
@@ -10375,74 +11551,65 @@ class PathFlattener {
                 subpathStart: null
             };
         }
-        
+
         // Compute distance from corner to tangent points along each leg
         // d = r / tan(φ/2)
         const halfAngle = turnAngle / 2;
         const tangentDistance = radius / Math.tan(halfAngle);
-        
+
         // Tangent points on each leg
         // T1 = P1 + u1 * d
         // T2 = P1 + u2 * d
-        const t1 = new Point(
-            p1.x + u1.x * tangentDistance,
-            p1.y + u1.y * tangentDistance
-        );
-        const t2 = new Point(
-            p1.x + u2.x * tangentDistance,
-            p1.y + u2.y * tangentDistance
-        );
-        
+        const t1 = new Point(p1.x + u1.x * tangentDistance, p1.y + u1.y * tangentDistance);
+        const t2 = new Point(p1.x + u2.x * tangentDistance, p1.y + u2.y * tangentDistance);
+
         // Arc center
-        // Compute unit left normals for u1 and u2 (rotate 90°)
-        // n1 = (-u1.y, u1.x), n2 = (-u2.y, u2.x)
+        // Compute unit left normal for u1 (rotate 90°): n1 = (-u1.y, u1.x)
         const n1 = new Point(-u1.y, u1.x);
-        const n2 = new Point(-u2.y, u2.x);
-        
+
         // Decide which side is "inside" using the sign of the cross product
         // sign = sgn(u1.x*u2.y - u1.y*u2.x)
         const sign = Math.sign(cross);
-        
+
         // The circle's center C is at:
         // C = T1 + n1 * (sign * r)
-        const center = new Point(
-            t1.x + n1.x * sign * radius,
-            t1.y + n1.y * sign * radius
-        );
-        
+        const center = new Point(t1.x + n1.x * sign * radius, t1.y + n1.y * sign * radius);
+
         // Start/end angles and sweep
         // Start angle: a1 = atan2(T1.y - C.y, T1.x - C.x)
         // End angle: a2 = atan2(T2.y - C.y, T2.x - C.x)
         const startAngle = Math.atan2(t1.y - center.y, t1.x - center.x);
         const endAngle = Math.atan2(t2.y - center.y, t2.x - center.x);
-        
-        // Anticlockwise flag: anticlockwise = (sign > 0) 
+
+        // Anticlockwise flag: anticlockwise = (sign > 0)
         // Note: Inverted from reference to get correct arc direction
-        const counterclockwise = (sign > 0);
-        
+        const counterclockwise = sign > 0;
+
         // Add line to start of arc if needed
         const distance = currentPoint.distanceTo(t1);
         if (distance > 0.01) {
             currentPoly.push(t1.toObject());
         }
-        
+
         // Generate arc points with higher precision for smooth curves
         const arcTolerance = Math.min(0.1, PATH_FLATTENING_TOLERANCE); // Use finer tolerance for arcTo
         const arcPoints = PathFlattener._flattenArcWithTolerance(
-            center.x, center.y, radius,
-            startAngle, endAngle,
+            center.x,
+            center.y,
+            radius,
+            startAngle,
+            endAngle,
             counterclockwise,
             arcTolerance
         );
-        
+
         // Add arc points (skip first point as it's already added)
         PathFlattener._appendPoints(currentPoly, arcPoints, 1);
-        
+
         // Return end point of arc
-        const endPoint = arcPoints.length > 0 ? 
-            new Point(arcPoints[arcPoints.length - 1].x, arcPoints[arcPoints.length - 1].y) : 
-            t2;
-            
+        const endPoint =
+            arcPoints.length > 0 ? new Point(arcPoints[arcPoints.length - 1].x, arcPoints[arcPoints.length - 1].y) : t2;
+
         return {
             currentPoint: endPoint,
             currentPoly,
@@ -10450,6 +11617,7 @@ class PathFlattener {
         };
     }
 }
+
 /**
  * PolygonFiller class for SWCanvas
  *
@@ -10481,7 +11649,18 @@ class PolygonFiller {
      * @param {string} composite - Composite operation (default: 'source-over')
      * @param {SourceMask|null} sourceMask - Optional source coverage mask for canvas-wide compositing
      */
-    static fillPolygons(surface, polygons, paintSource, fillRule, transform, clipMask, globalAlpha = 1.0, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
+    static fillPolygons(
+        surface,
+        polygons,
+        paintSource,
+        fillRule,
+        transform,
+        clipMask,
+        globalAlpha = 1.0,
+        subPixelOpacity = 1.0,
+        composite = 'source-over',
+        sourceMask = null
+    ) {
         if (polygons.length === 0) return;
         if (IS_DEBUG) {
             if (!PolygonFiller._isValidPaintSource(paintSource)) {
@@ -10501,7 +11680,18 @@ class PolygonFiller {
         if (canUseDirectRendering) {
             PolygonFiller._fillPolygonsDirect(surface, polygons, paintSource, fillRule, transform, clipMask);
         } else {
-            PolygonFiller._fillPolygonsStandard(surface, polygons, paintSource, fillRule, transform, clipMask, globalAlpha, subPixelOpacity, composite, sourceMask);
+            PolygonFiller._fillPolygonsStandard(
+                surface,
+                polygons,
+                paintSource,
+                fillRule,
+                transform,
+                clipMask,
+                globalAlpha,
+                subPixelOpacity,
+                composite,
+                sourceMask
+            );
         }
     }
 
@@ -10518,9 +11708,7 @@ class PolygonFiller {
         const clipBuffer = clipMask ? clipMask.buffer : null;
 
         // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly =>
-            poly.map(point => transform.transformPoint(point))
-        );
+        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
 
         // Find bounding box
         const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
@@ -10547,7 +11735,7 @@ class PolygonFiller {
                 windingNumber += intersection.winding;
 
                 if (fillRule === 'evenodd') {
-                    inside = (windingNumber % 2) !== 0;
+                    inside = windingNumber % 2 !== 0;
                 } else {
                     inside = windingNumber !== 0;
                 }
@@ -10596,7 +11784,18 @@ class PolygonFiller {
      * Standard path for all other cases (gradients, patterns, transparency, compositing)
      * @private
      */
-    static _fillPolygonsStandard(surface, polygons, paintSource, fillRule, transform, clipMask, globalAlpha, subPixelOpacity, composite, sourceMask) {
+    static _fillPolygonsStandard(
+        surface,
+        polygons,
+        paintSource,
+        fillRule,
+        transform,
+        clipMask,
+        globalAlpha,
+        subPixelOpacity,
+        composite,
+        sourceMask
+    ) {
         // Mark path-based rendering for testing (helps verify direct rendering is used when expected)
         // Check for Context2D existence since PolygonFiller may be used in isolation (e.g., unit tests)
         if (typeof Context2D !== 'undefined' && Context2D._markPathBasedRendering) {
@@ -10604,9 +11803,7 @@ class PolygonFiller {
         }
 
         // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly =>
-            poly.map(point => transform.transformPoint(point))
-        );
+        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
 
         // Find bounding box for optimization
         const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
@@ -10614,7 +11811,17 @@ class PolygonFiller {
         // Process each scanline
         for (let y = bounds.minY; y <= bounds.maxY; y++) {
             PolygonFiller._fillScanline(
-                surface, y, transformedPolygons, paintSource, fillRule, clipMask, transform, globalAlpha, subPixelOpacity, composite, sourceMask
+                surface,
+                y,
+                transformedPolygons,
+                paintSource,
+                fillRule,
+                clipMask,
+                transform,
+                globalAlpha,
+                subPixelOpacity,
+                composite,
+                sourceMask
             );
         }
     }
@@ -10627,7 +11834,8 @@ class PolygonFiller {
      * @private
      */
     static _calculateBounds(polygons, surface) {
-        let minY = Infinity, maxY = -Infinity;
+        let minY = Infinity,
+            maxY = -Infinity;
 
         for (const poly of polygons) {
             for (const point of poly) {
@@ -10658,7 +11866,19 @@ class PolygonFiller {
      * @param {SourceMask|null} sourceMask - Optional source coverage mask
      * @private
      */
-    static _fillScanline(surface, y, polygons, paintSource, fillRule, clipMask, transform, globalAlpha, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
+    static _fillScanline(
+        surface,
+        y,
+        polygons,
+        paintSource,
+        fillRule,
+        clipMask,
+        transform,
+        globalAlpha,
+        subPixelOpacity = 1.0,
+        composite = 'source-over',
+        sourceMask = null
+    ) {
         const intersections = [];
 
         // Find all intersections with this scanline
@@ -10670,7 +11890,19 @@ class PolygonFiller {
         intersections.sort((a, b) => a.x - b.x);
 
         // Fill spans based on winding rule
-        PolygonFiller._fillSpans(surface, y, intersections, paintSource, fillRule, clipMask, transform, globalAlpha, subPixelOpacity, composite, sourceMask);
+        PolygonFiller._fillSpans(
+            surface,
+            y,
+            intersections,
+            paintSource,
+            fillRule,
+            clipMask,
+            transform,
+            globalAlpha,
+            subPixelOpacity,
+            composite,
+            sourceMask
+        );
     }
 
     /**
@@ -10692,7 +11924,8 @@ class PolygonFiller {
             const minY = Math.min(p1.y, p2.y);
             const maxY = Math.max(p1.y, p2.y);
 
-            if (y >= minY && y < maxY) { // Note: < maxY to avoid double-counting vertices
+            if (y >= minY && y < maxY) {
+                // Note: < maxY to avoid double-counting vertices
                 // Calculate intersection point using linear interpolation
                 const t = (y - p1.y) / (p2.y - p1.y);
                 const x = p1.x + t * (p2.x - p1.x);
@@ -10720,7 +11953,19 @@ class PolygonFiller {
      * @param {SourceMask|null} sourceMask - Optional source coverage mask
      * @private
      */
-    static _fillSpans(surface, y, intersections, paintSource, fillRule, clipMask, transform, globalAlpha, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
+    static _fillSpans(
+        surface,
+        y,
+        intersections,
+        paintSource,
+        fillRule,
+        clipMask,
+        transform,
+        globalAlpha,
+        subPixelOpacity = 1.0,
+        composite = 'source-over',
+        sourceMask = null
+    ) {
         if (intersections.length === 0) return;
 
         let windingNumber = 0;
@@ -10735,8 +11980,9 @@ class PolygonFiller {
 
             // Determine if we're inside based on fill rule
             if (fillRule === 'evenodd') {
-                inside = (windingNumber % 2) !== 0;
-            } else { // nonzero
+                inside = windingNumber % 2 !== 0;
+            } else {
+                // nonzero
                 inside = windingNumber !== 0;
             }
 
@@ -10746,7 +11992,17 @@ class PolygonFiller {
                 const endX = Math.min(surface.width - 1, Math.floor(nextIntersection.x));
 
                 PolygonFiller._fillPixelSpan(
-                    surface, y, startX, endX, paintSource, clipMask, transform, globalAlpha, subPixelOpacity, composite, sourceMask
+                    surface,
+                    y,
+                    startX,
+                    endX,
+                    paintSource,
+                    clipMask,
+                    transform,
+                    globalAlpha,
+                    subPixelOpacity,
+                    composite,
+                    sourceMask
                 );
             }
         }
@@ -10767,7 +12023,19 @@ class PolygonFiller {
      * @param {SourceMask|null} sourceMask - Optional source coverage mask to record coverage
      * @private
      */
-    static _fillPixelSpan(surface, y, startX, endX, paintSource, clipMask, transform, globalAlpha, subPixelOpacity = 1.0, composite = 'source-over', sourceMask = null) {
+    static _fillPixelSpan(
+        surface,
+        y,
+        startX,
+        endX,
+        paintSource,
+        clipMask,
+        transform,
+        globalAlpha,
+        subPixelOpacity = 1.0,
+        composite = 'source-over',
+        sourceMask = null
+    ) {
         for (let x = startX; x <= endX; x++) {
             // Check stencil buffer clipping
             if (clipMask && clipMask.isPixelClipped(x, y)) {
@@ -10782,13 +12050,19 @@ class PolygonFiller {
             }
 
             // Evaluate paint source at pixel position
-            const pixelColor = PolygonFiller._evaluatePaintSource(paintSource, x, y, transform, globalAlpha, subPixelOpacity);
+            const pixelColor = PolygonFiller._evaluatePaintSource(
+                paintSource,
+                x,
+                y,
+                transform,
+                globalAlpha,
+                subPixelOpacity
+            );
 
             const offset = y * surface.stride + x * 4;
             PolygonFiller._blendPixel(surface, offset, pixelColor, composite);
         }
     }
-
 
     /**
      * Blend a color into a surface pixel using specified composite operation
@@ -10808,8 +12082,14 @@ class PolygonFiller {
         // Use CompositeOperations for blending
         const result = CompositeOperations.blendPixel(
             composite,
-            color.r, color.g, color.b, color.a,  // source
-            dstR, dstG, dstB, dstA               // destination
+            color.r,
+            color.g,
+            color.b,
+            color.a, // source
+            dstR,
+            dstG,
+            dstB,
+            dstA // destination
         );
 
         // Store result
@@ -10859,12 +12139,14 @@ class PolygonFiller {
      * @private
      */
     static _isValidPaintSource(paintSource) {
-        return paintSource instanceof Color ||
+        return (
+            paintSource instanceof Color ||
             paintSource instanceof Gradient ||
             paintSource instanceof LinearGradient ||
             paintSource instanceof RadialGradient ||
             paintSource instanceof ConicGradient ||
-            paintSource instanceof Pattern;
+            paintSource instanceof Pattern
+        );
     }
 
     /**
@@ -10882,10 +12164,12 @@ class PolygonFiller {
         let color;
         if (paintSource instanceof Color) {
             color = paintSource;
-        } else if (paintSource instanceof Gradient ||
+        } else if (
+            paintSource instanceof Gradient ||
             paintSource instanceof LinearGradient ||
             paintSource instanceof RadialGradient ||
-            paintSource instanceof ConicGradient) {
+            paintSource instanceof ConicGradient
+        ) {
             color = paintSource.getColorForPixel(x, y, transform);
         } else if (paintSource instanceof Pattern) {
             color = paintSource.getColorForPixel(x, y, transform);
@@ -10900,7 +12184,13 @@ class PolygonFiller {
         // Apply sub-pixel opacity for thin strokes
         if (subPixelOpacity < 1.0) {
             const adjustedAlpha = Math.round(resultColor.a * subPixelOpacity);
-            resultColor = new Color(resultColor.r, resultColor.g, resultColor.b, adjustedAlpha, resultColor.premultiplied);
+            resultColor = new Color(
+                resultColor.r,
+                resultColor.g,
+                resultColor.b,
+                adjustedAlpha,
+                resultColor.premultiplied
+            );
         }
 
         return resultColor;
@@ -10909,7 +12199,7 @@ class PolygonFiller {
     /**
      * Test if a point is inside a set of polygons using the specified fill rule
      * @param {number} x - X coordinate of the point
-     * @param {number} y - Y coordinate of the point  
+     * @param {number} y - Y coordinate of the point
      * @param {Array<Array<Object>>} polygons - Array of polygons, each polygon is array of {x, y} points
      * @param {string} fillRule - Fill rule: 'nonzero' or 'evenodd'
      * @returns {boolean} True if point is inside the polygon set
@@ -10954,7 +12244,8 @@ class PolygonFiller {
                 const maxY = Math.max(p1.y, p2.y);
 
                 // Ray is at y level, check if it intersects the edge
-                if (y >= minY && y < maxY) { // Note: < maxY to avoid double-counting vertices
+                if (y >= minY && y < maxY) {
+                    // Note: < maxY to avoid double-counting vertices
                     // Calculate intersection point using linear interpolation
                     const t = (y - p1.y) / (p2.y - p1.y);
                     const intersectionX = p1.x + t * (p2.x - p1.x);
@@ -10972,8 +12263,9 @@ class PolygonFiller {
 
         // Apply fill rule to determine if point is inside
         if (fillRule === 'evenodd') {
-            return (windingNumber % 2) !== 0;
-        } else { // nonzero
+            return windingNumber % 2 !== 0;
+        } else {
+            // nonzero
             return windingNumber !== 0;
         }
     }
@@ -11037,12 +12329,11 @@ class PolygonFiller {
         const height = clipMask.height;
 
         // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly =>
-            poly.map(point => transform.transformPoint(point))
-        );
+        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
 
         // Find bounding box
-        let minY = Infinity, maxY = -Infinity;
+        let minY = Infinity,
+            maxY = -Infinity;
         for (const poly of transformedPolygons) {
             for (const point of poly) {
                 minY = Math.min(minY, point.y);
@@ -11095,8 +12386,9 @@ class PolygonFiller {
 
             // Determine if we're inside based on fill rule
             if (fillRule === 'evenodd') {
-                inside = (windingNumber % 2) !== 0;
-            } else { // nonzero
+                inside = windingNumber % 2 !== 0;
+            } else {
+                // nonzero
                 inside = windingNumber !== 0;
             }
 
@@ -11112,13 +12404,14 @@ class PolygonFiller {
         }
     }
 }
+
 /**
  * StrokeGenerator class for SWCanvas
- * 
+ *
  * Implements geometric stroke generation that converts paths into filled polygons
  * representing stroke geometry. Handles all join types (miter, round, bevel) and
  * cap types (butt, round, square) with proper miter limit handling.
- * 
+ *
  * Converted from functional to class-based approach following OO best practices:
  * - Static methods for stateless stroke generation
  * - Clear separation of segment, join, and cap generation
@@ -11133,29 +12426,27 @@ class StrokeGenerator {
      */
     static generateStrokePolygons(path, strokeProps) {
         const validatedProps = StrokeGenerator._validateStrokeProperties(strokeProps);
-        
+
         if (validatedProps.lineWidth <= 0) return [];
-        
+
         // Flatten path to get line segments
         const pathPolygons = PathFlattener.flattenPath(path);
-        
+
         // Apply dash pattern if specified
         const dashedPolygons = StrokeGenerator._applyDashPattern(pathPolygons, validatedProps);
-        
+
         const strokePolygons = [];
-        
+
         for (const polygon of dashedPolygons) {
             if (polygon.length < 2) continue;
-            
-            const strokeParts = StrokeGenerator._generateStrokeForPolygon(
-                polygon, validatedProps
-            );
+
+            const strokeParts = StrokeGenerator._generateStrokeForPolygon(polygon, validatedProps);
             strokePolygons.push(...strokeParts);
         }
-        
+
         return strokePolygons;
     }
-    
+
     /**
      * Validate and normalize stroke properties
      * @param {Object} props - Stroke properties to validate
@@ -11191,7 +12482,7 @@ class StrokeGenerator {
 
         return validated;
     }
-    
+
     /**
      * Apply dash pattern to path polygons
      * @param {Array<Array>} pathPolygons - Original path polygons
@@ -11203,24 +12494,24 @@ class StrokeGenerator {
         if (!strokeProps.lineDash || strokeProps.lineDash.length === 0) {
             return pathPolygons; // No dashing - return original polygons
         }
-        
+
         const dashedPolygons = [];
-        
+
         for (const polygon of pathPolygons) {
             if (polygon.length < 2) continue;
-            
+
             const dashedSegments = StrokeGenerator._dashPolygon(
-                polygon, 
-                strokeProps.lineDash, 
+                polygon,
+                strokeProps.lineDash,
                 strokeProps.lineDashOffset
             );
-            
+
             dashedPolygons.push(...dashedSegments);
         }
-        
+
         return dashedPolygons;
     }
-    
+
     /**
      * Apply dash pattern to a single polygon
      * @param {Array} points - Array of {x, y} points
@@ -11231,69 +12522,73 @@ class StrokeGenerator {
      */
     static _dashPolygon(points, lineDash, lineDashOffset) {
         if (points.length < 2) return [];
-        
+
         const dashedSegments = [];
         const patternLength = lineDash.reduce((sum, segment) => sum + segment, 0);
-        
+
         if (patternLength <= 0) {
             return [points]; // Invalid pattern - return original
         }
-        
+
         // Normalize offset to be within pattern bounds
         let normalizedOffset = lineDashOffset % patternLength;
         if (normalizedOffset < 0) {
             normalizedOffset += patternLength;
         }
-        
-        let currentDistance = 0;
+
         let patternPosition = normalizedOffset;
         let patternIndex = 0;
         let isDash = true; // Start with assuming we're in a dash
-        
+
         // Find starting pattern index and dash/gap state
         let tempPos = 0;
         for (let i = 0; i < lineDash.length; i++) {
             if (tempPos + lineDash[i] > normalizedOffset) {
                 patternIndex = i;
                 patternPosition = normalizedOffset - tempPos;
-                isDash = (i % 2 === 0); // Even indices are dashes, odd are gaps
+                isDash = i % 2 === 0; // Even indices are dashes, odd are gaps
                 break;
             }
             tempPos += lineDash[i];
         }
-        
+
         let currentSegment = [];
-        
+
         for (let i = 0; i < points.length - 1; i++) {
             const p1 = points[i];
             const p2 = points[i + 1];
-            
-            const segmentLength = Math.sqrt(
-                Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)
-            );
-            
+
+            const segmentLength = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+
             if (segmentLength === 0) continue; // Skip zero-length segments
-            
+
             const segmentProcessed = StrokeGenerator._processSegmentWithDash(
-                p1, p2, segmentLength, lineDash, patternIndex, patternPosition, 
-                isDash, currentSegment, dashedSegments
+                p1,
+                p2,
+                segmentLength,
+                lineDash,
+                patternIndex,
+                patternPosition,
+                isDash,
+                currentSegment,
+                dashedSegments
             );
-            
+
             // Update state for next segment
             patternIndex = segmentProcessed.patternIndex;
             patternPosition = segmentProcessed.patternPosition;
             isDash = segmentProcessed.isDash;
             currentSegment = segmentProcessed.currentSegment;
         }
-        
+
         // Add any remaining segment
         if (currentSegment.length > 1) {
             dashedSegments.push(currentSegment);
         }
-        
+
         return dashedSegments;
     }
-    
+
     /**
      * Process a single line segment with dash pattern
      * @param {Object} p1 - Start point {x, y}
@@ -11308,55 +12603,62 @@ class StrokeGenerator {
      * @returns {Object} Updated state
      * @private
      */
-    static _processSegmentWithDash(p1, p2, segmentLength, lineDash, patternIndex, patternPosition, isDash, currentSegment, dashedSegments) {
+    static _processSegmentWithDash(
+        p1,
+        p2,
+        segmentLength,
+        lineDash,
+        patternIndex,
+        patternPosition,
+        isDash,
+        currentSegment,
+        dashedSegments
+    ) {
         let remainingLength = segmentLength;
-        let currentPoint = p1;
-        
+
         // Add start point to current segment if we're in a dash
         if (isDash && currentSegment.length === 0) {
-            currentSegment.push({x: p1.x, y: p1.y});
+            currentSegment.push({ x: p1.x, y: p1.y });
         }
-        
+
         while (remainingLength > 0) {
             const currentPatternSegment = lineDash[patternIndex];
             const remainingInPattern = currentPatternSegment - patternPosition;
             const distanceToUse = Math.min(remainingLength, remainingInPattern);
-            
+
             // Calculate intermediate point
             const t = (segmentLength - remainingLength + distanceToUse) / segmentLength;
             const intermediatePoint = {
                 x: p1.x + t * (p2.x - p1.x),
                 y: p1.y + t * (p2.y - p1.y)
             };
-            
+
             if (isDash) {
-                currentSegment.push({x: intermediatePoint.x, y: intermediatePoint.y});
+                currentSegment.push({ x: intermediatePoint.x, y: intermediatePoint.y });
             }
-            
+
             remainingLength -= distanceToUse;
             patternPosition += distanceToUse;
-            
+
             // Check if we've completed current pattern segment
             if (patternPosition >= currentPatternSegment) {
                 if (isDash && currentSegment.length > 1) {
                     dashedSegments.push(currentSegment);
                     currentSegment = [];
                 }
-                
+
                 // Move to next pattern segment
                 patternIndex = (patternIndex + 1) % lineDash.length;
                 patternPosition = 0;
                 isDash = !isDash;
-                
+
                 // Start new segment if entering dash
                 if (isDash && remainingLength > 0) {
-                    currentSegment = [{x: intermediatePoint.x, y: intermediatePoint.y}];
+                    currentSegment = [{ x: intermediatePoint.x, y: intermediatePoint.y }];
                 }
             }
-            
-            currentPoint = intermediatePoint;
         }
-        
+
         return {
             patternIndex: patternIndex,
             patternPosition: patternPosition,
@@ -11364,7 +12666,7 @@ class StrokeGenerator {
             currentSegment: currentSegment
         };
     }
-    
+
     /**
      * Generate stroke geometry for a single polygon (subpath)
      * @param {Array} points - Array of {x, y} points
@@ -11374,33 +12676,33 @@ class StrokeGenerator {
      */
     static _generateStrokeForPolygon(points, strokeProps) {
         if (points.length < 2) return [];
-        
+
         const strokeParts = [];
         const halfWidth = strokeProps.lineWidth / 2;
-        
+
         // Determine if this is a closed path
         const isClosed = StrokeGenerator._isPathClosed(points);
-        
+
         // Generate segment bodies with geometric info
         const segments = StrokeGenerator._generateSegments(points, halfWidth);
         if (segments.length === 0) return [];
-        
+
         // Add segment bodies to stroke parts
         for (const segment of segments) {
             strokeParts.push(segment.body);
         }
-        
+
         // Generate joins between adjacent segments
         StrokeGenerator._generateJoins(segments, strokeParts, strokeProps, isClosed);
-        
+
         // Generate caps for open paths
         if (!isClosed && segments.length > 0) {
             StrokeGenerator._generateCaps(segments, strokeParts, strokeProps, halfWidth);
         }
-        
+
         return strokeParts;
     }
-    
+
     /**
      * Check if path is closed (first and last points are very close)
      * @param {Array} points - Path points
@@ -11408,11 +12710,13 @@ class StrokeGenerator {
      * @private
      */
     static _isPathClosed(points) {
-        return points.length > 2 && 
-               Math.abs(points[0].x - points[points.length - 1].x) < FLOAT_EPSILON &&
-               Math.abs(points[0].y - points[points.length - 1].y) < FLOAT_EPSILON;
+        return (
+            points.length > 2 &&
+            Math.abs(points[0].x - points[points.length - 1].x) < FLOAT_EPSILON &&
+            Math.abs(points[0].y - points[points.length - 1].y) < FLOAT_EPSILON
+        );
     }
-    
+
     /**
      * Generate segment data with geometric information
      * @param {Array} points - Path points
@@ -11422,22 +12726,22 @@ class StrokeGenerator {
      */
     static _generateSegments(points, halfWidth) {
         const segments = [];
-        
+
         for (let i = 0; i < points.length - 1; i++) {
             const p1 = new Point(points[i].x, points[i].y);
             const p2 = new Point(points[i + 1].x, points[i + 1].y);
-            
+
             // Skip zero-length segments
             const length = p1.distanceTo(p2);
             if (length < FLOAT_EPSILON) continue;
-            
+
             const segment = StrokeGenerator._createSegment(p1, p2, halfWidth, length);
             segments.push(segment);
         }
-        
+
         return segments;
     }
-    
+
     /**
      * Create a segment object with body and geometry
      * @param {Point} p1 - Start point
@@ -11451,7 +12755,7 @@ class StrokeGenerator {
         // Calculate unit vectors
         const direction = p2.subtract(p1).scale(1 / length);
         const normal = new Point(-direction.y, direction.x); // Perpendicular
-        
+
         // Generate rectangular body for segment
         const body = [
             p1.add(normal.scale(halfWidth)).toObject(),
@@ -11459,7 +12763,7 @@ class StrokeGenerator {
             p2.add(normal.scale(-halfWidth)).toObject(),
             p1.add(normal.scale(-halfWidth)).toObject()
         ];
-        
+
         return {
             body: body,
             p1: p1,
@@ -11469,7 +12773,7 @@ class StrokeGenerator {
             length: length
         };
     }
-    
+
     /**
      * Generate joins between segments
      * @param {Array} segments - Array of segments
@@ -11486,7 +12790,7 @@ class StrokeGenerator {
             const joinPolygons = StrokeGenerator._generateJoin(seg1, seg2, strokeProps);
             strokeParts.push(...joinPolygons);
         }
-        
+
         // Handle closed path joining (last segment to first segment)
         if (isClosed && segments.length > 1) {
             const lastSeg = segments[segments.length - 1];
@@ -11495,7 +12799,7 @@ class StrokeGenerator {
             strokeParts.push(...joinPolygons);
         }
     }
-    
+
     /**
      * Generate join geometry between two segments
      * @param {Object} seg1 - First segment
@@ -11506,15 +12810,15 @@ class StrokeGenerator {
      */
     static _generateJoin(seg1, seg2, strokeProps) {
         const joinPoint = seg2.p1; // Connection point
-        
+
         // Calculate cross product to determine turn direction
         const cross = seg1.tangent.cross(seg2.tangent);
-        
+
         // Check for 180-degree turn (parallel segments)
         if (Math.abs(cross) < FLOAT_EPSILON) {
             return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
         }
-        
+
         // Generate appropriate join type
         switch (strokeProps.lineJoin) {
             case 'miter':
@@ -11526,7 +12830,7 @@ class StrokeGenerator {
                 return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
         }
     }
-    
+
     /**
      * Generate miter join with miter limit checking
      * @param {Object} seg1 - First segment
@@ -11538,75 +12842,72 @@ class StrokeGenerator {
      */
     static _generateMiterJoin(seg1, seg2, joinPoint, miterLimit) {
         // Calculate half width from segment body (same as original)
-        const halfWidth = Math.sqrt(
-            Math.pow(seg1.body[0].x - seg1.body[3].x, 2) + 
-            Math.pow(seg1.body[0].y - seg1.body[3].y, 2)
-        ) / 2;
-        
+        const halfWidth =
+            Math.sqrt(Math.pow(seg1.body[0].x - seg1.body[3].x, 2) + Math.pow(seg1.body[0].y - seg1.body[3].y, 2)) / 2;
+
         // Determine which sides are on the outside of the turn
         const cross = seg1.tangent.cross(seg2.tangent);
-        
+
         let outer1, outer2;
         if (cross > 0) {
             // Left turn - right sides are outer
             outer1 = seg1.body[2]; // Right side of seg1 end
-            outer2 = seg2.body[3]; // Right side of seg2 start  
+            outer2 = seg2.body[3]; // Right side of seg2 start
         } else {
             // Right turn - left sides are outer
             outer1 = seg1.body[1]; // Left side of seg1 end
             outer2 = seg2.body[0]; // Left side of seg2 start
         }
-        
+
         // Calculate miter point (intersection of extended outer edges)
         // Extend seg1's outer edge forward
         const seg1Extended = {
-            x: outer1.x + seg1.tangent.x * 100, 
+            x: outer1.x + seg1.tangent.x * 100,
             y: outer1.y + seg1.tangent.y * 100
         };
-        // Extend seg2's outer edge backward  
+        // Extend seg2's outer edge backward
         const seg2Extended = {
             x: outer2.x - seg2.tangent.x * 100,
             y: outer2.y - seg2.tangent.y * 100
         };
-        
+
         const miterPoint = StrokeGenerator._lineIntersection(outer1, seg1Extended, outer2, seg2Extended);
-        
+
         if (!miterPoint) {
             // Fallback to bevel if no intersection
             return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
         }
-        
+
         // Check miter limit
         const miterLength = Math.sqrt(
-            Math.pow(miterPoint.x - joinPoint.x, 2) + 
-            Math.pow(miterPoint.y - joinPoint.y, 2)
+            Math.pow(miterPoint.x - joinPoint.x, 2) + Math.pow(miterPoint.y - joinPoint.y, 2)
         );
         const miterRatio = miterLength / halfWidth;
-        
+
         if (miterRatio > miterLimit) {
             // Exceeds miter limit - use bevel
             return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
         }
-        
+
         // For miter join, we need to fill both the miter triangle and the inner area
         let inner1, inner2;
         if (cross > 0) {
             // Left turn - left sides are inner
-            inner1 = seg1.body[1]; // Left side of seg1 end  
+            inner1 = seg1.body[1]; // Left side of seg1 end
             inner2 = seg2.body[0]; // Left side of seg2 start
         } else {
             // Right turn - right sides are inner
             inner1 = seg1.body[2]; // Right side of seg1 end
             inner2 = seg2.body[3]; // Right side of seg2 start
         }
-        
+
         // Create miter triangle and inner quadrilateral
         return [
-            [outer1, miterPoint, outer2],  // Miter triangle
-            [outer1, outer2, inner2, inner1]  // Inner connecting area
+            [outer1, miterPoint, outer2], // Miter triangle
+            [outer1, outer2, inner2, inner1] // Inner connecting area
         ];
     }
-    
+
     /**
      * Generate bevel join
      * @param {Object} seg1 - First segment
@@ -11619,13 +12920,10 @@ class StrokeGenerator {
         const cross = seg1.tangent.cross(seg2.tangent);
         const outerSides = StrokeGenerator._getOuterSides(seg1, seg2, cross);
         const innerSides = StrokeGenerator._getInnerSides(seg1, seg2, cross);
-        
-        return [[
-            outerSides.outer1, outerSides.outer2, 
-            innerSides.inner2, innerSides.inner1
-        ]];
+
+        return [[outerSides.outer1, outerSides.outer2, innerSides.inner2, innerSides.inner1]];
     }
-    
+
     /**
      * Generate round join
      * @param {Object} seg1 - First segment
@@ -11636,32 +12934,30 @@ class StrokeGenerator {
      */
     static _generateRoundJoin(seg1, seg2, joinPoint) {
         // Calculate half width from segment body (distance between top and bottom edges)
-        const halfWidth = Math.sqrt(
-            Math.pow(seg1.body[0].x - seg1.body[3].x, 2) + 
-            Math.pow(seg1.body[0].y - seg1.body[3].y, 2)
-        ) / 2;
-        
+        const halfWidth =
+            Math.sqrt(Math.pow(seg1.body[0].x - seg1.body[3].x, 2) + Math.pow(seg1.body[0].y - seg1.body[3].y, 2)) / 2;
+
         // Determine which sides are on the outside of the turn
         const cross = seg1.tangent.cross(seg2.tangent);
-        
+
         let outer1, outer2;
         if (cross > 0) {
             // Left turn - right sides are outer
             outer1 = seg1.body[2]; // Right side of seg1 end
-            outer2 = seg2.body[3]; // Right side of seg2 start  
+            outer2 = seg2.body[3]; // Right side of seg2 start
         } else {
             // Right turn - left sides are outer
             outer1 = seg1.body[1]; // Left side of seg1 end
             outer2 = seg2.body[0]; // Left side of seg2 start
         }
-        
+
         // Calculate angles
         const angle1 = Math.atan2(outer1.y - joinPoint.y, outer1.x - joinPoint.x);
         const angle2 = Math.atan2(outer2.y - joinPoint.y, outer2.x - joinPoint.x);
-        
+
         let startAngle = angle1;
         let endAngle = angle2;
-        
+
         // Normalize angles to go the correct way around (from original implementation)
         let angleDiff = endAngle - startAngle;
         if (angleDiff > Math.PI) {
@@ -11669,7 +12965,7 @@ class StrokeGenerator {
         } else if (angleDiff < -Math.PI) {
             angleDiff += TAU;
         }
-        
+
         // We want to go the convex way (positive turn)
         if (angleDiff < 0) {
             // Swap to go positive direction
@@ -11678,15 +12974,15 @@ class StrokeGenerator {
             endAngle = temp;
             angleDiff = -angleDiff;
         }
-        
-        const segments = Math.max(2, Math.ceil(angleDiff / (QUARTER_PI))); // At least 2 segments
+
+        const segments = Math.max(2, Math.ceil(angleDiff / QUARTER_PI)); // At least 2 segments
         const angleStep = angleDiff / segments;
-        
+
         const triangles = [];
         for (let i = 0; i < segments; i++) {
             const a1 = startAngle + i * angleStep;
             const a2 = startAngle + (i + 1) * angleStep;
-            
+
             const p1 = {
                 x: joinPoint.x + halfWidth * Math.cos(a1),
                 y: joinPoint.y + halfWidth * Math.sin(a1)
@@ -11695,13 +12991,13 @@ class StrokeGenerator {
                 x: joinPoint.x + halfWidth * Math.cos(a2),
                 y: joinPoint.y + halfWidth * Math.sin(a2)
             };
-            
+
             triangles.push([joinPoint.toObject(), p1, p2]);
         }
-        
+
         return triangles;
     }
-    
+
     /**
      * Generate caps for open paths
      * @param {Array} segments - Array of segments
@@ -11713,22 +13009,30 @@ class StrokeGenerator {
     static _generateCaps(segments, strokeParts, strokeProps, halfWidth) {
         // Start cap
         const startCaps = StrokeGenerator._generateCap(
-            segments[0].p1, segments[0].tangent, halfWidth, strokeProps.lineCap, true
+            segments[0].p1,
+            segments[0].tangent,
+            halfWidth,
+            strokeProps.lineCap,
+            true
         );
         if (startCaps) {
             strokeParts.push(...(Array.isArray(startCaps[0]) ? startCaps : [startCaps]));
         }
-        
+
         // End cap
         const lastSeg = segments[segments.length - 1];
         const endCaps = StrokeGenerator._generateCap(
-            lastSeg.p2, lastSeg.tangent, halfWidth, strokeProps.lineCap, false
+            lastSeg.p2,
+            lastSeg.tangent,
+            halfWidth,
+            strokeProps.lineCap,
+            false
         );
         if (endCaps) {
             strokeParts.push(...(Array.isArray(endCaps[0]) ? endCaps : [endCaps]));
         }
     }
-    
+
     /**
      * Generate cap geometry
      * @param {Point} point - Cap point
@@ -11741,7 +13045,7 @@ class StrokeGenerator {
      */
     static _generateCap(point, tangent, halfWidth, lineCap, isStart) {
         const normal = new Point(-tangent.y, tangent.x);
-        
+
         switch (lineCap) {
             case 'square':
                 return StrokeGenerator._generateSquareCap(point, tangent, normal, halfWidth, isStart);
@@ -11752,7 +13056,7 @@ class StrokeGenerator {
                 return null; // No cap geometry needed
         }
     }
-    
+
     /**
      * Generate square cap
      * @param {Point} point - Cap center point
@@ -11764,18 +13068,18 @@ class StrokeGenerator {
      * @private
      */
     static _generateSquareCap(point, tangent, normal, halfWidth, isStart) {
-        const extension = isStart ? 
-            point.subtract(tangent.scale(halfWidth)) :
-            point.add(tangent.scale(halfWidth));
-        
-        return [[
-            extension.add(normal.scale(halfWidth)).toObject(),
-            extension.subtract(normal.scale(halfWidth)).toObject(),
-            point.subtract(normal.scale(halfWidth)).toObject(),
-            point.add(normal.scale(halfWidth)).toObject()
-        ]];
+        const extension = isStart ? point.subtract(tangent.scale(halfWidth)) : point.add(tangent.scale(halfWidth));
+
+        return [
+            [
+                extension.add(normal.scale(halfWidth)).toObject(),
+                extension.subtract(normal.scale(halfWidth)).toObject(),
+                point.subtract(normal.scale(halfWidth)).toObject(),
+                point.add(normal.scale(halfWidth)).toObject()
+            ]
+        ];
     }
-    
+
     /**
      * Generate round cap as semicircular fan
      * @param {Point} point - Cap center point
@@ -11787,13 +13091,11 @@ class StrokeGenerator {
      */
     static _generateRoundCap(point, normal, halfWidth, isStart) {
         const startAngle = Math.atan2(normal.y, normal.x);
-        return StrokeGenerator._generateArcFan(
-            point, halfWidth, startAngle, startAngle + Math.PI * (isStart ? 1 : -1)
-        );
+        return StrokeGenerator._generateArcFan(point, halfWidth, startAngle, startAngle + Math.PI * (isStart ? 1 : -1));
     }
-    
+
     // Helper methods
-    
+
     /**
      * Get outer edge points for join calculation
      * @param {Object} seg1 - First segment
@@ -11807,17 +13109,17 @@ class StrokeGenerator {
             // Left turn - right sides are outer
             return {
                 outer1: seg1.body[2], // Right side of seg1 end
-                outer2: seg2.body[3]  // Right side of seg2 start
+                outer2: seg2.body[3] // Right side of seg2 start
             };
         } else {
             // Right turn - left sides are outer
             return {
                 outer1: seg1.body[1], // Left side of seg1 end
-                outer2: seg2.body[0]  // Left side of seg2 start
+                outer2: seg2.body[0] // Left side of seg2 start
             };
         }
     }
-    
+
     /**
      * Get inner edge points for join calculation
      * @param {Object} seg1 - First segment
@@ -11831,21 +13133,21 @@ class StrokeGenerator {
             // Left turn - left sides are inner
             return {
                 inner1: seg1.body[1], // Left side of seg1 end
-                inner2: seg2.body[0]  // Left side of seg2 start
+                inner2: seg2.body[0] // Left side of seg2 start
             };
         } else {
             // Right turn - right sides are inner
             return {
                 inner1: seg1.body[2], // Right side of seg1 end
-                inner2: seg2.body[3]  // Right side of seg2 start
+                inner2: seg2.body[3] // Right side of seg2 start
             };
         }
     }
-    
+
     /**
      * Calculate intersection of two lines defined by points
      * @param {Object} p1 - First line point 1
-     * @param {Object} p2 - First line point 2  
+     * @param {Object} p2 - First line point 2
      * @param {Object} p3 - Second line point 1
      * @param {Object} p4 - Second line point 2
      * @returns {Object|null} Intersection point or null if parallel
@@ -11853,19 +13155,19 @@ class StrokeGenerator {
      */
     static _lineIntersection(p1, p2, p3, p4) {
         const denom = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
-        
+
         if (Math.abs(denom) < FLOAT_EPSILON) {
             return null; // Lines are parallel
         }
-        
+
         const t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / denom;
-        
+
         return {
             x: p1.x + t * (p2.x - p1.x),
             y: p1.y + t * (p2.y - p1.y)
         };
     }
-    
+
     /**
      * Generate triangular fan for arcs (used by round joins and caps)
      * @param {Point} center - Arc center
@@ -11877,20 +13179,20 @@ class StrokeGenerator {
      */
     static _generateArcFan(center, radius, startAngle, endAngle) {
         let angleDiff = endAngle - startAngle;
-        
+
         // Normalize angle difference
         while (angleDiff > Math.PI) angleDiff -= TAU;
         while (angleDiff < -Math.PI) angleDiff += TAU;
-        
+
         const absAngle = Math.abs(angleDiff);
-        const segments = Math.max(2, Math.ceil(absAngle / (QUARTER_PI)));
+        const segments = Math.max(2, Math.ceil(absAngle / QUARTER_PI));
         const angleStep = angleDiff / segments;
-        
+
         const triangles = [];
         for (let i = 0; i < segments; i++) {
             const a1 = startAngle + i * angleStep;
             const a2 = startAngle + (i + 1) * angleStep;
-            
+
             const p1 = {
                 x: center.x + radius * Math.cos(a1),
                 y: center.y + radius * Math.sin(a1)
@@ -11899,22 +13201,23 @@ class StrokeGenerator {
                 x: center.x + radius * Math.cos(a2),
                 y: center.y + radius * Math.sin(a2)
             };
-            
+
             triangles.push([center.toObject(), p1, p2]);
         }
-        
+
         return triangles;
     }
 }
+
 /**
  * BitBuffer class for SWCanvas
- * 
+ *
  * A utility class for managing 1-bit per pixel data structures.
  * Used as a composition component by ClipMask and SourceMask to eliminate
  * code duplication while maintaining clear separation of concerns.
- * 
+ *
  * Following Joshua Bloch's principle: "Favor composition over inheritance" (Item 18)
- * 
+ *
  * Memory Layout:
  * - Each pixel is represented by 1 bit
  * - Bits are packed into Uint8Array (8 pixels per byte)
@@ -11941,16 +13244,16 @@ class BitBuffer {
         this._numPixels = width * height;
         this._numBytes = Math.ceil(this._numPixels / 8);
         this._defaultValue = defaultValue;
-        
+
         // Create buffer and initialize to default value
         this._buffer = new Uint8Array(this._numBytes);
         this._initializeToDefault();
-        
+
         // Make dimensions immutable
         Object.defineProperty(this, 'width', { value: width, writable: false });
         Object.defineProperty(this, 'height', { value: height, writable: false });
     }
-    
+
     /**
      * Initialize buffer to default value
      * @private
@@ -11958,8 +13261,8 @@ class BitBuffer {
     _initializeToDefault() {
         if (this._defaultValue === 1) {
             // Initialize to all 1s
-            this._buffer.fill(0xFF);
-            
+            this._buffer.fill(0xff);
+
             // Handle partial last byte if width*height is not divisible by 8
             const remainderBits = this._numPixels % 8;
             if (remainderBits !== 0) {
@@ -11972,7 +13275,7 @@ class BitBuffer {
             this._buffer.fill(0);
         }
     }
-    
+
     /**
      * Get bit value for a pixel
      * @param {number} x - X coordinate
@@ -11984,11 +13287,11 @@ class BitBuffer {
         if (x < 0 || x >= this._width || y < 0 || y >= this._height) {
             return false; // Out of bounds pixels return 0
         }
-        
+
         const pixelIndex = y * this._width + x;
         return this._getBit(pixelIndex) === 1;
     }
-    
+
     /**
      * Set bit value for a pixel
      * @param {number} x - X coordinate
@@ -12000,24 +13303,24 @@ class BitBuffer {
         if (x < 0 || x >= this._width || y < 0 || y >= this._height) {
             return; // Ignore out of bounds
         }
-        
+
         const pixelIndex = y * this._width + x;
         this._setBit(pixelIndex, value ? 1 : 0);
     }
-    
+
     /**
      * Clear all bits (set to 0)
      */
     clear() {
         this._buffer.fill(0);
     }
-    
+
     /**
      * Fill all bits (set to 1)
      */
     fill() {
-        this._buffer.fill(0xFF);
-        
+        this._buffer.fill(0xff);
+
         // Handle partial last byte
         const remainderBits = this._numPixels % 8;
         if (remainderBits !== 0) {
@@ -12026,14 +13329,14 @@ class BitBuffer {
             this._buffer[lastByteIndex] = lastByteMask;
         }
     }
-    
+
     /**
      * Reset buffer to its default value
      */
     reset() {
         this._initializeToDefault();
     }
-    
+
     /**
      * Perform bitwise AND with another BitBuffer
      * @param {BitBuffer} other - Other BitBuffer to AND with
@@ -12053,7 +13356,7 @@ class BitBuffer {
             this._buffer[i] &= other._buffer[i];
         }
     }
-    
+
     /**
      * Copy data from another BitBuffer
      * @param {BitBuffer} other - Source BitBuffer to copy from
@@ -12070,7 +13373,7 @@ class BitBuffer {
 
         this._buffer.set(other._buffer);
     }
-    
+
     /**
      * Check if buffer is completely filled (all 1s)
      * @returns {boolean} True if all bits are 1
@@ -12078,21 +13381,21 @@ class BitBuffer {
     isFull() {
         // Quick check: if all bytes are 0xFF except possibly the last one
         for (let i = 0; i < this._numBytes - 1; i++) {
-            if (this._buffer[i] !== 0xFF) {
+            if (this._buffer[i] !== 0xff) {
                 return false;
             }
         }
-        
+
         // Check last byte accounting for partial bits
         const remainderBits = this._numPixels % 8;
         if (remainderBits === 0) {
-            return this._buffer[this._numBytes - 1] === 0xFF;
+            return this._buffer[this._numBytes - 1] === 0xff;
         } else {
             const lastByteMask = (1 << remainderBits) - 1;
             return this._buffer[this._numBytes - 1] === lastByteMask;
         }
     }
-    
+
     /**
      * Check if buffer is completely empty (all 0s)
      * @returns {boolean} True if all bits are 0
@@ -12105,7 +13408,7 @@ class BitBuffer {
         }
         return true;
     }
-    
+
     /**
      * Get memory usage in bytes
      * @returns {number} Memory usage of the buffer
@@ -12113,7 +13416,7 @@ class BitBuffer {
     getMemoryUsage() {
         return this._buffer.byteLength;
     }
-    
+
     /**
      * Get bit value at linear pixel index
      * @param {number} pixelIndex - Linear pixel index
@@ -12123,14 +13426,14 @@ class BitBuffer {
     _getBit(pixelIndex) {
         const byteIndex = Math.floor(pixelIndex / 8);
         const bitIndex = pixelIndex % 8;
-        
+
         if (byteIndex >= this._buffer.length) {
             return 0; // Out of bounds pixels return 0
         }
-        
+
         return (this._buffer[byteIndex] & (1 << bitIndex)) !== 0 ? 1 : 0;
     }
-    
+
     /**
      * Set bit value at linear pixel index
      * @param {number} pixelIndex - Linear pixel index
@@ -12140,18 +13443,18 @@ class BitBuffer {
     _setBit(pixelIndex, value) {
         const byteIndex = Math.floor(pixelIndex / 8);
         const bitIndex = pixelIndex % 8;
-        
+
         if (byteIndex >= this._buffer.length) {
             return; // Ignore out of bounds
         }
-        
+
         if (value) {
-            this._buffer[byteIndex] |= (1 << bitIndex);
+            this._buffer[byteIndex] |= 1 << bitIndex;
         } else {
             this._buffer[byteIndex] &= ~(1 << bitIndex);
         }
     }
-    
+
     /**
      * String representation for debugging
      * @returns {string} BitBuffer description
@@ -12161,7 +13464,7 @@ class BitBuffer {
         const state = this.isEmpty() ? 'empty' : this.isFull() ? 'full' : 'mixed';
         return `BitBuffer(${this._width}×${this._height}, ${memoryKB}KB, ${state})`;
     }
-    
+
     /**
      * Check equality with another BitBuffer
      * @param {BitBuffer} other - Other BitBuffer to compare
@@ -12171,28 +13474,29 @@ class BitBuffer {
         if (!(other instanceof BitBuffer)) {
             return false;
         }
-        
+
         if (other._width !== this._width || other._height !== this._height) {
             return false;
         }
-        
+
         // Compare buffer contents
         for (let i = 0; i < this._numBytes; i++) {
             if (this._buffer[i] !== other._buffer[i]) {
                 return false;
             }
         }
-        
+
         return true;
     }
 }
+
 /**
  * BoundsTracker class for SWCanvas
- * 
+ *
  * Reusable component for tracking the bounding box of pixel operations.
  * Used by SourceMask and ShadowBuffer to eliminate code duplication
  * while maintaining clear separation of concerns.
- * 
+ *
  * Following Joshua Bloch's principle: "Favor composition over inheritance" (Item 18)
  * This utility class encapsulates the common bounds tracking logic needed by
  * multiple mask and buffer classes.
@@ -12204,7 +13508,7 @@ class BoundsTracker {
     constructor() {
         this.reset();
     }
-    
+
     /**
      * Reset bounds to empty state
      */
@@ -12217,7 +13521,7 @@ class BoundsTracker {
             isEmpty: true
         };
     }
-    
+
     /**
      * Update bounds to include a new point
      * @param {number} x - X coordinate
@@ -12228,11 +13532,11 @@ class BoundsTracker {
         if (typeof x !== 'number' || typeof y !== 'number') {
             throw new Error('BoundsTracker coordinates must be numbers');
         }
-        
+
         if (!Number.isFinite(x) || !Number.isFinite(y)) {
             throw new Error('BoundsTracker coordinates must be finite numbers');
         }
-        
+
         if (this._bounds.isEmpty) {
             // First point sets initial bounds
             this._bounds.minX = this._bounds.maxX = x;
@@ -12246,7 +13550,7 @@ class BoundsTracker {
             this._bounds.maxY = Math.max(this._bounds.maxY, y);
         }
     }
-    
+
     /**
      * Get current bounds
      * @returns {Object} Bounds object with minX, minY, maxX, maxY, isEmpty
@@ -12260,7 +13564,7 @@ class BoundsTracker {
             isEmpty: this._bounds.isEmpty
         };
     }
-    
+
     /**
      * Check if bounds are empty
      * @returns {boolean} True if no points have been added
@@ -12268,7 +13572,7 @@ class BoundsTracker {
     isEmpty() {
         return this._bounds.isEmpty;
     }
-    
+
     /**
      * Get bounds width (returns 0 if empty)
      * Bounds are inclusive pixel coordinates, so width = maxX - minX + 1
@@ -12276,7 +13580,7 @@ class BoundsTracker {
      * @returns {number} Width of bounding box in pixels
      */
     getWidth() {
-        return this._bounds.isEmpty ? 0 : (this._bounds.maxX - this._bounds.minX + 1);
+        return this._bounds.isEmpty ? 0 : this._bounds.maxX - this._bounds.minX + 1;
     }
 
     /**
@@ -12286,9 +13590,9 @@ class BoundsTracker {
      * @returns {number} Height of bounding box in pixels
      */
     getHeight() {
-        return this._bounds.isEmpty ? 0 : (this._bounds.maxY - this._bounds.minY + 1);
+        return this._bounds.isEmpty ? 0 : this._bounds.maxY - this._bounds.minY + 1;
     }
-    
+
     /**
      * Get bounds area (returns 0 if empty)
      * @returns {number} Area of bounding box
@@ -12296,7 +13600,7 @@ class BoundsTracker {
     getArea() {
         return this.getWidth() * this.getHeight();
     }
-    
+
     /**
      * Check if a point is within current bounds
      * @param {number} x - X coordinate
@@ -12307,11 +13611,10 @@ class BoundsTracker {
         if (this._bounds.isEmpty) {
             return false;
         }
-        
-        return x >= this._bounds.minX && x <= this._bounds.maxX &&
-               y >= this._bounds.minY && y <= this._bounds.maxY;
+
+        return x >= this._bounds.minX && x <= this._bounds.maxX && y >= this._bounds.minY && y <= this._bounds.maxY;
     }
-    
+
     /**
      * Expand bounds by a specified margin
      * @param {number} margin - Margin to add on all sides
@@ -12320,7 +13623,7 @@ class BoundsTracker {
         if (typeof margin !== 'number' || margin < 0) {
             throw new Error('BoundsTracker margin must be a non-negative number');
         }
-        
+
         if (!this._bounds.isEmpty && margin > 0) {
             this._bounds.minX -= margin;
             this._bounds.minY -= margin;
@@ -12328,7 +13631,7 @@ class BoundsTracker {
             this._bounds.maxY += margin;
         }
     }
-    
+
     /**
      * Constrain bounds to specified limits
      * @param {number} minX - Minimum X value
@@ -12338,28 +13641,32 @@ class BoundsTracker {
      */
     clampTo(minX, minY, maxX, maxY) {
         // Parameter validation
-        if (typeof minX !== 'number' || typeof minY !== 'number' ||
-            typeof maxX !== 'number' || typeof maxY !== 'number') {
+        if (
+            typeof minX !== 'number' ||
+            typeof minY !== 'number' ||
+            typeof maxX !== 'number' ||
+            typeof maxY !== 'number'
+        ) {
             throw new Error('BoundsTracker clamp limits must be numbers');
         }
-        
+
         if (minX > maxX || minY > maxY) {
             throw new Error('BoundsTracker clamp limits: min values must be <= max values');
         }
-        
+
         if (!this._bounds.isEmpty) {
             this._bounds.minX = Math.max(this._bounds.minX, minX);
             this._bounds.minY = Math.max(this._bounds.minY, minY);
             this._bounds.maxX = Math.min(this._bounds.maxX, maxX);
             this._bounds.maxY = Math.min(this._bounds.maxY, maxY);
-            
+
             // Check if bounds became invalid after clamping
             if (this._bounds.minX > this._bounds.maxX || this._bounds.minY > this._bounds.maxY) {
                 this.reset(); // Bounds are now empty
             }
         }
     }
-    
+
     /**
      * Create a deep copy of the internal bounds object
      * @returns {Object} Cloned bounds object
@@ -12373,7 +13680,7 @@ class BoundsTracker {
             isEmpty: this._bounds.isEmpty
         };
     }
-    
+
     /**
      * Create a deep copy of this BoundsTracker
      * @returns {BoundsTracker} New BoundsTracker with copied bounds
@@ -12383,7 +13690,7 @@ class BoundsTracker {
         clone._bounds = this.cloneBounds();
         return clone;
     }
-    
+
     /**
      * Merge with another BoundsTracker
      * @param {BoundsTracker} other - Other BoundsTracker to merge with
@@ -12398,7 +13705,7 @@ class BoundsTracker {
         if (other._bounds.isEmpty) {
             return; // Nothing to merge
         }
-        
+
         if (this._bounds.isEmpty) {
             // This tracker is empty, copy other's bounds
             this._bounds = other.cloneBounds();
@@ -12410,7 +13717,7 @@ class BoundsTracker {
             this._bounds.maxY = Math.max(this._bounds.maxY, other._bounds.maxY);
         }
     }
-    
+
     /**
      * Check equality with another BoundsTracker
      * @param {BoundsTracker} other - Other BoundsTracker to compare
@@ -12420,14 +13727,16 @@ class BoundsTracker {
         if (!(other instanceof BoundsTracker)) {
             return false;
         }
-        
-        return this._bounds.isEmpty === other._bounds.isEmpty &&
-               this._bounds.minX === other._bounds.minX &&
-               this._bounds.minY === other._bounds.minY &&
-               this._bounds.maxX === other._bounds.maxX &&
-               this._bounds.maxY === other._bounds.maxY;
+
+        return (
+            this._bounds.isEmpty === other._bounds.isEmpty &&
+            this._bounds.minX === other._bounds.minX &&
+            this._bounds.minY === other._bounds.minY &&
+            this._bounds.maxX === other._bounds.maxX &&
+            this._bounds.maxY === other._bounds.maxY
+        );
     }
-    
+
     /**
      * String representation for debugging
      * @returns {string} BoundsTracker description
@@ -12442,13 +13751,14 @@ class BoundsTracker {
         }
     }
 }
+
 /**
  * ClipMask class for SWCanvas
- * 
+ *
  * Represents a 1-bit stencil buffer for memory-efficient clipping operations.
  * Uses composition with BitBuffer to eliminate code duplication while maintaining
  * clear separation of concerns (Joshua Bloch Item 18: Favor composition over inheritance).
- * 
+ *
  * Memory Layout:
  * - Each pixel is represented by 1 bit (1 = visible, 0 = clipped)
  * - Bits are packed into Uint8Array (8 pixels per byte)
@@ -12464,7 +13774,7 @@ class ClipMask {
         // BitBuffer validates parameters and handles bit manipulation
         // Default to 1 (no clipping by default)
         this._bitBuffer = new BitBuffer(width, height, 1);
-        
+
         // Make dimensions immutable
         Object.defineProperty(this, 'width', { value: width, writable: false });
         Object.defineProperty(this, 'height', { value: height, writable: false });
@@ -12488,7 +13798,7 @@ class ClipMask {
     getPixel(x, y) {
         return this._bitBuffer.getPixel(x, y);
     }
-    
+
     /**
      * Set clip state for a pixel
      * @param {number} x - X coordinate
@@ -12498,7 +13808,7 @@ class ClipMask {
     setPixel(x, y, visible) {
         this._bitBuffer.setPixel(x, y, visible);
     }
-    
+
     /**
      * Check if a pixel is clipped (convenience method)
      * @param {number} x - X coordinate
@@ -12508,21 +13818,21 @@ class ClipMask {
     isPixelClipped(x, y) {
         return !this.getPixel(x, y);
     }
-    
+
     /**
      * Clear all clipping (set all pixels to visible)
      */
     clear() {
         this._bitBuffer.fill(); // Fill with 1s (visible)
     }
-    
+
     /**
      * Set all pixels to clipped state
      */
     clipAll() {
         this._bitBuffer.clear(); // Clear to 0s (clipped)
     }
-    
+
     /**
      * Intersect this clip mask with another (AND operation)
      * Only pixels visible in BOTH masks will remain visible
@@ -12537,7 +13847,7 @@ class ClipMask {
 
         this._bitBuffer.and(other._bitBuffer);
     }
-    
+
     /**
      * Create a deep copy of this clip mask
      * @returns {ClipMask} New ClipMask with copied data
@@ -12547,7 +13857,7 @@ class ClipMask {
         clone._bitBuffer.copyFrom(this._bitBuffer);
         return clone;
     }
-    
+
     /**
      * Create a clip pixel writer function for path rendering
      * @returns {Function} clipPixel function for coverage-based rendering
@@ -12556,13 +13866,13 @@ class ClipMask {
         return (x, y, coverage) => {
             // Bounds checking
             if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
-            
+
             // Convert coverage to binary: >0.5 means inside, <=0.5 means outside
             const isInside = coverage > 0.5;
             this.setPixel(x, y, isInside);
         };
     }
-    
+
     /**
      * Get memory usage in bytes
      * @returns {number} Memory usage of the clip mask
@@ -12570,7 +13880,7 @@ class ClipMask {
     getMemoryUsage() {
         return this._bitBuffer.getMemoryUsage();
     }
-    
+
     /**
      * Check if mask has any clipping (optimization)
      * @returns {boolean} True if any pixels are clipped
@@ -12578,7 +13888,7 @@ class ClipMask {
     hasClipping() {
         return !this._bitBuffer.isFull();
     }
-    
+
     /**
      * String representation for debugging
      * @returns {string} ClipMask description
@@ -12588,7 +13898,7 @@ class ClipMask {
         const clippingStatus = this.hasClipping() ? 'with clipping' : 'no clipping';
         return `ClipMask(${this.width}×${this.height}, ${memoryKB}KB, ${clippingStatus})`;
     }
-    
+
     /**
      * Check equality with another ClipMask
      * @param {ClipMask} other - Other ClipMask to compare
@@ -12598,19 +13908,20 @@ class ClipMask {
         if (!(other instanceof ClipMask)) {
             return false;
         }
-        
+
         return this._bitBuffer.equals(other._bitBuffer);
     }
 }
+
 /**
  * SourceMask class for SWCanvas
- * 
+ *
  * Represents a 1-bit source coverage mask for canvas-wide composite operations.
  * Uses composition with BitBuffer to eliminate code duplication while maintaining
  * clear separation of concerns (Joshua Bloch Item 18: Favor composition over inheritance).
  * Tracks which pixels are covered by the current drawing operation and provides
  * efficient bounds for iteration during canvas-wide compositing passes.
- * 
+ *
  * Optimizations:
  * - 1-bit per pixel memory efficiency (same as ClipMask)
  * - Automatic bounds tracking to minimize iteration area
@@ -12627,25 +13938,25 @@ class SourceMask {
         // BitBuffer validates parameters and handles bit manipulation
         // Default to 0 (no coverage by default)
         this._bitBuffer = new BitBuffer(width, height, 0);
-        
+
         // Bounds tracking for optimization using composition
         this._boundsTracker = new BoundsTracker();
-        
+
         // Make dimensions immutable
         Object.defineProperty(this, 'width', { value: width, writable: false });
         Object.defineProperty(this, 'height', { value: height, writable: false });
     }
-    
+
     /**
      * Get coverage state for a pixel
      * @param {number} x - X coordinate
-     * @param {number} y - Y coordinate  
+     * @param {number} y - Y coordinate
      * @returns {boolean} True if pixel is covered by source
      */
     getPixel(x, y) {
         return this._bitBuffer.getPixel(x, y);
     }
-    
+
     /**
      * Set coverage state for a pixel
      * @param {number} x - X coordinate
@@ -12657,12 +13968,12 @@ class SourceMask {
         if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
             return; // Ignore out of bounds
         }
-        
+
         const wasCovered = this._bitBuffer.getPixel(x, y);
-        
+
         // Update pixel state
         this._bitBuffer.setPixel(x, y, covered);
-        
+
         // Update bounds if pixel became covered
         if (covered && !wasCovered) {
             this._boundsTracker.updateBounds(x, y);
@@ -12670,7 +13981,7 @@ class SourceMask {
         // Note: We don't shrink bounds when pixels are uncovered for performance
         // Clear() resets bounds completely
     }
-    
+
     /**
      * Clear all coverage (set all pixels to not covered)
      */
@@ -12678,7 +13989,7 @@ class SourceMask {
         this._bitBuffer.clear();
         this._boundsTracker.reset();
     }
-    
+
     /**
      * Check if mask has any coverage
      * @returns {boolean} True if no pixels are covered
@@ -12686,7 +13997,7 @@ class SourceMask {
     isEmpty() {
         return this._boundsTracker.isEmpty();
     }
-    
+
     /**
      * Get bounding box of covered pixels
      * @returns {Object} {minX, minY, maxX, maxY, isEmpty} bounds
@@ -12694,10 +14005,10 @@ class SourceMask {
     getBounds() {
         return this._boundsTracker.getBounds();
     }
-    
+
     /**
      * Get optimized iteration bounds clamped to surface and intersected with clipMask bounds if provided
-     * @param {ClipMask|null} clipMask - Optional clip mask to intersect with  
+     * @param {ClipMask|null} clipMask - Optional clip mask to intersect with
      * @param {boolean} isCanvasWideCompositing - True if this is for canvas-wide compositing operations
      * @returns {Object} {minX, minY, maxX, maxY, isEmpty} optimized iteration bounds
      */
@@ -12705,7 +14016,7 @@ class SourceMask {
         if (this._boundsTracker.isEmpty()) {
             return { minX: 0, minY: 0, maxX: -1, maxY: -1, isEmpty: true };
         }
-        
+
         // For canvas-wide compositing operations, we need to process the entire surface
         // because destination pixels anywhere could be affected
         if (isCanvasWideCompositing) {
@@ -12729,20 +14040,20 @@ class SourceMask {
                 };
             }
         }
-        
+
         // For local compositing operations, use source bounds only
         const sourceBounds = this._boundsTracker.getBounds();
-        let bounds = {
+        const bounds = {
             minX: Math.max(0, sourceBounds.minX),
             minY: Math.max(0, sourceBounds.minY),
             maxX: Math.min(this.width - 1, sourceBounds.maxX),
             maxY: Math.min(this.height - 1, sourceBounds.maxY),
             isEmpty: false
         };
-        
+
         return bounds;
     }
-    
+
     /**
      * Create a pixel writer function for filling operations
      * @returns {Function} setPixel function optimized for coverage tracking
@@ -12751,13 +14062,13 @@ class SourceMask {
         return (x, y, coverage) => {
             // Bounds checking
             if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
-            
+
             // Convert coverage to binary: >0.5 means covered, <=0.5 means not covered
             const isCovered = coverage > 0.5;
             this.setPixel(x, y, isCovered);
         };
     }
-    
+
     /**
      * Get memory usage in bytes
      * @returns {number} Memory usage of the source mask
@@ -12765,7 +14076,7 @@ class SourceMask {
     getMemoryUsage() {
         return this._bitBuffer.getMemoryUsage();
     }
-    
+
     /**
      * String representation for debugging
      * @returns {string} SourceMask description
@@ -12773,17 +14084,17 @@ class SourceMask {
     toString() {
         const memoryKB = (this.getMemoryUsage() / 1024).toFixed(2);
         const bounds = this._boundsTracker.getBounds();
-        const boundsStr = bounds.isEmpty ? 'empty' : 
-            `(${bounds.minX},${bounds.minY})-(${bounds.maxX},${bounds.maxY})`;
+        const boundsStr = bounds.isEmpty ? 'empty' : `(${bounds.minX},${bounds.minY})-(${bounds.maxX},${bounds.maxY})`;
         return `SourceMask(${this.width}×${this.height}, ${memoryKB}KB, bounds: ${boundsStr})`;
     }
 }
+
 /**
  * ShadowBuffer class for SWCanvas
- * 
+ *
  * Manages shadow rendering with extended bounds to handle blur overflow.
  * Uses sparse array storage for efficiency when shadows only cover part of the canvas.
- * 
+ *
  * The shadow buffer extends beyond the original canvas bounds to accommodate
  * blur effects that spread pixels beyond the original shape boundary.
  */
@@ -12813,21 +14124,21 @@ class ShadowBuffer {
         this._originalWidth = width;
         this._originalHeight = height;
         this._maxBlurRadius = Math.ceil(maxBlurRadius);
-        
+
         // Extended bounds to accommodate blur spillover
         const blurPadding = this._maxBlurRadius;
-        this._extendedWidth = width + (blurPadding * 2);
-        this._extendedHeight = height + (blurPadding * 2);
+        this._extendedWidth = width + blurPadding * 2;
+        this._extendedHeight = height + blurPadding * 2;
         this._extendedOffsetX = blurPadding;
         this._extendedOffsetY = blurPadding;
-        
+
         // Sparse storage for alpha values (only stores non-zero pixels)
         // Key format: "x,y" -> alpha value (0-1)
         this._alphaData = {};
-        
+
         // Bounds tracking for optimization using composition
         this._boundsTracker = new BoundsTracker();
-        
+
         // Make properties immutable
         Object.defineProperty(this, 'originalWidth', { value: width, writable: false });
         Object.defineProperty(this, 'originalHeight', { value: height, writable: false });
@@ -12836,35 +14147,35 @@ class ShadowBuffer {
         Object.defineProperty(this, 'extendedOffsetX', { value: this._extendedOffsetX, writable: false });
         Object.defineProperty(this, 'extendedOffsetY', { value: this._extendedOffsetY, writable: false });
     }
-    
+
     /**
      * Add alpha value to the buffer at specified coordinates
      * @param {number} x - X coordinate (in original surface space)
-     * @param {number} y - Y coordinate (in original surface space) 
+     * @param {number} y - Y coordinate (in original surface space)
      * @param {number} alpha - Alpha value (0-1)
      */
     addAlpha(x, y, alpha) {
         if (alpha <= 0) return; // No need to store zero/negative alpha
-        
+
         // Convert to extended buffer coordinates
         const extX = x + this._extendedOffsetX;
         const extY = y + this._extendedOffsetY;
-        
+
         // Bounds check for extended buffer
         if (extX < 0 || extX >= this._extendedWidth || extY < 0 || extY >= this._extendedHeight) {
             return; // Outside extended bounds
         }
-        
+
         const key = `${extX},${extY}`;
-        
+
         // Accumulate alpha values (for overlapping shapes)
         const currentAlpha = this._alphaData[key] || 0;
         this._alphaData[key] = Math.min(1.0, currentAlpha + alpha);
-        
+
         // Update bounds
         this._boundsTracker.updateBounds(extX, extY);
     }
-    
+
     /**
      * Get alpha value at specified coordinates
      * @param {number} x - X coordinate (in extended buffer space)
@@ -12875,11 +14186,11 @@ class ShadowBuffer {
         if (x < 0 || x >= this._extendedWidth || y < 0 || y >= this._extendedHeight) {
             return 0;
         }
-        
+
         const key = `${x},${y}`;
         return this._alphaData[key] || 0;
     }
-    
+
     /**
      * Set alpha value at specified coordinates
      * @param {number} x - X coordinate (in extended buffer space)
@@ -12890,20 +14201,20 @@ class ShadowBuffer {
         if (x < 0 || x >= this._extendedWidth || y < 0 || y >= this._extendedHeight) {
             return; // Outside bounds
         }
-        
+
         const key = `${x},${y}`;
-        
+
         if (alpha <= 0) {
             // Remove zero alpha values to keep sparse storage efficient
             delete this._alphaData[key];
         } else {
             this._alphaData[key] = Math.min(1.0, alpha);
-            
+
             // Update bounds if needed
             this._boundsTracker.updateBounds(x, y);
         }
     }
-    
+
     /**
      * Clear all alpha data
      */
@@ -12911,7 +14222,7 @@ class ShadowBuffer {
         this._alphaData = {};
         this._boundsTracker.reset();
     }
-    
+
     /**
      * Get bounding box of actual shadow data
      * @returns {Object} Bounds object with minX, maxX, minY, maxY, isEmpty
@@ -12919,7 +14230,7 @@ class ShadowBuffer {
     getBounds() {
         return this._boundsTracker.getBounds();
     }
-    
+
     /**
      * Get all non-zero alpha pixels as an iterator
      * @returns {Iterator} Iterator over {x, y, alpha} objects
@@ -12935,7 +14246,7 @@ class ShadowBuffer {
             }
         }
     }
-    
+
     /**
      * Get the number of non-zero alpha pixels
      * @returns {number} Count of pixels with alpha > 0
@@ -12949,25 +14260,25 @@ class ShadowBuffer {
         }
         return count;
     }
-    
+
     /**
      * Create a copy of this shadow buffer
      * @returns {ShadowBuffer} New ShadowBuffer with copied data
      */
     clone() {
         const clone = new ShadowBuffer(this._originalWidth, this._originalHeight, this._maxBlurRadius);
-        
+
         // Copy alpha data
         for (const key in this._alphaData) {
             clone._alphaData[key] = this._alphaData[key];
         }
-        
+
         // Copy bounds
         clone._boundsTracker = this._boundsTracker.clone();
-        
+
         return clone;
     }
-    
+
     /**
      * Convert shadow buffer to a dense Float32Array for blur processing
      * @returns {Object} Object with {data: Float32Array, width, height, offsetX, offsetY}
@@ -12983,7 +14294,7 @@ class ShadowBuffer {
                 offsetY: 0
             };
         }
-        
+
         // Expand bounds by blur radius for blur processing
         const bounds = this._boundsTracker.getBounds();
         const padding = this._maxBlurRadius;
@@ -12991,11 +14302,11 @@ class ShadowBuffer {
         const maxX = Math.min(this._extendedWidth - 1, bounds.maxX + padding);
         const minY = Math.max(0, bounds.minY - padding);
         const maxY = Math.min(this._extendedHeight - 1, bounds.maxY + padding);
-        
+
         const width = maxX - minX + 1;
         const height = maxY - minY + 1;
         const data = new Float32Array(width * height);
-        
+
         // Copy sparse data to dense array
         for (let y = minY; y <= maxY; y++) {
             for (let x = minX; x <= maxX; x++) {
@@ -13006,7 +14317,7 @@ class ShadowBuffer {
                 }
             }
         }
-        
+
         return {
             data: data,
             width: width,
@@ -13015,7 +14326,7 @@ class ShadowBuffer {
             offsetY: minY
         };
     }
-    
+
     /**
      * Update shadow buffer from dense array after blur processing
      * @param {Float32Array} data - Dense array data
@@ -13027,13 +14338,13 @@ class ShadowBuffer {
     fromDenseArray(data, width, height, offsetX, offsetY) {
         // Clear existing data
         this.clear();
-        
+
         // Copy dense data back to sparse storage
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
                 const denseIndex = y * width + x;
                 const alpha = data[denseIndex];
-                
+
                 if (alpha > 0) {
                     const extX = x + offsetX;
                     const extY = y + offsetY;
@@ -13043,6 +14354,7 @@ class ShadowBuffer {
         }
     }
 }
+
 /**
  * BoxBlur class for SWCanvas
  *
@@ -13061,7 +14373,7 @@ class BoxBlur {
      * Apply box blur to image data using multi-pass running sum approach
      * @param {Float32Array} data - Image data (alpha values 0-1)
      * @param {number} width - Image width
-     * @param {number} height - Image height  
+     * @param {number} height - Image height
      * @param {number} blurRadius - Blur radius in pixels
      * @param {number} passes - Number of blur passes (default: 3)
      * @returns {Float32Array} Blurred image data
@@ -13090,27 +14402,25 @@ class BoxBlur {
         if (blurRadius === 0) {
             return new Float32Array(data); // Return copy
         }
-        
+
         // Calculate equivalent box filter width for Gaussian approximation
         // Based on Central Limit Theorem: multiple box filters -> Gaussian
         const sigma = blurRadius / 2.0;
-        const boxWidth = Math.floor(Math.max(
-            Math.sqrt(12 * sigma * sigma / passes + 1), 3
-        ));
-        
+        const boxWidth = Math.floor(Math.max(Math.sqrt((12 * sigma * sigma) / passes + 1), 3));
+
         // Ensure odd width for symmetric filter
         const finalBoxWidth = boxWidth % 2 === 0 ? boxWidth + 1 : boxWidth;
-        
+
         // Apply multiple blur passes
         let currentData = new Float32Array(data);
-        
+
         for (let pass = 0; pass < passes; pass++) {
             currentData = BoxBlur._singleBoxBlurPass(currentData, width, height, finalBoxWidth);
         }
-        
+
         return currentData;
     }
-    
+
     /**
      * Apply single box blur pass using separable horizontal/vertical blurs
      * @param {Float32Array} data - Input image data
@@ -13122,16 +14432,16 @@ class BoxBlur {
      */
     static _singleBoxBlurPass(data, width, height, boxWidth) {
         const halfBox = Math.floor(boxWidth / 2);
-        
+
         // First pass: horizontal box blur
         const horizontalData = BoxBlur._horizontalBoxBlur(data, width, height, halfBox);
-        
+
         // Second pass: vertical box blur on horizontally blurred data
         const verticalData = BoxBlur._verticalBoxBlur(horizontalData, width, height, halfBox);
-        
+
         return verticalData;
     }
-    
+
     /**
      * Apply horizontal box blur using running sum
      * @param {Float32Array} data - Input image data
@@ -13143,46 +14453,46 @@ class BoxBlur {
      */
     static _horizontalBoxBlur(data, width, height, radius) {
         const result = new Float32Array(data.length);
-        
+
         for (let y = 0; y < height; y++) {
             const rowOffset = y * width;
-            
+
             // Initialize running sum for first pixel
             let sum = 0;
             let count = 0;
-            
+
             // Build initial sum
             for (let x = -radius; x <= radius; x++) {
                 const srcX = Math.max(0, Math.min(width - 1, x));
                 sum += data[rowOffset + srcX];
                 count++;
             }
-            
+
             result[rowOffset] = sum / count;
-            
+
             // Slide the box across the row
             for (let x = 1; x < width; x++) {
                 // Remove leftmost pixel from sum
                 const leftX = Math.max(0, Math.min(width - 1, x - radius - 1));
                 const rightX = Math.max(0, Math.min(width - 1, x + radius));
-                
+
                 if (x - radius - 1 >= 0) {
                     sum -= data[rowOffset + leftX];
                     count--;
                 }
-                
+
                 if (x + radius < width) {
                     sum += data[rowOffset + rightX];
                     count++;
                 }
-                
+
                 result[rowOffset + x] = sum / count;
             }
         }
-        
+
         return result;
     }
-    
+
     /**
      * Apply vertical box blur using running sum
      * @param {Float32Array} data - Input image data
@@ -13194,44 +14504,44 @@ class BoxBlur {
      */
     static _verticalBoxBlur(data, width, height, radius) {
         const result = new Float32Array(data.length);
-        
+
         for (let x = 0; x < width; x++) {
             // Initialize running sum for first pixel
             let sum = 0;
             let count = 0;
-            
+
             // Build initial sum
             for (let y = -radius; y <= radius; y++) {
                 const srcY = Math.max(0, Math.min(height - 1, y));
                 sum += data[srcY * width + x];
                 count++;
             }
-            
+
             result[x] = sum / count;
-            
+
             // Slide the box down the column
             for (let y = 1; y < height; y++) {
                 // Remove topmost pixel from sum
                 const topY = Math.max(0, Math.min(height - 1, y - radius - 1));
                 const bottomY = Math.max(0, Math.min(height - 1, y + radius));
-                
+
                 if (y - radius - 1 >= 0) {
                     sum -= data[topY * width + x];
                     count--;
                 }
-                
+
                 if (y + radius < height) {
                     sum += data[bottomY * width + x];
                     count++;
                 }
-                
+
                 result[y * width + x] = sum / count;
             }
         }
-        
+
         return result;
     }
-    
+
     /**
      * Alternative implementation using full Summed Area Table
      * More memory intensive but demonstrates the SAT approach from reference
@@ -13244,13 +14554,13 @@ class BoxBlur {
      */
     static _boxBlurWithSAT(data, width, height, boxWidth) {
         const halfBox = Math.floor(boxWidth / 2);
-        
+
         // Build Summed Area Table
         const sat = BoxBlur._buildSAT(data, width, height);
-        
+
         // Apply box filtering using SAT for O(1) lookups
         const result = new Float32Array(data.length);
-        
+
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
                 // Calculate box bounds
@@ -13258,18 +14568,18 @@ class BoxBlur {
                 const y1 = Math.max(0, y - halfBox);
                 const x2 = Math.min(width - 1, x + halfBox);
                 const y2 = Math.min(height - 1, y + halfBox);
-                
+
                 // Use SAT to calculate sum in O(1)
                 const sum = BoxBlur._getSATSum(sat, width, x1, y1, x2, y2);
                 const area = (x2 - x1 + 1) * (y2 - y1 + 1);
-                
+
                 result[y * width + x] = sum / area;
             }
         }
-        
+
         return result;
     }
-    
+
     /**
      * Build Summed Area Table for O(1) rectangular sum queries
      * @param {Float32Array} data - Input image data
@@ -13280,33 +14590,31 @@ class BoxBlur {
      */
     static _buildSAT(data, width, height) {
         const sat = new Float32Array(width * height);
-        
+
         // Fill first row
         sat[0] = data[0];
         for (let x = 1; x < width; x++) {
             sat[x] = data[x] + sat[x - 1];
         }
-        
+
         // Fill remaining rows
         for (let y = 1; y < height; y++) {
             const rowOffset = y * width;
             const prevRowOffset = (y - 1) * width;
-            
+
             // First column
             sat[rowOffset] = data[rowOffset] + sat[prevRowOffset];
-            
+
             // Remaining columns
             for (let x = 1; x < width; x++) {
-                sat[rowOffset + x] = data[rowOffset + x] + 
-                                    sat[rowOffset + x - 1] +
-                                    sat[prevRowOffset + x] -
-                                    sat[prevRowOffset + x - 1];
+                sat[rowOffset + x] =
+                    data[rowOffset + x] + sat[rowOffset + x - 1] + sat[prevRowOffset + x] - sat[prevRowOffset + x - 1];
             }
         }
-        
+
         return sat;
     }
-    
+
     /**
      * Get sum of rectangular region using SAT in O(1) time
      * @param {Float32Array} sat - Summed Area Table
@@ -13321,15 +14629,15 @@ class BoxBlur {
     static _getSATSum(sat, width, x1, y1, x2, y2) {
         // Handle edge cases
         if (x1 > x2 || y1 > y2) return 0;
-        
+
         const bottomRight = sat[y2 * width + x2];
-        const topRight = (y1 > 0) ? sat[(y1 - 1) * width + x2] : 0;
-        const bottomLeft = (x1 > 0) ? sat[y2 * width + (x1 - 1)] : 0;
-        const topLeft = (x1 > 0 && y1 > 0) ? sat[(y1 - 1) * width + (x1 - 1)] : 0;
-        
+        const topRight = y1 > 0 ? sat[(y1 - 1) * width + x2] : 0;
+        const bottomLeft = x1 > 0 ? sat[y2 * width + (x1 - 1)] : 0;
+        const topLeft = x1 > 0 && y1 > 0 ? sat[(y1 - 1) * width + (x1 - 1)] : 0;
+
         return bottomRight - topRight - bottomLeft + topLeft;
     }
-    
+
     /**
      * Calculate optimal box width for Gaussian approximation
      * @param {number} sigma - Standard deviation of desired Gaussian
@@ -13337,10 +14645,11 @@ class BoxBlur {
      * @returns {number} Optimal box width (odd integer)
      */
     static calculateBoxWidth(sigma, passes) {
-        const width = Math.floor(Math.sqrt(12 * sigma * sigma / passes + 1));
+        const width = Math.floor(Math.sqrt((12 * sigma * sigma) / passes + 1));
         return width % 2 === 0 ? width + 1 : width;
     }
 }
+
 /**
  * ShadowPipeline class for SWCanvas
  *
@@ -13362,8 +14671,10 @@ class ShadowPipeline {
     static needsShadow(currentOp) {
         if (!currentOp) return false;
 
-        return currentOp.shadowColor.a > 0 &&
-            (currentOp.shadowBlur > 0 || currentOp.shadowOffsetX !== 0 || currentOp.shadowOffsetY !== 0);
+        return (
+            currentOp.shadowColor.a > 0 &&
+            (currentOp.shadowBlur > 0 || currentOp.shadowOffsetX !== 0 || currentOp.shadowOffsetY !== 0)
+        );
     }
 
     /**
@@ -13496,7 +14807,13 @@ class ShadowPipeline {
             shadowBuffer.originalHeight,
             Math.ceil(blurRadius)
         );
-        blurredBuffer.fromDenseArray(blurredData, denseData.width, denseData.height, denseData.offsetX, denseData.offsetY);
+        blurredBuffer.fromDenseArray(
+            blurredData,
+            denseData.width,
+            denseData.height,
+            denseData.offsetX,
+            denseData.offsetY
+        );
 
         return blurredBuffer;
     }
@@ -13537,9 +14854,10 @@ class ShadowPipeline {
             // When blur spreads a single pixel over a larger area, the average alpha drops
             // significantly. The multiplier restores visual intensity to match HTML5 Canvas.
             const BLUR_DILUTION_COMPENSATION = 8;
-            const finalShadowAlpha = Math.min(255, Math.round(
-                pixel.alpha * effectiveShadowColor.a * BLUR_DILUTION_COMPENSATION
-            ));
+            const finalShadowAlpha = Math.min(
+                255,
+                Math.round(pixel.alpha * effectiveShadowColor.a * BLUR_DILUTION_COMPENSATION)
+            );
 
             if (finalShadowAlpha <= 0) continue;
 
@@ -13553,8 +14871,14 @@ class ShadowPipeline {
             // Composite shadow (always uses source-over blending per HTML5 spec)
             const result = CompositeOperations.blendPixel(
                 'source-over',
-                effectiveShadowColor.r, effectiveShadowColor.g, effectiveShadowColor.b, finalShadowAlpha,
-                dstR, dstG, dstB, dstA
+                effectiveShadowColor.r,
+                effectiveShadowColor.g,
+                effectiveShadowColor.b,
+                finalShadowAlpha,
+                dstR,
+                dstG,
+                dstB,
+                dstA
             );
 
             // Write result
@@ -13568,9 +14892,9 @@ class ShadowPipeline {
 
 /**
  * ImageProcessor class for SWCanvas
- * 
+ *
  * Handles ImageLike interface validation and format conversions.
- * Provides static methods following Joshua Bloch's principle of 
+ * Provides static methods following Joshua Bloch's principle of
  * using static methods for stateless utility operations.
  */
 class ImageProcessor {
@@ -13581,10 +14905,10 @@ class ImageProcessor {
      */
     static validateAndConvert(imageLike) {
         ImageProcessor._validateImageLike(imageLike);
-        
+
         const expectedRGBLength = imageLike.width * imageLike.height * 3;
         const expectedRGBALength = imageLike.width * imageLike.height * 4;
-        
+
         if (imageLike.data.length === expectedRGBLength) {
             return ImageProcessor._convertRGBToRGBA(imageLike);
         } else if (imageLike.data.length === expectedRGBALength) {
@@ -13597,12 +14921,12 @@ class ImageProcessor {
         } else {
             throw new Error(
                 `ImageLike data length (${imageLike.data.length}) must match ` +
-                `width*height*3 (${expectedRGBLength}) for RGB or ` +
-                `width*height*4 (${expectedRGBALength}) for RGBA`
+                    `width*height*3 (${expectedRGBLength}) for RGB or ` +
+                    `width*height*4 (${expectedRGBALength}) for RGBA`
             );
         }
     }
-    
+
     /**
      * Validate basic ImageLike interface properties
      * @param {Object} imageLike - Object to validate
@@ -13620,7 +14944,7 @@ class ImageProcessor {
             throw new Error(`ImageLike dimensions must be ≤ ${maxDimension}x${maxDimension}`);
         }
     }
-    
+
     /**
      * Convert RGB image data to RGBA format
      * @param {Object} rgbImage - RGB ImageLike object
@@ -13630,25 +14954,25 @@ class ImageProcessor {
     static _convertRGBToRGBA(rgbImage) {
         const expectedRGBALength = rgbImage.width * rgbImage.height * 4;
         const rgbaData = new Uint8ClampedArray(expectedRGBALength);
-        
+
         // RGB to RGBA conversion - append alpha = 255 to each pixel
         for (let i = 0; i < rgbImage.width * rgbImage.height; i++) {
             const rgbOffset = i * 3;
             const rgbaOffset = i * 4;
-            
-            rgbaData[rgbaOffset] = rgbImage.data[rgbOffset];         // R
+
+            rgbaData[rgbaOffset] = rgbImage.data[rgbOffset]; // R
             rgbaData[rgbaOffset + 1] = rgbImage.data[rgbOffset + 1]; // G
             rgbaData[rgbaOffset + 2] = rgbImage.data[rgbOffset + 2]; // B
-            rgbaData[rgbaOffset + 3] = 255;                          // A = fully opaque
+            rgbaData[rgbaOffset + 3] = 255; // A = fully opaque
         }
-        
+
         return {
             width: rgbImage.width,
             height: rgbImage.height,
             data: rgbaData
         };
     }
-    
+
     /**
      * Convert Surface to ImageLike format
      * @param {Surface} surface - Surface to convert
@@ -13666,7 +14990,7 @@ class ImageProcessor {
             data: new Uint8ClampedArray(surface.data) // Create copy for safety
         };
     }
-    
+
     /**
      * Create a blank ImageLike object filled with specified color
      * @param {number} width - Image width
@@ -13680,7 +15004,7 @@ class ImageProcessor {
 
         const numPixels = width * height;
         const data = new Uint8ClampedArray(numPixels * 4);
-        
+
         // Determine RGBA values
         let r, g, b, a;
         if (fillColor instanceof Color) {
@@ -13697,7 +15021,7 @@ class ImageProcessor {
         } else {
             throw new Error('fillColor must be a Color instance or RGBA array');
         }
-        
+
         // Fill image with specified color
         for (let i = 0; i < numPixels; i++) {
             const offset = i * 4;
@@ -13706,14 +15030,14 @@ class ImageProcessor {
             data[offset + 2] = b;
             data[offset + 3] = a;
         }
-        
+
         return {
             width,
             height,
             data
         };
     }
-    
+
     /**
      * Extract a rectangular region from an ImageLike object
      * @param {Object} source - Source ImageLike object
@@ -13725,37 +15049,34 @@ class ImageProcessor {
      */
     static extractRegion(source, x, y, width, height) {
         const validated = ImageProcessor.validateAndConvert(source);
-        
+
         // Validate extraction bounds
         if (x < 0 || y < 0 || x + width > validated.width || y + height > validated.height) {
             throw new Error('Extraction region exceeds source image bounds');
         }
-        
+
         if (width <= 0 || height <= 0) {
             throw new Error('Extraction region dimensions must be positive');
         }
-        
+
         const extractedData = new Uint8ClampedArray(width * height * 4);
-        
+
         // Copy pixel data row by row
         for (let row = 0; row < height; row++) {
             const sourceRowStart = ((y + row) * validated.width + x) * 4;
             const destRowStart = row * width * 4;
             const rowLength = width * 4;
-            
-            extractedData.set(
-                validated.data.subarray(sourceRowStart, sourceRowStart + rowLength),
-                destRowStart
-            );
+
+            extractedData.set(validated.data.subarray(sourceRowStart, sourceRowStart + rowLength), destRowStart);
         }
-        
+
         return {
             width,
             height,
             data: extractedData
         };
     }
-    
+
     /**
      * Scale an ImageLike object using nearest-neighbor interpolation
      * @param {Object} source - Source ImageLike object
@@ -13772,20 +15093,20 @@ class ImageProcessor {
         const scaledData = new Uint8ClampedArray(newWidth * newHeight * 4);
         const scaleX = validated.width / newWidth;
         const scaleY = validated.height / newHeight;
-        
+
         for (let y = 0; y < newHeight; y++) {
             for (let x = 0; x < newWidth; x++) {
                 // Nearest-neighbor sampling
                 const sourceX = Math.floor(x * scaleX);
                 const sourceY = Math.floor(y * scaleY);
-                
+
                 // Clamp to source bounds (shouldn't be necessary with correct scaling)
                 const clampedX = Math.min(sourceX, validated.width - 1);
                 const clampedY = Math.min(sourceY, validated.height - 1);
-                
+
                 const sourceOffset = (clampedY * validated.width + clampedX) * 4;
                 const destOffset = (y * newWidth + x) * 4;
-                
+
                 // Copy RGBA values
                 scaledData[destOffset] = validated.data[sourceOffset];
                 scaledData[destOffset + 1] = validated.data[sourceOffset + 1];
@@ -13793,14 +15114,14 @@ class ImageProcessor {
                 scaledData[destOffset + 3] = validated.data[sourceOffset + 3];
             }
         }
-        
+
         return {
             width: newWidth,
             height: newHeight,
             data: scaledData
         };
     }
-    
+
     /**
      * Check if an object conforms to the ImageLike interface
      * @param {*} obj - Object to check
@@ -13809,16 +15130,16 @@ class ImageProcessor {
     static isImageLike(obj) {
         try {
             ImageProcessor._validateImageLike(obj);
-            
+
             const expectedRGBLength = obj.width * obj.height * 3;
             const expectedRGBALength = obj.width * obj.height * 4;
-            
+
             return obj.data.length === expectedRGBLength || obj.data.length === expectedRGBALength;
         } catch (error) {
             return false;
         }
     }
-    
+
     /**
      * Get information about an ImageLike object
      * @param {Object} imageLike - ImageLike object to analyze
@@ -13827,7 +15148,7 @@ class ImageProcessor {
     static getImageInfo(imageLike) {
         const validated = ImageProcessor.validateAndConvert(imageLike);
         const isRGB = imageLike.data.length === imageLike.width * imageLike.height * 3;
-        
+
         return {
             width: validated.width,
             height: validated.height,
@@ -13838,7 +15159,7 @@ class ImageProcessor {
             memoryUsage: validated.data.byteLength
         };
     }
-    
+
     /**
      * Convert HTMLCanvasElement to ImageLike format
      * @param {HTMLCanvasElement} canvas - HTML canvas element to convert
@@ -13856,7 +15177,7 @@ class ImageProcessor {
         try {
             const ctx = canvas.getContext('2d');
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            
+
             return {
                 width: canvas.width,
                 height: canvas.height,
@@ -13867,6 +15188,7 @@ class ImageProcessor {
         }
     }
 }
+
 /**
  * ColorParser for SWCanvas
  *
@@ -13880,7 +15202,7 @@ class ImageProcessor {
 class ColorParser {
     constructor() {
         this._cache = new Map();
-        
+
         // CSS Color names to RGB mapping - Complete MDN specification
         this._namedColors = {
             // CSS Level 1 colors
@@ -13900,8 +15222,8 @@ class ColorParser {
             blue: { r: 0, g: 0, b: 255 },
             teal: { r: 0, g: 128, b: 128 },
             aqua: { r: 0, g: 255, b: 255 },
-            
-            // CSS Level 2 (X11) colors  
+
+            // CSS Level 2 (X11) colors
             aliceblue: { r: 240, g: 248, b: 255 },
             antiquewhite: { r: 250, g: 235, b: 215 },
             aquamarine: { r: 127, g: 255, b: 212 },
@@ -14036,7 +15358,7 @@ class ColorParser {
             yellowgreen: { r: 154, g: 205, b: 50 }
         };
     }
-    
+
     /**
      * Parse a CSS color string to RGBA values
      * @param {string} color - CSS color string
@@ -14047,14 +15369,14 @@ class ColorParser {
         if (this._cache.has(color)) {
             return this._cache.get(color);
         }
-        
+
         let result;
-        
+
         if (typeof color !== 'string') {
             result = { r: 0, g: 0, b: 0, a: 255 };
         } else {
             const trimmed = color.trim().toLowerCase();
-            
+
             if (trimmed.startsWith('#')) {
                 result = this._parseHex(trimmed);
             } else if (trimmed.startsWith('rgb')) {
@@ -14067,12 +15389,12 @@ class ColorParser {
                 result = { r: 0, g: 0, b: 0, a: 255 };
             }
         }
-        
+
         // Cache the result
         this._cache.set(color, result);
         return result;
     }
-    
+
     /**
      * Parse hex color (#RGB, #RRGGBB, #RRGGBBAA)
      * @private
@@ -14080,12 +15402,15 @@ class ColorParser {
     _parseHex(hex) {
         // Remove the #
         hex = hex.substring(1);
-        
+
         if (hex.length === 3) {
             // #RGB -> #RRGGBB
-            hex = hex.split('').map(c => c + c).join('');
+            hex = hex
+                .split('')
+                .map(c => c + c)
+                .join('');
         }
-        
+
         if (hex.length === 6) {
             // #RRGGBB
             const r = parseInt(hex.substring(0, 2), 16);
@@ -14100,11 +15425,11 @@ class ColorParser {
             const a = parseInt(hex.substring(6, 8), 16);
             return { r, g, b, a };
         }
-        
+
         // Invalid hex - default to black
         return { r: 0, g: 0, b: 0, a: 255 };
     }
-    
+
     /**
      * Parse RGB/RGBA function notation
      * @private
@@ -14115,17 +15440,17 @@ class ColorParser {
         if (!match) {
             return { r: 0, g: 0, b: 0, a: 255 };
         }
-        
+
         const parts = match[1].split(',').map(s => s.trim());
-        
+
         if (parts.length < 3) {
             return { r: 0, g: 0, b: 0, a: 255 };
         }
-        
-        const r = Math.max(0, Math.min(255, parseInt(parts[0]) || 0));
-        const g = Math.max(0, Math.min(255, parseInt(parts[1]) || 0));
-        const b = Math.max(0, Math.min(255, parseInt(parts[2]) || 0));
-        
+
+        const r = Math.max(0, Math.min(255, parseInt(parts[0], 10) || 0));
+        const g = Math.max(0, Math.min(255, parseInt(parts[1], 10) || 0));
+        const b = Math.max(0, Math.min(255, parseInt(parts[2], 10) || 0));
+
         let a = 255;
         if (parts.length >= 4) {
             const alpha = parseFloat(parts[3]);
@@ -14133,10 +15458,10 @@ class ColorParser {
                 a = Math.max(0, Math.min(255, Math.round(alpha * 255)));
             }
         }
-        
+
         return { r, g, b, a };
     }
-    
+
     /**
      * Clear the color cache
      */
@@ -14144,12 +15469,13 @@ class ColorParser {
         this._cache.clear();
     }
 }
+
 /**
  * Gradient classes for SWCanvas
- * 
+ *
  * Implements HTML5 Canvas gradient support with deterministic rendering.
  * Follows SWCanvas's immutable object-oriented design principles.
- * 
+ *
  * Gradients are paint sources that can replace solid colors in fillStyle/strokeStyle.
  * They work in canvas coordinate space and are affected by current transform.
  */
@@ -14245,8 +15571,14 @@ class Gradient {
                 const localT = (t - stop1.offset) / range;
 
                 // Interpolate RGBA components
-                const r1 = stop1.color.r, g1 = stop1.color.g, b1 = stop1.color.b, a1 = stop1.color.a;
-                const r2 = stop2.color.r, g2 = stop2.color.g, b2 = stop2.color.b, a2 = stop2.color.a;
+                const r1 = stop1.color.r,
+                    g1 = stop1.color.g,
+                    b1 = stop1.color.b,
+                    a1 = stop1.color.a;
+                const r2 = stop2.color.r,
+                    g2 = stop2.color.g,
+                    b2 = stop2.color.b,
+                    a2 = stop2.color.a;
 
                 const r = Math.round(r1 + (r2 - r1) * localT);
                 const g = Math.round(g1 + (g2 - g1) * localT);
@@ -14440,17 +15772,18 @@ class ConicGradient extends Gradient {
         }
 
         // Convert angle to parameter t [0, 1]
-        const t = pixelAngle / (TAU);
+        const t = pixelAngle / TAU;
 
         return this._getColorAt(t);
     }
 }
+
 /**
  * Pattern class for SWCanvas
- * 
+ *
  * Implements HTML5 Canvas pattern support with deterministic rendering.
  * Follows SWCanvas's immutable object-oriented design principles.
- * 
+ *
  * Patterns are paint sources that tile ImageLike objects and can replace solid colors.
  * They work in canvas coordinate space and support repetition modes.
  */
@@ -14555,7 +15888,7 @@ class Pattern {
             case 'repeat-y':
                 sampleX = x;
                 sampleY = this._repeatCoordinate(y, height);
-                // Check if X is out of bounds  
+                // Check if X is out of bounds
                 if (x < 0 || x >= width) {
                     return Color.transparent; // Transparent
                 }
@@ -14657,9 +15990,10 @@ class Pattern {
         return new Pattern(imageData, repetition);
     }
 }
+
 /**
  * Rasterizer class for SWCanvas
- * 
+ *
  * Handles low-level pixel operations and rendering pipeline.
  * Converted to ES6 class following Joshua Bloch's effective OO principles.
  * Encapsulates rendering state and provides clear separation of concerns.
@@ -14709,10 +16043,10 @@ class Rasterizer {
             composite: params.composite || 'source-over',
             globalAlpha: params.globalAlpha !== undefined ? params.globalAlpha : 1.0,
             transform: params.transform || Transform2D.IDENTITY,
-            clipMask: params.clipMask || null,  // Stencil-based clipping
+            clipMask: params.clipMask || null, // Stencil-based clipping
             fillStyle: params.fillStyle || null,
             strokeStyle: params.strokeStyle || null,
-            sourceMask: null,  // Will be initialized if needed for canvas-wide compositing
+            sourceMask: null, // Will be initialized if needed for canvas-wide compositing
             // Shadow properties
             shadowColor: params.shadowColor || Color.transparent,
             shadowBlur: params.shadowBlur || 0,
@@ -14801,8 +16135,7 @@ class Rasterizer {
         this._requireActiveOp();
 
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -14861,13 +16194,22 @@ class Rasterizer {
 
         // Find bounding box in device space
         const minX = Math.max(0, Math.floor(Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
-        const maxX = Math.min(this._surface.width - 1, Math.floor(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x) - 1));
+        const maxX = Math.min(
+            this._surface.width - 1,
+            Math.floor(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x) - 1)
+        );
         const minY = Math.max(0, Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
-        const maxY = Math.min(this._surface.height - 1, Math.floor(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y) - 1));
+        const maxY = Math.min(
+            this._surface.height - 1,
+            Math.floor(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y) - 1)
+        );
 
         // Optimized path for axis-aligned rectangles with solid colors only
-        if (this._currentOp.transform.b === 0 && this._currentOp.transform.c === 0 &&
-            (color instanceof Color || Array.isArray(color))) {
+        if (
+            this._currentOp.transform.b === 0 &&
+            this._currentOp.transform.c === 0 &&
+            (color instanceof Color || Array.isArray(color))
+        ) {
             this._fillAxisAlignedRect(minX, minY, maxX - minX + 1, maxY - minY + 1, color);
         } else {
             // Handle rotated rectangles by converting to polygon
@@ -14880,14 +16222,24 @@ class Rasterizer {
 
             // Use existing polygon filling system which handles transforms and stencil clipping
             const rectColor = Array.isArray(color) ? new Color(color[0], color[1], color[2], color[3]) : color;
-            PolygonFiller.fillPolygons(this._surface, [rectPolygon], rectColor, 'nonzero', this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, 1.0, this._currentOp.composite);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                [rectPolygon],
+                rectColor,
+                'nonzero',
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                1.0,
+                this._currentOp.composite
+            );
         }
     }
 
     /**
      * Fill axis-aligned rectangle (optimized path)
      * @param {number} x - Rectangle x
-     * @param {number} y - Rectangle y 
+     * @param {number} y - Rectangle y
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
      * @param {Array|Color} color - Fill color
@@ -14927,8 +16279,14 @@ class Rasterizer {
                 // Use CompositeOperations for consistent blending
                 const result = CompositeOperations.blendPixel(
                     this._currentOp.composite,
-                    srcR, srcG, srcB, srcA,  // source
-                    dstR, dstG, dstB, dstA   // destination
+                    srcR,
+                    srcG,
+                    srcB,
+                    srcA, // source
+                    dstR,
+                    dstG,
+                    dstB,
+                    dstA // destination
                 );
 
                 surface.data[offset] = result.r;
@@ -14977,7 +16335,14 @@ class Rasterizer {
 
                 if (Sa > 0) {
                     // Evaluate paint source at covered pixel
-                    srcColor = PolygonFiller._evaluatePaintSource(paintSource, x, y, transform, globalAlpha, subPixelOpacity);
+                    srcColor = PolygonFiller._evaluatePaintSource(
+                        paintSource,
+                        x,
+                        y,
+                        transform,
+                        globalAlpha,
+                        subPixelOpacity
+                    );
                 } else {
                     // Transparent source for uncovered pixels
                     srcColor = Color.transparent;
@@ -14993,8 +16358,14 @@ class Rasterizer {
                 // Apply composite operation with explicit source coverage
                 const result = CompositeOperations.blendPixel(
                     composite,
-                    srcColor.r, srcColor.g, srcColor.b, srcColor.a,  // source
-                    dstR, dstG, dstB, dstA                           // destination
+                    srcColor.r,
+                    srcColor.g,
+                    srcColor.b,
+                    srcColor.a, // source
+                    dstR,
+                    dstG,
+                    dstB,
+                    dstA // destination
                 );
 
                 // Store result
@@ -15036,13 +16407,34 @@ class Rasterizer {
 
         if (this._requiresCanvasWideCompositing(this._currentOp.composite)) {
             // Canvas-wide compositing path: build source mask then perform canvas-wide compositing
-            PolygonFiller.fillPolygons(this._surface, polygons, fillStyle, fillRule, this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, 1.0, this._currentOp.composite, this._currentOp.sourceMask);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                polygons,
+                fillStyle,
+                fillRule,
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                1.0,
+                this._currentOp.composite,
+                this._currentOp.sourceMask
+            );
 
             // Perform canvas-wide compositing pass
             this._performCanvasWideCompositing(fillStyle, this._currentOp.globalAlpha, 1.0);
         } else {
             // Source-bounded compositing path: direct rendering (existing behavior)
-            PolygonFiller.fillPolygons(this._surface, polygons, fillStyle, fillRule, this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, 1.0, this._currentOp.composite);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                polygons,
+                fillStyle,
+                fillRule,
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                1.0,
+                this._currentOp.composite
+            );
         }
     }
 
@@ -15088,13 +16480,34 @@ class Rasterizer {
 
         if (this._requiresCanvasWideCompositing(this._currentOp.composite)) {
             // Canvas-wide compositing path: build source mask then perform canvas-wide compositing
-            PolygonFiller.fillPolygons(this._surface, strokePolygons, strokeStyle, 'nonzero', this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, subPixelOpacity, this._currentOp.composite, this._currentOp.sourceMask);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                strokePolygons,
+                strokeStyle,
+                'nonzero',
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                subPixelOpacity,
+                this._currentOp.composite,
+                this._currentOp.sourceMask
+            );
 
             // Perform canvas-wide compositing pass
             this._performCanvasWideCompositing(strokeStyle, this._currentOp.globalAlpha, subPixelOpacity);
         } else {
             // Source-bounded compositing path: direct rendering (existing behavior)
-            PolygonFiller.fillPolygons(this._surface, strokePolygons, strokeStyle, 'nonzero', this._currentOp.transform, this._currentOp.clipMask, this._currentOp.globalAlpha, subPixelOpacity, this._currentOp.composite);
+            PolygonFiller.fillPolygons(
+                this._surface,
+                strokePolygons,
+                strokeStyle,
+                'nonzero',
+                this._currentOp.transform,
+                this._currentOp.clipMask,
+                this._currentOp.globalAlpha,
+                subPixelOpacity,
+                this._currentOp.composite
+            );
         }
     }
 
@@ -15157,7 +16570,7 @@ class Rasterizer {
             sourceWidth = imageData.width;
             sourceHeight = imageData.height;
             destX = sx; // Actually dx
-            destY = sy; // Actually dy  
+            destY = sy; // Actually dy
             destWidth = sw; // Actually dw
             destHeight = sh; // Actually dh
         } else if (arguments.length === 9) {
@@ -15175,11 +16588,16 @@ class Rasterizer {
         }
 
         // Validate source rectangle bounds
-        if (sourceX < 0 || sourceY < 0 || sourceX + sourceWidth > imageData.width || sourceY + sourceHeight > imageData.height) {
+        if (
+            sourceX < 0 ||
+            sourceY < 0 ||
+            sourceX + sourceWidth > imageData.width ||
+            sourceY + sourceHeight > imageData.height
+        ) {
             throw new Error('Source rectangle is outside image bounds');
         }
 
-        // Apply transform to destination rectangle corners  
+        // Apply transform to destination rectangle corners
         const transform = this._currentOp.transform;
         const topLeft = transform.transformPoint({ x: destX, y: destY });
         const topRight = transform.transformPoint({ x: destX + destWidth, y: destY });
@@ -15188,11 +16606,17 @@ class Rasterizer {
 
         // Find bounding box in device space
         const minX = Math.max(0, Math.floor(Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
-        const maxX = Math.min(this._surface.width - 1, Math.ceil(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
+        const maxX = Math.min(
+            this._surface.width - 1,
+            Math.ceil(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x))
+        );
         const minY = Math.max(0, Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
-        const maxY = Math.min(this._surface.height - 1, Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
+        const maxY = Math.min(
+            this._surface.height - 1,
+            Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y))
+        );
 
-        // Get inverse transform for mapping device pixels back to source  
+        // Get inverse transform for mapping device pixels back to source
         const inverseTransform = transform.invert();
 
         const globalAlpha = this._currentOp.globalAlpha;
@@ -15209,14 +16633,18 @@ class Rasterizer {
                 const destPoint = inverseTransform.transformPoint({ x: deviceX, y: deviceY });
 
                 // Check if we're inside the destination rectangle
-                if (destPoint.x < destX || destPoint.x >= destX + destWidth ||
-                    destPoint.y < destY || destPoint.y >= destY + destHeight) {
+                if (
+                    destPoint.x < destX ||
+                    destPoint.x >= destX + destWidth ||
+                    destPoint.y < destY ||
+                    destPoint.y >= destY + destHeight
+                ) {
                     continue;
                 }
 
                 // Map destination coordinates to source coordinates
-                const sourceXf = sourceX + (destPoint.x - destX) / destWidth * sourceWidth;
-                const sourceYf = sourceY + (destPoint.y - destY) / destHeight * sourceHeight;
+                const sourceXf = sourceX + ((destPoint.x - destX) / destWidth) * sourceWidth;
+                const sourceYf = sourceY + ((destPoint.y - destY) / destHeight) * sourceHeight;
 
                 // Nearest-neighbor sampling
                 const sourcePX = Math.floor(sourceXf);
@@ -15253,8 +16681,14 @@ class Rasterizer {
                 // Use CompositeOperations for consistent blending
                 const result = CompositeOperations.blendPixel(
                     this._currentOp.composite,
-                    srcR, srcG, srcB, finalSrcA,  // source
-                    dstR, dstG, dstB, dstA        // destination
+                    srcR,
+                    srcG,
+                    srcB,
+                    finalSrcA, // source
+                    dstR,
+                    dstG,
+                    dstB,
+                    dstA // destination
                 );
 
                 this._surface.data[destOffset] = result.r;
@@ -15264,27 +16698,26 @@ class Rasterizer {
             }
         }
     }
-
 }
+
 /**
  * STENCIL-BASED CLIPPING SYSTEM
- * 
+ *
  * SWCanvas uses a 1-bit stencil buffer approach for memory-efficient clipping with
  * proper intersection semantics. This system matches HTML5 Canvas behavior exactly.
- * 
+ *
  * Memory Layout:
  * - Each pixel is represented by 1 bit (1 = visible, 0 = clipped)
  * - Bits are packed into Uint8Array (8 pixels per byte)
  * - Memory usage: width × height ÷ 8 bytes (96.9% reduction vs RGBA coverage)
  * - Lazy allocation: only created when first clip() operation is performed
- * 
+ *
  * Clipping Operations:
  * 1. First clip: Creates stencil buffer, renders clip path with 1s where path covers
- * 2. Subsequent clips: Renders to temp buffer, ANDs with existing stencil buffer  
+ * 2. Subsequent clips: Renders to temp buffer, ANDs with existing stencil buffer
  * 3. Intersection semantics: Only pixels covered by ALL clips have bit = 1
  * 4. Save/restore: Stencil buffer is deep-copied during save() and restored
  */
-
 
 class Context2D {
     // Static flag to track path-based rendering usage (for testing)
@@ -15331,30 +16764,30 @@ class Context2D {
 
         // Stroke properties
         this._lineWidth = 1.0;
-        this.lineJoin = 'miter';  // 'miter', 'round', 'bevel'
-        this.lineCap = 'butt';    // 'butt', 'round', 'square'
+        this.lineJoin = 'miter'; // 'miter', 'round', 'bevel'
+        this.lineCap = 'butt'; // 'butt', 'round', 'square'
         this.miterLimit = DEFAULT_MITER_LIMIT;
 
         // Line dash properties
-        this._lineDash = [];         // Internal working dash pattern (may be duplicated)
+        this._lineDash = []; // Internal working dash pattern (may be duplicated)
         this._originalLineDash = []; // Original pattern as set by user
-        this._lineDashOffset = 0;    // Starting offset into dash pattern
+        this._lineDashOffset = 0; // Starting offset into dash pattern
 
         // Shadow properties - HTML5 Canvas compatible defaults
         this.shadowColor = Color.transparent; // Transparent black (no shadow)
-        this.shadowBlur = 0;       // No blur
-        this.shadowOffsetX = 0;    // No horizontal offset
-        this.shadowOffsetY = 0;    // No vertical offset
+        this.shadowBlur = 0; // No blur
+        this.shadowOffsetX = 0; // No horizontal offset
+        this.shadowOffsetY = 0; // No vertical offset
 
         // Internal path and clipping
         this._currentPath = new SWPath2D();
 
         // Stencil-based clipping system (only clipping mechanism)
-        this._clipMask = null;  // ClipMask instance for 1-bit per pixel clipping
+        this._clipMask = null; // ClipMask instance for 1-bit per pixel clipping
 
         // Cached state flags for direct rendering eligibility (performance optimization)
-        this._noShadow = true;       // Updated when shadow properties change
-        this._isSourceOver = true;   // Updated when globalCompositeOperation changes
+        this._noShadow = true; // Updated when shadow properties change
+        this._isSourceOver = true; // Updated when globalCompositeOperation changes
     }
 
     // HTML5 Canvas-compatible lineWidth property with validation
@@ -15364,9 +16797,7 @@ class Context2D {
 
     set lineWidth(value) {
         // HTML5 Canvas spec: ignore zero, negative, Infinity, and NaN values
-        if (typeof value === 'number' &&
-            value > 0 &&
-            isFinite(value)) {
+        if (typeof value === 'number' && value > 0 && isFinite(value)) {
             this._lineWidth = value;
         }
         // Otherwise, keep the current value unchanged (ignore invalid input)
@@ -15379,7 +16810,7 @@ class Context2D {
 
     set globalCompositeOperation(value) {
         this._globalCompositeOperation = value;
-        this._isSourceOver = (value === 'source-over');
+        this._isSourceOver = value === 'source-over';
     }
 
     /**
@@ -15387,7 +16818,8 @@ class Context2D {
      * @private
      */
     _updateNoShadowFlag() {
-        this._noShadow = !this.shadowColor ||
+        this._noShadow =
+            !this.shadowColor ||
             this.shadowColor === Color.transparent ||
             (this.shadowBlur === 0 && this.shadowOffsetX === 0 && this.shadowOffsetY === 0);
     }
@@ -15399,10 +16831,7 @@ class Context2D {
      * @private
      */
     _canUseDirectRendering(paintSource) {
-        return this._isSourceOver &&
-            this._noShadow &&
-            (paintSource instanceof Color) &&
-            paintSource.a > 0;
+        return this._isSourceOver && this._noShadow && paintSource instanceof Color && paintSource.a > 0;
     }
 
     /**
@@ -15433,8 +16862,12 @@ class Context2D {
             globalAlpha: this.globalAlpha,
             globalCompositeOperation: this._globalCompositeOperation,
             transform: new Transform2D([
-                this._transform.a, this._transform.b, this._transform.c,
-                this._transform.d, this._transform.e, this._transform.f
+                this._transform.a,
+                this._transform.b,
+                this._transform.c,
+                this._transform.d,
+                this._transform.e,
+                this._transform.f
             ]),
             fillStyle: this._fillStyle, // Paint sources are immutable, safe to share
             strokeStyle: this._strokeStyle, // Paint sources are immutable, safe to share
@@ -15648,16 +17081,45 @@ class Context2D {
                     RectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, clip);
                     return;
                 } else {
-                    RectOpsAA.fill_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, this.globalAlpha, clip);
+                    RectOpsAA.fill_AA_Alpha(
+                        this.surface,
+                        tlX,
+                        tlY,
+                        finalW,
+                        finalH,
+                        this._fillStyle,
+                        this.globalAlpha,
+                        clip
+                    );
                     return;
                 }
             } else if (t.isUniformScale) {
                 // Rotated with uniform scale: use edge-function algorithm
                 if (isOpaque) {
-                    RectOpsRot.fill_Rot_Any(this.surface, center.x, center.y, scaledW, scaledH, t.rotationAngle, this._fillStyle, 1.0, clip);
+                    RectOpsRot.fill_Rot_Any(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
+                        t.rotationAngle,
+                        this._fillStyle,
+                        1.0,
+                        clip
+                    );
                     return;
                 } else {
-                    RectOpsRot.fill_Rot_Any(this.surface, center.x, center.y, scaledW, scaledH, t.rotationAngle, this._fillStyle, this.globalAlpha, clip);
+                    RectOpsRot.fill_Rot_Any(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
+                        t.rotationAngle,
+                        this._fillStyle,
+                        this.globalAlpha,
+                        clip
+                    );
                     return;
                 }
             }
@@ -15712,21 +17174,60 @@ class Context2D {
                         RectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, clip);
                         return;
                     } else {
-                        RectOpsAA.stroke1px_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, this.globalAlpha, clip);
+                        RectOpsAA.stroke1px_AA_Alpha(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            this._strokeStyle,
+                            this.globalAlpha,
+                            clip
+                        );
                         return;
                     }
                 } else if (isThickStroke) {
                     if (isOpaque) {
-                        RectOpsAA.strokeThick_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, scaledLineWidth, this._strokeStyle, clip);
+                        RectOpsAA.strokeThick_AA_Opaq(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            scaledLineWidth,
+                            this._strokeStyle,
+                            clip
+                        );
                         return;
                     } else {
-                        RectOpsAA.strokeThick_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, scaledLineWidth, this._strokeStyle, this.globalAlpha, clip);
+                        RectOpsAA.strokeThick_AA_Alpha(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            scaledLineWidth,
+                            this._strokeStyle,
+                            this.globalAlpha,
+                            clip
+                        );
                         return;
                     }
                 }
             } else if (t.isUniformScale) {
                 // Rotated with uniform scale: use line-based stroke
-                RectOpsRot.stroke_Rot_Any(this.surface, center.x, center.y, scaledW, scaledH, t.rotationAngle, scaledLineWidth, this._strokeStyle, this.globalAlpha, clip);
+                RectOpsRot.stroke_Rot_Any(
+                    this.surface,
+                    center.x,
+                    center.y,
+                    scaledW,
+                    scaledH,
+                    t.rotationAngle,
+                    scaledLineWidth,
+                    this._strokeStyle,
+                    this.globalAlpha,
+                    clip
+                );
                 return;
             }
             // Non-uniform scale + rotation: fall through to path-based rendering (produces parallelogram)
@@ -15772,8 +17273,7 @@ class Context2D {
      */
     fillStrokeRect(x, y, width, height) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -15808,7 +17308,10 @@ class Context2D {
 
                 RectOpsAA.fillStroke_AA_Any(
                     this.surface,
-                    tlX, tlY, finalW, finalH,
+                    tlX,
+                    tlY,
+                    finalW,
+                    finalH,
                     scaledLineWidth,
                     hasFill ? this._fillStyle : null,
                     hasStroke ? this._strokeStyle : null,
@@ -15820,7 +17323,11 @@ class Context2D {
                 // Rotated with uniform scale: use rotated fill+stroke wrapper
                 RectOpsRot.fillStroke_Rot_Any(
                     this.surface,
-                    center.x, center.y, scaledW, scaledH, t.rotationAngle,
+                    center.x,
+                    center.y,
+                    scaledW,
+                    scaledH,
+                    t.rotationAngle,
                     scaledLineWidth,
                     hasFill ? this._fillStyle : null,
                     hasStroke ? this._strokeStyle : null,
@@ -15847,15 +17354,14 @@ class Context2D {
     /**
      * Clear rectangle directly without canvas-wide compositing
      * @param {number} x - Rectangle x coordinate
-     * @param {number} y - Rectangle y coordinate  
+     * @param {number} y - Rectangle y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
      * @private
      */
     _clearRectDirect(x, y, width, height) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -15886,7 +17392,7 @@ class Context2D {
         if (transform.b === 0 && transform.c === 0) {
             // Calculate the actual rectangle bounds in surface coordinates
             const rectLeft = transform.e + x * transform.a; // x coordinate with scaling and translation
-            const rectTop = transform.f + y * transform.d;  // y coordinate with scaling and translation  
+            const rectTop = transform.f + y * transform.d; // y coordinate with scaling and translation
             const rectRight = rectLeft + width * transform.a;
             const rectBottom = rectTop + height * transform.d;
 
@@ -15904,14 +17410,14 @@ class Context2D {
                     }
 
                     const offset = py * surface.stride + px * 4;
-                    surface.data[offset] = 0;     // R
-                    surface.data[offset + 1] = 0; // G  
+                    surface.data[offset] = 0; // R
+                    surface.data[offset + 1] = 0; // G
                     surface.data[offset + 2] = 0; // B
                     surface.data[offset + 3] = 0; // A (transparent)
                 }
             }
         } else {
-            // For rotated/skewed rectangles, we need to test each pixel 
+            // For rotated/skewed rectangles, we need to test each pixel
             // This is more complex but handles all transformation cases correctly
             const invTransform = transform.invert();
 
@@ -15926,12 +17432,11 @@ class Context2D {
                     const pathPoint = invTransform.transformPoint({ x: px + 0.5, y: py + 0.5 });
 
                     // Check if point is inside the clearRect rectangle
-                    if (pathPoint.x >= x && pathPoint.x < x + width &&
-                        pathPoint.y >= y && pathPoint.y < y + height) {
+                    if (pathPoint.x >= x && pathPoint.x < x + width && pathPoint.y >= y && pathPoint.y < y + height) {
                         const offset = py * surface.stride + px * 4;
-                        surface.data[offset] = 0;     // R
+                        surface.data[offset] = 0; // R
                         surface.data[offset + 1] = 0; // G
-                        surface.data[offset + 2] = 0; // B  
+                        surface.data[offset + 2] = 0; // B
                         surface.data[offset + 3] = 0; // A (transparent)
                     }
                 }
@@ -15950,8 +17455,7 @@ class Context2D {
      */
     strokeRoundRect(x, y, width, height, radii) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -15964,7 +17468,7 @@ class Context2D {
         }
 
         // Normalize radius to check for zero
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        const radius = Array.isArray(radii) ? radii[0] : radii || 0;
 
         // Fallback to strokeRect for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -15991,15 +17495,55 @@ class Context2D {
                     // No transform: use axis-aligned methods with original coordinates
                     if (is1pxStroke) {
                         if (isOpaque) {
-                            RoundedRectOpsAA.stroke1px_AA_Opaq(this.surface, x, y, width, height, radii, this._strokeStyle, clip);
+                            RoundedRectOpsAA.stroke1px_AA_Opaq(
+                                this.surface,
+                                x,
+                                y,
+                                width,
+                                height,
+                                radii,
+                                this._strokeStyle,
+                                clip
+                            );
                         } else {
-                            RoundedRectOpsAA.stroke1px_AA_Alpha(this.surface, x, y, width, height, radii, this._strokeStyle, this.globalAlpha, clip);
+                            RoundedRectOpsAA.stroke1px_AA_Alpha(
+                                this.surface,
+                                x,
+                                y,
+                                width,
+                                height,
+                                radii,
+                                this._strokeStyle,
+                                this.globalAlpha,
+                                clip
+                            );
                         }
                     } else {
                         if (isOpaque) {
-                            RoundedRectOpsAA.strokeThick_AA_Opaq(this.surface, x, y, width, height, radii, this._lineWidth, this._strokeStyle, clip);
+                            RoundedRectOpsAA.strokeThick_AA_Opaq(
+                                this.surface,
+                                x,
+                                y,
+                                width,
+                                height,
+                                radii,
+                                this._lineWidth,
+                                this._strokeStyle,
+                                clip
+                            );
                         } else {
-                            RoundedRectOpsAA.strokeThick_AA_Alpha(this.surface, x, y, width, height, radii, this._lineWidth, this._strokeStyle, this.globalAlpha, clip);
+                            RoundedRectOpsAA.strokeThick_AA_Alpha(
+                                this.surface,
+                                x,
+                                y,
+                                width,
+                                height,
+                                radii,
+                                this._lineWidth,
+                                this._strokeStyle,
+                                this.globalAlpha,
+                                clip
+                            );
                         }
                     }
                     return;
@@ -16014,15 +17558,55 @@ class Context2D {
 
                     if (is1pxStroke) {
                         if (isOpaque) {
-                            RoundedRectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, scaledRadius, this._strokeStyle, clip);
+                            RoundedRectOpsAA.stroke1px_AA_Opaq(
+                                this.surface,
+                                tlX,
+                                tlY,
+                                finalW,
+                                finalH,
+                                scaledRadius,
+                                this._strokeStyle,
+                                clip
+                            );
                         } else {
-                            RoundedRectOpsAA.stroke1px_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, scaledRadius, this._strokeStyle, this.globalAlpha, clip);
+                            RoundedRectOpsAA.stroke1px_AA_Alpha(
+                                this.surface,
+                                tlX,
+                                tlY,
+                                finalW,
+                                finalH,
+                                scaledRadius,
+                                this._strokeStyle,
+                                this.globalAlpha,
+                                clip
+                            );
                         }
                     } else {
                         if (isOpaque) {
-                            RoundedRectOpsAA.strokeThick_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, scaledRadius, scaledLineWidth, this._strokeStyle, clip);
+                            RoundedRectOpsAA.strokeThick_AA_Opaq(
+                                this.surface,
+                                tlX,
+                                tlY,
+                                finalW,
+                                finalH,
+                                scaledRadius,
+                                scaledLineWidth,
+                                this._strokeStyle,
+                                clip
+                            );
                         } else {
-                            RoundedRectOpsAA.strokeThick_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, scaledRadius, scaledLineWidth, this._strokeStyle, this.globalAlpha, clip);
+                            RoundedRectOpsAA.strokeThick_AA_Alpha(
+                                this.surface,
+                                tlX,
+                                tlY,
+                                finalW,
+                                finalH,
+                                scaledRadius,
+                                scaledLineWidth,
+                                this._strokeStyle,
+                                this.globalAlpha,
+                                clip
+                            );
                         }
                     }
                     return;
@@ -16030,7 +17614,10 @@ class Context2D {
                     // Rotated with uniform scale: use strokeRotated
                     RoundedRectOpsRot.stroke_Rot_Any(
                         this.surface,
-                        center.x, center.y, scaledW, scaledH,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
                         scaledRadius,
                         t.rotationAngle,
                         scaledLineWidth,
@@ -16062,8 +17649,7 @@ class Context2D {
      */
     fillRoundRect(x, y, width, height, radii) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -16076,7 +17662,7 @@ class Context2D {
         }
 
         // Normalize radius to check for zero
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        const radius = Array.isArray(radii) ? radii[0] : radii || 0;
 
         // Fallback to fillRect for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -16102,7 +17688,17 @@ class Context2D {
                     if (isOpaque) {
                         RoundedRectOpsAA.fill_AA_Opaq(this.surface, x, y, width, height, radii, this._fillStyle, clip);
                     } else {
-                        RoundedRectOpsAA.fill_AA_Alpha(this.surface, x, y, width, height, radii, this._fillStyle, this.globalAlpha, clip);
+                        RoundedRectOpsAA.fill_AA_Alpha(
+                            this.surface,
+                            x,
+                            y,
+                            width,
+                            height,
+                            radii,
+                            this._fillStyle,
+                            this.globalAlpha,
+                            clip
+                        );
                     }
                     return;
                 }
@@ -16115,16 +17711,38 @@ class Context2D {
                     const tlY = center.y - finalH / 2;
 
                     if (isOpaque) {
-                        RoundedRectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, scaledRadius, this._fillStyle, clip);
+                        RoundedRectOpsAA.fill_AA_Opaq(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            scaledRadius,
+                            this._fillStyle,
+                            clip
+                        );
                     } else {
-                        RoundedRectOpsAA.fill_AA_Alpha(this.surface, tlX, tlY, finalW, finalH, scaledRadius, this._fillStyle, this.globalAlpha, clip);
+                        RoundedRectOpsAA.fill_AA_Alpha(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            scaledRadius,
+                            this._fillStyle,
+                            this.globalAlpha,
+                            clip
+                        );
                     }
                     return;
                 } else {
                     // Rotated with uniform scale: use fillRotated
                     RoundedRectOpsRot.fill_Rot_Any(
                         this.surface,
-                        center.x, center.y, scaledW, scaledH,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
                         scaledRadius,
                         t.rotationAngle,
                         this._fillStyle,
@@ -16155,8 +17773,7 @@ class Context2D {
      */
     fillStrokeRoundRect(x, y, width, height, radii) {
         // Validate parameters
-        if (typeof x !== 'number' || typeof y !== 'number' ||
-            typeof width !== 'number' || typeof height !== 'number') {
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
 
@@ -16169,7 +17786,7 @@ class Context2D {
         }
 
         // Normalize radius to check for zero
-        let radius = Array.isArray(radii) ? radii[0] : (radii || 0);
+        const radius = Array.isArray(radii) ? radii[0] : radii || 0;
 
         // Fallback to fillStrokeRect for zero radius
         if (radius <= 0) {
@@ -16197,7 +17814,10 @@ class Context2D {
                     // Axis-aligned, no transform: use top-left coordinates
                     RoundedRectOpsAA.fillStroke_AA_Any(
                         this.surface,
-                        x, y, width, height,
+                        x,
+                        y,
+                        width,
+                        height,
                         radii,
                         this._lineWidth,
                         hasFill ? this._fillStyle : null,
@@ -16217,7 +17837,10 @@ class Context2D {
 
                     RoundedRectOpsAA.fillStroke_AA_Any(
                         this.surface,
-                        tlX, tlY, finalW, finalH,
+                        tlX,
+                        tlY,
+                        finalW,
+                        finalH,
                         scaledRadius,
                         scaledLineWidth,
                         hasFill ? this._fillStyle : null,
@@ -16230,7 +17853,10 @@ class Context2D {
                     // Rotated with uniform scale: use rotated fill+stroke
                     RoundedRectOpsRot.fillStroke_Rot_Any(
                         this.surface,
-                        center.x, center.y, scaledW, scaledH,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
                         scaledRadius,
                         t.rotationAngle,
                         scaledLineWidth,
@@ -16257,7 +17883,7 @@ class Context2D {
 
         // Handle different argument combinations:
         // fill() -> path = undefined, rule = undefined
-        // fill('evenodd') -> path = 'evenodd', rule = undefined  
+        // fill('evenodd') -> path = 'evenodd', rule = undefined
         // fill(path2d) -> path = path2d object, rule = undefined
         // fill(path2d, 'evenodd') -> path = path2d object, rule = 'evenodd'
 
@@ -16329,7 +17955,7 @@ class Context2D {
             lineJoin: this.lineJoin,
             lineCap: this.lineCap,
             miterLimit: this.miterLimit,
-            lineDash: this._lineDash.slice(),    // Copy to avoid mutation
+            lineDash: this._lineDash.slice(), // Copy to avoid mutation
             lineDashOffset: this._lineDashOffset
         });
 
@@ -16409,9 +18035,7 @@ class Context2D {
         }
 
         // Transform polygons to match current canvas transform
-        const transformedPolygons = polygons.map(poly =>
-            poly.map(point => this._transform.transformPoint(point))
-        );
+        const transformedPolygons = polygons.map(poly => poly.map(point => this._transform.transformPoint(point)));
 
         // Test point against transformed polygons
         return PolygonFiller.isPointInPolygons(x, y, transformedPolygons, fillRule);
@@ -16472,7 +18096,6 @@ class Context2D {
             lineDashOffset: this._lineDashOffset
         };
 
-
         // Generate stroke polygons using StrokeGenerator
         const strokePolygons = StrokeGenerator.generateStrokePolygons(path, strokeProps);
 
@@ -16523,11 +18146,11 @@ class Context2D {
 
     /**
      * Enhanced clipping support with stencil buffer intersection
-     * 
+     *
      * Implements HTML5 Canvas-compatible clipping with proper intersection semantics.
      * Each clip() operation creates a new clip region that intersects with any existing
      * clipping regions.
-     * 
+     *
      * @param {Path2D} path - Optional path to clip with (uses current path if not provided)
      * @param {string} rule - Fill rule: 'nonzero' (default) or 'evenodd'
      */
@@ -16568,7 +18191,7 @@ class Context2D {
                 hasHeight: image ? typeof image.height : 'N/A',
                 hasData: image ? !!image.data : 'N/A',
                 dataType: image && image.data ? image.data.constructor.name : 'N/A',
-                dataInstanceCheck: image && image.data ? (image.data instanceof Uint8ClampedArray) : 'N/A'
+                dataInstanceCheck: image && image.data ? image.data instanceof Uint8ClampedArray : 'N/A'
             });
         }
 
@@ -16593,9 +18216,12 @@ class Context2D {
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: new Transform2D([
-                this._transform.a, this._transform.b,
-                this._transform.c, this._transform.d,
-                this._transform.e, this._transform.f
+                this._transform.a,
+                this._transform.b,
+                this._transform.c,
+                this._transform.d,
+                this._transform.e,
+                this._transform.f
             ]),
             clipMask: this._clipMask,
             // Shadow properties
@@ -16809,7 +18435,8 @@ class Context2D {
             const clipBuffer = this._clipMask ? this._clipMask.buffer : null;
             CircleOps.fillStroke_Any(
                 this.surface,
-                center.x, center.y,
+                center.x,
+                center.y,
                 scaledRadius,
                 scaledLineWidth,
                 hasFill ? fillPaintSource : null,
@@ -16861,11 +18488,28 @@ class Context2D {
         if (isColor && isSourceOver) {
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
             if (isOpaque) {
-                ArcOps.fill_Opaq(this.surface, center.x, center.y, scaledRadius,
-                    angles.start, angles.end, paintSource, clipBuffer);
+                ArcOps.fill_Opaq(
+                    this.surface,
+                    center.x,
+                    center.y,
+                    scaledRadius,
+                    angles.start,
+                    angles.end,
+                    paintSource,
+                    clipBuffer
+                );
             } else if (paintSource.a > 0) {
-                ArcOps.fill_Alpha(this.surface, center.x, center.y, scaledRadius,
-                    angles.start, angles.end, paintSource, this.globalAlpha, clipBuffer);
+                ArcOps.fill_Alpha(
+                    this.surface,
+                    center.x,
+                    center.y,
+                    scaledRadius,
+                    angles.start,
+                    angles.end,
+                    paintSource,
+                    this.globalAlpha,
+                    clipBuffer
+                );
             }
             return;
         }
@@ -16919,20 +18563,56 @@ class Context2D {
             if (is1pxStroke) {
                 // Optimized 1px stroke path
                 if (isOpaque) {
-                    ArcOps.stroke1px_Opaq(this.surface, center.x, center.y, scaledRadius,
-                        angles.start, angles.end, paintSource, clipBuffer);
+                    ArcOps.stroke1px_Opaq(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        paintSource,
+                        clipBuffer
+                    );
                 } else if (paintSource.a > 0) {
-                    ArcOps.stroke1px_Alpha(this.surface, center.x, center.y, scaledRadius,
-                        angles.start, angles.end, paintSource, this.globalAlpha, clipBuffer);
+                    ArcOps.stroke1px_Alpha(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        paintSource,
+                        this.globalAlpha,
+                        clipBuffer
+                    );
                 }
             } else {
                 // Thick stroke path
                 if (isOpaque) {
-                    ArcOps.strokeOuter_Opaq(this.surface, center.x, center.y, scaledRadius,
-                        angles.start, angles.end, scaledLineWidth, paintSource, clipBuffer);
+                    ArcOps.strokeOuter_Opaq(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        scaledLineWidth,
+                        paintSource,
+                        clipBuffer
+                    );
                 } else if (paintSource.a > 0) {
-                    ArcOps.strokeOuter_Alpha(this.surface, center.x, center.y, scaledRadius,
-                        angles.start, angles.end, scaledLineWidth, paintSource, this.globalAlpha, clipBuffer);
+                    ArcOps.strokeOuter_Alpha(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        scaledLineWidth,
+                        paintSource,
+                        this.globalAlpha,
+                        clipBuffer
+                    );
                 }
             }
             return;
@@ -16986,9 +18666,11 @@ class Context2D {
             // Use unified direct rendering
             ArcOps.fillStrokeOuter_Any(
                 this.surface,
-                center.x, center.y,
+                center.x,
+                center.y,
                 scaledRadius,
-                angles.start, angles.end,
+                angles.start,
+                angles.end,
                 scaledLineWidth,
                 hasFill ? fillPaintSource : null,
                 hasStroke ? strokePaintSource : null,
@@ -17057,14 +18739,9 @@ class Context2D {
         const isColor = paintSource instanceof Color;
         const isSourceOver = this.globalCompositeOperation === 'source-over';
 
-        const isOpaqueColor = isColor &&
-            paintSource.a === 255 &&
-            this.globalAlpha >= 1.0 &&
-            isSourceOver;
+        const isOpaqueColor = isColor && paintSource.a === 255 && this.globalAlpha >= 1.0 && isSourceOver;
 
-        const isSemiTransparentColor = isColor &&
-            paintSource.a < 255 &&
-            isSourceOver;
+        const isSemiTransparentColor = isColor && paintSource.a < 255 && isSourceOver;
 
         if (isOpaqueColor) {
             // Direct rendering 1: 32-bit packed writes for opaque colors
@@ -17113,7 +18790,16 @@ class Context2D {
             if (isOpaqueThick) {
                 CircleOps.strokeThick_Opaq(this.surface, cx, cy, radius, lineWidth, paintSource, clipBuffer);
             } else {
-                CircleOps.strokeThick_Alpha(this.surface, cx, cy, radius, lineWidth, paintSource, this.globalAlpha, clipBuffer);
+                CircleOps.strokeThick_Alpha(
+                    this.surface,
+                    cx,
+                    cy,
+                    radius,
+                    lineWidth,
+                    paintSource,
+                    this.globalAlpha,
+                    clipBuffer
+                );
             }
             return;
         }
@@ -17142,22 +18828,33 @@ class Context2D {
         const isButtCap = this.lineCap === 'butt';
 
         // Get color for solid color direct rendering
-        const isOpaqueColor = paintSource instanceof Color &&
+        const isOpaqueColor =
+            paintSource instanceof Color &&
             paintSource.a === 255 &&
             this.globalAlpha >= 1.0 &&
             this.globalCompositeOperation === 'source-over' &&
             isButtCap;
 
         // Check for semitransparent color direct rendering (Color with alpha blending)
-        const isSemiTransparentColor = paintSource instanceof Color &&
+        const isSemiTransparentColor =
+            paintSource instanceof Color &&
             !isOpaqueColor &&
             this.globalCompositeOperation === 'source-over' &&
             isButtCap;
 
         // Try direct rendering via LineOps
         const directRenderingUsed = LineOps.stroke_Any(
-            this.surface, x1, y1, x2, y2, lineWidth, paintSource,
-            this.globalAlpha, clipBuffer, isOpaqueColor, isSemiTransparentColor
+            this.surface,
+            x1,
+            y1,
+            x2,
+            y2,
+            lineWidth,
+            paintSource,
+            this.globalAlpha,
+            clipBuffer,
+            isOpaqueColor,
+            isSemiTransparentColor
         );
 
         if (!directRenderingUsed) {
@@ -17176,9 +18873,10 @@ class Context2D {
         }
     }
 }
+
 /**
  * CanvasCompatibleContext2D
- * 
+ *
  * HTML5 Canvas 2D Context-compatible wrapper around SWCanvas Core Context2D.
  * Provides the standard HTML5 Canvas API with property setters/getters and
  * CSS color support while delegating actual rendering to the Core implementation.
@@ -17267,11 +18965,13 @@ class CanvasCompatibleContext2D {
      * @private
      */
     _applyFillStyle() {
-        if (this._fillStyle instanceof Gradient ||
+        if (
+            this._fillStyle instanceof Gradient ||
             this._fillStyle instanceof LinearGradient ||
             this._fillStyle instanceof RadialGradient ||
             this._fillStyle instanceof ConicGradient ||
-            this._fillStyle instanceof Pattern) {
+            this._fillStyle instanceof Pattern
+        ) {
             // Pass gradient/pattern directly to core
             this._core.setFillStyle(this._fillStyle);
         } else {
@@ -17286,11 +18986,13 @@ class CanvasCompatibleContext2D {
      * @private
      */
     _applyStrokeStyle() {
-        if (this._strokeStyle instanceof Gradient ||
+        if (
+            this._strokeStyle instanceof Gradient ||
             this._strokeStyle instanceof LinearGradient ||
             this._strokeStyle instanceof RadialGradient ||
             this._strokeStyle instanceof ConicGradient ||
-            this._strokeStyle instanceof Pattern) {
+            this._strokeStyle instanceof Pattern
+        ) {
             // Pass gradient/pattern directly to core
             this._core.setStrokeStyle(this._strokeStyle);
         } else {
@@ -17315,34 +19017,58 @@ class CanvasCompatibleContext2D {
 
     // ===== DIRECT PROPERTY DELEGATION =====
 
-    get globalAlpha() { return this._core.globalAlpha; }
-    set globalAlpha(value) { this._core.globalAlpha = value; }
+    get globalAlpha() {
+        return this._core.globalAlpha;
+    }
+    set globalAlpha(value) {
+        this._core.globalAlpha = value;
+    }
 
-    get globalCompositeOperation() { return this._core.globalCompositeOperation; }
-    set globalCompositeOperation(value) { this._core.globalCompositeOperation = value; }
+    get globalCompositeOperation() {
+        return this._core.globalCompositeOperation;
+    }
+    set globalCompositeOperation(value) {
+        this._core.globalCompositeOperation = value;
+    }
 
-    get lineWidth() { return this._core.lineWidth; }
+    get lineWidth() {
+        return this._core.lineWidth;
+    }
     set lineWidth(value) {
         // HTML5 Canvas spec: ignore zero, negative, Infinity, and NaN values
-        if (typeof value === 'number' &&
-            value > 0 &&
-            isFinite(value)) {
+        if (typeof value === 'number' && value > 0 && isFinite(value)) {
             this._core.lineWidth = value;
         }
         // Otherwise, keep the current value unchanged (ignore invalid input)
     }
 
-    get lineJoin() { return this._core.lineJoin; }
-    set lineJoin(value) { this._core.lineJoin = value; }
+    get lineJoin() {
+        return this._core.lineJoin;
+    }
+    set lineJoin(value) {
+        this._core.lineJoin = value;
+    }
 
-    get lineCap() { return this._core.lineCap; }
-    set lineCap(value) { this._core.lineCap = value; }
+    get lineCap() {
+        return this._core.lineCap;
+    }
+    set lineCap(value) {
+        this._core.lineCap = value;
+    }
 
-    get miterLimit() { return this._core.miterLimit; }
-    set miterLimit(value) { this._core.miterLimit = value; }
+    get miterLimit() {
+        return this._core.miterLimit;
+    }
+    set miterLimit(value) {
+        this._core.miterLimit = value;
+    }
 
-    get lineDashOffset() { return this._core.lineDashOffset; }
-    set lineDashOffset(value) { this._core.lineDashOffset = value; }
+    get lineDashOffset() {
+        return this._core.lineDashOffset;
+    }
+    set lineDashOffset(value) {
+        this._core.lineDashOffset = value;
+    }
 
     // ===== SHADOW PROPERTIES =====
 
@@ -17361,7 +19087,9 @@ class CanvasCompatibleContext2D {
         }
     }
 
-    get shadowBlur() { return this._core.shadowBlur; }
+    get shadowBlur() {
+        return this._core.shadowBlur;
+    }
     set shadowBlur(value) {
         if (typeof value === 'number' && !isNaN(value) && value >= 0) {
             this._core.setShadowBlur(value);
@@ -17369,7 +19097,9 @@ class CanvasCompatibleContext2D {
         // Silently ignore invalid values (matches HTML5 Canvas behavior)
     }
 
-    get shadowOffsetX() { return this._core.shadowOffsetX; }
+    get shadowOffsetX() {
+        return this._core.shadowOffsetX;
+    }
     set shadowOffsetX(value) {
         if (typeof value === 'number' && !isNaN(value)) {
             this._core.setShadowOffsetX(value);
@@ -17377,7 +19107,9 @@ class CanvasCompatibleContext2D {
         // Silently ignore invalid values (matches HTML5 Canvas behavior)
     }
 
-    get shadowOffsetY() { return this._core.shadowOffsetY; }
+    get shadowOffsetY() {
+        return this._core.shadowOffsetY;
+    }
     set shadowOffsetY(value) {
         if (typeof value === 'number' && !isNaN(value)) {
             this._core.setShadowOffsetY(value);
@@ -17599,7 +19331,7 @@ class CanvasCompatibleContext2D {
     /**
      * Get ImageData from a rectangular region
      * @param {number} x - X coordinate of rectangle
-     * @param {number} y - Y coordinate of rectangle  
+     * @param {number} y - Y coordinate of rectangle
      * @param {number} width - Width of rectangle
      * @param {number} height - Height of rectangle
      * @returns {Object} ImageData-like object
@@ -17823,9 +19555,10 @@ class CanvasCompatibleContext2D {
         this._core.fillOuterStrokeArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
     }
 }
+
 /**
  * SWCanvasElement
- * 
+ *
  * HTML5 Canvas-compatible wrapper that mimics HTMLCanvasElement interface.
  * Provides width/height properties and getContext('2d') method.
  * Internally manages an SWCanvas Core Surface.
@@ -17837,7 +19570,7 @@ class SWCanvasElement {
         this._surface = new Surface(width, height);
         this._context = null;
     }
-    
+
     /**
      * Get canvas width
      * @returns {number} Canvas width in pixels
@@ -17845,7 +19578,7 @@ class SWCanvasElement {
     get width() {
         return this._width;
     }
-    
+
     /**
      * Set canvas width (recreates surface)
      * @param {number} value - New width in pixels
@@ -17857,18 +19590,18 @@ class SWCanvasElement {
             this._recreateSurface();
         }
     }
-    
+
     /**
-     * Get canvas height  
+     * Get canvas height
      * @returns {number} Canvas height in pixels
      */
     get height() {
         return this._height;
     }
-    
+
     /**
      * Set canvas height (recreates surface)
-     * @param {number} value - New height in pixels  
+     * @param {number} value - New height in pixels
      */
     set height(value) {
         const newHeight = Math.max(1, Math.floor(value));
@@ -17877,7 +19610,7 @@ class SWCanvasElement {
             this._recreateSurface();
         }
     }
-    
+
     /**
      * Get rendering context
      * @param {string} contextType - Must be '2d'
@@ -17887,27 +19620,27 @@ class SWCanvasElement {
         if (contextType !== '2d') {
             throw new Error('SWCanvas only supports 2d context');
         }
-        
+
         if (!this._context) {
             this._context = new CanvasCompatibleContext2D(this._surface);
         }
-        
+
         return this._context;
     }
-    
+
     /**
      * Recreate surface with new dimensions
      * @private
      */
     _recreateSurface() {
         this._surface = new Surface(this._width, this._height);
-        
+
         // Recreate context if it exists
         if (this._context) {
             this._context._updateSurface(this._surface);
         }
     }
-    
+
     /**
      * Get surface for Core API access
      * Allows advanced users to access the underlying Surface directly
@@ -17916,7 +19649,7 @@ class SWCanvasElement {
     get _coreSurface() {
         return this._surface;
     }
-    
+
     /**
      * Get ImageData-like object for drawImage compatibility
      * @returns {Object} ImageData-like object with width, height, data
@@ -17928,7 +19661,7 @@ class SWCanvasElement {
             data: this._surface.data
         };
     }
-    
+
     /**
      * Get pixel data for ImageLike interface compatibility
      * Makes SWCanvasElement directly usable as an ImageLike object
@@ -17937,7 +19670,7 @@ class SWCanvasElement {
     get data() {
         return this._surface.data;
     }
-    
+
     /**
      * String representation for debugging
      * @returns {string} Canvas description
@@ -17946,6 +19679,7 @@ class SWCanvasElement {
         return `[object SWCanvasElement(${this._width}x${this._height})]`;
     }
 }
+
 // Canvas factory function for HTML5 Canvas compatibility
 function createCanvas(width = 300, height = 150) {
     return new SWCanvasElement(width, height);
