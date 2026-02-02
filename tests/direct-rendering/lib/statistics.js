@@ -490,6 +490,101 @@ class Statistics {
             Math.log(x)
         );
     }
+
+    // =========================================================================
+    // Drift correction for throttling compensation
+    // =========================================================================
+
+    /**
+     * Apply drift correction to measurements based on throttle timeline.
+     *
+     * When CPU throttling is detected during a benchmark session, this method
+     * adjusts measurements to estimate what they would have been without throttling.
+     *
+     * Theory:
+     * - Drift is measured as (baseline - current) / baseline
+     * - If drift = 0.10, CPU is 10% slower, so operations take 1/(1-0.10) = 11.1% longer
+     * - To get baseline-equivalent time: correctedTime = rawTime * (1 - drift)
+     *
+     * Accuracy notes:
+     * - Drift is only measured every N tests (typically 10)
+     * - Linear interpolation assumes gradual thermal change (usually valid)
+     * - Works best with drift < 15%; questionable above 25%; unreliable above 30%
+     *
+     * @param {number[]} measurements - Raw timing measurements (ms)
+     * @param {number} testIndex - Index of this test in the session
+     * @param {Array} throttleTimeline - Array of {testIndex, drift} checkpoints
+     * @returns {Object} { corrected, correctionFactor, interpolatedDrift, interpolatedDriftPercent }
+     */
+    static applyDriftCorrection(measurements, testIndex, throttleTimeline) {
+        // Need at least 2 checkpoints for interpolation
+        if (!throttleTimeline || throttleTimeline.length < 2) {
+            return {
+                corrected: measurements,
+                correctionFactor: 1.0,
+                interpolatedDrift: 0,
+                interpolatedDriftPercent: 0
+            };
+        }
+
+        // Sort timeline by testIndex for reliable interpolation
+        const sorted = [...throttleTimeline].sort(
+            (a, b) => a.testIndex - b.testIndex
+        );
+
+        // Find bounding checkpoints for this test
+        let before = sorted[0];
+        let after = sorted[sorted.length - 1];
+
+        for (let i = 0; i < sorted.length - 1; i++) {
+            if (
+                sorted[i].testIndex <= testIndex &&
+                sorted[i + 1].testIndex >= testIndex
+            ) {
+                before = sorted[i];
+                after = sorted[i + 1];
+                break;
+            }
+        }
+
+        // Handle edge cases: test before first checkpoint or after last
+        if (testIndex < sorted[0].testIndex) {
+            // Before first checkpoint - use first checkpoint's drift (or 0)
+            before = sorted[0];
+            after = sorted[0];
+        } else if (testIndex > sorted[sorted.length - 1].testIndex) {
+            // After last checkpoint - use last checkpoint's drift
+            before = sorted[sorted.length - 1];
+            after = sorted[sorted.length - 1];
+        }
+
+        // Linear interpolation of drift between checkpoints
+        let interpolatedDrift;
+        if (before.testIndex === after.testIndex) {
+            interpolatedDrift = before.drift || 0;
+        } else {
+            const ratio =
+                (testIndex - before.testIndex) /
+                (after.testIndex - before.testIndex);
+            const beforeDrift = before.drift || 0;
+            const afterDrift = after.drift || 0;
+            interpolatedDrift = beforeDrift + ratio * (afterDrift - beforeDrift);
+        }
+
+        // Correction factor: if CPU is X% slower, times are X% longer
+        // To get baseline-equivalent time: correctedTime = rawTime * (1 - drift)
+        // Clamp to reasonable range to avoid negative or extreme corrections
+        const correctionFactor = Math.max(0.5, Math.min(1.0, 1 - interpolatedDrift));
+
+        const corrected = measurements.map((m) => m * correctionFactor);
+
+        return {
+            corrected,
+            correctionFactor,
+            interpolatedDrift,
+            interpolatedDriftPercent: interpolatedDrift * 100
+        };
+    }
 }
 
 module.exports = Statistics;

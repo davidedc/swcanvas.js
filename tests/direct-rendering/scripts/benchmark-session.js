@@ -375,8 +375,13 @@ function measureRun(test, ctx, shapeCount, runIndex) {
 
 /**
  * Run performance test for a single test.
+ *
+ * @param {Object} test - Test definition
+ * @param {Object} stabilizer - Optional warmup stabilizer
+ * @param {number} testIndex - Index of this test in the session (for drift correction)
+ * @param {Object} throttleDetector - Optional throttle detector for drift timeline
  */
-function runPerformanceTest(test, stabilizer) {
+function runPerformanceTest(test, stabilizer, testIndex, throttleDetector) {
     const canvas = SWCanvas.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
     const ctx = canvas.getContext('2d');
     ctx.canvas = canvas;
@@ -395,9 +400,35 @@ function runPerformanceTest(test, stabilizer) {
     // Calculate statistics using enhanced module
     const stats = Statistics.analyze(measurements);
 
-    // Calculate derived metrics
+    // Calculate derived metrics (raw, uncorrected)
     const shapesPerSecond = (shapesPerRun / stats.mean) * 1000;
     const microsecondsPerShape = (stats.mean / shapesPerRun) * 1000;
+
+    // Apply drift correction if throttle detection is enabled
+    let driftCorrection = null;
+    let correctedStats = null;
+    let correctedShapesPerSecond = null;
+    let correctedMicrosecondsPerShape = null;
+
+    if (throttleDetector) {
+        const timeline = throttleDetector.getTimeline();
+        if (timeline.length >= 2) {
+            driftCorrection = Statistics.applyDriftCorrection(
+                measurements,
+                testIndex,
+                timeline
+            );
+
+            // Only report corrected values if meaningful correction was applied
+            if (driftCorrection.correctionFactor < 0.999) {
+                correctedStats = Statistics.analyze(driftCorrection.corrected);
+                correctedShapesPerSecond =
+                    (shapesPerRun / correctedStats.mean) * 1000;
+                correctedMicrosecondsPerShape =
+                    (correctedStats.mean / shapesPerRun) * 1000;
+            }
+        }
+    }
 
     return {
         test,
@@ -405,7 +436,11 @@ function runPerformanceTest(test, stabilizer) {
         statistics: stats,
         shapesPerSecond,
         microsecondsPerShape,
-        warmup: warmupResult
+        warmup: warmupResult,
+        driftCorrection,
+        correctedStats,
+        correctedShapesPerSecond,
+        correctedMicrosecondsPerShape
     };
 }
 
@@ -479,14 +514,30 @@ function main() {
             );
         }
 
-        const result = runPerformanceTest(test, warmupStabilizer);
+        const result = runPerformanceTest(
+            test,
+            warmupStabilizer,
+            i,
+            throttleDetector
+        );
         results.push(result);
 
         if (!quietMode) {
-            console.log(
+            let output =
                 `${formatNumber(result.shapesPerSecond)} shapes/sec ` +
-                    `(stddev: ${result.statistics.stddevPercent.toFixed(1)}%)`
-            );
+                `(stddev: ${result.statistics.stddevPercent.toFixed(1)}%)`;
+
+            // Show corrected value if drift correction was applied
+            if (result.correctedShapesPerSecond) {
+                const corrPct = (
+                    ((result.correctedShapesPerSecond - result.shapesPerSecond) /
+                        result.shapesPerSecond) *
+                    100
+                ).toFixed(1);
+                output += ` [corrected: ${formatNumber(result.correctedShapesPerSecond)} +${corrPct}%]`;
+            }
+
+            console.log(output);
         }
 
         // Periodic throttle check
@@ -532,41 +583,73 @@ function main() {
             filters: Object.keys(filters).length > 0 ? filters : undefined,
             duration: Date.now() - startTime
         },
-        throttling: throttleDetector ? throttleDetector.getSummary() : null,
-        results: results.map((r) => ({
-            id: r.test.id,
-            name: r.test.perfName,
-            category: r.test.category,
-            metadata: r.test.metadata || {},
-            statistics: {
-                n: r.statistics.n,
-                mean: r.statistics.mean,
-                median: r.statistics.median,
-                stddev: r.statistics.stddev,
-                stddevPercent: parseFloat(r.statistics.stddevPercent.toFixed(2)),
-                sem: r.statistics.sem,
-                semPercent: parseFloat(r.statistics.semPercent.toFixed(2)),
-                ci95: {
-                    low: r.statistics.ci95.low,
-                    high: r.statistics.ci95.high
+        throttling: throttleDetector
+            ? {
+                  ...throttleDetector.getSummary(),
+                  timeline: throttleDetector.getTimeline()
+              }
+            : null,
+        results: results.map((r) => {
+            const result = {
+                id: r.test.id,
+                name: r.test.perfName,
+                category: r.test.category,
+                metadata: r.test.metadata || {},
+                statistics: {
+                    n: r.statistics.n,
+                    mean: r.statistics.mean,
+                    median: r.statistics.median,
+                    stddev: r.statistics.stddev,
+                    stddevPercent: parseFloat(
+                        r.statistics.stddevPercent.toFixed(2)
+                    ),
+                    sem: r.statistics.sem,
+                    semPercent: parseFloat(r.statistics.semPercent.toFixed(2)),
+                    ci95: {
+                        low: r.statistics.ci95.low,
+                        high: r.statistics.ci95.high
+                    },
+                    min: r.statistics.min,
+                    max: r.statistics.max,
+                    q1: r.statistics.q1,
+                    q3: r.statistics.q3,
+                    outliers: r.statistics.outliers,
+                    raw: r.statistics.raw // Preserve all measurements
                 },
-                min: r.statistics.min,
-                max: r.statistics.max,
-                q1: r.statistics.q1,
-                q3: r.statistics.q3,
-                outliers: r.statistics.outliers,
-                raw: r.statistics.raw // Preserve all measurements
-            },
-            shapesPerSec: Math.round(r.shapesPerSecond),
-            usPerShape: parseFloat(r.microsecondsPerShape.toFixed(2)),
-            warmup: r.warmup
-                ? {
-                      iterations: r.warmup.iterations,
-                      stabilized: r.warmup.stabilized,
-                      finalVariance: r.warmup.finalVariance
-                  }
-                : null
-        }))
+                shapesPerSec: Math.round(r.shapesPerSecond),
+                usPerShape: parseFloat(r.microsecondsPerShape.toFixed(2)),
+                warmup: r.warmup
+                    ? {
+                          iterations: r.warmup.iterations,
+                          stabilized: r.warmup.stabilized,
+                          finalVariance: r.warmup.finalVariance
+                      }
+                    : null
+            };
+
+            // Add drift correction data if applied
+            if (r.driftCorrection && r.correctedStats) {
+                result.statistics.correctedMean = r.correctedStats.mean;
+                result.statistics.corrected = r.driftCorrection.corrected;
+                result.statistics.driftCorrection = {
+                    applied: true,
+                    factor: parseFloat(
+                        r.driftCorrection.correctionFactor.toFixed(4)
+                    ),
+                    interpolatedDriftPercent: parseFloat(
+                        r.driftCorrection.interpolatedDriftPercent.toFixed(2)
+                    )
+                };
+                result.correctedShapesPerSec = Math.round(
+                    r.correctedShapesPerSecond
+                );
+                result.correctedUsPerShape = parseFloat(
+                    r.correctedMicrosecondsPerShape.toFixed(2)
+                );
+            }
+
+            return result;
+        })
     };
 
     // Write output to file
