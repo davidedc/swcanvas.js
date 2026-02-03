@@ -35,6 +35,11 @@
  * NAMING PATTERN: {operation}[Thickness]_{opacity}
  *   - Opaq = Opaque only, Alpha = Semi-transparent, Any = Handles both
  *   - (No orientation suffix - arcs are defined by angles, not rotation)
+ *
+ * PERFORMANCE NOTE: Unifying fill_Opaq/fill_Alpha and strokeOuter_Opaq/strokeOuter_Alpha
+ * into single _Any methods was attempted but reverted. Benchmarks showed -2.8% regression
+ * for opaque operations vs only +0.14% improvement for semi-transparent. The separate
+ * methods avoid conditionals in hot loops - the "duplication" is intentional optimization.
  */
 
 // Module-level scratch buffer for scanline events - avoids per-scanline allocation

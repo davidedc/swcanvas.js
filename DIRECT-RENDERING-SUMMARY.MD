@@ -649,6 +649,8 @@ if (isOpaque) {
 }
 ```
 
+**Performance Note (ArcOps):** Unifying `fill_Opaq`/`fill_Alpha` and `strokeOuter_Opaq`/`strokeOuter_Alpha` into single `_Any` methods was attempted but reverted. Benchmarks showed -2.8% regression for opaque operations vs only +0.14% improvement for semi-transparent. Separate methods avoid conditionals in hot loops - the apparent "duplication" is intentional optimization.
+
 ### 8.4 Coordinate Systems by Shape
 
 | Class | Coordinate System | Reason |
