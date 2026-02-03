@@ -6,7 +6,7 @@
  * a detailed comparison with classification of changes.
  *
  * Now supports statistical significance testing with --statistical flag
- * when using v2.0 JSON baselines with raw measurements.
+ * when using v2.0/v3.0 JSON baselines with raw measurements.
  *
  * Usage:
  *   node compare-baselines.js --before <file> --after <file> [options]
@@ -16,7 +16,7 @@
  *   --after <file>           Baseline file (after changes)
  *   --threshold-opaque <N>   Threshold for opaque tests (default: 15)
  *   --threshold-semi <N>     Threshold for semi-transparent tests (default: 25)
- *   --statistical            Use statistical significance testing (requires v2.0 JSON)
+ *   --statistical            Use statistical significance testing (requires v2.0/v3.0 JSON)
  *   --json                   Output results in JSON format
  *   --quiet                  Only show summary statistics
  *   -h, --help               Show help message
@@ -40,9 +40,415 @@ let thresholdOpaque = 15;
 let thresholdSemi = 25;
 let beforeFile = null;
 let afterFile = null;
+let outputFile = null;
 let outputFormat = 'text';
 let quietMode = false;
 let useStatistical = false;
+let analyzeMode = false;
+
+// ============================================================================
+// Dimension Labels for --analyze mode
+// ============================================================================
+
+const DIMENSION_LABELS = {
+    strokeCategory: {
+        sw0: '0px (fill only)',
+        sw1: '1px (Bresenham)',
+        swXXS: '2-3px (XXS)',
+        swXS: '3-5px (XS)',
+        swS: '5-10px (S)',
+        swM: '10-20px (M)',
+        swL: '20-40px (L)',
+        swXL: '40-80px (XL)',
+        swXXL: '80+px (XXL)'
+    },
+    sizeCategory: {
+        szXXS: 'XXS (<5px)',
+        szXS: 'XS (5-15px)',
+        szS: 'S (16-39px)',
+        szM: 'M (40-79px)',
+        szL: 'L (80-159px)',
+        szXL: 'XL (160-319px)',
+        szXXL: 'XXL (320+px)'
+    },
+    angleCategory: {
+        angS: 'Small (30-90°)',
+        angM: 'Medium (90-180°)',
+        angL: 'Large (180-270°)',
+        angXL: 'Nearly Full (270-350°)'
+    },
+    operation: {
+        'fill-opaque': 'Fill (Opaque)',
+        'fill-semi': 'Fill (Semi)',
+        'stroke-opaque': 'Stroke (Opaque)',
+        'stroke-semi': 'Stroke (Semi)',
+        'fillstroke-opaque-opaque': 'Fill+Stroke (Both Opaque)',
+        'fillstroke-opaque-semi': 'Fill+Stroke (Opaq+Semi)',
+        'fillstroke-semi-opaque': 'Fill+Stroke (Semi+Opaq)',
+        'fillstroke-semi-semi': 'Fill+Stroke (Both Semi)'
+    }
+};
+
+// ============================================================================
+// Analysis Functions for --analyze mode
+// ============================================================================
+
+/**
+ * Group comparisons by a dimension and compute stats
+ */
+function analyzeByDimension(comparisons, dimensionKey) {
+    const groups = {};
+
+    for (const c of comparisons) {
+        const dimValue = c.metadata?.[dimensionKey] || 'unknown';
+        if (!groups[dimValue]) {
+            groups[dimValue] = { items: [], faster: 0, slower: 0, same: 0 };
+        }
+        groups[dimValue].items.push(c);
+
+        if (c.classification.includes('FASTER')) groups[dimValue].faster++;
+        else if (c.classification.includes('SLOWER') || c.classification === 'REGRESSION')
+            groups[dimValue].slower++;
+        else groups[dimValue].same++;
+    }
+
+    // Compute averages
+    for (const key of Object.keys(groups)) {
+        const items = groups[key].items;
+        groups[key].avgChange =
+            items.reduce((s, c) => s + c.change, 0) / items.length;
+        groups[key].count = items.length;
+    }
+
+    return groups;
+}
+
+/**
+ * Create cross-tabulation of two dimensions
+ */
+function crossTabulate(comparisons, dim1Key, dim2Key) {
+    const matrix = {};
+
+    for (const c of comparisons) {
+        const d1 = c.metadata?.[dim1Key] || 'unknown';
+        const d2 = c.metadata?.[dim2Key] || 'unknown';
+        const key = `${d1}|${d2}`;
+
+        if (!matrix[key]) matrix[key] = [];
+        matrix[key].push(c.change);
+    }
+
+    // Compute averages
+    const result = {};
+    for (const key of Object.keys(matrix)) {
+        const [d1, d2] = key.split('|');
+        if (!result[d1]) result[d1] = {};
+        result[d1][d2] = matrix[key].reduce((a, b) => a + b, 0) / matrix[key].length;
+    }
+
+    return result;
+}
+
+/**
+ * Print dimensional breakdown table
+ */
+function printDimensionBreakdown(title, groups, labelMap) {
+    console.log(`\n${'═'.repeat(70)}`);
+    console.log(title);
+    console.log('═'.repeat(70));
+    console.log(
+        'Dimension'.padEnd(24) + ' Count   Avg Δ%   Faster  Slower   Same'
+    );
+    console.log('─'.repeat(70));
+
+    const order = Object.keys(labelMap);
+    for (const key of order) {
+        if (!groups[key]) continue;
+        const g = groups[key];
+        const label = (labelMap[key] || key).padEnd(24);
+        const count = String(g.count).padStart(5);
+        const avg = (g.avgChange >= 0 ? '+' : '') + g.avgChange.toFixed(1) + '%';
+        const avgStr = avg.padStart(8);
+        const faster = String(g.faster).padStart(6);
+        const slower = String(g.slower).padStart(7);
+        const same = String(g.same).padStart(6);
+        console.log(`${label}${count}${avgStr}${faster}${slower}${same}`);
+    }
+
+    // Handle any 'unknown' entries
+    if (groups['unknown']) {
+        const g = groups['unknown'];
+        const label = 'Unknown'.padEnd(24);
+        const count = String(g.count).padStart(5);
+        const avg = (g.avgChange >= 0 ? '+' : '') + g.avgChange.toFixed(1) + '%';
+        const avgStr = avg.padStart(8);
+        const faster = String(g.faster).padStart(6);
+        const slower = String(g.slower).padStart(7);
+        const same = String(g.same).padStart(6);
+        console.log(`${label}${count}${avgStr}${faster}${slower}${same}`);
+    }
+}
+
+/**
+ * Print cross-tabulation matrix
+ */
+function printCrossTabMatrix(title, matrix, rowLabels, colLabels) {
+    console.log(`\n${'═'.repeat(80)}`);
+    console.log(title);
+    console.log('═'.repeat(80));
+
+    // Determine which columns have data
+    const activeCols = Object.keys(colLabels).filter((colKey) => {
+        return Object.keys(matrix).some((rowKey) => matrix[rowKey][colKey] !== undefined);
+    });
+
+    if (activeCols.length === 0) {
+        console.log('No data available for this cross-tabulation.');
+        return;
+    }
+
+    // Header row
+    let header = ''.padEnd(28);
+    for (const colKey of activeCols) {
+        header += colLabels[colKey].slice(0, 10).padStart(10);
+    }
+    console.log(header);
+    console.log('─'.repeat(80));
+
+    // Data rows
+    const activeRows = Object.keys(rowLabels).filter((rowKey) => matrix[rowKey]);
+    for (const rowKey of activeRows) {
+        let row = rowLabels[rowKey].padEnd(28);
+        for (const colKey of activeCols) {
+            const val = matrix[rowKey]?.[colKey];
+            if (val === undefined) {
+                row += 'N/A'.padStart(10);
+            } else {
+                const sign = val >= 0 ? '+' : '';
+                row += (sign + val.toFixed(1) + '%').padStart(10);
+            }
+        }
+        console.log(row);
+    }
+}
+
+/**
+ * Generate recommendation based on analysis
+ */
+function generateRecommendation(summary, comparisons, dimensionAnalysis) {
+    const recommendation = {
+        verdict: 'UNKNOWN',
+        confidence: 'low',
+        reasons: [],
+        suggestions: []
+    };
+
+    const totalTests = comparisons.length;
+    if (totalTests === 0) {
+        recommendation.verdict = 'NO_DATA';
+        recommendation.reasons.push('No test comparisons available');
+        return recommendation;
+    }
+
+    const fasterCount =
+        (summary.significant_faster || 0) +
+        (summary.likely_faster || 0) +
+        (summary.faster || 0);
+    const slowerCount =
+        (summary.significant_slower || 0) +
+        (summary.likely_slower || 0) +
+        (summary.slower || 0) +
+        (summary.regression || 0);
+    const fasterPct = ((fasterCount / totalTests) * 100).toFixed(1);
+    const slowerPct = ((slowerCount / totalTests) * 100).toFixed(1);
+
+    // Check for severe regressions (>5%)
+    const severeRegressions = comparisons.filter((c) => c.change < -5);
+    const strongImprovements = comparisons.filter((c) => c.change > 5);
+
+    // Opaque vs Semi analysis
+    const opaqueTests = comparisons.filter(
+        (c) => c.metadata?.operation && !c.metadata.operation.includes('semi')
+    );
+    const semiTests = comparisons.filter(
+        (c) => c.metadata?.operation && c.metadata.operation.includes('semi')
+    );
+
+    const opaqueAvg =
+        opaqueTests.length > 0
+            ? opaqueTests.reduce((s, c) => s + c.change, 0) / opaqueTests.length
+            : 0;
+    const semiAvg =
+        semiTests.length > 0
+            ? semiTests.reduce((s, c) => s + c.change, 0) / semiTests.length
+            : 0;
+
+    // Decision logic
+    if (parseFloat(slowerPct) > 50 && parseFloat(fasterPct) < 30) {
+        recommendation.verdict = 'DO_NOT_SHIP';
+        recommendation.confidence = 'high';
+        recommendation.reasons.push(
+            `${slowerPct}% of tests regressed (>50% threshold)`
+        );
+    } else if (severeRegressions.length > strongImprovements.length * 2) {
+        recommendation.verdict = 'DO_NOT_SHIP';
+        recommendation.confidence = 'medium';
+        recommendation.reasons.push(
+            `${severeRegressions.length} severe regressions (>5%) vs ${strongImprovements.length} strong improvements (>5%)`
+        );
+    } else if (
+        opaqueTests.length > 0 &&
+        semiTests.length > 0 &&
+        Math.abs(opaqueAvg - semiAvg) > 3
+    ) {
+        recommendation.verdict = 'INVESTIGATE';
+        recommendation.confidence = 'medium';
+        recommendation.reasons.push(
+            `Large divergence: opaque ${opaqueAvg.toFixed(1)}% vs semi ${semiAvg.toFixed(1)}%`
+        );
+        recommendation.suggestions.push(
+            'Consider hybrid approach with separate code paths'
+        );
+    } else if (parseFloat(fasterPct) > 60 && parseFloat(slowerPct) < 20) {
+        recommendation.verdict = 'SHIP';
+        recommendation.confidence = 'high';
+        recommendation.reasons.push(
+            `${fasterPct}% improved, only ${slowerPct}% regressed`
+        );
+    } else if (severeRegressions.length === 0 && parseFloat(slowerPct) < 30) {
+        recommendation.verdict = 'SHIP';
+        recommendation.confidence = 'medium';
+        recommendation.reasons.push('No severe regressions detected');
+        recommendation.reasons.push(
+            `${slowerPct}% regressed (within acceptable range)`
+        );
+    } else {
+        recommendation.verdict = 'NEUTRAL';
+        recommendation.confidence = 'low';
+        recommendation.reasons.push('Mixed results, no clear pattern');
+    }
+
+    // Add opaque/semi analysis to reasons if relevant
+    if (opaqueTests.length > 0 && semiTests.length > 0) {
+        recommendation.reasons.push(
+            `Opaque operations: avg ${opaqueAvg >= 0 ? '+' : ''}${opaqueAvg.toFixed(1)}%`
+        );
+        recommendation.reasons.push(
+            `Semi-transparent operations: avg ${semiAvg >= 0 ? '+' : ''}${semiAvg.toFixed(1)}%`
+        );
+    }
+
+    return recommendation;
+}
+
+/**
+ * Print top improvements and regressions
+ */
+function printTopChanges(comparisons) {
+    const sorted = [...comparisons].sort((a, b) => b.change - a.change);
+
+    // Top 10 improvements
+    const improvements = sorted.filter((c) => c.change > 0).slice(0, 10);
+    if (improvements.length > 0) {
+        console.log(`\n${'═'.repeat(80)}`);
+        console.log('TOP 10 IMPROVEMENTS');
+        console.log('═'.repeat(80));
+        for (const c of improvements) {
+            const changeStr = '+' + c.change.toFixed(2) + '%';
+            const meta = formatMetadataDescription(c);
+            console.log(`${changeStr.padStart(8)} | ${meta}`);
+        }
+    }
+
+    // Top 10 regressions
+    const regressions = sorted.filter((c) => c.change < 0).slice(-10).reverse();
+    if (regressions.length > 0) {
+        console.log(`\n${'═'.repeat(80)}`);
+        console.log('TOP 10 REGRESSIONS');
+        console.log('═'.repeat(80));
+        for (const c of regressions) {
+            const changeStr = c.change.toFixed(2) + '%';
+            const meta = formatMetadataDescription(c);
+            console.log(`${changeStr.padStart(8)} | ${meta}`);
+        }
+    }
+}
+
+/**
+ * Format a comparison's metadata into a human-readable description
+ */
+function formatMetadataDescription(comparison) {
+    const parts = [comparison.name];
+
+    if (comparison.metadata) {
+        const m = comparison.metadata;
+        const details = [];
+
+        if (m.strokeCategory && DIMENSION_LABELS.strokeCategory[m.strokeCategory]) {
+            details.push(DIMENSION_LABELS.strokeCategory[m.strokeCategory]);
+        }
+        if (m.sizeCategory && DIMENSION_LABELS.sizeCategory[m.sizeCategory]) {
+            details.push(DIMENSION_LABELS.sizeCategory[m.sizeCategory]);
+        }
+        if (m.angleCategory && DIMENSION_LABELS.angleCategory[m.angleCategory]) {
+            details.push(DIMENSION_LABELS.angleCategory[m.angleCategory]);
+        }
+
+        if (details.length > 0) {
+            parts.push(`[${details.join(', ')}]`);
+        }
+    }
+
+    return parts.join(' ');
+}
+
+/**
+ * Print recommendation section
+ */
+function printRecommendation(recommendation) {
+    console.log(`\n${'═'.repeat(80)}`);
+    console.log('RECOMMENDATION');
+    console.log('═'.repeat(80));
+
+    // Verdict with color
+    let verdictColor = '';
+    let verdictReset = '';
+    switch (recommendation.verdict) {
+        case 'SHIP':
+            verdictColor = '\x1b[32m'; // Green
+            verdictReset = '\x1b[0m';
+            break;
+        case 'DO_NOT_SHIP':
+            verdictColor = '\x1b[31m'; // Red
+            verdictReset = '\x1b[0m';
+            break;
+        case 'INVESTIGATE':
+            verdictColor = '\x1b[33m'; // Yellow
+            verdictReset = '\x1b[0m';
+            break;
+    }
+
+    console.log(
+        `Verdict: ${verdictColor}${recommendation.verdict}${verdictReset}`
+    );
+    console.log(`Confidence: ${recommendation.confidence}`);
+    console.log('');
+
+    if (recommendation.reasons.length > 0) {
+        console.log('Reasons:');
+        for (const reason of recommendation.reasons) {
+            console.log(`  • ${reason}`);
+        }
+    }
+
+    if (recommendation.suggestions.length > 0) {
+        console.log('');
+        console.log('Suggestions:');
+        for (const suggestion of recommendation.suggestions) {
+            console.log(`  • ${suggestion}`);
+        }
+    }
+}
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -62,8 +468,12 @@ Options:
   --threshold-opaque <N>   Threshold % for opaque tests (default: 15)
   --threshold-semi <N>     Threshold % for semi-transparent tests (default: 25)
   --statistical            Use statistical significance testing (p-values, CI)
-                           Requires v2.0 JSON baselines with raw measurements
+                           Requires v2.0/v3.0 JSON baselines with raw measurements
+  --analyze                Enable detailed dimensional analysis with recommendations
+                           (see Dimensional Analysis section below)
   --json                   Output results in JSON format
+  --output <file>          Write output to file instead of stdout (recommended for
+                           large JSON output to avoid pipe truncation issues)
   --quiet                  Only show summary statistics
   -h, --help               Show this help message
 
@@ -80,11 +490,41 @@ Classification (--statistical):
   LIKELY_SLOWER       - Significant p-value but CIs overlap
   SIGNIFICANT_SLOWER  - p < 0.05, CIs don't overlap, negative change
 
+Dimensional Analysis (--analyze):
+  Requires v3.0 JSON baselines with metadata. Best used with --statistical.
+
+  Provides:
+    - Breakdowns by operation type, stroke width, size category, arc angle
+    - Cross-tabulation matrices (e.g., Operation x Arc Angle)
+    - Top 10 improvements and regressions with context
+    - Automated recommendation with confidence level
+
+  Recommendation Verdicts:
+    SHIP          - Safe to ship (majority improved, few regressions)
+    DO_NOT_SHIP   - Significant regressions detected
+    INVESTIGATE   - Mixed results require investigation (e.g., opaque/semi divergence)
+    NEUTRAL       - No clear pattern, use judgment
+
 Examples:
+  # Basic threshold-based comparison
   node compare-baselines.js --before baseline-before.txt --after baseline-after.txt
+
+  # Statistical significance testing (recommended for v3.0 JSON)
   node compare-baselines.js --before b1.json --after b2.json --statistical
+
+  # Full analysis with recommendations (recommended workflow)
+  node compare-baselines.js --before b1.json --after b2.json --statistical --analyze
+
+  # JSON output to file (recommended for large outputs)
+  node compare-baselines.js --before b1.json --after b2.json --statistical --analyze --json --output comparison.json
+
+  # JSON output to stdout (may truncate with large datasets when piped)
+  node compare-baselines.js --before b1.json --after b2.json --json
+
+  # Custom thresholds for threshold-based mode
   node compare-baselines.js --before b1.txt --after b2.txt --threshold-opaque 20
-  node compare-baselines.js --before b1.txt --after b2.txt --json > comparison.json
+
+See PERFORMANCE-TESTING-WORKFLOW.md for detailed documentation.
 `);
     process.exit(0);
 }
@@ -117,6 +557,13 @@ for (let i = 0; i < args.length; i++) {
         quietMode = true;
     } else if (arg === '--statistical') {
         useStatistical = true;
+    } else if (arg === '--analyze') {
+        analyzeMode = true;
+    } else if (arg === '--output' && args[i + 1]) {
+        outputFile = args[i + 1];
+        i++;
+    } else if (arg.startsWith('--output=')) {
+        outputFile = arg.split('=')[1];
     }
 }
 
@@ -188,7 +635,7 @@ function parseTextBaseline(content) {
 
 /**
  * Parse a JSON baseline file and extract test results.
- * Supports both v1.0 and v2.0 formats.
+ * Supports v1.0, v2.0, and v3.0 formats.
  */
 function parseJSONBaseline(content) {
     const data = JSON.parse(content);
@@ -204,7 +651,7 @@ function parseJSONBaseline(content) {
             metadata: r.metadata || {}
         };
 
-        // v2.0 has full statistics including raw measurements
+        // v2.0/v3.0 have full statistics including raw measurements
         if (r.statistics) {
             result.statistics = r.statistics;
         }
@@ -358,7 +805,7 @@ try {
         process.exit(1);
     }
 
-    // Check for v2.0 if using statistical mode
+    // Check for v2.0/v3.0 if using statistical mode
     if (useStatistical) {
         const hasRawBefore = beforeData.results.some(
             (r) => r.statistics && r.statistics.raw
@@ -369,7 +816,7 @@ try {
 
         if (!hasRawBefore || !hasRawAfter) {
             console.warn(
-                '\x1b[33mWarning: --statistical requires v2.0 JSON baselines with raw measurements.\x1b[0m'
+                '\x1b[33mWarning: --statistical requires v2.0/v3.0 JSON baselines with raw measurements.\x1b[0m'
             );
             console.warn('Falling back to threshold-based classification.\n');
             // Don't fail, just warn - we'll handle it per-test
@@ -464,8 +911,42 @@ try {
             confidence: classificationResult.confidence,
             reasoning: classificationResult.reasoning,
             pValue: classificationResult.pValue,
-            isSemi: isSemiTransparent(after.name, after.metadata)
+            isSemi: isSemiTransparent(after.name, after.metadata),
+            metadata: after.metadata || {}
         });
+    }
+
+    // Compute dimensional analyses if --analyze mode
+    let analysisResult = null;
+    if (analyzeMode) {
+        const byOperation = analyzeByDimension(comparisons, 'operation');
+        const byStroke = analyzeByDimension(comparisons, 'strokeCategory');
+        const bySize = analyzeByDimension(comparisons, 'sizeCategory');
+        const byAngle = analyzeByDimension(comparisons, 'angleCategory');
+
+        // Cross-tabulation: operation × angle
+        const opByAngle = crossTabulate(comparisons, 'operation', 'angleCategory');
+
+        // Cross-tabulation: operation × stroke
+        const opByStroke = crossTabulate(comparisons, 'operation', 'strokeCategory');
+
+        // Compute recommendation
+        const recommendation = generateRecommendation(counts, comparisons, {
+            byOperation,
+            byStroke,
+            bySize,
+            byAngle
+        });
+
+        analysisResult = {
+            byOperation,
+            byStroke,
+            bySize,
+            byAngle,
+            opByAngle,
+            opByStroke,
+            recommendation
+        };
     }
 
     // Output results
@@ -479,6 +960,7 @@ try {
                 thresholdOpaque: thresholdOpaque,
                 thresholdSemi: thresholdSemi,
                 statisticalMode: useStatistical,
+                analyzeMode: analyzeMode,
                 timestamp: new Date().toISOString()
             },
             summary: {
@@ -488,7 +970,19 @@ try {
             },
             comparisons: comparisons
         };
-        console.log(JSON.stringify(output, null, 2));
+
+        // Add analysis data if --analyze mode
+        if (analysisResult) {
+            output.analysis = analysisResult;
+        }
+
+        const jsonOutput = JSON.stringify(output, null, 2);
+        if (outputFile) {
+            fs.writeFileSync(outputFile, jsonOutput, 'utf8');
+            console.log(`Comparison results written to: ${outputFile}`);
+        } else {
+            console.log(jsonOutput);
+        }
     } else {
         // Text output
         console.log('');
@@ -593,6 +1087,66 @@ try {
             console.log(
                 `  Average change: ${avgChange >= 0 ? '+' : ''}${avgChange.toFixed(1)}%`
             );
+            console.log('');
+        }
+
+        // Detailed analysis output (--analyze mode)
+        if (analyzeMode && analysisResult) {
+            // Update header for detailed analysis
+            console.log('');
+            console.log('═'.repeat(80));
+            console.log('DETAILED ANALYSIS');
+            console.log('═'.repeat(80));
+
+            // By operation type
+            printDimensionBreakdown(
+                'BY OPERATION TYPE',
+                analysisResult.byOperation,
+                DIMENSION_LABELS.operation
+            );
+
+            // By stroke width
+            printDimensionBreakdown(
+                'BY STROKE WIDTH',
+                analysisResult.byStroke,
+                DIMENSION_LABELS.strokeCategory
+            );
+
+            // By size category
+            printDimensionBreakdown(
+                'BY SIZE CATEGORY',
+                analysisResult.bySize,
+                DIMENSION_LABELS.sizeCategory
+            );
+
+            // By angle category (arc tests only)
+            const hasAngleData = Object.keys(analysisResult.byAngle).some(
+                (k) => k !== 'unknown'
+            );
+            if (hasAngleData) {
+                printDimensionBreakdown(
+                    'BY ARC ANGLE (arc tests only)',
+                    analysisResult.byAngle,
+                    DIMENSION_LABELS.angleCategory
+                );
+            }
+
+            // Cross-tabulation: operation × angle
+            if (hasAngleData) {
+                printCrossTabMatrix(
+                    'OPERATION × ARC ANGLE MATRIX',
+                    analysisResult.opByAngle,
+                    DIMENSION_LABELS.operation,
+                    DIMENSION_LABELS.angleCategory
+                );
+            }
+
+            // Top improvements and regressions
+            printTopChanges(comparisons);
+
+            // Recommendation
+            printRecommendation(analysisResult.recommendation);
+
             console.log('');
         }
 

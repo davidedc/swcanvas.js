@@ -10,7 +10,45 @@
  * - >1.5px: Thick stroke algorithms (SpanOps, QuadScanOps, annulus)
  *
  * This generator creates tests that isolate these code paths for benchmarking.
+ *
+ * REPRODUCIBLE PARAMETERS:
+ * Each test uses deterministically-seeded random values for strokeWidth, shapeSize,
+ * and arcAngle. This ensures:
+ * - All measurement runs use identical parameter values (reduces stddev)
+ * - Different tests still sample the full category range (based on test ID hash)
+ * - Benchmark results are reproducible across sessions
  */
+
+/**
+ * Simple string hash function for reproducible seeding.
+ * Uses djb2 algorithm variant for good distribution.
+ * @param {string} str - String to hash
+ * @returns {number} Hash value (positive 32-bit integer)
+ */
+function hashString(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;  // Convert to 32-bit integer
+    }
+    return Math.abs(hash);
+}
+
+/**
+ * Create a seeded pseudo-random number generator.
+ * Uses mulberry32 algorithm for simplicity and quality.
+ * @param {number} seed - Initial seed
+ * @returns {function} Function returning random number in [0, 1)
+ */
+function createSeededRandom(seed) {
+    return function() {
+        seed |= 0;
+        seed = seed + 0x6D2B79F5 | 0;
+        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
 
 /**
  * Register parametric performance tests based on configuration.
@@ -29,7 +67,11 @@
  * The drawFunction receives:
  * - ctx: Canvas context
  * - instances: Number of shapes to draw (0 = single for visual, >0 for perf)
- * - params: Object with { strokeKey, sizeKey, angleKey, operation }
+ * - params: Object with:
+ *   - strokeKey, sizeKey, angleKey, operation: Category keys for metadata
+ *   - strokeWidth: Pre-computed stroke width (reproducible across runs)
+ *   - shapeSize: Pre-computed shape size (reproducible across runs)
+ *   - arcAngle: Pre-computed arc angle in radians (null if not arc test)
  */
 function registerParametricPerfTests(config) {
     const {
@@ -41,7 +83,8 @@ function registerParametricPerfTests(config) {
         includeArcAngles = false,
         strokeCategories = Object.keys(PERF_SIZE_CATEGORIES.strokeWidth),
         sizeCategories = Object.keys(PERF_SIZE_CATEGORIES.shapeSize),
-        angleCategories = Object.keys(PERF_SIZE_CATEGORIES.arcAngle)
+        angleCategories = Object.keys(PERF_SIZE_CATEGORIES.arcAngle),
+        narrowRange = false  // Use ±0.5% around category midpoint for reduced variance
     } = config;
 
     // Get category labels for human-readable names
@@ -105,12 +148,23 @@ function registerParametricPerfTests(config) {
                         perfName += `, ${angleLabel}`;
                     }
 
-                    // Create params object for the draw function
+                    // Create deterministic seed from test ID for reproducible values
+                    const testSeed = hashString(testId);
+                    const seededRandom = createSeededRandom(testSeed);
+
+                    // Pre-compute values using seeded random (same for all measurement runs)
+                    // This dramatically reduces stddev by eliminating parameter variation
+                    // When narrowRange is true (via global.narrowRange), use ±0.5% around midpoint
+                    const useNarrowRange = narrowRange || (typeof global !== 'undefined' && global.narrowRange);
                     const params = {
                         strokeKey,
                         sizeKey,
                         angleKey,
-                        operation
+                        operation,
+                        // Pre-computed reproducible values:
+                        strokeWidth: getStrokeWidthFromCategory(strokeKey, seededRandom, useNarrowRange),
+                        shapeSize: getShapeSizeFromCategory(sizeKey, seededRandom, useNarrowRange),
+                        arcAngle: angleKey ? getArcAngleFromCategory(angleKey, seededRandom, useNarrowRange) : null
                     };
 
                     // Create the draw function wrapper
@@ -152,6 +206,7 @@ function registerParametricPerfTests(config) {
 /**
  * Helper: Generate random position within canvas bounds.
  * Used by draw functions to spread shapes across canvas in performance mode.
+ * Uses SeededRandom for reproducible positions across measurement runs.
  *
  * @param {number} canvasWidth - Canvas width
  * @param {number} canvasHeight - Canvas height
@@ -160,14 +215,15 @@ function registerParametricPerfTests(config) {
  */
 function getRandomPosition(canvasWidth, canvasHeight, margin = 50) {
     return {
-        x: margin + Math.random() * (canvasWidth - 2 * margin),
-        y: margin + Math.random() * (canvasHeight - 2 * margin)
+        x: margin + SeededRandom.getRandom() * (canvasWidth - 2 * margin),
+        y: margin + SeededRandom.getRandom() * (canvasHeight - 2 * margin)
     };
 }
 
 /**
  * Helper: Generate random line endpoints.
  * Used by line performance tests.
+ * Uses SeededRandom for reproducible positions across measurement runs.
  *
  * @param {number} canvasWidth - Canvas width
  * @param {number} canvasHeight - Canvas height
@@ -176,9 +232,9 @@ function getRandomPosition(canvasWidth, canvasHeight, margin = 50) {
  */
 function getRandomLineEndpoints(canvasWidth, canvasHeight, length) {
     const margin = Math.max(50, length / 2);
-    const cx = margin + Math.random() * (canvasWidth - 2 * margin);
-    const cy = margin + Math.random() * (canvasHeight - 2 * margin);
-    const angle = Math.random() * Math.PI * 2;
+    const cx = margin + SeededRandom.getRandom() * (canvasWidth - 2 * margin);
+    const cy = margin + SeededRandom.getRandom() * (canvasHeight - 2 * margin);
+    const angle = SeededRandom.getRandom() * Math.PI * 2;
     const halfLen = length / 2;
 
     return {
@@ -192,6 +248,7 @@ function getRandomLineEndpoints(canvasWidth, canvasHeight, length) {
 /**
  * Helper: Generate horizontal line endpoints (y1 === y2).
  * Used by horizontal line performance tests.
+ * Uses SeededRandom for reproducible positions across measurement runs.
  *
  * @param {number} canvasWidth - Canvas width
  * @param {number} canvasHeight - Canvas height
@@ -200,8 +257,8 @@ function getRandomLineEndpoints(canvasWidth, canvasHeight, length) {
  */
 function getHorizontalLineEndpoints(canvasWidth, canvasHeight, length) {
     const margin = Math.max(50, length / 2);
-    const cx = margin + Math.random() * (canvasWidth - 2 * margin);
-    const cy = margin + Math.random() * (canvasHeight - 2 * margin);
+    const cx = margin + SeededRandom.getRandom() * (canvasWidth - 2 * margin);
+    const cy = margin + SeededRandom.getRandom() * (canvasHeight - 2 * margin);
     const halfLen = length / 2;
 
     return {
@@ -215,6 +272,7 @@ function getHorizontalLineEndpoints(canvasWidth, canvasHeight, length) {
 /**
  * Helper: Generate vertical line endpoints (x1 === x2).
  * Used by vertical line performance tests.
+ * Uses SeededRandom for reproducible positions across measurement runs.
  *
  * @param {number} canvasWidth - Canvas width
  * @param {number} canvasHeight - Canvas height
@@ -223,8 +281,8 @@ function getHorizontalLineEndpoints(canvasWidth, canvasHeight, length) {
  */
 function getVerticalLineEndpoints(canvasWidth, canvasHeight, length) {
     const margin = Math.max(50, length / 2);
-    const cx = margin + Math.random() * (canvasWidth - 2 * margin);
-    const cy = margin + Math.random() * (canvasHeight - 2 * margin);
+    const cx = margin + SeededRandom.getRandom() * (canvasWidth - 2 * margin);
+    const cy = margin + SeededRandom.getRandom() * (canvasHeight - 2 * margin);
     const halfLen = length / 2;
 
     return {
@@ -239,6 +297,7 @@ function getVerticalLineEndpoints(canvasWidth, canvasHeight, length) {
  * Helper: Generate diagonal line endpoints (not horizontal or vertical).
  * Angles avoid 0°, 90°, 180°, 270° to ensure truly diagonal lines.
  * Used by diagonal line performance tests.
+ * Uses SeededRandom for reproducible positions across measurement runs.
  *
  * @param {number} canvasWidth - Canvas width
  * @param {number} canvasHeight - Canvas height
@@ -247,13 +306,13 @@ function getVerticalLineEndpoints(canvasWidth, canvasHeight, length) {
  */
 function getDiagonalLineEndpoints(canvasWidth, canvasHeight, length) {
     const margin = Math.max(50, length / 2);
-    const cx = margin + Math.random() * (canvasWidth - 2 * margin);
-    const cy = margin + Math.random() * (canvasHeight - 2 * margin);
+    const cx = margin + SeededRandom.getRandom() * (canvasWidth - 2 * margin);
+    const cy = margin + SeededRandom.getRandom() * (canvasHeight - 2 * margin);
 
     // Random angle avoiding 0, 90, 180, 270 degrees
     // Use angles in range [π/8, 3π/8] within each quadrant
-    const quadrant = Math.floor(Math.random() * 4);
-    const angleInQuadrant = (Math.PI / 8) + Math.random() * (Math.PI / 4);
+    const quadrant = Math.floor(SeededRandom.getRandom() * 4);
+    const angleInQuadrant = (Math.PI / 8) + SeededRandom.getRandom() * (Math.PI / 4);
     const angle = quadrant * (Math.PI / 2) + angleInQuadrant;
 
     const halfLen = length / 2;

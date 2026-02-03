@@ -53,11 +53,9 @@ registerParametricPerfTests({
         const fillSemi = operation.includes('fill-semi');
         const strokeSemi = operation.includes('stroke-semi');
 
-        // Get stroke width from category
-        const strokeWidth = getStrokeWidthFromCategory(strokeKey, Math.random);
-
-        // Get radius from size category (size = diameter)
-        const radius = getRadiusFromShapeCategory(sizeKey, Math.random);
+        // Use pre-computed values from params (same for all measurement runs)
+        const strokeWidth = params.strokeWidth;
+        const radius = params.shapeSize / 2;  // shapeSize is diameter
 
         // Set up styles based on operation
         if (hasFill) {
@@ -70,9 +68,10 @@ registerParametricPerfTests({
 
         for (let i = 0; i < numToDraw; i++) {
             // Random position with margin for shape + stroke
+            // Use SeededRandom for reproducible positions across measurement runs
             const margin = Math.max(50, radius + strokeWidth);
-            const cx = margin + Math.random() * (canvasWidth - 2 * margin);
-            const cy = margin + Math.random() * (canvasHeight - 2 * margin);
+            const cx = margin + SeededRandom.getRandom() * (canvasWidth - 2 * margin);
+            const cy = margin + SeededRandom.getRandom() * (canvasHeight - 2 * margin);
 
             // Draw fill first, then stroke (standard Canvas order)
             if (hasFill) {

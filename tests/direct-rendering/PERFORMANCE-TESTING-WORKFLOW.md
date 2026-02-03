@@ -16,7 +16,9 @@ For technical details on how benchmarking works (VSync cliff detection, timing m
 6. [Phase 5: Analyze and Conclude](#6-phase-5-analyze-and-conclude)
 7. [Advanced Techniques](#7-advanced-techniques)
 8. [Case Study: RoundedRect SpanOps Refactoring](#8-case-study-roundedrect-spanops-refactoring)
-9. [Enhanced Benchmarking System (v2.0)](#9-enhanced-benchmarking-system-v20) ← **NEW**
+9. [Enhanced Benchmarking System (v3.0)](#9-enhanced-benchmarking-system-v30)
+   - [9.9 Outlier Filtering](#99-outlier-filtering)
+   - [9.10 Fixed Position Mode](#910-fixed-position-mode)
 10. [Quick Reference](#10-quick-reference)
 
 ---
@@ -588,41 +590,67 @@ Based on practical observations, use these thresholds:
 
 ---
 
-## 9. Enhanced Benchmarking System (v2.0)
+## 9. Enhanced Benchmarking System (v3.0)
 
 ### 9.1 Overview
 
-The enhanced benchmarking system addresses fundamental statistical problems in performance measurement:
+The v3.0 benchmarking system uses **statistical filtering** to achieve reliable, low-variance measurements (~0.7-0.9% CV):
 
+- **Time-based warmup**: 3000ms default ensures thermal steady state
+- **Super-measurement architecture**: 30 measurements × 5 sub-runs with stability detection
+- **Sub-run CV checking**: Detects system instability, retries when CV > 5%
+- **Minimum time selection**: Takes fastest time from stable measurement windows
+- **IQR-based outlier removal**: Removes measurements from brief disturbances
 - **Sample Standard Deviation**: Uses n-1 divisor for unbiased estimation
 - **Confidence Intervals**: 95% CI using t-distribution
 - **Welch's t-test**: Statistical significance testing for comparisons
-- **Outlier Detection**: IQR-based outlier identification
-- **Raw Measurement Storage**: All measurements preserved for retroactive analysis
-- **Throttle Detection**: Detects CPU thermal throttling during long sessions
-- **Warmup Stabilization**: Adaptive JIT warmup detection
 
-### 9.2 New Tools
+### 9.2 Primary Tool: benchmark-session.js
 
-#### Benchmark Session Orchestrator
-
-The main tool for running benchmarks with enhanced features:
+The main tool for running benchmarks with statistical filtering:
 
 ```bash
 node tests/direct-rendering/scripts/benchmark-session.js \
   --output perf-baselines/baseline.json \
   --filters '{"shape":"arc","stroke":"sw1px"}' \
-  --runs 50 \
-  --shapes 5000 \
-  --throttle-check \
-  --warmup-stabilize
+  --warmup-ms 3000 \
+  --super-measurements 30 \
+  --fixed-positions \
+  --skip-outliers
 ```
 
-**Features:**
+**Key Features:**
 - Writes JSON directly to file (avoids npm stdout pollution)
-- Periodic throttle checks every 10 tests
-- Adaptive warmup until JIT stabilizes
-- Full v2.0 JSON format with raw measurements
+- Time-based warmup for thermal steady state
+- Sub-run CV checking with automatic retries on instability
+- Full v3.0 JSON format with raw and trimmed measurements
+- Reproducible parameters (seeded RNG for consistent values across runs)
+
+**CLI Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--warmup-ms <N>` | 3000 | Time-based warmup in milliseconds |
+| `--super-measurements <N>` | 30 | Number of data points per test |
+| `--sub-runs <N>` | 5 | Sub-runs per super-measurement |
+| `--shapes <N>` | 5000 | Shapes per sub-run |
+| `--cv-threshold <N>` | 5 | Max CV% to accept measurement |
+| `--max-retries <N>` | 3 | Retries for unstable measurements |
+| `--cooldown <ms>` | 100 | Delay between super-measurements |
+| `--fixed-positions` | off | Use identical positions for all runs |
+| `--skip-outliers` | off | Enable MAD-based outlier filtering |
+
+**With exclusion filters** (skip large categories for faster runs):
+
+```bash
+node tests/direct-rendering/scripts/benchmark-session.js \
+  --output perf-baselines/arc-baseline.json \
+  --filters '{"shape":"arc","excludeSize":["szL","szXL","szXXL"],"excludeStroke":["swL","swXL","swXXL"]}' \
+  --warmup-ms 3000 \
+  --super-measurements 30
+```
+
+This reduces arc tests from ~1400 to ~530 by excluding large size/stroke categories.
 
 #### Enhanced Statistics in run-performance-tests.js
 
@@ -653,43 +681,59 @@ node tests/direct-rendering/compare-baselines.js \
 - `LIKELY_SLOWER` - Significant p-value but CIs overlap
 - `SIGNIFICANT_SLOWER` - p < 0.05, CIs don't overlap, negative change
 
-### 9.3 JSON Format v2.0
+### 9.3 JSON Format v3.0
 
-The new JSON format includes full statistical data:
+The v3.0 JSON format includes full statistical data and filtering metadata:
 
 ```json
 {
-  "version": "2.0",
+  "version": "3.0",
   "metadata": {
     "timestamp": "2026-02-02T15:30:00.000Z",
     "gitCommit": "abc1234",
     "gitBranch": "main",
-    "nodeVersion": "v20.10.0",
+    "nodeVersion": "v22.15.0",
     "platform": "darwin arm64",
-    "config": { "shapesPerRun": 5000, "runs": 50 }
-  },
-  "throttling": {
-    "stable": true,
-    "maxDriftPercent": 3.2,
-    "recommendation": "System performance was stable."
+    "config": {
+      "warmupMs": 3000,
+      "superMeasurements": 30,
+      "subRuns": 5,
+      "shapesPerRun": 5000,
+      "cvThreshold": 5,
+      "maxRetries": 3,
+      "cooldownMs": 100
+    }
   },
   "results": [{
     "id": "arc-perf-sw1px-szM-angS-stroke-opaque",
     "name": "Arc Stroke Opaque: 1px, M, Small",
     "statistics": {
-      "n": 50,
+      "n": 28,
       "mean": 12.5,
       "median": 12.3,
-      "stddev": 0.8,
-      "stddevPercent": 6.4,
-      "sem": 0.11,
-      "semPercent": 0.9,
-      "ci95": { "low": 12.28, "high": 12.72 },
-      "outliers": 2,
-      "raw": [12.5, 12.3, ...]
+      "stddev": 0.08,
+      "stddevPercent": 0.64,
+      "sem": 0.015,
+      "semPercent": 0.12,
+      "ci95": { "low": 12.47, "high": 12.53 },
+      "raw": [12.5, 12.3, ...],
+      "trimmed": [12.5, 12.3, ...]
+    },
+    "rawStatistics": {
+      "n": 30,
+      "mean": 12.6,
+      "stddevPercent": 1.2
     },
     "shapesPerSec": 400000,
-    "usPerShape": 2.5
+    "usPerShape": 2.5,
+    "filtering": {
+      "totalAttempts": 35,
+      "accepted": 30,
+      "totalRetries": 5,
+      "forcedCount": 0,
+      "outlierCount": 2,
+      "avgSubRunCV": 2.3
+    }
   }]
 }
 ```
@@ -756,13 +800,178 @@ New system: p=0.001 → SIGNIFICANT_FASTER (different conclusion!)
 
 ### 9.6 Best Practices
 
-1. **Use 50+ runs** for statistical significance testing
-2. **Enable throttle checking** for sessions longer than 5 minutes
-3. **Use warmup stabilization** for the first test of a type
-4. **Store raw measurements** (always happens with v2.0 format)
-5. **Compare with `--statistical`** for p-value based decisions
-6. **Close other applications** during benchmarking
-7. **Use a dedicated terminal** in the same thermal state for before/after
+1. **Use 30+ super-measurements** for reliable statistical analysis
+2. **Use time-based warmup** (3000ms default) to ensure JIT and thermal stability
+3. **Enable `--fixed-positions`** to eliminate position-related variance
+4. **Enable `--skip-outliers`** (IQR-based) to filter noise from system interrupts
+5. **Store raw measurements** (always happens with v3.0 format)
+6. **Compare with `--statistical`** for p-value based decisions
+7. **Close other applications** during benchmarking
+8. **Run outside Claude Code** - Claude consumes CPU while processing, affecting results
+
+### 9.7 Reproducible Parameters
+
+Each parametric performance test uses deterministically-seeded random values for strokeWidth, shapeSize, and arcAngle. This ensures:
+
+- **All measurement runs use identical parameter values** - A test for "szM (40-79px)" will use the same specific value (e.g., 52.7px) for all 50 measurement runs, not different random values each run
+- **Different tests still sample the full category range** - Test A might use 52.7px, Test B might use 71.3px, based on test ID hash
+- **Benchmark results are reproducible across sessions** - Running the same test twice produces identical parameter values
+
+**Impact on StdDev:**
+- Before: 15-40% typical (different random values each run)
+- After: 5-10% expected (same values all runs, only position/timing varies)
+
+This change dramatically improves statistical reliability by eliminating parameter variation as a source of noise.
+
+### 9.8 Variance Management in v3.0
+
+The v3.0 system manages variance through **statistical filtering** rather than active throttle mitigation. Key differences from v2.0:
+
+| v2.0 Approach | v3.0 Approach |
+|---------------|---------------|
+| Throttle detection with reference benchmarks | Sub-run CV checking for stability detection |
+| Drift correction algorithms | Retry unstable measurements (CV > 5%) |
+| Active pausing when drift detected | Passive: filter outliers post-collection |
+| Complex mitigation options | Simple: `--cooldown` between measurements |
+
+#### How v3.0 Handles Variance
+
+1. **Sub-run stability checking**: Each super-measurement has 5 sub-runs. If CV > 5%, the system was unstable → retry
+2. **Take minimum from stable windows**: When system is stable (CV ≤ 5%), the minimum reflects true performance
+3. **IQR outlier removal**: Filters remaining noise from brief system interrupts
+4. **Simple cooldown**: `--cooldown <ms>` (default 100ms) between super-measurements
+
+#### Investigation Results
+
+Throttle detection was removed after investigation showed:
+- macOS system noise is random, intermittent, and uncontrollable
+- Drift detection had 8.84% stddev - too noisy to reliably detect throttling
+- Statistical filtering achieves 0.7-0.9% CV vs 10-20% with throttle-based approach
+
+See [BENCHMARK-INVESTIGATION-RESULTS.md](BENCHMARK-INVESTIGATION-RESULTS.md) for detailed analysis.
+
+### 9.9 Outlier Filtering
+
+Performance measurements can include outliers from GC pauses, system interrupts, or thermal spikes. Use `--skip-outliers` to filter these using IQR (Interquartile Range) filtering:
+
+- Values below Q1 - 1.5×IQR or above Q3 + 1.5×IQR are removed
+- Requires at least 4 measurements to apply filtering
+- Reports `outlierCount` in JSON output for transparency
+
+### 9.10 Fixed Position Mode
+
+Stroke operations (especially Bresenham 1px strokes) are sensitive to shape positions and angles, which can cause high variance (10-25%) even with seeded random values. Use `--fixed-positions` to eliminate this variance.
+
+#### How It Works
+
+Without `--fixed-positions`:
+- Run 0: seed 12345 → positions A₁, A₂, A₃, ...
+- Run 1: seed 12346 → positions B₁, B₂, B₃, ...
+- Run 2: seed 12347 → positions C₁, C₂, C₃, ...
+- Different positions cause variance from octant selection, cache effects, etc.
+
+With `--fixed-positions`:
+- All runs: seed 12345 → positions A₁, A₂, A₃, ...
+- Same positions for all 50 runs = minimal variance
+
+#### Variance Comparison
+
+| Test Type | Without | With `--fixed-positions` |
+|-----------|---------|--------------------------|
+| Arc Stroke Opaque 1px | 10-20% | **2-5%** |
+| Arc Stroke Semi 1px | 15-25% | **1-3%** |
+| Arc Fill+Stroke | 15-22% | **2-5%** |
+
+#### Usage
+
+```bash
+# Recommended for production baselines (minimum variance)
+node tests/direct-rendering/scripts/benchmark-session.js \
+  --output baseline.json \
+  --warmup-ms 3000 \
+  --super-measurements 30 \
+  --fixed-positions \
+  --skip-outliers
+```
+
+#### When to Use
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Production baselines | **Enable** - minimum variance for reliable comparisons |
+| Before/after comparisons | **Enable** - isolates code changes from position variance |
+| Exploring performance characteristics | **Disable** - see real-world variance with varying positions |
+| Debugging high variance | **Enable first** - if variance drops, position was the cause |
+
+#### How IQR Filtering Works
+
+1. Sort measurements and calculate **Q1** (25th percentile) and **Q3** (75th percentile)
+2. Calculate **IQR** = Q3 - Q1
+3. Filter values where `value < Q1 - 1.5×IQR` or `value > Q3 + 1.5×IQR`
+4. Use filtered data for mean, stddev, SEM, CI95 calculations
+
+#### JSON Output
+
+When outlier filtering is enabled, the output includes:
+
+```json
+{
+  "metadata": {
+    "config": {
+      "outlierFiltering": {
+        "enabled": true,
+        "method": "iqr",
+        "threshold": null
+      }
+    }
+  },
+  "results": [{
+    "statistics": {
+      "n": 28,           // Count after filtering
+      "raw": [...],      // Original measurements (always preserved)
+      "trimmed": [...]   // After outlier removal
+    },
+    "rawStatistics": {
+      "n": 30,           // Original count
+      "mean": 0.061,
+      "stddevPercent": 0.35
+    },
+    "filtering": {
+      "totalAttempts": 32,
+      "accepted": 30,
+      "totalRetries": 2,
+      "forcedCount": 0,
+      "outlierCount": 2,
+      "avgSubRunCV": 3.26
+    }
+  }]
+}
+```
+
+#### When to Use
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Production baselines | **Enable** - cleaner data for comparisons |
+| Before/after comparisons | **Enable** - reduces noise from random spikes |
+| Debugging | **Disable** - see all measurements including anomalies |
+| Initial exploration | **Disable** - understand full distribution first |
+
+#### Verification
+
+Test IQR detection standalone:
+
+```bash
+node -e "
+const Statistics = require('./tests/direct-rendering/lib/statistics.js');
+const data = [10, 11, 10.5, 11.2, 10.8, 50, 10.9, 11.1];  // 50 is outlier
+const result = Statistics.removeOutliersIQR(data);
+console.log('Outliers removed:', result.outlierCount);
+console.log('Bounds: [' + result.lowerBound.toFixed(2) + ', ' + result.upperBound.toFixed(2) + ']');
+console.log('Cleaned mean:', (result.cleaned.reduce((a,b)=>a+b,0)/result.cleaned.length).toFixed(2));
+"
+# Expected: 1 outlier removed (value 50)
+```
 
 ---
 
@@ -790,6 +999,8 @@ npm run test:direct-rendering:perf -- -t roundrect --size=szM -r 20 -s 2000 -q
 
 ### Filter Quick Reference
 
+**Include Filters** (run only matching tests):
+
 | Filter | Values | Example |
 |--------|--------|---------|
 | `-t`, `--test=` | Test name substring | `-t roundrect-aa` |
@@ -802,6 +1013,21 @@ npm run test:direct-rendering:perf -- -t roundrect --size=szM -r 20 -s 2000 -q
 | `-s`, `--shapes=` | Shapes per run | `-s 2000` |
 | `-q`, `--quiet` | Summary only | `-q` |
 | `--list` | List without running | `--list` |
+
+**Exclusion Filters** (benchmark-session.js only, via `--filters` JSON):
+
+| Filter | Values | Example |
+|--------|--------|---------|
+| `excludeSize` | Array of size categories | `"excludeSize":["szL","szXL","szXXL"]` |
+| `excludeStroke` | Array of stroke categories | `"excludeStroke":["swL","swXL","swXXL"]` |
+| `excludeAngle` | Array of angle categories | `"excludeAngle":["angL","angXL"]` |
+
+**Example with exclusion filters:**
+```bash
+node tests/direct-rendering/scripts/benchmark-session.js \
+  --output baseline.json \
+  --filters '{"shape":"arc","excludeSize":["szL","szXL","szXXL"],"excludeStroke":["swL","swXL","swXXL"]}'
+```
 
 ### Regression Thresholds
 
@@ -830,20 +1056,79 @@ node tests/direct-rendering/compare-baselines.js \
   --before perf-baselines/baseline-before.txt \
   --after perf-baselines/baseline-after.txt
 
-# Statistical significance testing (v2.0 JSON required)
+# Statistical significance testing (v2.0/v3.0 JSON required)
 node tests/direct-rendering/compare-baselines.js \
   --before baseline1.json --after baseline2.json \
   --statistical
+
+# Detailed dimensional analysis with recommendations
+node tests/direct-rendering/compare-baselines.js \
+  --before baseline1.json --after baseline2.json \
+  --statistical --analyze
 
 # Quick comparison with custom thresholds
 node tests/direct-rendering/compare-baselines.js \
   --before baseline1.txt --after baseline2.txt \
   --threshold-opaque 20 --threshold-semi 35
 
-# Output as JSON for scripting
+# JSON output to file (recommended for large outputs to avoid pipe truncation)
 node tests/direct-rendering/compare-baselines.js \
-  --before baseline1.txt --after baseline2.txt --json
+  --before baseline1.json --after baseline2.json \
+  --statistical --analyze --json --output comparison.json
 ```
+
+### Dimensional Analysis (--analyze)
+
+The `--analyze` flag provides comprehensive breakdown of performance changes by dimension.
+
+**Requirements:** Works best with v3.0 JSON baselines that include metadata (strokeCategory, sizeCategory, angleCategory, operation). Without metadata, dimensions will show as "unknown". Use with `--statistical` for p-value based classifications.
+
+**Dimension Categories:**
+- **By Operation Type**: Fill vs Stroke vs Fill+Stroke, Opaque vs Semi-transparent
+- **By Stroke Width**: 0px (fill-only), 1px (Bresenham), 2-3px (XXS) through 80+px (XXL)
+- **By Size Category**: XXS (<5px) through XXL (320+px)
+- **By Arc Angle** (arc tests only): Small (30-90°), Medium (90-180°), Large (180-270°), Nearly Full (270-350°)
+
+**Output Includes:**
+- Dimensional breakdown tables with count, average change, and classification counts
+- Cross-tabulation matrices (e.g., Operation × Arc Angle)
+- Top 10 improvements and regressions with metadata context
+- Automated recommendation (SHIP, DO_NOT_SHIP, INVESTIGATE, NEUTRAL) with confidence level and reasoning
+
+**Example Output:**
+```
+═══════════════════════════════════════════════════════════════════════════════
+BY OPERATION TYPE
+═══════════════════════════════════════════════════════════════════════════════
+Dimension                Count   Avg Δ%   Faster  Slower   Same
+───────────────────────────────────────────────────────────────────────────────
+Fill (Opaque)               16   -1.8%       2       9      5
+Fill (Semi)                 16   +2.2%      13       1      2
+Stroke (Opaque)             96   -3.2%       2      77     17
+Stroke (Semi)               96   +0.8%      42      27     27
+...
+
+═══════════════════════════════════════════════════════════════════════════════
+RECOMMENDATION
+═══════════════════════════════════════════════════════════════════════════════
+Verdict: DO_NOT_SHIP
+Confidence: high
+
+Reasons:
+  • 52.0% of tests regressed (>50% threshold)
+  • Opaque operations: avg -2.8%
+  • Semi-transparent operations: avg +0.1%
+```
+
+**Recommendation Logic:**
+| Condition | Verdict | Confidence |
+|-----------|---------|------------|
+| >50% regressed AND <30% improved | DO_NOT_SHIP | high |
+| Severe regressions > 2× strong improvements | DO_NOT_SHIP | medium |
+| Large opaque/semi divergence (>3%) | INVESTIGATE | medium |
+| >60% improved AND <20% regressed | SHIP | high |
+| No severe regressions AND <30% regressed | SHIP | medium |
+| Mixed results | NEUTRAL | low |
 
 ---
 

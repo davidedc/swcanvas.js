@@ -42,11 +42,9 @@ registerParametricPerfTests({
         // Parse operation for transparency
         const strokeSemi = operation === 'stroke-semi';
 
-        // Get stroke width from category
-        const strokeWidth = getStrokeWidthFromCategory(strokeKey, Math.random);
-
-        // Get line length from size category
-        const lineLength = getShapeSizeFromCategory(sizeKey, Math.random);
+        // Use pre-computed values from params (same for all measurement runs)
+        const strokeWidth = params.strokeWidth;
+        const lineLength = params.shapeSize;
 
         // Set up stroke style based on operation
         ctx.strokeStyle = strokeSemi ? 'rgba(255, 0, 0, 0.5)' : 'rgb(255, 0, 0)';

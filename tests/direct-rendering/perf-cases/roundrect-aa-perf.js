@@ -56,11 +56,9 @@ registerParametricPerfTests({
         const fillSemi = operation.includes('fill-semi');
         const strokeSemi = operation.includes('stroke-semi');
 
-        // Get stroke width from category
-        const strokeWidth = getStrokeWidthFromCategory(strokeKey, Math.random);
-
-        // Get rectangle size from size category
-        const size = getShapeSizeFromCategory(sizeKey, Math.random);
+        // Use pre-computed values from params (same for all measurement runs)
+        const strokeWidth = params.strokeWidth;
+        const size = params.shapeSize;
 
         // Set up styles based on operation
         if (hasFill) {
@@ -73,18 +71,19 @@ registerParametricPerfTests({
 
         for (let i = 0; i < numToDraw; i++) {
             // Random position with margin for shape + stroke
+            // Use SeededRandom for reproducible positions across measurement runs
             const margin = Math.max(50, size / 2 + strokeWidth);
-            const x = margin + Math.random() * (canvasWidth - 2 * margin);
-            const y = margin + Math.random() * (canvasHeight - 2 * margin);
+            const x = margin + SeededRandom.getRandom() * (canvasWidth - 2 * margin);
+            const y = margin + SeededRandom.getRandom() * (canvasHeight - 2 * margin);
 
-            // Random aspect ratio (0.5 to 2.0)
-            const aspectRatio = 0.5 + Math.random() * 1.5;
+            // Random aspect ratio (0.5 to 2.0) - also seeded for reproducibility
+            const aspectRatio = 0.5 + SeededRandom.getRandom() * 1.5;
             const width = size;
             const height = size / aspectRatio;
 
-            // Corner radius: 10-30% of smaller dimension
+            // Corner radius: 10-30% of smaller dimension - also seeded
             const minDim = Math.min(width, height);
-            const cornerRadius = minDim * (0.1 + Math.random() * 0.2);
+            const cornerRadius = minDim * (0.1 + SeededRandom.getRandom() * 0.2);
 
             // Draw axis-aligned rounded rectangle centered at (x, y)
             // No rotation transform - uses RoundedRectOpsAA code path

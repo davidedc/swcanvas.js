@@ -951,6 +951,21 @@ npm run test:direct-rendering:perf -- -s 5000 -r 10   # Custom config
 npm run test:direct-rendering:perf -- -q              # Quiet mode
 ```
 
+### Production Benchmarking
+
+For production baselines and statistical analysis, use `benchmark-session.js`:
+
+```bash
+node tests/direct-rendering/scripts/benchmark-session.js \
+  --output baseline.json \
+  --warmup-ms 3000 \
+  --super-measurements 30 \
+  --fixed-positions \
+  --skip-outliers
+```
+
+This tool uses statistical filtering (sub-run CV checking, IQR outlier removal) to achieve 0.7-0.9% CV. See [PERFORMANCE-BENCHMARKING.md](PERFORMANCE-BENCHMARKING.md) and [PERFORMANCE-TESTING-WORKFLOW.md](PERFORMANCE-TESTING-WORKFLOW.md) for details.
+
 ---
 
 ## 9. Test Metadata Validation
@@ -1004,6 +1019,6 @@ Parsing errors are displayed in red below the test description.
 ## See Also
 
 - [tests/README.md](../README.md) - Main test documentation
-- [PERFORMANCE-BENCHMARKING.md](PERFORMANCE-BENCHMARKING.md) - Performance benchmarking mechanics (VSync cliff detection, scaling)
+- [PERFORMANCE-BENCHMARKING.md](PERFORMANCE-BENCHMARKING.md) - Performance benchmarking mechanics (statistical filtering, v3.0 system)
 - [DIRECT-RENDERING-SUMMARY.MD](../../DIRECT-RENDERING-SUMMARY.MD) - Direct rendering implementation details
 - [tests/build/README.md](../build/README.md) - Build utilities for test management (includes snapshot verification tools)

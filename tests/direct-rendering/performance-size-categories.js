@@ -67,12 +67,21 @@ const PERF_SIZE_CATEGORIES = {
  * Get a stroke width value from a category key.
  * @param {string} key - Stroke width category key (e.g., 'sw1px', 'swM')
  * @param {function} randomFn - Random function returning 0-1 (default: Math.random)
+ * @param {boolean} narrowRange - If true, use ±0.5% around middle of range (default: false)
  * @returns {number} Stroke width value
  */
-function getStrokeWidthFromCategory(key, randomFn = Math.random) {
+function getStrokeWidthFromCategory(key, randomFn = Math.random, narrowRange = false) {
     const cat = PERF_SIZE_CATEGORIES.strokeWidth[key];
     if (!cat) throw new Error(`Unknown stroke width category: ${key}`);
     if (cat.min === cat.max) return cat.min;
+
+    if (narrowRange) {
+        // Use middle of range ±0.5%
+        const middle = (cat.min + cat.max) / 2;
+        const halfVariance = middle * 0.005;  // 0.5%
+        return middle - halfVariance + randomFn() * (2 * halfVariance);
+    }
+
     return cat.min + randomFn() * (cat.max - cat.min);
 }
 
@@ -81,11 +90,20 @@ function getStrokeWidthFromCategory(key, randomFn = Math.random) {
  * Returns a dimension value (width/height for rectangles, diameter for circles).
  * @param {string} key - Size category key (e.g., 'szS', 'szL')
  * @param {function} randomFn - Random function returning 0-1 (default: Math.random)
+ * @param {boolean} narrowRange - If true, use ±0.5% around middle of range (default: false)
  * @returns {number} Size value
  */
-function getShapeSizeFromCategory(key, randomFn = Math.random) {
+function getShapeSizeFromCategory(key, randomFn = Math.random, narrowRange = false) {
     const cat = PERF_SIZE_CATEGORIES.shapeSize[key];
     if (!cat) throw new Error(`Unknown shape size category: ${key}`);
+
+    if (narrowRange) {
+        // Use middle of range ±0.5%
+        const middle = (cat.min + cat.max) / 2;
+        const halfVariance = middle * 0.005;  // 0.5%
+        return middle - halfVariance + randomFn() * (2 * halfVariance);
+    }
+
     return cat.min + randomFn() * (cat.max - cat.min);
 }
 
@@ -94,22 +112,34 @@ function getShapeSizeFromCategory(key, randomFn = Math.random) {
  * Returns size / 2 for use with circles/arcs.
  * @param {string} key - Size category key (e.g., 'szS', 'szL')
  * @param {function} randomFn - Random function returning 0-1 (default: Math.random)
+ * @param {boolean} narrowRange - If true, use ±0.5% around middle of range (default: false)
  * @returns {number} Radius value
  */
-function getRadiusFromShapeCategory(key, randomFn = Math.random) {
-    return getShapeSizeFromCategory(key, randomFn) / 2;
+function getRadiusFromShapeCategory(key, randomFn = Math.random, narrowRange = false) {
+    return getShapeSizeFromCategory(key, randomFn, narrowRange) / 2;
 }
 
 /**
  * Get an arc angle (in radians) from an angle category key.
  * @param {string} key - Angle category key (e.g., 'angS', 'angM')
  * @param {function} randomFn - Random function returning 0-1 (default: Math.random)
+ * @param {boolean} narrowRange - If true, use ±0.5% around middle of range (default: false)
  * @returns {number} Angle in radians
  */
-function getArcAngleFromCategory(key, randomFn = Math.random) {
+function getArcAngleFromCategory(key, randomFn = Math.random, narrowRange = false) {
     const cat = PERF_SIZE_CATEGORIES.arcAngle[key];
     if (!cat) throw new Error(`Unknown arc angle category: ${key}`);
-    const degrees = cat.min + randomFn() * (cat.max - cat.min);
+
+    let degrees;
+    if (narrowRange) {
+        // Use middle of range ±0.5%
+        const middle = (cat.min + cat.max) / 2;
+        const halfVariance = middle * 0.005;  // 0.5%
+        degrees = middle - halfVariance + randomFn() * (2 * halfVariance);
+    } else {
+        degrees = cat.min + randomFn() * (cat.max - cat.min);
+    }
+
     return degrees * Math.PI / 180;
 }
 

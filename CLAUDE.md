@@ -35,7 +35,7 @@ SWCanvas uses object-oriented ES6 class design organized into 7 semantic directo
 - **Rendering pipeline**: Context2D → Rasterizer → Shape *Ops classes → Surface
 - **Key patterns**: Immutable value objects, static utility classes, composition over inheritance
 - **Direct rendering**: See DIRECT-RENDERING-SUMMARY.MD for optimized shape renderers
-- **Performance benchmarking**: Uses different strategies for SWCanvas (direct timing) vs HTML5 Canvas (VSync cliff detection). See tests/direct-rendering/PERFORMANCE-BENCHMARKING.md
+- **Performance benchmarking**: Uses statistical filtering (super-measurements with sub-run CV checking, IQR outlier removal) achieving 0.7-0.9% CV. See tests/direct-rendering/PERFORMANCE-BENCHMARKING.md
 - **Performance testing workflow**: See tests/direct-rendering/PERFORMANCE-TESTING-WORKFLOW.md for workflow guide on benchmarking code changes
 
 ## Build & Test
@@ -47,7 +47,8 @@ See README.md for complete build commands and test instructions.
 **Validation commands**:
 - `npm run check:test-metadata` - Validate test metadata, signatures, filename parsing
 - `npm run check:register-consistency` - Quick filename/registration check
-- `npm run test:direct-rendering:perf` - Performance benchmarking for direct rendering (Node.js)
+- `npm run test:direct-rendering:perf` - Quick performance tests for direct rendering (Node.js)
+- `node tests/direct-rendering/scripts/benchmark-session.js` - Production benchmarking with statistical filtering
 - `node tests/direct-rendering/verify-logs-and-bounds-snapshot.js` - Verify test positioning hasn't regressed
 
 **Code quality commands** (on-demand, no hooks):
