@@ -1783,18 +1783,32 @@ class Context2D {
         const isColor = paintSource instanceof Color;
         const isSourceOver = this.globalCompositeOperation === 'source-over';
 
-        if (isColor && isSourceOver && paintSource.a > 0) {
-            ArcOps.fill_Any(
-                this.surface,
-                center.x,
-                center.y,
-                scaledRadius,
-                angles.start,
-                angles.end,
-                paintSource,
-                this.globalAlpha,
-                clipBuffer
-            );
+        if (isColor && isSourceOver) {
+            const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
+            if (isOpaque) {
+                ArcOps.fill_Opaq(
+                    this.surface,
+                    center.x,
+                    center.y,
+                    scaledRadius,
+                    angles.start,
+                    angles.end,
+                    paintSource,
+                    clipBuffer
+                );
+            } else if (paintSource.a > 0) {
+                ArcOps.fill_Alpha(
+                    this.surface,
+                    center.x,
+                    center.y,
+                    scaledRadius,
+                    angles.start,
+                    angles.end,
+                    paintSource,
+                    this.globalAlpha,
+                    clipBuffer
+                );
+            }
             return;
         }
 
@@ -1840,12 +1854,12 @@ class Context2D {
         // Direct rendering only supports butt line caps (open arc shapes need cap handling)
         const isButtCap = this.lineCap === 'butt';
 
-        if (isColor && isSourceOver && isButtCap && paintSource.a > 0) {
+        if (isColor && isSourceOver && isButtCap) {
+            const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
             const is1pxStroke = Math.abs(scaledLineWidth - 1) < STROKE_1PX_TOLERANCE;
 
             if (is1pxStroke) {
-                // Optimized 1px stroke path (still uses separate Opaq/Alpha methods due to inline templates)
-                const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
+                // Optimized 1px stroke path
                 if (isOpaque) {
                     ArcOps.stroke1px_Opaq(
                         this.surface,
@@ -1857,7 +1871,7 @@ class Context2D {
                         paintSource,
                         clipBuffer
                     );
-                } else {
+                } else if (paintSource.a > 0) {
                     ArcOps.stroke1px_Alpha(
                         this.surface,
                         center.x,
@@ -1871,19 +1885,33 @@ class Context2D {
                     );
                 }
             } else {
-                // Thick stroke path - unified method
-                ArcOps.strokeOuter_Any(
-                    this.surface,
-                    center.x,
-                    center.y,
-                    scaledRadius,
-                    angles.start,
-                    angles.end,
-                    scaledLineWidth,
-                    paintSource,
-                    this.globalAlpha,
-                    clipBuffer
-                );
+                // Thick stroke path
+                if (isOpaque) {
+                    ArcOps.strokeOuter_Opaq(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        scaledLineWidth,
+                        paintSource,
+                        clipBuffer
+                    );
+                } else if (paintSource.a > 0) {
+                    ArcOps.strokeOuter_Alpha(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledRadius,
+                        angles.start,
+                        angles.end,
+                        scaledLineWidth,
+                        paintSource,
+                        this.globalAlpha,
+                        clipBuffer
+                    );
+                }
             }
             return;
         }
