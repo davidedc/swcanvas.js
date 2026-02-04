@@ -4521,6 +4521,11 @@ if (__outA > 0) {
  * NAMING PATTERN: {operation}[Thickness]_{opacity}
  *   - Opaq = Opaque only, Alpha = Semi-transparent, Any = Handles both
  *   - (No orientation suffix - arcs are defined by angles, not rotation)
+ *
+ * PERFORMANCE NOTE: Unifying fill_Opaq/fill_Alpha and strokeOuter_Opaq/strokeOuter_Alpha
+ * into single _Any methods was attempted but reverted. Benchmarks showed -2.8% regression
+ * for opaque operations vs only +0.14% improvement for semi-transparent. The separate
+ * methods avoid conditionals in hot loops - the "duplication" is intentional optimization.
  */
 
 // Module-level scratch buffer for scanline events - avoids per-scanline allocation
@@ -4529,21 +4534,6 @@ if (__outA > 0) {
 const _arcEventBuffer = new Float32Array(8);
 
 class ArcOps {
-    /**
-     * Check if the angle of point (px, py) relative to origin is within [startAngle, endAngle]
-     * @param {number} px - X coordinate relative to center
-     * @param {number} py - Y coordinate relative to center
-     * @param {number} startAngle - Start angle in radians
-     * @param {number} endAngle - End angle in radians (must be > startAngle after normalization)
-     * @returns {boolean} True if point's angle is within the arc range
-     */
-    static isAngleInRange(px, py, startAngle, endAngle) {
-        let angle = Math.atan2(py, px);
-        if (angle < 0) angle += TAU;
-        if (angle < startAngle) angle += TAU;
-        return angle >= startAngle && angle <= endAngle;
-    }
-
     /**
      * Precompute arc parameters for fast cross-product angle checking.
      * Call once per arc, then use isAngleInRange_Fast for each pixel.
