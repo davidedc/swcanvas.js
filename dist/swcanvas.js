@@ -61,6 +61,9 @@ class SWCanvasConstants {
     /** Tolerance for axis-aligned rotation detection */
     static ANGLE_TOLERANCE = 0.001;
 
+    /** Tolerance for detecting full circle arcs (arc span ≈ 2π) */
+    static ARC_FULLCIRCLE_TOLERANCE = 1e-5;
+
     /** Minimum edge length worth processing */
     static MIN_EDGE_LENGTH = 0.5;
 
@@ -92,6 +95,7 @@ const DEG_TO_RAD = SWCanvasConstants.DEG_TO_RAD;
 const FILL_EPSILON = SWCanvasConstants.FILL_EPSILON;
 const STROKE_1PX_TOLERANCE = SWCanvasConstants.STROKE_1PX_TOLERANCE;
 const ANGLE_TOLERANCE = SWCanvasConstants.ANGLE_TOLERANCE;
+const ARC_FULLCIRCLE_TOLERANCE = SWCanvasConstants.ARC_FULLCIRCLE_TOLERANCE;
 const MIN_EDGE_LENGTH = SWCanvasConstants.MIN_EDGE_LENGTH;
 const MIN_EDGE_LENGTH_SQUARED = SWCanvasConstants.MIN_EDGE_LENGTH_SQUARED;
 const PATH_FLATTENING_TOLERANCE = SWCanvasConstants.PATH_FLATTENING_TOLERANCE;
@@ -4552,7 +4556,7 @@ class ArcOps {
             endCos: Math.cos(endAngle),
             endSin: Math.sin(endAngle),
             isLargeArc: diff > Math.PI,
-            isFullCircle: diff >= TAU - 1e-5
+            isFullCircle: diff >= TAU - ARC_FULLCIRCLE_TOLERANCE
         };
     }
 
@@ -4676,8 +4680,8 @@ class ArcOps {
 
         // Precompute ray slopes for intersection calculation
         // x = dy * cos(angle) / sin(angle)  when sin(angle) != 0
-        const startHasSlope = Math.abs(startSin) > 1e-10;
-        const endHasSlope = Math.abs(endSin) > 1e-10;
+        const startHasSlope = Math.abs(startSin) > FLOAT_EPSILON;
+        const endHasSlope = Math.abs(endSin) > FLOAT_EPSILON;
         const startSlope = startHasSlope ? startCos / startSin : 0;
         const endSlope = endHasSlope ? endCos / endSin : 0;
 
@@ -4707,7 +4711,7 @@ class ArcOps {
                 if (startX >= circleLeft && startX <= circleRight) {
                     _arcEventBuffer[evtCount++] = startX;
                 }
-            } else if (Math.abs(dy) < 1e-10) {
+            } else if (Math.abs(dy) < FLOAT_EPSILON) {
                 // Horizontal ray (sin=0), handle center scanline
                 // Ray goes in direction of startCos (positive = right, negative = left)
                 _arcEventBuffer[evtCount++] = startCos > 0 ? circleRight : circleLeft;
@@ -4719,7 +4723,7 @@ class ArcOps {
                 if (endX >= circleLeft && endX <= circleRight) {
                     _arcEventBuffer[evtCount++] = endX;
                 }
-            } else if (Math.abs(dy) < 1e-10) {
+            } else if (Math.abs(dy) < FLOAT_EPSILON) {
                 // Horizontal ray (sin=0), handle center scanline
                 _arcEventBuffer[evtCount++] = endCos > 0 ? circleRight : circleLeft;
             }
@@ -4733,7 +4737,7 @@ class ArcOps {
                 const segRight = _arcEventBuffer[i + 1];
 
                 // Skip degenerate segments
-                if (segRight - segLeft < 0.5) continue;
+                if (segRight - segLeft < MIN_EDGE_LENGTH) continue;
 
                 // Test midpoint
                 const midX = (segLeft + segRight) / 2;
@@ -4804,8 +4808,8 @@ class ArcOps {
         const radiusSquared = radius * radius;
 
         // Precompute ray slopes for intersection calculation
-        const startHasSlope = Math.abs(startSin) > 1e-10;
-        const endHasSlope = Math.abs(endSin) > 1e-10;
+        const startHasSlope = Math.abs(startSin) > FLOAT_EPSILON;
+        const endHasSlope = Math.abs(endSin) > FLOAT_EPSILON;
         const startSlope = startHasSlope ? startCos / startSin : 0;
         const endSlope = endHasSlope ? endCos / endSin : 0;
 
@@ -4835,7 +4839,7 @@ class ArcOps {
                 if (startX >= circleLeft && startX <= circleRight) {
                     _arcEventBuffer[evtCount++] = startX;
                 }
-            } else if (Math.abs(dy) < 1e-10) {
+            } else if (Math.abs(dy) < FLOAT_EPSILON) {
                 _arcEventBuffer[evtCount++] = startCos > 0 ? circleRight : circleLeft;
             }
 
@@ -4845,7 +4849,7 @@ class ArcOps {
                 if (endX >= circleLeft && endX <= circleRight) {
                     _arcEventBuffer[evtCount++] = endX;
                 }
-            } else if (Math.abs(dy) < 1e-10) {
+            } else if (Math.abs(dy) < FLOAT_EPSILON) {
                 _arcEventBuffer[evtCount++] = endCos > 0 ? circleRight : circleLeft;
             }
 
@@ -4858,7 +4862,7 @@ class ArcOps {
                 const segRight = _arcEventBuffer[i + 1];
 
                 // Skip degenerate segments
-                if (segRight - segLeft < 0.5) continue;
+                if (segRight - segLeft < MIN_EDGE_LENGTH) continue;
 
                 // Test midpoint
                 const midX = (segLeft + segRight) / 2;
@@ -5455,8 +5459,8 @@ if (__outA > 0) {
         const innerRadiusSq = innerRadius * innerRadius;
 
         // Precompute ray slopes for intersection calculation
-        const startHasSlope = Math.abs(startSin) > 1e-10;
-        const endHasSlope = Math.abs(endSin) > 1e-10;
+        const startHasSlope = Math.abs(startSin) > FLOAT_EPSILON;
+        const endHasSlope = Math.abs(endSin) > FLOAT_EPSILON;
         const startSlope = startHasSlope ? startCos / startSin : 0;
         const endSlope = endHasSlope ? endCos / endSin : 0;
 
@@ -5500,7 +5504,7 @@ if (__outA > 0) {
                 if (startX >= outerLeft && startX <= outerRight) {
                     _arcEventBuffer[evtCount++] = startX;
                 }
-            } else if (Math.abs(dy) < 1e-10) {
+            } else if (Math.abs(dy) < FLOAT_EPSILON) {
                 // Horizontal ray (sin=0), handle center scanline
                 _arcEventBuffer[evtCount++] = startCos > 0 ? outerRight : outerLeft;
             }
@@ -5511,7 +5515,7 @@ if (__outA > 0) {
                 if (endX >= outerLeft && endX <= outerRight) {
                     _arcEventBuffer[evtCount++] = endX;
                 }
-            } else if (Math.abs(dy) < 1e-10) {
+            } else if (Math.abs(dy) < FLOAT_EPSILON) {
                 _arcEventBuffer[evtCount++] = endCos > 0 ? outerRight : outerLeft;
             }
 
@@ -5524,7 +5528,7 @@ if (__outA > 0) {
                 const segRight = _arcEventBuffer[i + 1];
 
                 // Skip degenerate segments
-                if (segRight - segLeft < 0.5) continue;
+                if (segRight - segLeft < MIN_EDGE_LENGTH) continue;
 
                 // Test midpoint
                 const midX = (segLeft + segRight) / 2;
@@ -5638,8 +5642,8 @@ if (__outA > 0) {
         const innerRadiusSq = innerRadius * innerRadius;
 
         // Precompute ray slopes for intersection calculation
-        const startHasSlope = Math.abs(startSin) > 1e-10;
-        const endHasSlope = Math.abs(endSin) > 1e-10;
+        const startHasSlope = Math.abs(startSin) > FLOAT_EPSILON;
+        const endHasSlope = Math.abs(endSin) > FLOAT_EPSILON;
         const startSlope = startHasSlope ? startCos / startSin : 0;
         const endSlope = endHasSlope ? endCos / endSin : 0;
 
@@ -5683,7 +5687,7 @@ if (__outA > 0) {
                 if (startX >= outerLeft && startX <= outerRight) {
                     _arcEventBuffer[evtCount++] = startX;
                 }
-            } else if (Math.abs(dy) < 1e-10) {
+            } else if (Math.abs(dy) < FLOAT_EPSILON) {
                 _arcEventBuffer[evtCount++] = startCos > 0 ? outerRight : outerLeft;
             }
 
@@ -5693,7 +5697,7 @@ if (__outA > 0) {
                 if (endX >= outerLeft && endX <= outerRight) {
                     _arcEventBuffer[evtCount++] = endX;
                 }
-            } else if (Math.abs(dy) < 1e-10) {
+            } else if (Math.abs(dy) < FLOAT_EPSILON) {
                 _arcEventBuffer[evtCount++] = endCos > 0 ? outerRight : outerLeft;
             }
 
@@ -5706,7 +5710,7 @@ if (__outA > 0) {
                 const segRight = _arcEventBuffer[i + 1];
 
                 // Skip degenerate segments
-                if (segRight - segLeft < 0.5) continue;
+                if (segRight - segLeft < MIN_EDGE_LENGTH) continue;
 
                 // Test midpoint
                 const midX = (segLeft + segRight) / 2;
@@ -5846,8 +5850,8 @@ if (__outA > 0) {
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
         // Precompute ray slopes for intersection calculation
-        const startHasSlope = Math.abs(startSin) > 1e-10;
-        const endHasSlope = Math.abs(endSin) > 1e-10;
+        const startHasSlope = Math.abs(startSin) > FLOAT_EPSILON;
+        const endHasSlope = Math.abs(endSin) > FLOAT_EPSILON;
         const startSlope = startHasSlope ? startCos / startSin : 0;
         const endSlope = endHasSlope ? endCos / endSin : 0;
 
@@ -5894,13 +5898,13 @@ if (__outA > 0) {
                 if (startHasSlope) {
                     const startX = cX + dy * startSlope;
                     if (startX >= fillLeft && startX <= fillRight) _arcEventBuffer[evtCount++] = startX;
-                } else if (Math.abs(dy) < 1e-10) {
+                } else if (Math.abs(dy) < FLOAT_EPSILON) {
                     _arcEventBuffer[evtCount++] = startCos > 0 ? fillRight : fillLeft;
                 }
                 if (endHasSlope) {
                     const endX = cX + dy * endSlope;
                     if (endX >= fillLeft && endX <= fillRight) _arcEventBuffer[evtCount++] = endX;
-                } else if (Math.abs(dy) < 1e-10) {
+                } else if (Math.abs(dy) < FLOAT_EPSILON) {
                     _arcEventBuffer[evtCount++] = endCos > 0 ? fillRight : fillLeft;
                 }
 
@@ -5910,7 +5914,7 @@ if (__outA > 0) {
                 for (let i = 0; i < evtCount - 1; i++) {
                     const segLeft = _arcEventBuffer[i];
                     const segRight = _arcEventBuffer[i + 1];
-                    if (segRight - segLeft < 0.5) continue;
+                    if (segRight - segLeft < MIN_EDGE_LENGTH) continue;
 
                     const midX = (segLeft + segRight) / 2;
                     const dx = midX - cX;
@@ -5959,13 +5963,13 @@ if (__outA > 0) {
                 if (startHasSlope) {
                     const startX = cX + dy * startSlope;
                     if (startX >= outerLeft && startX <= outerRight) _arcEventBuffer[evtCount++] = startX;
-                } else if (Math.abs(dy) < 1e-10) {
+                } else if (Math.abs(dy) < FLOAT_EPSILON) {
                     _arcEventBuffer[evtCount++] = startCos > 0 ? outerRight : outerLeft;
                 }
                 if (endHasSlope) {
                     const endX = cX + dy * endSlope;
                     if (endX >= outerLeft && endX <= outerRight) _arcEventBuffer[evtCount++] = endX;
-                } else if (Math.abs(dy) < 1e-10) {
+                } else if (Math.abs(dy) < FLOAT_EPSILON) {
                     _arcEventBuffer[evtCount++] = endCos > 0 ? outerRight : outerLeft;
                 }
 
@@ -5975,7 +5979,7 @@ if (__outA > 0) {
                 for (let i = 0; i < evtCount - 1; i++) {
                     const segLeft = _arcEventBuffer[i];
                     const segRight = _arcEventBuffer[i + 1];
-                    if (segRight - segLeft < 0.5) continue;
+                    if (segRight - segLeft < MIN_EDGE_LENGTH) continue;
 
                     const midX = (segLeft + segRight) / 2;
                     const dx = midX - cX;
