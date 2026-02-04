@@ -58,6 +58,9 @@ class SWCanvasConstants {
     /** Tolerance for axis-aligned rotation detection */
     static ANGLE_TOLERANCE = 0.001;
 
+    /** Tolerance for detecting full circle arcs (arc span ≈ 2π) */
+    static ARC_FULLCIRCLE_TOLERANCE = 1e-5;
+
     /** Minimum edge length worth processing */
     static MIN_EDGE_LENGTH = 0.5;
 
@@ -89,6 +92,7 @@ const DEG_TO_RAD = SWCanvasConstants.DEG_TO_RAD;
 const FILL_EPSILON = SWCanvasConstants.FILL_EPSILON;
 const STROKE_1PX_TOLERANCE = SWCanvasConstants.STROKE_1PX_TOLERANCE;
 const ANGLE_TOLERANCE = SWCanvasConstants.ANGLE_TOLERANCE;
+const ARC_FULLCIRCLE_TOLERANCE = SWCanvasConstants.ARC_FULLCIRCLE_TOLERANCE;
 const MIN_EDGE_LENGTH = SWCanvasConstants.MIN_EDGE_LENGTH;
 const MIN_EDGE_LENGTH_SQUARED = SWCanvasConstants.MIN_EDGE_LENGTH_SQUARED;
 const PATH_FLATTENING_TOLERANCE = SWCanvasConstants.PATH_FLATTENING_TOLERANCE;

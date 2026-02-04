@@ -52,6 +52,7 @@ module.exports = {
         FILL_EPSILON: 'readonly',
         STROKE_1PX_TOLERANCE: 'readonly',
         ANGLE_TOLERANCE: 'readonly',
+        ARC_FULLCIRCLE_TOLERANCE: 'readonly',
         MIN_EDGE_LENGTH: 'readonly',
         MIN_EDGE_LENGTH_SQUARED: 'readonly',
         PATH_FLATTENING_TOLERANCE: 'readonly',
@@ -180,7 +181,7 @@ module.exports = {
         'no-unused-vars': ['error', {
             args: 'none',
             ignoreRestSiblings: true,
-            varsIgnorePattern: '^(_|Context2D|Surface|Transform2D|SWPath2D|Color|ClipMask|SourceMask|StateStack|Rasterizer|Point|Rectangle|BitBuffer|BoundsTracker|CompositeOperations|ImageProcessor|Validators|SpanOps|QuadScanOps|RectOpsAA|RectOpsRot|CircleOps|ArcOps|LineOps|RoundedRectOpsAA|RoundedRectOpsRot|RoundedRectUtils|PolygonFiller|PathFlattener|StrokeGenerator|Gradient|LinearGradient|RadialGradient|ConicGradient|Pattern|ColorParser|ShadowBuffer|BoxBlur|ShadowPipeline|BitmapEncoder|BitmapEncodingOptions|PngEncoder|PngEncodingOptions|CanvasCompatibleContext2D|SWCanvasElement|SWCanvasConstants|IS_DEBUG|assertDebug|debugLog|debugWarn|FLOAT_EPSILON|TRANSFORM_EPSILON|TAU|HALF_PI|THREE_HALF_PI|QUARTER_PI|DEG_TO_RAD|FILL_EPSILON|STROKE_1PX_TOLERANCE|ANGLE_TOLERANCE|MIN_EDGE_LENGTH|MIN_EDGE_LENGTH_SQUARED|PATH_FLATTENING_TOLERANCE|THIN_LINE_THRESHOLD|DEFAULT_MITER_LIMIT)$'
+            varsIgnorePattern: '^(_|Context2D|Surface|Transform2D|SWPath2D|Color|ClipMask|SourceMask|StateStack|Rasterizer|Point|Rectangle|BitBuffer|BoundsTracker|CompositeOperations|ImageProcessor|Validators|SpanOps|QuadScanOps|RectOpsAA|RectOpsRot|CircleOps|ArcOps|LineOps|RoundedRectOpsAA|RoundedRectOpsRot|RoundedRectUtils|PolygonFiller|PathFlattener|StrokeGenerator|Gradient|LinearGradient|RadialGradient|ConicGradient|Pattern|ColorParser|ShadowBuffer|BoxBlur|ShadowPipeline|BitmapEncoder|BitmapEncodingOptions|PngEncoder|PngEncodingOptions|CanvasCompatibleContext2D|SWCanvasElement|SWCanvasConstants|IS_DEBUG|assertDebug|debugLog|debugWarn|FLOAT_EPSILON|TRANSFORM_EPSILON|TAU|HALF_PI|THREE_HALF_PI|QUARTER_PI|DEG_TO_RAD|FILL_EPSILON|STROKE_1PX_TOLERANCE|ANGLE_TOLERANCE|ARC_FULLCIRCLE_TOLERANCE|MIN_EDGE_LENGTH|MIN_EDGE_LENGTH_SQUARED|PATH_FLATTENING_TOLERANCE|THIN_LINE_THRESHOLD|DEFAULT_MITER_LIMIT)$'
         }],
 
         // === STYLE (match existing) ===
