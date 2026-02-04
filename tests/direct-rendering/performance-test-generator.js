@@ -11,12 +11,14 @@
  *
  * This generator creates tests that isolate these code paths for benchmarking.
  *
- * REPRODUCIBLE PARAMETERS:
- * Each test uses deterministically-seeded random values for strokeWidth, shapeSize,
- * and arcAngle. This ensures:
- * - All measurement runs use identical parameter values (reduces stddev)
- * - Different tests still sample the full category range (based on test ID hash)
- * - Benchmark results are reproducible across sessions
+ * STRATIFIED COVERAGE SEQUENCES:
+ * Each test uses pre-computed coverage sequences that:
+ * - Cover the FULL bracket range (representative of real usage)
+ * - Use the same sequence for all sub-runs (maintains low CV)
+ * - Interleave strata so consecutive shapes have different sizes (breaks CPU caching)
+ *
+ * This replaces the old narrow-range approach (±0.5% of midpoint) with true
+ * stratified sampling across the entire bracket.
  */
 
 /**
@@ -34,20 +36,18 @@ function hashString(str) {
     return Math.abs(hash);
 }
 
+// Maximum shapes per test - coverage sequences are pre-computed to this size
+const MAX_COVERAGE_SHAPES = 10000;
+
 /**
- * Create a seeded pseudo-random number generator.
- * Uses mulberry32 algorithm for simplicity and quality.
- * @param {number} seed - Initial seed
- * @returns {function} Function returning random number in [0, 1)
+ * Check if a stroke category has variable width (not fixed at a single value).
+ * Fixed-value categories (sw0, sw1px) don't need coverage sequences.
+ * @param {string} strokeKey - Stroke category key
+ * @returns {boolean} True if variable width
  */
-function createSeededRandom(seed) {
-    return function() {
-        seed |= 0;
-        seed = seed + 0x6D2B79F5 | 0;
-        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-        return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
+function hasVariableStroke(strokeKey) {
+    const cat = PERF_SIZE_CATEGORIES.strokeWidth[strokeKey];
+    return cat && cat.min !== cat.max;
 }
 
 /**
@@ -69,9 +69,10 @@ function createSeededRandom(seed) {
  * - instances: Number of shapes to draw (0 = single for visual, >0 for perf)
  * - params: Object with:
  *   - strokeKey, sizeKey, angleKey, operation: Category keys for metadata
- *   - strokeWidth: Pre-computed stroke width (reproducible across runs)
- *   - shapeSize: Pre-computed shape size (reproducible across runs)
- *   - arcAngle: Pre-computed arc angle in radians (null if not arc test)
+ *   - sizeSequence: Pre-computed Float32Array of shape sizes (stratified coverage)
+ *   - strokeSequence: Pre-computed Float32Array of stroke widths (or null for fixed)
+ *   - angleSequence: Pre-computed Float32Array of arc angles in radians (or null)
+ *   - fixedStrokeWidth: Fixed stroke width for sw0/sw1px categories (or null)
  */
 function registerParametricPerfTests(config) {
     const {
@@ -83,8 +84,7 @@ function registerParametricPerfTests(config) {
         includeArcAngles = false,
         strokeCategories = Object.keys(PERF_SIZE_CATEGORIES.strokeWidth),
         sizeCategories = Object.keys(PERF_SIZE_CATEGORIES.shapeSize),
-        angleCategories = Object.keys(PERF_SIZE_CATEGORIES.arcAngle),
-        narrowRange = false  // Use ±0.5% around category midpoint for reduced variance
+        angleCategories = Object.keys(PERF_SIZE_CATEGORIES.arcAngle)
     } = config;
 
     // Get category labels for human-readable names
@@ -148,23 +148,63 @@ function registerParametricPerfTests(config) {
                         perfName += `, ${angleLabel}`;
                     }
 
-                    // Create deterministic seed from test ID for reproducible values
+                    // Create deterministic seed from test ID for reproducible sequences
                     const testSeed = hashString(testId);
-                    const seededRandom = createSeededRandom(testSeed);
 
-                    // Pre-compute values using seeded random (same for all measurement runs)
-                    // This dramatically reduces stddev by eliminating parameter variation
-                    // When narrowRange is true (via global.narrowRange), use ±0.5% around midpoint
-                    const useNarrowRange = narrowRange || (typeof global !== 'undefined' && global.narrowRange);
+                    // Pre-compute coverage sequences (stratified sampling across full bracket range)
+                    // Same sequences used for all sub-runs → low CV
+                    // Consecutive shapes have different sizes → breaks CPU caching
+                    const sizeBracket = PERF_SIZE_CATEGORIES.shapeSize[sizeKey];
+                    const sizeSequence = generateCoverageSequence(
+                        testSeed,
+                        MAX_COVERAGE_SHAPES,
+                        sizeBracket
+                    );
+
+                    // Stroke sequence only for variable-width categories
+                    let strokeSequence = null;
+                    let fixedStrokeWidth = null;
+                    if (hasVariableStroke(strokeKey)) {
+                        const strokeBracket = PERF_SIZE_CATEGORIES.strokeWidth[strokeKey];
+                        strokeSequence = generateCoverageSequence(
+                            testSeed + 1,  // Different seed for independence
+                            MAX_COVERAGE_SHAPES,
+                            strokeBracket
+                        );
+                    } else {
+                        // Fixed stroke width (sw0 or sw1px)
+                        fixedStrokeWidth = PERF_SIZE_CATEGORIES.strokeWidth[strokeKey].min;
+                    }
+
+                    // Angle sequence only for arc tests
+                    let angleSequence = null;
+                    if (angleKey) {
+                        // For arc angles, we need to convert degrees to radians
+                        const angleBracketDegrees = PERF_SIZE_CATEGORIES.arcAngle[angleKey];
+                        // Generate in degrees, then convert to radians
+                        const angleSequenceDegrees = generateCoverageSequence(
+                            testSeed + 2,
+                            MAX_COVERAGE_SHAPES,
+                            angleBracketDegrees
+                        );
+                        // Convert to radians
+                        angleSequence = new Float32Array(MAX_COVERAGE_SHAPES);
+                        const DEG_TO_RAD = Math.PI / 180;
+                        for (let j = 0; j < MAX_COVERAGE_SHAPES; j++) {
+                            angleSequence[j] = angleSequenceDegrees[j] * DEG_TO_RAD;
+                        }
+                    }
+
                     const params = {
                         strokeKey,
                         sizeKey,
                         angleKey,
                         operation,
-                        // Pre-computed reproducible values:
-                        strokeWidth: getStrokeWidthFromCategory(strokeKey, seededRandom, useNarrowRange),
-                        shapeSize: getShapeSizeFromCategory(sizeKey, seededRandom, useNarrowRange),
-                        arcAngle: angleKey ? getArcAngleFromCategory(angleKey, seededRandom, useNarrowRange) : null
+                        // Pre-computed coverage sequences:
+                        sizeSequence,
+                        strokeSequence,
+                        angleSequence,
+                        fixedStrokeWidth
                     };
 
                     // Create the draw function wrapper

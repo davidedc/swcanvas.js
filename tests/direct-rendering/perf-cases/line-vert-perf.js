@@ -26,14 +26,15 @@ registerParametricPerfTests({
 
     /**
      * Draw function for vertical line performance tests.
+     * Uses pre-computed coverage sequences for stratified sampling.
      * @param {CanvasRenderingContext2D} ctx - Canvas context
      * @param {number} instances - Number of shapes to draw (0 = single for visual, >0 for perf)
-     * @param {Object} params - { strokeKey, sizeKey, operation }
+     * @param {Object} params - { sizeSequence, strokeSequence, fixedStrokeWidth, operation }
      */
     drawFunction: function(ctx, instances, params) {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
-        const { strokeKey, sizeKey, operation } = params;
+        const { sizeSequence, strokeSequence, fixedStrokeWidth, operation } = params;
 
         const isPerformanceRun = instances !== null && instances > 0;
         const numToDraw = isPerformanceRun ? instances : 1;
@@ -41,15 +42,18 @@ registerParametricPerfTests({
         // Parse operation for transparency
         const strokeSemi = operation === 'stroke-semi';
 
-        // Use pre-computed values from params (same for all measurement runs)
-        const strokeWidth = params.strokeWidth;
-        const lineLength = params.shapeSize;
-
         // Set up stroke style based on operation
         ctx.strokeStyle = strokeSemi ? 'rgba(255, 0, 0, 0.5)' : 'rgb(255, 0, 0)';
-        ctx.lineWidth = strokeWidth;
 
         for (let i = 0; i < numToDraw; i++) {
+            // Get per-shape values from coverage sequences
+            const idx = i % sizeSequence.length;
+            const lineLength = sizeSequence[idx];
+            const strokeWidth = strokeSequence ? strokeSequence[idx] : fixedStrokeWidth;
+
+            // Set stroke width per-shape
+            ctx.lineWidth = strokeWidth;
+
             // Get vertical line endpoints (x1 === x2)
             const line = getVerticalLineEndpoints(canvasWidth, canvasHeight, lineLength);
 

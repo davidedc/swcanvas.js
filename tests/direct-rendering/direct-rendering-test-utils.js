@@ -85,6 +85,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
         // From performance-size-categories.js
         PERF_SIZE_CATEGORIES: performanceSizeCategories.PERF_SIZE_CATEGORIES,
+        createSeededRandom: performanceSizeCategories.createSeededRandom,
+        generateCoverageSequence: performanceSizeCategories.generateCoverageSequence,
         getStrokeWidthFromCategory: performanceSizeCategories.getStrokeWidthFromCategory,
         getShapeSizeFromCategory: performanceSizeCategories.getShapeSizeFromCategory,
         getRadiusFromShapeCategory: performanceSizeCategories.getRadiusFromShapeCategory,

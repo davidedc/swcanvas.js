@@ -35,14 +35,15 @@ registerParametricPerfTests({
 
     /**
      * Draw function for circle performance tests.
+     * Uses pre-computed coverage sequences for stratified sampling.
      * @param {CanvasRenderingContext2D} ctx - Canvas context
      * @param {number} instances - Number of shapes to draw (0 = single for visual, >0 for perf)
-     * @param {Object} params - { strokeKey, sizeKey, operation }
+     * @param {Object} params - { sizeSequence, strokeSequence, fixedStrokeWidth, operation }
      */
     drawFunction: function(ctx, instances, params) {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
-        const { strokeKey, sizeKey, operation } = params;
+        const { sizeSequence, strokeSequence, fixedStrokeWidth, operation } = params;
 
         const isPerformanceRun = instances !== null && instances > 0;
         const numToDraw = isPerformanceRun ? instances : 1;
@@ -53,23 +54,35 @@ registerParametricPerfTests({
         const fillSemi = operation.includes('fill-semi');
         const strokeSemi = operation.includes('stroke-semi');
 
-        // Use pre-computed values from params (same for all measurement runs)
-        const strokeWidth = params.strokeWidth;
-        const radius = params.shapeSize / 2;  // shapeSize is diameter
-
         // Set up styles based on operation
         if (hasFill) {
             ctx.fillStyle = fillSemi ? 'rgba(0, 0, 255, 0.5)' : 'rgb(0, 0, 255)';
         }
         if (hasStroke) {
             ctx.strokeStyle = strokeSemi ? 'rgba(255, 0, 0, 0.5)' : 'rgb(255, 0, 0)';
-            ctx.lineWidth = strokeWidth;
         }
 
+        // Get max stroke width for margin calculation
+        const maxStrokeWidth = fixedStrokeWidth !== null ? fixedStrokeWidth :
+            (strokeSequence ? Math.max(...strokeSequence.subarray(0, Math.min(numToDraw, strokeSequence.length))) : 0);
+
         for (let i = 0; i < numToDraw; i++) {
+            // Get per-shape values from coverage sequences
+            const idx = i % sizeSequence.length;
+            const diameter = sizeSequence[idx];
+            const radius = diameter / 2;
+            const strokeWidth = strokeSequence ? strokeSequence[idx] : fixedStrokeWidth;
+
+            // Set stroke width per-shape if variable
+            if (hasStroke && strokeSequence) {
+                ctx.lineWidth = strokeWidth;
+            } else if (hasStroke && i === 0) {
+                ctx.lineWidth = fixedStrokeWidth;
+            }
+
             // Random position with margin for shape + stroke
             // Use SeededRandom for reproducible positions across measurement runs
-            const margin = Math.max(50, radius + strokeWidth);
+            const margin = Math.max(50, radius + maxStrokeWidth);
             const cx = margin + SeededRandom.getRandom() * (canvasWidth - 2 * margin);
             const cy = margin + SeededRandom.getRandom() * (canvasHeight - 2 * margin);
 

@@ -5,8 +5,64 @@
  * Defines stroke width, shape size, and arc angle categories
  * used by /perf-cases/ tests.
  *
+ * Also provides stratified coverage sequence generation for representative
+ * benchmark sampling across the full range of each category.
+ *
  * @module performance-size-categories
  */
+
+/**
+ * Create a seeded pseudo-random number generator.
+ * Uses mulberry32 algorithm for simplicity and quality.
+ * @param {number} seed - Initial seed
+ * @returns {function} Function returning random number in [0, 1)
+ */
+function createSeededRandom(seed) {
+    return function() {
+        seed |= 0;
+        seed = seed + 0x6D2B79F5 | 0;
+        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
+
+/**
+ * Generate a coverage sequence for uniform stratified sampling.
+ *
+ * This function creates a deterministic sequence that:
+ * - Covers the FULL bracket range (representative sampling)
+ * - Uses the same sequence for all sub-runs (maintains low CV)
+ * - Interleaves strata so consecutive shapes have different sizes (breaks CPU caching)
+ *
+ * For a bracket like szL (80-159px) with 10 strata:
+ *   Shape 0: stratum 0 (80-87px)  → e.g., 82px
+ *   Shape 1: stratum 1 (88-95px)  → e.g., 93px
+ *   Shape 2: stratum 2 (96-103px) → e.g., 101px
+ *   ...
+ *   Shape 10: stratum 0 again (different random within stratum)
+ *
+ * @param {number} seed - Deterministic seed for reproducibility
+ * @param {number} count - Number of values to generate
+ * @param {Object} bracket - { min, max } bracket definition
+ * @param {number} [numStrata=10] - Number of strata to divide range into
+ * @returns {Float32Array} Pre-computed sequence of values
+ */
+function generateCoverageSequence(seed, count, bracket, numStrata = 10) {
+    const rng = createSeededRandom(seed);
+    const values = new Float32Array(count);
+    const range = bracket.max - bracket.min;
+
+    for (let i = 0; i < count; i++) {
+        // Shape i → stratum (i % numStrata)
+        // Consecutive shapes have DIFFERENT sizes
+        const stratum = i % numStrata;
+        const stratumMin = bracket.min + (stratum / numStrata) * range;
+        const stratumMax = bracket.min + ((stratum + 1) / numStrata) * range;
+        values[i] = stratumMin + rng() * (stratumMax - stratumMin);
+    }
+    return values;
+}
 
 /**
  * Performance test size categories for parametric benchmark generation.
@@ -67,20 +123,12 @@ const PERF_SIZE_CATEGORIES = {
  * Get a stroke width value from a category key.
  * @param {string} key - Stroke width category key (e.g., 'sw1px', 'swM')
  * @param {function} randomFn - Random function returning 0-1 (default: Math.random)
- * @param {boolean} narrowRange - If true, use ±0.5% around middle of range (default: false)
  * @returns {number} Stroke width value
  */
-function getStrokeWidthFromCategory(key, randomFn = Math.random, narrowRange = false) {
+function getStrokeWidthFromCategory(key, randomFn = Math.random) {
     const cat = PERF_SIZE_CATEGORIES.strokeWidth[key];
     if (!cat) throw new Error(`Unknown stroke width category: ${key}`);
     if (cat.min === cat.max) return cat.min;
-
-    if (narrowRange) {
-        // Use middle of range ±0.5%
-        const middle = (cat.min + cat.max) / 2;
-        const halfVariance = middle * 0.005;  // 0.5%
-        return middle - halfVariance + randomFn() * (2 * halfVariance);
-    }
 
     return cat.min + randomFn() * (cat.max - cat.min);
 }
@@ -90,19 +138,11 @@ function getStrokeWidthFromCategory(key, randomFn = Math.random, narrowRange = f
  * Returns a dimension value (width/height for rectangles, diameter for circles).
  * @param {string} key - Size category key (e.g., 'szS', 'szL')
  * @param {function} randomFn - Random function returning 0-1 (default: Math.random)
- * @param {boolean} narrowRange - If true, use ±0.5% around middle of range (default: false)
  * @returns {number} Size value
  */
-function getShapeSizeFromCategory(key, randomFn = Math.random, narrowRange = false) {
+function getShapeSizeFromCategory(key, randomFn = Math.random) {
     const cat = PERF_SIZE_CATEGORIES.shapeSize[key];
     if (!cat) throw new Error(`Unknown shape size category: ${key}`);
-
-    if (narrowRange) {
-        // Use middle of range ±0.5%
-        const middle = (cat.min + cat.max) / 2;
-        const halfVariance = middle * 0.005;  // 0.5%
-        return middle - halfVariance + randomFn() * (2 * halfVariance);
-    }
 
     return cat.min + randomFn() * (cat.max - cat.min);
 }
@@ -112,34 +152,23 @@ function getShapeSizeFromCategory(key, randomFn = Math.random, narrowRange = fal
  * Returns size / 2 for use with circles/arcs.
  * @param {string} key - Size category key (e.g., 'szS', 'szL')
  * @param {function} randomFn - Random function returning 0-1 (default: Math.random)
- * @param {boolean} narrowRange - If true, use ±0.5% around middle of range (default: false)
  * @returns {number} Radius value
  */
-function getRadiusFromShapeCategory(key, randomFn = Math.random, narrowRange = false) {
-    return getShapeSizeFromCategory(key, randomFn, narrowRange) / 2;
+function getRadiusFromShapeCategory(key, randomFn = Math.random) {
+    return getShapeSizeFromCategory(key, randomFn) / 2;
 }
 
 /**
  * Get an arc angle (in radians) from an angle category key.
  * @param {string} key - Angle category key (e.g., 'angS', 'angM')
  * @param {function} randomFn - Random function returning 0-1 (default: Math.random)
- * @param {boolean} narrowRange - If true, use ±0.5% around middle of range (default: false)
  * @returns {number} Angle in radians
  */
-function getArcAngleFromCategory(key, randomFn = Math.random, narrowRange = false) {
+function getArcAngleFromCategory(key, randomFn = Math.random) {
     const cat = PERF_SIZE_CATEGORIES.arcAngle[key];
     if (!cat) throw new Error(`Unknown arc angle category: ${key}`);
 
-    let degrees;
-    if (narrowRange) {
-        // Use middle of range ±0.5%
-        const middle = (cat.min + cat.max) / 2;
-        const halfVariance = middle * 0.005;  // 0.5%
-        degrees = middle - halfVariance + randomFn() * (2 * halfVariance);
-    } else {
-        degrees = cat.min + randomFn() * (cat.max - cat.min);
-    }
-
+    const degrees = cat.min + randomFn() * (cat.max - cat.min);
     return degrees * Math.PI / 180;
 }
 
@@ -147,6 +176,8 @@ function getArcAngleFromCategory(key, randomFn = Math.random, narrowRange = fals
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         PERF_SIZE_CATEGORIES,
+        createSeededRandom,
+        generateCoverageSequence,
         getStrokeWidthFromCategory,
         getShapeSizeFromCategory,
         getRadiusFromShapeCategory,
@@ -157,6 +188,8 @@ if (typeof module !== 'undefined' && module.exports) {
 // Export for browser
 if (typeof window !== 'undefined') {
     window.PERF_SIZE_CATEGORIES = PERF_SIZE_CATEGORIES;
+    window.createSeededRandom = createSeededRandom;
+    window.generateCoverageSequence = generateCoverageSequence;
     window.getStrokeWidthFromCategory = getStrokeWidthFromCategory;
     window.getShapeSizeFromCategory = getShapeSizeFromCategory;
     window.getRadiusFromShapeCategory = getRadiusFromShapeCategory;

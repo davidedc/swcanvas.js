@@ -50,6 +50,8 @@ const {
     generateConstrainedArcAngles,
     registerDirectRenderingTest,
     PERF_SIZE_CATEGORIES,
+    createSeededRandom,
+    generateCoverageSequence,
     getStrokeWidthFromCategory,
     getShapeSizeFromCategory,
     getRadiusFromShapeCategory,
@@ -87,6 +89,8 @@ global.generateConstrainedArcAngles = generateConstrainedArcAngles;
 global.registerDirectRenderingTest = registerDirectRenderingTest;
 // Parametric performance test utilities
 global.PERF_SIZE_CATEGORIES = PERF_SIZE_CATEGORIES;
+global.createSeededRandom = createSeededRandom;
+global.generateCoverageSequence = generateCoverageSequence;
 global.getStrokeWidthFromCategory = getStrokeWidthFromCategory;
 global.getShapeSizeFromCategory = getShapeSizeFromCategory;
 global.getRadiusFromShapeCategory = getRadiusFromShapeCategory;

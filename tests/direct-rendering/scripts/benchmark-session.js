@@ -65,7 +65,6 @@ let quietMode = false;
 
 // Position reproducibility options
 let fixedPositionSeed = false;
-let narrowRange = false;
 
 // Outlier filtering options
 let skipOutliers = false;
@@ -99,7 +98,6 @@ Options:
 
 Position Reproducibility:
   --fixed-positions           Use identical positions for all measurement runs
-  --narrow-range              Use ±0.5% around category midpoint
 
 Outlier Filtering:
   --skip-outliers             Enable MAD-based outlier filtering
@@ -187,8 +185,6 @@ for (let i = 0; i < args.length; i++) {
         quietMode = true;
     } else if (arg === '--fixed-positions') {
         fixedPositionSeed = true;
-    } else if (arg === '--narrow-range') {
-        narrowRange = true;
     } else if (arg === '--skip-outliers') {
         skipOutliers = true;
     } else if (arg === '--mad-threshold' && args[i + 1]) {
@@ -263,6 +259,8 @@ const {
     generateConstrainedArcAngles,
     registerDirectRenderingTest,
     PERF_SIZE_CATEGORIES,
+    createSeededRandom,
+    generateCoverageSequence,
     getStrokeWidthFromCategory,
     getShapeSizeFromCategory,
     getRadiusFromShapeCategory,
@@ -299,6 +297,8 @@ global.calculate90DegArcTestParams = calculate90DegArcTestParams;
 global.generateConstrainedArcAngles = generateConstrainedArcAngles;
 global.registerDirectRenderingTest = registerDirectRenderingTest;
 global.PERF_SIZE_CATEGORIES = PERF_SIZE_CATEGORIES;
+global.createSeededRandom = createSeededRandom;
+global.generateCoverageSequence = generateCoverageSequence;
 global.getStrokeWidthFromCategory = getStrokeWidthFromCategory;
 global.getShapeSizeFromCategory = getShapeSizeFromCategory;
 global.getRadiusFromShapeCategory = getRadiusFromShapeCategory;
@@ -309,7 +309,6 @@ global.getRandomLineEndpoints = getRandomLineEndpoints;
 global.getHorizontalLineEndpoints = getHorizontalLineEndpoints;
 global.getVerticalLineEndpoints = getVerticalLineEndpoints;
 global.getDiagonalLineEndpoints = getDiagonalLineEndpoints;
-global.narrowRange = narrowRange;
 
 // ============================================================================
 // Helper Functions
@@ -632,9 +631,6 @@ function main() {
         if (fixedPositionSeed) {
             console.log('Fixed positions: enabled');
         }
-        if (narrowRange) {
-            console.log('Narrow range: enabled');
-        }
         if (skipOutliers) {
             console.log(`MAD outlier filtering: enabled (threshold: ${madThreshold})`);
         }
@@ -724,8 +720,7 @@ function main() {
                 cooldownMs,
                 canvasSize: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
                 positionReproducibility: {
-                    fixedPositions: fixedPositionSeed,
-                    narrowRange: narrowRange
+                    fixedPositions: fixedPositionSeed
                 },
                 outlierFiltering: {
                     enabled: skipOutliers,
