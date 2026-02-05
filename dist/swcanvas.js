@@ -3394,6 +3394,33 @@ if (__outA > 0) {
         const fillPacked = fillIsOpaque ? Surface.packColor(fillColor.r, fillColor.g, fillColor.b, 255) : 0;
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
+        // Pre-compute composite color for overlap regions (stroke over fill)
+        // Uses Porter-Duff source-over: stroke OVER fill
+        // This eliminates overdraw by rendering overlap regions once with pre-composited color
+        let compositeR = 0,
+            compositeG = 0,
+            compositeB = 0;
+        let compositeAlpha = 0,
+            compositeInvAlpha = 1;
+        const useCompositeOptimization = strokeIsSemiTransparent && hasFill;
+
+        if (useCompositeOptimization) {
+            // Porter-Duff: outA = srcA + dstA * (1 - srcA)
+            compositeAlpha = strokeEffectiveAlpha + fillEffectiveAlpha * (1 - strokeEffectiveAlpha);
+
+            if (compositeAlpha > 0) {
+                compositeInvAlpha = 1 - compositeAlpha;
+
+                // Non-premultiplied RGB composite
+                const fillContrib = (fillEffectiveAlpha * (1 - strokeEffectiveAlpha)) / compositeAlpha;
+                const strokeContrib = strokeEffectiveAlpha / compositeAlpha;
+
+                compositeR = Math.round(strokeColor.r * strokeContrib + fillColor.r * fillContrib);
+                compositeG = Math.round(strokeColor.g * strokeContrib + fillColor.g * fillContrib);
+                compositeB = Math.round(strokeColor.b * strokeContrib + fillColor.b * fillContrib);
+            }
+        }
+
         // Calculate bounds
         // Path bounds (fill boundary)
         const pathLeft = Math.floor(x);
@@ -3466,56 +3493,94 @@ if (__outA > 0) {
             }
         };
 
+        // Composite span helper for pre-composited fill+stroke overlap regions
+        const renderCompositeSpan = (left, right, py) => {
+            const spanLeft = Math.max(0, left);
+            const spanRight = Math.min(surfaceWidth, right);
+            const length = spanRight - spanLeft;
+            if (length <= 0) return;
+
+            SpanOps.fill_Alpha(
+                data,
+                surfaceWidth,
+                surfaceHeight,
+                spanLeft,
+                py,
+                length,
+                compositeR,
+                compositeG,
+                compositeB,
+                compositeAlpha,
+                compositeInvAlpha,
+                clipBuffer
+            );
+        };
+
         // Single-pass scanline rendering
         for (let py = strokeOuterTop; py < strokeOuterBottom; py++) {
             if (py < 0 || py >= surfaceHeight) continue;
 
             const inVerticalStrokeZone = hasStroke && (py < strokeInnerTop || py >= strokeInnerBottom);
 
-            // STEP 1: Render fill span FIRST
-            // For semi-transparent stroke: fill to PATH extent (stroke will blend on top)
-            // For opaque stroke: fill to INNER extent (stroke covers overlap, no point filling there)
-            // For no stroke: fill to PATH extent
-            // For semi-transparent strokes, also render fill in vertical stroke zones
-            // so the top/bottom stroke can blend with the fill underneath
-            const shouldRenderFill =
-                hasFill && py >= pathTop && py < pathBottom && (!inVerticalStrokeZone || strokeIsSemiTransparent);
-
-            if (shouldRenderFill) {
-                let fillLeft, fillRight;
-
-                if (!hasStroke) {
-                    // No stroke: fill entire path width
-                    fillLeft = pathLeft;
-                    fillRight = pathRight;
-                } else if (strokeIsSemiTransparent) {
-                    // Semi-transparent stroke: fill to PATH extent
-                    // Stroke will blend with this fill for correct alpha blending
-                    fillLeft = pathLeft;
-                    fillRight = pathRight;
-                } else {
-                    // Opaque stroke: fill to INNER extent (stroke covers overlap anyway)
-                    fillLeft = strokeInnerLeft;
-                    fillRight = strokeInnerRight;
-                }
-
-                if (fillLeft < fillRight) {
-                    renderFillSpan(fillLeft, fillRight, py);
-                }
-            }
-
-            // STEP 2: Render stroke spans ON TOP
-            if (hasStroke) {
-                if (inVerticalStrokeZone) {
-                    // Full horizontal stroke span (top or bottom edge)
-                    renderStrokeSpan(strokeOuterLeft, strokeOuterRight, py);
-                } else {
-                    // Left and right stroke segments only
-                    if (strokeOuterLeft < strokeInnerLeft) {
-                        renderStrokeSpan(strokeOuterLeft, strokeInnerLeft, py);
+            if (inVerticalStrokeZone) {
+                // Top/bottom stroke zones
+                if (useCompositeOptimization && py >= pathTop && py < pathBottom) {
+                    // Stroke zone overlaps fill: render 3 segments (no overdraw)
+                    // Segment 1: stroke-only left of fill
+                    if (strokeOuterLeft < pathLeft) {
+                        renderStrokeSpan(strokeOuterLeft, pathLeft, py);
                     }
-                    if (strokeInnerRight < strokeOuterRight) {
-                        renderStrokeSpan(strokeInnerRight, strokeOuterRight, py);
+                    // Segment 2: composite where stroke overlaps fill
+                    renderCompositeSpan(pathLeft, pathRight, py);
+                    // Segment 3: stroke-only right of fill
+                    if (pathRight < strokeOuterRight) {
+                        renderStrokeSpan(pathRight, strokeOuterRight, py);
+                    }
+                } else if (hasStroke) {
+                    // Pure stroke (no fill overlap) - full span
+                    renderStrokeSpan(strokeOuterLeft, strokeOuterRight, py);
+                }
+            } else if (py >= pathTop && py < pathBottom) {
+                // Interior rows
+
+                if (useCompositeOptimization && hasStroke) {
+                    // 5-segment rendering: zero overdraw
+                    // Segment 1: stroke-only left
+                    if (strokeOuterLeft < pathLeft) {
+                        renderStrokeSpan(strokeOuterLeft, pathLeft, py);
+                    }
+                    // Segment 2: composite left (fill+stroke overlap)
+                    if (pathLeft < strokeInnerLeft) {
+                        renderCompositeSpan(pathLeft, strokeInnerLeft, py);
+                    }
+                    // Segment 3: fill-only center
+                    if (hasFill && strokeInnerLeft < strokeInnerRight) {
+                        renderFillSpan(strokeInnerLeft, strokeInnerRight, py);
+                    }
+                    // Segment 4: composite right (fill+stroke overlap)
+                    if (strokeInnerRight < pathRight) {
+                        renderCompositeSpan(strokeInnerRight, pathRight, py);
+                    }
+                    // Segment 5: stroke-only right
+                    if (pathRight < strokeOuterRight) {
+                        renderStrokeSpan(pathRight, strokeOuterRight, py);
+                    }
+                } else {
+                    // Opaque stroke or fill-only: existing optimized path
+                    if (hasFill) {
+                        const fillLeft = hasStroke ? strokeInnerLeft : pathLeft;
+                        const fillRight = hasStroke ? strokeInnerRight : pathRight;
+                        if (fillLeft < fillRight) {
+                            renderFillSpan(fillLeft, fillRight, py);
+                        }
+                    }
+                    if (hasStroke) {
+                        if (strokeOuterLeft < strokeInnerLeft) {
+                            renderStrokeSpan(strokeOuterLeft, strokeInnerLeft, py);
+                        }
+                        if (strokeInnerRight < strokeOuterRight) {
+                            renderStrokeSpan(strokeInnerRight, strokeOuterRight, py);
+                        }
                     }
                 }
             }
