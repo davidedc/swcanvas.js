@@ -721,6 +721,48 @@ Context2D                              # Orchestration and state management
 
 For complete API reference with method signatures, conditions, and algorithms, see **DIRECT-RENDERING-SUMMARY.MD**.
 
+### RectOpsAA Rendering Paths
+
+`fillStroke_AA_Any` uses three optimized paths based on stroke characteristics:
+
+#### Path 1: 1px Stroke Fast Path
+**Condition**: `lineWidth <= 1 && hasFill && hasStroke`
+
+For 1px strokes, geometry ensures no overlap between fill inner extent and stroke pixels:
+- Fill inner: `[ceil(x + 0.5), floor(x + width - 0.5)]`
+- Stroke: `floor(x)` and `floor(x + width)`
+
+Implementation:
+- Fill using SpanOps (bulk row-by-row processing)
+- Stroke using direct 4-edge pixel loops (reuses `stroke1px_AA_*` pattern)
+
+This avoids composite calculation and 5-segment overhead for the common 1px stroke case.
+
+#### Path 2: 5-Segment Composite Path
+**Condition**: `lineWidth > 1 && strokeIsSemiTransparent && hasFill`
+
+For thick semi-transparent strokes, overlap regions exist where stroke blends over fill. To avoid overdraw (writing pixels twice), we:
+1. Pre-compute composite color using Porter-Duff source-over
+2. Render 5 non-overlapping segments per row:
+   - Stroke-only | Composite | Fill-only | Composite | Stroke-only
+
+#### Path 3: Simple Path
+**Condition**: All other cases (opaque strokes, fill-only, stroke-only)
+
+- Opaque strokes: fill to inner extent, stroke covers overlap
+- Fill-only: single fill region
+- Stroke-only: stroke frame only
+
+#### Performance Considerations
+
+**SpanOps Overhead**: ~0.37% of total render time. Not worth eliminating given:
+- Would require duplicating clipping logic across multiple methods
+- Improvement below benchmarking noise floor (0.7-0.9% CV)
+
+**Cache Locality**: Thick stroke rendering uses row-by-row iteration (5-segment) rather than edge-by-edge to maintain sequential memory access. 1px strokes can use edge-by-edge because vertical edge overhead is minimal.
+
+**Composite Calculation**: Only performed for thick semi-transparent strokes where overlap exists. 1px strokes skip this entirely.
+
 ### Benefits
 
 1. **Reduced Context2D Size**: ~47% reduction (2,609 → 1,378 lines)

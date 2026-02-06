@@ -52,7 +52,10 @@ All entry points are in `Context2D.js`. Use grep to find exact locations: `grep 
 
 Notes:
 - Context2D calls RectOpsAA for axis-aligned (AA) operations and RectOpsRot directly for rotated operations.
-- `RectOpsAA.fillStroke_AA_Any()` uses single-scan span-based rendering with fill-first ordering for correct semi-transparent stroke blending. Fill extent is conditional: PATH extent for semi-transparent strokes (so stroke blends with fill), INNER extent for opaque strokes (optimization).
+- `RectOpsAA.fillStroke_AA_Any()` uses three optimized paths:
+  - **1px fast path** (`lineWidth <= 1`): Fill inner extent via SpanOps + direct 4-edge pixel stroke. No overlap exists between fill and stroke for 1px, so no composite calculation needed.
+  - **5-segment path** (thick semi-transparent strokes): Pre-computed composite color for overlap regions, zero overdraw.
+  - **Simple path** (opaque strokes, fill-only, stroke-only): Fill to inner extent, stroke covers its region.
 
 ### 2.2 ROUNDED RECTANGLES (RoundedRectOpsAA.js + RoundedRectOpsRot.js)
 
@@ -350,6 +353,7 @@ if (clipBuffer[byteIndex] === 0) {
 | Edge Buffer Raster  | RoundedRectOpsRot.fill_Rot_Any             | O(H+P+A) optimal rotated fill          |
 | Dual Edge Buffer    | RoundedRectOpsRot.stroke_Rot_Any (thick)   | Outer+inner perimeters, fill annulus   |
 | Span-based fill-first | RectOpsAA.fillStroke                  | Correct semi-transparent stroke blending |
+| 1px fast path         | RectOpsAA.fillStroke                  | No overlap for 1px: fill + 4-edge stroke |
 | Incremental DDA     | QuadScanOps.fillQuad                     | 4x faster scanline traversal (1 add vs 2 muls) |
 | Edge-based DDA      | RectOpsRot._stroke_Rot_1px_DDA           | 1px rotated rect stroke aligned with fill |
 | Buffer pool         | RoundedRectOpsRot (all methods)          | Growth-only Int16Array pool eliminates per-call allocations |
@@ -366,6 +370,7 @@ if (clipBuffer[byteIndex] === 0) {
 | Exact endpoints      | ArcOps.stroke1pxOpaqueExactEndpoints                           | Angle-based iteration guarantees junction pixels   |
 | Event buffer reuse   | ArcOps.*                                                       | Module-level Float32Array(8) avoids per-scanline allocation |
 | Conditional fill extent | RectOpsAA.fillStroke                                          | Semi-transparent stroke → PATH extent; opaque → INNER extent |
+| 1px stroke fast path    | RectOpsAA.fillStroke                                          | No overlap for 1px strokes; skip composite calculation       |
 | Int16Array buffer pool | RoundedRectOpsRot                                              | Module-level growth-only pool eliminates 10-20 allocations per call |
 | Double-generation      | RoundedRectOpsRot._fillStroke_Rot_1px                          | CPU cycles for coord generation < Set hash overhead |
 | Conditional dedup      | CircleOps/ArcOps stroke1px_Alpha                               | x!=y + cardinal checks eliminate Set allocation |
