@@ -6,7 +6,7 @@ This directory contains the comprehensive **modular test infrastructure** for SW
 
 ```
 tests/
-├── core/                          # 37 individual core test files (001-036)
+├── core/                          # 37 individual core test files (001-037)
 │   ├── 001-surface-creation-valid.js
 │   ├── 015-alpha-blending-test.js  
 │   ├── 031-transform-matrix-order-dependency.js
@@ -72,7 +72,7 @@ npm run test:direct-rendering  # Runs 79 direct rendering path verification test
 
 SWCanvas uses a **modular complementary dual test system** where individual test files are automatically concatenated at build time, maintaining both development flexibility and production performance:
 
-### Core Functionality Tests - 36 Individual Files
+### Core Functionality Tests - 37 Individual Files
 **Location**: `/tests/core/` (individual files) → `/tests/dist/core-functionality-tests.js` (concatenated)
 
 **Modular Structure**:
@@ -142,7 +142,7 @@ test('Surface creation with valid dimensions', () => {
 - ✅ **Ellipse**: Ellipse drawing with various orientations and partial arcs - 1 test (131)
 - ✅ **ArcTo**: arcTo() path construction with edge cases - 2 tests (132-133)
 - ✅ **Hit Testing**: isPointInPath/isPointInStroke with fill rules and Path2D - 5 tests (134-138)
-- ✅ **Shadows**: Shadow rendering for fills and strokes with blur and offset - 2 tests (139-140)
+- ✅ **Shadows**: Shadow rendering with blur, offset, clipping, rotation, gradients - 6 tests (139-144)
 
 **Example Modular Test File** (`/tests/visual/002-alpha-blending-test.js`):
 ```javascript
@@ -292,8 +292,8 @@ Create a new individual file in `/tests/core/` following the [naming convention]
 
 ```bash
 # Create new core test
-echo "// Test: New feature test" > tests/core/037-new-feature-test.js
-echo "test('New feature test', () => { /* test code */ });" >> tests/core/037-new-feature-test.js
+echo "// Test: New feature test" > tests/core/038-new-feature-test.js
+echo "test('New feature test', () => { /* test code */ });" >> tests/core/038-new-feature-test.js
 
 # Build automatically includes it
 npm run build && npm test
@@ -304,7 +304,7 @@ Create a new individual file in `/tests/visual/` following the same [naming conv
 
 ```bash
 # Create new visual test
-cat > tests/visual/141-new-visual-test.js << 'EOF'
+cat > tests/visual/145-new-visual-test.js << 'EOF'
 // Test: New Visual Test
 // This file will be concatenated into the main visual test suite
 

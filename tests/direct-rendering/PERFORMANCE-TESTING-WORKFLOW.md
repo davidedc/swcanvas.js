@@ -848,8 +848,6 @@ Throttle detection was removed after investigation showed:
 - Drift detection had 8.84% stddev - too noisy to reliably detect throttling
 - Statistical filtering achieves 0.7-0.9% CV vs 10-20% with throttle-based approach
 
-See [BENCHMARK-INVESTIGATION-RESULTS.md](BENCHMARK-INVESTIGATION-RESULTS.md) for detailed analysis.
-
 ### 9.9 Outlier Filtering
 
 Performance measurements can include outliers from GC pauses, system interrupts, or thermal spikes. Use `--skip-outliers` to filter these using IQR (Interquartile Range) filtering:

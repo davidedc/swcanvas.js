@@ -1,15 +1,8 @@
-# Proposed New Test Naming Convention
+# Test Naming Convention
 
 ## 1. Intent and Rationale
 
-After a thorough analysis of all test cases (summarized in `test_case_naming_analysis_v18.md`), it became clear that the legacy test filenames did not consistently or completely capture the full range of parameters being tested. The intent of this new naming convention is to create a clear, information-dense, and predictable filename structure for all high-level tests.
-
-This convention aims to solve the following problems:
-*   **Ambiguity:** Old names often omitted key details (e.g., stroke thickness, crisp rendering, layout).
-*   **Inconsistency:** The order and terminology of facets were not standardized.
-*   **Lack of Detail:** Critical aspects like context transformations (translate, rotate, scale) and clipping were not captured at all.
-
-By embedding a comprehensive set of facets directly into the filename in a standardized way, we make each test file self-describing. This improves discoverability, makes it easier to understand a test's purpose at a glance, and facilitates targeted test selection.
+This naming convention provides a clear, information-dense, and predictable filename structure for direct rendering test files. Each filename embeds a comprehensive set of facets in a standardized order, making test files self-describing for discoverability and targeted test selection.
 
 ## 2. Core Principles
 

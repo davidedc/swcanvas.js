@@ -348,4 +348,4 @@ Scaling is applied to all HTML5 Canvas results.
 - [README.md](README.md#7-performance-testing) - Performance test configuration and usage
 - [PERFORMANCE-TESTING-WORKFLOW.md](PERFORMANCE-TESTING-WORKFLOW.md) - Workflow guide for benchmarking code changes
 - [performance-tests.html](performance-tests.html) - Browser-based performance UI
-- [BENCHMARK-INVESTIGATION-RESULTS.md](BENCHMARK-INVESTIGATION-RESULTS.md) - Detailed investigation of variance sources
+

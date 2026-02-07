@@ -79,7 +79,6 @@ Each document has a **single responsibility** to avoid duplication:
 - **Examples and demos** → examples/README.md
 - **Direct rendering system** → DIRECT-RENDERING-SUMMARY.MD
 - **Test naming conventions** → test_naming_convention.md
-- **Optional utilities** → lib/swcanvas-compat-polyfill.js
 - **Development with Claude** → CLAUDE.md
 
 ## Documentation Maintenance

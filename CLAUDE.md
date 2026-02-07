@@ -118,74 +118,14 @@ Uses object-oriented ES6 class design throughout. See ARCHITECTURE.md for comple
 
 ### Inline Markers for Hot Pixel Loops
 
-The preprocessor supports **chained template expansion** - templates can reference other templates via nested markers. The preprocessor performs multi-pass expansion until all markers are resolved, with depth protection (default max 10 passes) to prevent infinite loops.
+Source files use `/*@inline:TEMPLATE_NAME(...)*/` markers expanded at build time for zero-overhead pixel operations. See build-scripts/README.md for template reference and ARCHITECTURE.md "Build-Time Preprocessing" for design rationale.
 
-**Template Hierarchy** (chained expansion):
-```
-Level 0 (Base):     SET_OPAQUE, BLEND_ALPHA
-Level 1 (Clipped):  *_CLIPPED → references Level 0
-Level 2 (Arc):      *_ARC_FAST_CLIPPED → references Level 1
-```
-
-**Standard Templates** (caller must check clipping BEFORE):
-- `/*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, alpha, invAlpha)*/` - for span-based alpha blending
-- `/*@inline:SET_OPAQUE(data32, pixelIndex, packedColor)*/` - for span-based opaque writes
-
-**Clipped Templates** (include clipping check, for per-pixel loops):
-- `/*@inline:BLEND_ALPHA_CLIPPED(...)*/` - chains to BLEND_ALPHA
-- `/*@inline:SET_OPAQUE_CLIPPED(...)*/` - chains to SET_OPAQUE
-
-**Arc Templates** (include angle + bounds + clipping, for arc per-pixel loops):
-- `/*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(data32, packedColor, clipBuffer, dx, dy, startCos, startSin, endCos, endSin, isLargeArc, px, py, width, height)*/` - chains to SET_OPAQUE_CLIPPED
-- `/*@inline:BLEND_ALPHA_ARC_FAST_CLIPPED(data, r, g, b, alpha, invAlpha, clipBuffer, dx, dy, startCos, startSin, endCos, endSin, isLargeArc, px, py, width, height)*/` - chains to BLEND_ALPHA_CLIPPED
-
-Arc templates use fast cross-product angle checks (10-50x faster than atan2) and include bounds checking. They are used in `ArcOps.stroke1px_Opaq()` and `ArcOps.stroke1px_Alpha()` for per-pixel Bresenham rendering. Scanline-based arc methods use module-level event buffer (`_arcEventBuffer`) and insertion sort for additional performance.
-
-**Clipping contract**:
-- Standard templates: Caller checks `clipBuffer` BEFORE the marker (for span-based code via SpanOps)
-- Clipped templates: Include clipping check internally (for per-pixel loops where hoisting is not possible)
-- Arc templates: Include both angle range check and clipping check (for arc-specific per-pixel loops)
-- Templates are defined in `build-scripts/preprocess.js`
-- Run `npm run build` to expand markers - check `dist/swcanvas.js` to verify expansion
+Key points for development:
+- Templates defined in `build-scripts/preprocess.js`
+- Run `npm run build` to expand markers — check `dist/swcanvas.js` to verify
 - Run `node tests/build/test-preprocessor.js` to test the preprocessor (45 tests)
-
-**SpanOps bounds contract**:
-- SpanOps TRUSTS that callers provide valid coordinates (y in bounds, startX >= 0, startX + length <= width, length > 0)
-- Callers MUST clamp bounds BEFORE calling SpanOps methods
-- This enables early-exit optimizations when spans are entirely off-screen
-- Debug assertions verify bounds in development builds (`globalThis.__SWCANVAS_DEBUG__ = true`)
-- See ARCHITECTURE.md "SpanOps Bounds Contract" section for detailed clamping patterns
 
 ### OO Development Patterns
 - **Use proper classes**: Prefer `new SWCanvas.Core.Point(x, y)` over plain objects
-- **Leverage immutability**: Transform2D, Point, Rectangle, Color, BitmapEncodingOptions are immutable - use their methods
-- **Joshua Bloch patterns**: BitmapEncodingOptions demonstrates static factory methods and immutable configuration objects
-- **Composition over inheritance**: BitBuffer and BoundsTracker utilities composed by ClipMask, SourceMask, and ShadowBuffer classes (Item 18)
-- **Static utilities**: Use ImageProcessor for format conversion, CompositeOperations for blending
-- **Factory methods**: Use Transform2D constructor and .translation(), .scaling(), .rotation() for common transformations
-- **Validation**: All classes validate input parameters with descriptive error messages
-- **Composition**: Classes work together rather than through inheritance hierarchies
-- **Encapsulation**: Use public APIs, private methods marked with underscore prefix
-- **Utility classes**: BitBuffer provides reusable bit manipulation, BoundsTracker provides reusable bounds tracking
-
-### Key Architecture Principles
-- **Single Responsibility**: Each class handles one specific concern
-- **Immutability**: Value objects prevent accidental state mutations
-- **Static Methods**: Used for pure functions and utilities without state
-- **Defensive Programming**: Comprehensive parameter validation at class boundaries
-- **Clean APIs**: Clear public interfaces with proper documentation
-- **Memory Efficiency**: Optimized data structures (1-bit stencil buffers, efficient pixel operations)
-
-### File Organization
-- **One Class Per File**: Each class in its own appropriately named file
-- **Clear Dependencies**: Build script maintains proper dependency order
-- **Semantic Subdirectories**: Source organized into 7 categories:
-  - `src/core/` - Core engine primitives (Context2D, Surface, Transform2D, etc.)
-  - `src/renderers/` - Shape-specific direct renderers (*Ops classes)
-  - `src/utils/` - Shared utilities (BitBuffer, BoundsTracker, Point, Rectangle)
-  - `src/paint/` - Paint sources (Gradient, Pattern, ColorParser)
-  - `src/filters/` - Effects (BoxBlur, ShadowBuffer)
-  - `src/io/` - File encoders (PngEncoder, BitmapEncoder)
-  - `src/compat/` - HTML5 Canvas compatibility layer
-
-This context reflects the current object-oriented architecture and development patterns for effective collaboration.
+- **Leverage immutability**: Transform2D, Point, Rectangle, Color, BitmapEncodingOptions are immutable
+- See ARCHITECTURE.md for complete design patterns and principles
