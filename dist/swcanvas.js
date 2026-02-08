@@ -3394,15 +3394,21 @@ if (__outA > 0) {
         const fillPacked = fillIsOpaque ? Surface.packColor(fillColor.r, fillColor.g, fillColor.b, 255) : 0;
         const strokePacked = strokeIsOpaque ? Surface.packColor(strokeColor.r, strokeColor.g, strokeColor.b, 255) : 0;
 
+        // 1px stroke fast path: no overlap between fill and stroke
+        // For lineWidth <= 1, strokeInner bounds don't overlap with stroke pixel positions
+        const use1pxFastPath = hasStroke && hasFill && lineWidth <= 1;
+
         // Pre-compute composite color for overlap regions (stroke over fill)
         // Uses Porter-Duff source-over: stroke OVER fill
         // This eliminates overdraw by rendering overlap regions once with pre-composited color
+        // Only use composite optimization for thick semi-transparent strokes
+        // 1px strokes use the fast path above (no overlap, no composite needed)
         let compositeR = 0,
             compositeG = 0,
             compositeB = 0;
         let compositeAlpha = 0,
             compositeInvAlpha = 1;
-        const useCompositeOptimization = strokeIsSemiTransparent && hasFill;
+        const useCompositeOptimization = strokeIsSemiTransparent && hasFill && !use1pxFastPath;
 
         if (useCompositeOptimization) {
             // Porter-Duff: outA = srcA + dstA * (1 - srcA)
@@ -3516,6 +3522,161 @@ if (__outA > 0) {
             );
         };
 
+        // ============================================================
+        // 1px STROKE FAST PATH
+        // ============================================================
+        // For 1px strokes, geometry ensures no overlap between fill inner extent and stroke pixels:
+        // - Fill inner: [ceil(x + 0.5), floor(x + width - 0.5)]
+        // - Stroke: floor(x) and floor(x + width)
+        // This allows us to skip composite calculation and 5-segment overhead.
+        if (use1pxFastPath) {
+            // Calculate 1px stroke bounds (matches stroke1px_AA_* logic)
+            const strokeLeft = Math.floor(x);
+            const strokeTop = Math.floor(y);
+            const strokeRight = Math.floor(x + width);
+            const strokeBottom = Math.floor(y + height);
+
+            // Fill inner rectangle (row-by-row with SpanOps)
+            for (let py = Math.max(0, strokeInnerTop); py < Math.min(surfaceHeight, strokeInnerBottom); py++) {
+                if (strokeInnerLeft < strokeInnerRight) {
+                    renderFillSpan(strokeInnerLeft, strokeInnerRight, py);
+                }
+            }
+
+            // Stroke using 4-edge direct pixel loops (reuses stroke1px_AA_* pattern)
+            const r = strokeColor.r,
+                g = strokeColor.g,
+                b = strokeColor.b;
+
+            if (strokeIsOpaque) {
+                // Top edge (horizontal)
+                if (strokeTop >= 0 && strokeTop < surfaceHeight) {
+                    for (let px = Math.max(0, strokeLeft); px <= Math.min(strokeRight, surfaceWidth - 1); px++) {
+                        const pos = strokeTop * surfaceWidth + px;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = strokePacked;
+}
+                    }
+                }
+
+                // Bottom edge (horizontal)
+                if (strokeBottom >= 0 && strokeBottom < surfaceHeight) {
+                    for (let px = Math.max(0, strokeLeft); px <= Math.min(strokeRight, surfaceWidth - 1); px++) {
+                        const pos = strokeBottom * surfaceWidth + px;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = strokePacked;
+}
+                    }
+                }
+
+                // Left edge (vertical, skip corners)
+                if (strokeLeft >= 0 && strokeLeft < surfaceWidth) {
+                    for (let py = Math.max(0, strokeTop + 1); py < Math.min(strokeBottom, surfaceHeight); py++) {
+                        const pos = py * surfaceWidth + strokeLeft;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = strokePacked;
+}
+                    }
+                }
+
+                // Right edge (vertical, skip corners)
+                if (strokeRight >= 0 && strokeRight < surfaceWidth) {
+                    for (let py = Math.max(0, strokeTop + 1); py < Math.min(strokeBottom, surfaceHeight); py++) {
+                        const pos = py * surfaceWidth + strokeRight;
+                        if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
+    data32[pos] = strokePacked;
+}
+                    }
+                }
+            } else {
+                // Semi-transparent 1px stroke
+                // Top edge (horizontal)
+                if (strokeTop >= 0 && strokeTop < surfaceHeight) {
+                    for (let px = Math.max(0, strokeLeft); px <= Math.min(strokeRight, surfaceWidth - 1); px++) {
+                        const pixelIndex = strokeTop * surfaceWidth + px;
+                        if (!clipBuffer || (clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7)))) {
+    const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * strokeInvAlpha;
+const __outA = strokeEffectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+}
+                    }
+                }
+
+                // Bottom edge (horizontal)
+                if (strokeBottom >= 0 && strokeBottom < surfaceHeight) {
+                    for (let px = Math.max(0, strokeLeft); px <= Math.min(strokeRight, surfaceWidth - 1); px++) {
+                        const pixelIndex = strokeBottom * surfaceWidth + px;
+                        if (!clipBuffer || (clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7)))) {
+    const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * strokeInvAlpha;
+const __outA = strokeEffectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+}
+                    }
+                }
+
+                // Left edge (vertical, skip corners)
+                if (strokeLeft >= 0 && strokeLeft < surfaceWidth) {
+                    for (let py = Math.max(0, strokeTop + 1); py < Math.min(strokeBottom, surfaceHeight); py++) {
+                        const pixelIndex = py * surfaceWidth + strokeLeft;
+                        if (!clipBuffer || (clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7)))) {
+    const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * strokeInvAlpha;
+const __outA = strokeEffectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+}
+                    }
+                }
+
+                // Right edge (vertical, skip corners)
+                if (strokeRight >= 0 && strokeRight < surfaceWidth) {
+                    for (let py = Math.max(0, strokeTop + 1); py < Math.min(strokeBottom, surfaceHeight); py++) {
+                        const pixelIndex = py * surfaceWidth + strokeRight;
+                        if (!clipBuffer || (clipBuffer[pixelIndex >> 3] & (1 << (pixelIndex & 7)))) {
+    const __off = pixelIndex * 4;
+const __dstA = data[__off + 3] / 255;
+const __dstAScaled = __dstA * strokeInvAlpha;
+const __outA = strokeEffectiveAlpha + __dstAScaled;
+if (__outA > 0) {
+    const __blend = 1 / __outA;
+    data[__off]     = (r * strokeEffectiveAlpha + data[__off] * __dstAScaled) * __blend;
+    data[__off + 1] = (g * strokeEffectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
+    data[__off + 2] = (b * strokeEffectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
+    data[__off + 3] = __outA * 255;
+}
+}
+                    }
+                }
+            }
+
+            return; // Exit early - 1px fast path complete
+        }
+
+        // ============================================================
+        // THICK STROKE PATH (5-segment or simple)
+        // ============================================================
         // Single-pass scanline rendering
         for (let py = strokeOuterTop; py < strokeOuterBottom; py++) {
             if (py < 0 || py >= surfaceHeight) continue;
