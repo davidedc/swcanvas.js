@@ -1,0 +1,897 @@
+========================================================================
+PROXIMITY-TO-OPTIMAL ANALYSIS
+========================================================================
+
+Source: 2026-02-08T03:16:33.121Z
+Git: ed4bf04 (main)
+Floor model: rect-AA regression (R² shown per regression)
+
+--- DATA QUALITY ---
+⚠  3 regression(s) had negative intercept (clamped to 0):
+   fillstroke-thick-semi-opaq, stroke-1px-semi, stroke-thick-opaq
+   This means the data range is too narrow to separate per-shape from per-pixel cost
+⚠  2 regression(s) have low R² (below 0.9):
+   fillstroke-thick-opaq-opaq, fillstroke-thick-opaq-semi
+
+--- Floor Regressions (rect-AA) ---
+  fill-opaq                      a=0.17µs       b=0.47 ns/px       R²=0.998  (n=3)
+  fill-semi                      a=2.73µs       b=4.39 ns/px       R²=1.000  (n=3)
+  fillstroke-1px-opaq-opaq       a=0.31µs       b=0.54 ns/px       R²=0.999  (n=3)
+                                 Note: rect-AA 1px stroke (4 line segments) may not be the true floor;
+                                 circle Bresenham (8-fold symmetry) can be faster for this op type.
+  fillstroke-1px-opaq-semi       a=0.44µs       b=0.60 ns/px       R²=1.000  (n=3)
+                                 Note: rect-AA 1px stroke (4 line segments) may not be the true floor;
+                                 circle Bresenham (8-fold symmetry) can be faster for this op type.
+  fillstroke-1px-semi-opaq       a=3.90µs       b=4.96 ns/px       R²=0.998  (n=3)
+                                 Note: rect-AA 1px stroke (4 line segments) may not be the true floor;
+                                 circle Bresenham (8-fold symmetry) can be faster for this op type.
+  fillstroke-1px-semi-semi       a=4.09µs       b=5.18 ns/px       R²=0.999  (n=3)
+                                 Note: rect-AA 1px stroke (4 line segments) may not be the true floor;
+                                 circle Bresenham (8-fold symmetry) can be faster for this op type.
+  fillstroke-thick-opaq-opaq     a=0.38µs       b=0.89 ns/px       R²=0.831 ⚠ low R²  (n=9)
+  fillstroke-thick-opaq-semi     a=3.43µs       b=2.17 ns/px       R²=0.787 ⚠ low R²  (n=9)
+  fillstroke-thick-semi-opaq     a=0.00µs       b=3.39 ns/px       R²=0.967 ⚠ a clamped  (n=9)
+  fillstroke-thick-semi-semi     a=3.48µs       b=4.65 ns/px       R²=0.998  (n=9)
+  stroke-1px-opaq                a=0.02µs       b=2.91 ns/px       R²=1.000  (n=3)
+                                 Note: rect-AA 1px stroke (4 line segments) may not be the true floor;
+                                 circle Bresenham (8-fold symmetry) can be faster for this op type.
+  stroke-1px-semi                a=0.00µs       b=12.21 ns/px      R²=1.000 ⚠ a clamped  (n=3)
+                                 Note: rect-AA 1px stroke (4 line segments) may not be the true floor;
+                                 circle Bresenham (8-fold symmetry) can be faster for this op type.
+  stroke-thick-opaq              a=0.00µs       b=1.61 ns/px       R²=0.955 ⚠ a clamped  (n=9)
+  stroke-thick-semi              a=3.61µs       b=4.94 ns/px       R²=0.993  (n=9)
+
+--- RECT-AA (FLOOR) ---
+Test                                              Est.Px     Floor    Actual    Prox
+------------------------------------------------------------------------------------
+rect-aa fill-opaque sw0 szS                          740    0.51µs    0.40µs    129% (floor)
+rect-aa fill-opaque sw0 szM                        3,389    1.76µs    1.90µs     92% (floor)
+rect-aa fill-opaque sw0 szL                       13,678    6.58µs    6.55µs    100% (floor)
+rect-aa fill-semi sw0 szS                            740    5.98µs    5.68µs    105% (floor)
+rect-aa fill-semi sw0 szM                          3,389    17.6µs    18.0µs     98% (floor)
+rect-aa fill-semi sw0 szL                         13,678    62.7µs    62.6µs    100% (floor)
+rect-aa fill-opaque-stroke-opaque sw1px szS          845    0.76µs    0.68µs    112% (floor)
+rect-aa fill-opaque-stroke-opaque sw1px szM        3,618    2.25µs    2.35µs     96% (floor)
+rect-aa fill-opaque-stroke-opaque sw1px szL       14,138    7.89µs    7.87µs    100% (floor)
+rect-aa fill-opaque-stroke-semi sw1px szS            845    0.95µs    0.93µs    102% (floor)
+rect-aa fill-opaque-stroke-semi sw1px szM          3,618    2.62µs    2.64µs     99% (floor)
+rect-aa fill-opaque-stroke-semi sw1px szL         14,138    8.94µs    8.94µs    100% (floor)
+rect-aa fill-semi-stroke-opaque sw1px szS            845    8.09µs    6.88µs    118% (floor)
+rect-aa fill-semi-stroke-opaque sw1px szM          3,618    21.8µs    23.4µs     93% (floor)
+rect-aa fill-semi-stroke-opaque sw1px szL         14,138    74.0µs    73.7µs    100% (floor)
+rect-aa fill-semi-stroke-semi sw1px szS              845    8.48µs    7.68µs    110% (floor)
+rect-aa fill-semi-stroke-semi sw1px szM            3,618    22.9µs    23.9µs     96% (floor)
+rect-aa fill-semi-stroke-semi sw1px szL           14,138    77.4µs    77.2µs    100% (floor)
+rect-aa fill-opaque-stroke-opaque swS szS          1,533    1.75µs    1.27µs    138% (floor)
+rect-aa fill-opaque-stroke-opaque swM szS          2,327    2.46µs    2.37µs    104% (floor)
+rect-aa fill-opaque-stroke-opaque swL szS          3,915    3.88µs    6.78µs     57% (floor)
+rect-aa fill-opaque-stroke-opaque swS szM          5,106    4.94µs    3.46µs    143% (floor)
+rect-aa fill-opaque-stroke-opaque swM szM          6,824    6.47µs    5.37µs    121% (floor)
+rect-aa fill-opaque-stroke-opaque swL szM         10,258    9.54µs    14.6µs     65% (floor)
+rect-aa fill-opaque-stroke-opaque swS szL         17,128    15.7µs    10.1µs    155% (floor)
+rect-aa fill-opaque-stroke-opaque swM szL         20,577    18.8µs    14.7µs    128% (floor)
+rect-aa fill-opaque-stroke-opaque swL szL         27,475    24.9µs    29.7µs     84% (floor)
+rect-aa fill-opaque-stroke-semi swS szS            1,533    6.76µs    4.62µs    146% (floor)
+rect-aa fill-opaque-stroke-semi swM szS            2,327    8.48µs    9.09µs     93% (floor)
+rect-aa fill-opaque-stroke-semi swL szS            3,915    11.9µs    21.0µs     57% (floor)
+rect-aa fill-opaque-stroke-semi swS szM            5,106    14.5µs    9.57µs    152% (floor)
+rect-aa fill-opaque-stroke-semi swM szM            6,824    18.3µs    18.1µs    101% (floor)
+rect-aa fill-opaque-stroke-semi swL szM           10,258    25.7µs    36.9µs     70% (floor)
+rect-aa fill-opaque-stroke-semi swS szL           17,128    40.6µs    21.9µs    186% (floor)
+rect-aa fill-opaque-stroke-semi swM szL           20,577    48.1µs    39.5µs    122% (floor)
+rect-aa fill-opaque-stroke-semi swL szL           27,475    63.1µs    76.8µs     82% (floor)
+rect-aa fill-semi-stroke-opaque swS szS            1,533    5.19µs    5.28µs     98% (floor)
+rect-aa fill-semi-stroke-opaque swM szS            2,327    7.88µs    6.01µs    131% (floor)
+rect-aa fill-semi-stroke-opaque swL szS            3,915    13.3µs    10.1µs    131% (floor)
+rect-aa fill-semi-stroke-opaque swS szM            5,106    17.3µs    18.7µs     93% (floor)
+rect-aa fill-semi-stroke-opaque swM szM            6,824    23.1µs    20.6µs    112% (floor)
+rect-aa fill-semi-stroke-opaque swL szM           10,258    34.7µs    27.9µs    125% (floor)
+rect-aa fill-semi-stroke-opaque swS szL           17,128    58.0µs    69.5µs     83% (floor)
+rect-aa fill-semi-stroke-opaque swM szL           20,577    69.7µs    71.6µs     97% (floor)
+rect-aa fill-semi-stroke-opaque swL szL           27,475    93.1µs    85.1µs    109% (floor)
+rect-aa fill-semi-stroke-semi swS szS              1,533    10.6µs    10.4µs    102% (floor)
+rect-aa fill-semi-stroke-semi swM szS              2,327    14.3µs    13.8µs    104% (floor)
+rect-aa fill-semi-stroke-semi swL szS              3,915    21.7µs    25.2µs     86% (floor)
+rect-aa fill-semi-stroke-semi swS szM              5,106    27.2µs    26.0µs    105% (floor)
+rect-aa fill-semi-stroke-semi swM szM              6,824    35.2µs    34.0µs    104% (floor)
+rect-aa fill-semi-stroke-semi swL szM             10,258    51.2µs    51.9µs     99% (floor)
+rect-aa fill-semi-stroke-semi swS szL             17,128    83.1µs    81.9µs    101% (floor)
+rect-aa fill-semi-stroke-semi swM szL             20,577    99.2µs    97.7µs    101% (floor)
+rect-aa fill-semi-stroke-semi swL szL             27,475     131µs     133µs     99% (floor)
+rect-aa stroke-opaque sw1px szS                      106    0.33µs    0.33µs     99% (floor)
+rect-aa stroke-opaque sw1px szM                      229    0.69µs    0.68µs    101% (floor)
+rect-aa stroke-opaque sw1px szL                      460    1.36µs    1.36µs    100% (floor)
+rect-aa stroke-semi sw1px szS                        106    1.29µs    0.95µs    136% (floor)
+rect-aa stroke-semi sw1px szM                        229    2.79µs    2.39µs    117% (floor)
+rect-aa stroke-semi sw1px szL                        460    5.61µs    5.26µs    107% (floor)
+rect-aa stroke-opaque swS szS                        794    1.28µs    0.89µs    144% (floor)
+rect-aa stroke-opaque swM szS                      1,587    2.55µs    1.88µs    136% (floor)
+rect-aa stroke-opaque swL szS                      3,175    5.11µs    5.84µs     87% (floor)
+rect-aa stroke-opaque swS szM                      1,717    2.76µs    1.80µs    154% (floor)
+rect-aa stroke-opaque swM szM                      3,435    5.53µs    3.76µs    147% (floor)
+rect-aa stroke-opaque swL szM                      6,869    11.1µs    11.8µs     94% (floor)
+rect-aa stroke-opaque swS szL                      3,449    5.55µs    3.54µs    157% (floor)
+rect-aa stroke-opaque swM szL                      6,898    11.1µs    7.33µs    151% (floor)
+rect-aa stroke-opaque swL szL                     13,796    22.2µs    21.9µs    101% (floor)
+rect-aa stroke-semi swS szS                          794    7.53µs    8.12µs     93% (floor)
+rect-aa stroke-semi swM szS                        1,587    11.4µs    11.7µs     98% (floor)
+rect-aa stroke-semi swL szS                        3,175    19.3µs    19.3µs    100% (floor)
+rect-aa stroke-semi swS szM                        1,717    12.1µs    14.2µs     85% (floor)
+rect-aa stroke-semi swM szM                        3,435    20.6µs    19.2µs    107% (floor)
+rect-aa stroke-semi swL szM                        6,869    37.5µs    36.6µs    102% (floor)
+rect-aa stroke-semi swS szL                        3,449    20.6µs    21.4µs     97% (floor)
+rect-aa stroke-semi swM szL                        6,898    37.7µs    34.3µs    110% (floor)
+rect-aa stroke-semi swL szL                       13,796    71.7µs    73.7µs     97% (floor)
+
+--- ARC  ---
+Test                                              Est.Px     Floor    Actual    Prox
+------------------------------------------------------------------------------------
+arc fill-opaque sw0 szS angS                          99    0.21µs    0.51µs     42%
+arc fill-opaque sw0 szS angM                         223    0.27µs    0.64µs     43%
+arc fill-opaque sw0 szS angL                         371    0.34µs    0.92µs     37%
+arc fill-opaque sw0 szS angXL                        511    0.41µs    1.06µs     38%
+arc fill-opaque sw0 szM angS                         463    0.38µs    1.07µs     36%
+arc fill-opaque sw0 szM angM                       1,043    0.66µs    1.45µs     45%
+arc fill-opaque sw0 szM angL                       1,738    0.98µs    2.34µs     42%
+arc fill-opaque sw0 szM angXL                      2,394    1.29µs    2.85µs     45%
+arc fill-opaque sw0 szL angS                       1,869    1.04µs    2.48µs     42%
+arc fill-opaque sw0 szL angM                       4,206    2.14µs    3.70µs     58%
+arc fill-opaque sw0 szL angL                       7,010    3.45µs    6.06µs     57%
+arc fill-opaque sw0 szL angXL                      9,658    4.69µs    7.36µs     64%
+arc fill-semi sw0 szS angS                            99    3.17µs    1.36µs    233%*
+arc fill-semi sw0 szS angM                           223    3.71µs    2.43µs    153%*
+arc fill-semi sw0 szS angL                           371    4.36µs    4.09µs    107%*
+arc fill-semi sw0 szS angXL                          511    4.98µs    5.44µs     91%
+arc fill-semi sw0 szM angS                           463    4.77µs    4.88µs     98%
+arc fill-semi sw0 szM angM                         1,043    7.31µs    8.66µs     84%
+arc fill-semi sw0 szM angL                         1,738    10.4µs    12.3µs     84%
+arc fill-semi sw0 szM angXL                        2,394    13.2µs    14.5µs     91%
+arc fill-semi sw0 szL angS                         1,869    10.9µs    12.6µs     87%
+arc fill-semi sw0 szL angM                         4,206    21.2µs    20.3µs    104%*
+arc fill-semi sw0 szL angL                         7,010    33.5µs    30.5µs    110%*
+arc fill-semi sw0 szL angXL                        9,658    45.1µs    39.3µs    115%*
+arc fill-opaque-stroke-opaque sw1px szS angS         185    0.41µs    2.00µs     20%
+arc fill-opaque-stroke-opaque sw1px szS angM         309    0.47µs    2.18µs     22%
+arc fill-opaque-stroke-opaque sw1px szS angL         458    0.55µs    2.48µs     22%
+arc fill-opaque-stroke-opaque sw1px szS angXL        598    0.63µs    2.70µs     23%
+arc fill-opaque-stroke-opaque sw1px szM angS         650    0.66µs    4.16µs     16%
+arc fill-opaque-stroke-opaque sw1px szM angM       1,230    0.97µs    4.96µs     19%
+arc fill-opaque-stroke-opaque sw1px szM angL       1,925    1.34µs    5.89µs     23%
+arc fill-opaque-stroke-opaque sw1px szM angXL      2,581    1.69µs    6.51µs     26%
+arc fill-opaque-stroke-opaque sw1px szL angS       2,245    1.51µs    8.66µs     17%
+arc fill-opaque-stroke-opaque sw1px szL angM       4,581    2.76µs    10.3µs     27%
+arc fill-opaque-stroke-opaque sw1px szL angL       7,385    4.27µs    12.8µs     33%
+arc fill-opaque-stroke-opaque sw1px szL angXL     10,033    5.69µs    14.7µs     39%
+arc fill-opaque-stroke-semi sw1px szS angS           185    0.55µs    0.75µs     74%
+arc fill-opaque-stroke-semi sw1px szS angM           309    0.63µs    0.95µs     66%
+arc fill-opaque-stroke-semi sw1px szS angL           458    0.72µs    1.32µs     54%
+arc fill-opaque-stroke-semi sw1px szS angXL          598    0.80µs    1.57µs     51%
+arc fill-opaque-stroke-semi sw1px szM angS           650    0.83µs    1.46µs     57%
+arc fill-opaque-stroke-semi sw1px szM angM         1,230    1.18µs    2.09µs     56%
+arc fill-opaque-stroke-semi sw1px szM angL         1,925    1.60µs    3.09µs     52%
+arc fill-opaque-stroke-semi sw1px szM angXL        2,581    1.99µs    3.73µs     53%
+arc fill-opaque-stroke-semi sw1px szL angS         2,245    1.79µs    3.37µs     53%
+arc fill-opaque-stroke-semi sw1px szL angM         4,581    3.20µs    4.67µs     68%
+arc fill-opaque-stroke-semi sw1px szL angL         7,385    4.88µs    7.50µs     65%
+arc fill-opaque-stroke-semi sw1px szL angXL       10,033    6.48µs    9.02µs     72%
+arc fill-semi-stroke-opaque sw1px szS angS           185    4.81µs    2.99µs    161%*
+arc fill-semi-stroke-opaque sw1px szS angM           309    5.43µs    4.39µs    124%*
+arc fill-semi-stroke-opaque sw1px szS angL           458    6.16µs    6.60µs     93%
+arc fill-semi-stroke-opaque sw1px szS angXL          598    6.86µs    8.66µs     79%
+arc fill-semi-stroke-opaque sw1px szM angS           650    7.12µs    8.91µs     80%
+arc fill-semi-stroke-opaque sw1px szM angM         1,230    9.99µs    15.1µs     66%
+arc fill-semi-stroke-opaque sw1px szM angL         1,925    13.4µs    24.1µs     56%
+arc fill-semi-stroke-opaque sw1px szM angXL        2,581    16.7µs    30.3µs     55%
+arc fill-semi-stroke-opaque sw1px szL angS         2,245    15.0µs    24.7µs     61%
+arc fill-semi-stroke-opaque sw1px szL angM         4,581    26.6µs    38.8µs     69%
+arc fill-semi-stroke-opaque sw1px szL angL         7,385    40.5µs    58.9µs     69%
+arc fill-semi-stroke-opaque sw1px szL angXL       10,033    53.6µs    79.0µs     68%
+arc fill-semi-stroke-semi sw1px szS angS             185    5.05µs    1.72µs    294%*
+arc fill-semi-stroke-semi sw1px szS angM             309    5.70µs    3.07µs    186%*
+arc fill-semi-stroke-semi sw1px szS angL             458    6.47µs    5.40µs    120%*
+arc fill-semi-stroke-semi sw1px szS angXL            598    7.19µs    7.81µs     92%
+arc fill-semi-stroke-semi sw1px szM angS             650    7.47µs    6.01µs    124%*
+arc fill-semi-stroke-semi sw1px szM angM           1,230    10.5µs    12.9µs     81%
+arc fill-semi-stroke-semi sw1px szM angL           1,925    14.1µs    21.3µs     66%
+arc fill-semi-stroke-semi sw1px szM angXL          2,581    17.5µs    27.8µs     63%
+arc fill-semi-stroke-semi sw1px szL angS           2,245    15.7µs    19.1µs     83%
+arc fill-semi-stroke-semi sw1px szL angM           4,581    27.8µs    33.4µs     83%
+arc fill-semi-stroke-semi sw1px szL angL           7,385    42.4µs    54.8µs     77%
+arc fill-semi-stroke-semi sw1px szL angXL         10,033    56.1µs    72.3µs     78%
+arc fill-opaque-stroke-opaque swS szS angS           207    0.56µs    1.43µs     39%
+arc fill-opaque-stroke-opaque swS szS angM           466    0.79µs    1.73µs     46%
+arc fill-opaque-stroke-opaque swS szS angL           776    1.07µs    2.41µs     44%
+arc fill-opaque-stroke-opaque swS szS angXL        1,069    1.33µs    2.76µs     48%
+arc fill-opaque-stroke-opaque swM szS angS           315    0.66µs    1.43µs     46%
+arc fill-opaque-stroke-opaque swM szS angM           709    1.01µs    1.89µs     54%
+arc fill-opaque-stroke-opaque swM szS angL         1,181    1.43µs    2.81µs     51%
+arc fill-opaque-stroke-opaque swM szS angXL        1,627    1.83µs    3.18µs     58%
+arc fill-opaque-stroke-opaque swL szS angS           531    0.85µs    1.71µs     50%
+arc fill-opaque-stroke-opaque swL szS angM         1,195    1.45µs    2.15µs     67%
+arc fill-opaque-stroke-opaque swL szS angL         1,991    2.16µs    3.39µs     64%
+arc fill-opaque-stroke-opaque swL szS angXL        2,743    2.83µs    4.23µs     67%
+arc fill-opaque-stroke-opaque swS szM angS           697    1.00µs    2.69µs     37%
+arc fill-opaque-stroke-opaque swS szM angM         1,568    1.78µs    3.44µs     52%
+arc fill-opaque-stroke-opaque swS szM angL         2,614    2.71µs    5.09µs     53%
+arc fill-opaque-stroke-opaque swS szM angXL        3,602    3.60µs    5.69µs     63%
+arc fill-opaque-stroke-opaque swM szM angS           931    1.21µs    2.86µs     42%
+arc fill-opaque-stroke-opaque swM szM angM         2,094    2.25µs    3.64µs     62%
+arc fill-opaque-stroke-opaque swM szM angL         3,490    3.50µs    5.59µs     63%
+arc fill-opaque-stroke-opaque swM szM angXL        4,809    4.67µs    6.63µs     70%
+arc fill-opaque-stroke-opaque swL szM angS         1,398    1.63µs    3.34µs     49%
+arc fill-opaque-stroke-opaque swL szM angM         3,146    3.19µs    4.39µs     73%
+arc fill-opaque-stroke-opaque swL szM angL         5,243    5.06µs    6.88µs     74%
+arc fill-opaque-stroke-opaque swL szM angXL        7,223    6.83µs    8.24µs     83%
+arc fill-opaque-stroke-opaque swS szL angS         2,339    2.47µs    5.14µs     48%
+arc fill-opaque-stroke-opaque swS szL angM         5,262    5.08µs    6.95µs     73%
+arc fill-opaque-stroke-opaque swS szL angL         8,770    8.21µs    10.8µs     76%
+arc fill-opaque-stroke-opaque swS szL angXL       12,083    11.2µs    12.5µs     89%
+arc fill-opaque-stroke-opaque swM szL angS         2,808    2.89µs    5.47µs     53%
+arc fill-opaque-stroke-opaque swM szL angM         6,318    6.02µs    7.69µs     78%
+arc fill-opaque-stroke-opaque swM szL angL        10,529    9.78µs    11.6µs     84%
+arc fill-opaque-stroke-opaque swM szL angXL       14,507    13.3µs    14.0µs     95%
+arc fill-opaque-stroke-opaque swL szL angS         3,746    3.73µs    6.41µs     58%
+arc fill-opaque-stroke-opaque swL szL angM         8,429    7.91µs    8.73µs     91%
+arc fill-opaque-stroke-opaque swL szL angL        14,049    12.9µs    13.7µs     94%
+arc fill-opaque-stroke-opaque swL szL angXL       19,356    17.7µs    17.8µs     99%
+arc fill-opaque-stroke-semi swS szS angS             207    3.88µs    2.41µs    161%*
+arc fill-opaque-stroke-semi swS szS angM             466    4.44µs    3.29µs    135%*
+arc fill-opaque-stroke-semi swS szS angL             776    5.11µs    5.14µs     99%
+arc fill-opaque-stroke-semi swS szS angXL          1,069    5.75µs    5.80µs     99%
+arc fill-opaque-stroke-semi swM szS angS             315    4.11µs    3.15µs    130%*
+arc fill-opaque-stroke-semi swM szS angM             709    4.97µs    4.89µs    102%*
+arc fill-opaque-stroke-semi swM szS angL           1,181    5.99µs    7.31µs     82%
+arc fill-opaque-stroke-semi swM szS angXL          1,627    6.96µs    8.82µs     79%
+arc fill-opaque-stroke-semi swL szS angS             531    4.58µs    5.05µs     91%
+arc fill-opaque-stroke-semi swL szS angM           1,195    6.02µs    7.98µs     75%
+arc fill-opaque-stroke-semi swL szS angL           1,991    7.75µs    12.1µs     64%
+arc fill-opaque-stroke-semi swL szS angXL          2,743    9.39µs    15.0µs     63%
+arc fill-opaque-stroke-semi swS szM angS             697    4.94µs    4.25µs    116%*
+arc fill-opaque-stroke-semi swS szM angM           1,568    6.83µs    5.93µs    115%*
+arc fill-opaque-stroke-semi swS szM angL           2,614    9.11µs    8.91µs    102%*
+arc fill-opaque-stroke-semi swS szM angXL          3,602    11.3µs    10.9µs    103%*
+arc fill-opaque-stroke-semi swM szM angS             931    5.45µs    5.31µs    103%*
+arc fill-opaque-stroke-semi swM szM angM           2,094    7.98µs    8.77µs     91%
+arc fill-opaque-stroke-semi swM szM angL           3,490    11.0µs    12.8µs     86%
+arc fill-opaque-stroke-semi swM szM angXL          4,809    13.9µs    16.0µs     87%
+arc fill-opaque-stroke-semi swL szM angS           1,398    6.46µs    8.14µs     79%
+arc fill-opaque-stroke-semi swL szM angM           3,146    10.3µs    12.6µs     81%
+arc fill-opaque-stroke-semi swL szM angL           5,243    14.8µs    19.8µs     75%
+arc fill-opaque-stroke-semi swL szM angXL          7,223    19.1µs    25.1µs     76%
+arc fill-opaque-stroke-semi swS szL angS           2,339    8.51µs    7.58µs    112%*
+arc fill-opaque-stroke-semi swS szL angM           5,262    14.9µs    11.7µs    127%*
+arc fill-opaque-stroke-semi swS szL angL           8,770    22.5µs    17.8µs    126%*
+arc fill-opaque-stroke-semi swS szL angXL         12,083    29.7µs    22.6µs    132%*
+arc fill-opaque-stroke-semi swM szL angS           2,808    9.53µs    9.68µs     98%
+arc fill-opaque-stroke-semi swM szL angM           6,318    17.2µs    16.0µs    107%*
+arc fill-opaque-stroke-semi swM szL angL          10,529    26.3µs    24.7µs    107%*
+arc fill-opaque-stroke-semi swM szL angXL         14,507    35.0µs    31.5µs    111%*
+arc fill-opaque-stroke-semi swL szL angS           3,746    11.6µs    13.9µs     83%
+arc fill-opaque-stroke-semi swL szL angM           8,429    21.7µs    23.6µs     92%
+arc fill-opaque-stroke-semi swL szL angL          14,049    34.0µs    37.3µs     91%
+arc fill-opaque-stroke-semi swL szL angXL         19,356    45.5µs    51.2µs     89%
+arc fill-semi-stroke-opaque swS szS angS             207    0.70µs    2.39µs     29%
+arc fill-semi-stroke-opaque swS szS angM             466    1.58µs    3.45µs     46%
+arc fill-semi-stroke-opaque swS szS angL             776    2.63µs    4.91µs     54%
+arc fill-semi-stroke-opaque swS szS angXL          1,069    3.62µs    5.82µs     62%
+arc fill-semi-stroke-opaque swM szS angS             315    1.07µs    2.22µs     48%
+arc fill-semi-stroke-opaque swM szS angM             709    2.40µs    3.13µs     77%
+arc fill-semi-stroke-opaque swM szS angL           1,181    4.00µs    4.60µs     87%
+arc fill-semi-stroke-opaque swM szS angXL          1,627    5.51µs    5.53µs    100%
+arc fill-semi-stroke-opaque swL szS angS             531    1.80µs    2.49µs     72%
+arc fill-semi-stroke-opaque swL szS angM           1,195    4.05µs    3.25µs    125%?
+arc fill-semi-stroke-opaque swL szS angL           1,991    6.74µs    4.97µs    136%?
+arc fill-semi-stroke-opaque swL szS angXL          2,743    9.29µs    6.39µs    145%?
+arc fill-semi-stroke-opaque swS szM angS             697    2.36µs    6.04µs     39%
+arc fill-semi-stroke-opaque swS szM angM           1,568    5.31µs    8.61µs     62%
+arc fill-semi-stroke-opaque swS szM angL           2,614    8.85µs    12.6µs     70%
+arc fill-semi-stroke-opaque swS szM angXL          3,602    12.2µs    15.5µs     79%
+arc fill-semi-stroke-opaque swM szM angS             931    3.15µs    5.34µs     59%
+arc fill-semi-stroke-opaque swM szM angM           2,094    7.09µs    8.05µs     88%
+arc fill-semi-stroke-opaque swM szM angL           3,490    11.8µs    12.2µs     97%
+arc fill-semi-stroke-opaque swM szM angXL          4,809    16.3µs    15.2µs    107%?
+arc fill-semi-stroke-opaque swL szM angS           1,398    4.74µs    5.66µs     84%
+arc fill-semi-stroke-opaque swL szM angM           3,146    10.7µs    8.29µs    129%?
+arc fill-semi-stroke-opaque swL szM angL           5,243    17.8µs    13.2µs    135%?
+arc fill-semi-stroke-opaque swL szM angXL          7,223    24.5µs    16.3µs    150%?
+arc fill-semi-stroke-opaque swS szL angS           2,339    7.92µs    15.2µs     52%
+arc fill-semi-stroke-opaque swS szL angM           5,262    17.8µs    25.7µs     69%
+arc fill-semi-stroke-opaque swS szL angL           8,770    29.7µs    39.7µs     75%
+arc fill-semi-stroke-opaque swS szL angXL         12,083    40.9µs    51.5µs     79%
+arc fill-semi-stroke-opaque swM szL angS           2,808    9.51µs    13.5µs     71%
+arc fill-semi-stroke-opaque swM szL angM           6,318    21.4µs    22.9µs     93%
+arc fill-semi-stroke-opaque swM szL angL          10,529    35.7µs    35.5µs    101%?
+arc fill-semi-stroke-opaque swM szL angXL         14,507    49.1µs    45.3µs    108%?
+arc fill-semi-stroke-opaque swL szL angS           3,746    12.7µs    14.1µs     90%
+arc fill-semi-stroke-opaque swL szL angM           8,429    28.6µs    22.9µs    125%?
+arc fill-semi-stroke-opaque swL szL angL          14,049    47.6µs    36.1µs    132%?
+arc fill-semi-stroke-opaque swL szL angXL         19,356    65.6µs    48.1µs    136%?
+arc fill-semi-stroke-semi swS szS angS               207    4.45µs    3.43µs    130%*
+arc fill-semi-stroke-semi swS szS angM               466    5.65µs    5.08µs    111%*
+arc fill-semi-stroke-semi swS szS angL               776    7.09µs    7.99µs     89%
+arc fill-semi-stroke-semi swS szS angXL            1,069    8.46µs    10.1µs     84%
+arc fill-semi-stroke-semi swM szS angS               315    4.95µs    4.22µs    117%*
+arc fill-semi-stroke-semi swM szS angM               709    6.78µs    6.66µs    102%*
+arc fill-semi-stroke-semi swM szS angL             1,181    8.98µs    10.5µs     86%
+arc fill-semi-stroke-semi swM szS angXL            1,627    11.1µs    12.9µs     86%
+arc fill-semi-stroke-semi swL szS angS               531    5.95µs    5.81µs    102%*
+arc fill-semi-stroke-semi swL szS angM             1,195    9.04µs    9.98µs     91%
+arc fill-semi-stroke-semi swL szS angL             1,991    12.7µs    14.9µs     85%
+arc fill-semi-stroke-semi swL szS angXL            2,743    16.2µs    19.1µs     85%
+arc fill-semi-stroke-semi swS szM angS               697    6.73µs    7.73µs     87%
+arc fill-semi-stroke-semi swS szM angM             1,568    10.8µs    13.6µs     80%
+arc fill-semi-stroke-semi swS szM angL             2,614    15.6µs    18.5µs     85%
+arc fill-semi-stroke-semi swS szM angXL            3,602    20.2µs    24.0µs     84%
+arc fill-semi-stroke-semi swM szM angS               931    7.81µs    8.76µs     89%
+arc fill-semi-stroke-semi swM szM angM             2,094    13.2µs    14.8µs     89%
+arc fill-semi-stroke-semi swM szM angL             3,490    19.7µs    20.9µs     94%
+arc fill-semi-stroke-semi swM szM angXL            4,809    25.8µs    27.3µs     95%
+arc fill-semi-stroke-semi swL szM angS             1,398    9.99µs    11.8µs     84%
+arc fill-semi-stroke-semi swL szM angM             3,146    18.1µs    18.3µs     99%
+arc fill-semi-stroke-semi swL szM angL             5,243    27.9µs    27.0µs    103%*
+arc fill-semi-stroke-semi swL szM angXL            7,223    37.1µs    36.6µs    101%*
+arc fill-semi-stroke-semi swS szL angS             2,339    14.4µs    18.6µs     77%
+arc fill-semi-stroke-semi swS szL angM             5,262    28.0µs    31.4µs     89%
+arc fill-semi-stroke-semi swS szL angL             8,770    44.3µs    48.4µs     92%
+arc fill-semi-stroke-semi swS szL angXL           12,083    59.7µs    62.6µs     95%
+arc fill-semi-stroke-semi swM szL angS             2,808    16.5µs    18.8µs     88%
+arc fill-semi-stroke-semi swM szL angM             6,318    32.9µs    32.2µs    102%*
+arc fill-semi-stroke-semi swM szL angL            10,529    52.5µs    52.0µs    101%*
+arc fill-semi-stroke-semi swM szL angXL           14,507    71.0µs    64.1µs    111%*
+arc fill-semi-stroke-semi swL szL angS             3,746    20.9µs    21.4µs     98%
+arc fill-semi-stroke-semi swL szL angM             8,429    42.7µs    40.8µs    105%*
+arc fill-semi-stroke-semi swL szL angL            14,049    68.8µs    63.1µs    109%*
+arc fill-semi-stroke-semi swL szL angXL           19,356    93.5µs    84.0µs    111%*
+arc stroke-opaque sw1px szS angS                      86    0.27µs    1.47µs     18%
+arc stroke-opaque sw1px szS angM                      86    0.27µs    1.51µs     18%
+arc stroke-opaque sw1px szS angL                      86    0.27µs    1.54µs     18%
+arc stroke-opaque sw1px szS angXL                     86    0.27µs    1.59µs     17%
+arc stroke-opaque sw1px szM angS                     187    0.56µs    3.14µs     18%
+arc stroke-opaque sw1px szM angM                     187    0.56µs    3.09µs     18%
+arc stroke-opaque sw1px szM angL                     187    0.56µs    3.35µs     17%
+arc stroke-opaque sw1px szM angXL                    187    0.56µs    3.50µs     16%
+arc stroke-opaque sw1px szL angS                     375    1.11µs    5.95µs     19%
+arc stroke-opaque sw1px szL angM                     375    1.11µs    6.40µs     17%
+arc stroke-opaque sw1px szL angL                     375    1.11µs    6.32µs     18%
+arc stroke-opaque sw1px szL angXL                    375    1.11µs    6.66µs     17%
+arc stroke-semi sw1px szS angS                        86    1.05µs    0.25µs    422%?
+arc stroke-semi sw1px szS angM                        86    1.05µs    0.37µs    285%?
+arc stroke-semi sw1px szS angL                        86    1.05µs    0.53µs    199%?
+arc stroke-semi sw1px szS angXL                       86    1.05µs    0.73µs    144%?
+arc stroke-semi sw1px szM angS                       187    2.28µs    0.47µs    485%?
+arc stroke-semi sw1px szM angM                       187    2.28µs    0.86µs    265%?
+arc stroke-semi sw1px szM angL                       187    2.28µs    1.31µs    174%?
+arc stroke-semi sw1px szM angXL                      187    2.28µs    1.85µs    123%?
+arc stroke-semi sw1px szL angS                       375    4.58µs    0.87µs    527%?
+arc stroke-semi sw1px szL angM                       375    4.58µs    1.77µs    259%?
+arc stroke-semi sw1px szL angL                       375    4.58µs    2.85µs    161%?
+arc stroke-semi sw1px szL angXL                      375    4.58µs    4.13µs    111%?
+arc stroke-opaque swS szS angS                       108    0.17µs    0.85µs     20%
+arc stroke-opaque swS szS angM                       243    0.39µs    1.04µs     38%
+arc stroke-opaque swS szS angL                       405    0.65µs    1.40µs     47%
+arc stroke-opaque swS szS angXL                      558    0.90µs    1.44µs     62%
+arc stroke-opaque swM szS angS                       216    0.35µs    0.93µs     37%
+arc stroke-opaque swM szS angM                       486    0.78µs    1.25µs     63%
+arc stroke-opaque swM szS angL                       810    1.30µs    1.70µs     77%
+arc stroke-opaque swM szS angXL                    1,116    1.80µs    1.98µs     91%
+arc stroke-opaque swL szS angS                       432    0.70µs    1.10µs     63%
+arc stroke-opaque swL szS angM                       972    1.56µs    1.57µs    100%
+arc stroke-opaque swL szS angL                     1,620    2.61µs    2.41µs    108%?
+arc stroke-opaque swL szS angXL                    2,232    3.59µs    2.85µs    126%?
+arc stroke-opaque swS szM angS                       234    0.38µs    1.54µs     24%
+arc stroke-opaque swS szM angM                       526    0.85µs    1.86µs     45%
+arc stroke-opaque swS szM angL                       876    1.41µs    2.51µs     56%
+arc stroke-opaque swS szM angXL                    1,207    1.94µs    2.69µs     72%
+arc stroke-opaque swM szM angS                       467    0.75µs    1.73µs     43%
+arc stroke-opaque swM szM angM                     1,051    1.69µs    2.12µs     80%
+arc stroke-opaque swM szM angL                     1,752    2.82µs    3.09µs     91%
+arc stroke-opaque swM szM angXL                    2,414    3.89µs    3.61µs    108%?
+arc stroke-opaque swL szM angS                       935    1.50µs    2.01µs     75%
+arc stroke-opaque swL szM angM                     2,103    3.38µs    2.99µs    113%?
+arc stroke-opaque swL szM angL                     3,505    5.64µs    4.42µs    128%?
+arc stroke-opaque swL szM angXL                    4,829    7.77µs    5.21µs    149%?
+arc stroke-opaque swS szL angS                       469    0.76µs    2.68µs     28%
+arc stroke-opaque swS szL angM                     1,056    1.70µs    3.17µs     54%
+arc stroke-opaque swS szL angL                     1,760    2.83µs    4.12µs     69%
+arc stroke-opaque swS szL angXL                    2,425    3.90µs    4.77µs     82%
+arc stroke-opaque swM szL angS                       939    1.51µs    3.16µs     48%
+arc stroke-opaque swM szL angM                     2,112    3.40µs    3.99µs     85%
+arc stroke-opaque swM szL angL                     3,520    5.66µs    5.37µs    105%?
+arc stroke-opaque swM szL angXL                    4,849    7.80µs    6.44µs    121%?
+arc stroke-opaque swL szL angS                     1,877    3.02µs    3.74µs     81%
+arc stroke-opaque swL szL angM                     4,223    6.80µs    5.06µs    134%?
+arc stroke-opaque swL szL angL                     7,039    11.3µs    7.86µs    144%?
+arc stroke-opaque swL szL angXL                    9,698    15.6µs    9.77µs    160%?
+arc stroke-semi swS szS angS                         108    4.14µs    1.89µs    219%*
+arc stroke-semi swS szS angM                         243    4.81µs    3.54µs    136%*
+arc stroke-semi swS szS angL                         405    5.61µs    5.95µs     94%
+arc stroke-semi swS szS angXL                        558    6.36µs    7.82µs     81%
+arc stroke-semi swM szS angS                         216    4.68µs    2.84µs    165%*
+arc stroke-semi swM szS angM                         486    6.01µs    5.80µs    104%*
+arc stroke-semi swM szS angL                         810    7.61µs    8.82µs     86%
+arc stroke-semi swM szS angXL                      1,116    9.12µs    11.1µs     82%
+arc stroke-semi swL szS angS                         432    5.74µs    5.03µs    114%*
+arc stroke-semi swL szS angM                         972    8.41µs    8.58µs     98%
+arc stroke-semi swL szS angL                       1,620    11.6µs    12.2µs     96%
+arc stroke-semi swL szS angXL                      2,232    14.6µs    15.0µs     97%
+arc stroke-semi swS szM angS                         234    4.76µs    4.00µs    119%*
+arc stroke-semi swS szM angM                         526    6.20µs    7.78µs     80%
+arc stroke-semi swS szM angL                         876    7.93µs    12.8µs     62%
+arc stroke-semi swS szM angXL                      1,207    9.57µs    15.2µs     63%
+arc stroke-semi swM szM angS                         467    5.92µs    6.30µs     94%
+arc stroke-semi swM szM angM                       1,051    8.80µs    10.8µs     81%
+arc stroke-semi swM szM angL                       1,752    12.3µs    15.2µs     81%
+arc stroke-semi swM szM angXL                      2,414    15.5µs    18.1µs     86%
+arc stroke-semi swL szM angS                         935    8.22µs    9.14µs     90%
+arc stroke-semi swL szM angM                       2,103    14.0µs    13.6µs    103%*
+arc stroke-semi swL szM angL                       3,505    20.9µs    19.4µs    108%*
+arc stroke-semi swL szM angXL                      4,829    27.4µs    24.1µs    114%*
+arc stroke-semi swS szL angS                         469    5.93µs    7.89µs     75%
+arc stroke-semi swS szL angM                       1,056    8.82µs    14.3µs     62%
+arc stroke-semi swS szL angL                       1,760    12.3µs    20.9µs     59%
+arc stroke-semi swS szL angXL                      2,425    15.6µs    23.4µs     66%
+arc stroke-semi swM szL angS                         939    8.24µs    11.0µs     75%
+arc stroke-semi swM szL angM                       2,112    14.0µs    18.1µs     77%
+arc stroke-semi swM szL angL                       3,520    21.0µs    23.6µs     89%
+arc stroke-semi swM szL angXL                      4,849    27.5µs    29.9µs     92%
+arc stroke-semi swL szL angS                       1,877    12.9µs    13.9µs     92%
+arc stroke-semi swL szL angM                       4,223    24.5µs    22.4µs    109%*
+arc stroke-semi swL szL angL                       7,039    38.3µs    35.0µs    110%*
+arc stroke-semi swL szL angXL                      9,698    51.5µs    43.6µs    118%*
+
+--- CIRCLE  ---
+Test                                              Est.Px     Floor    Actual    Prox
+------------------------------------------------------------------------------------
+circle fill-opaque sw0 szS                           594    0.45µs    0.38µs    117%*
+circle fill-opaque sw0 szM                         2,781    1.47µs    1.33µs    111%*
+circle fill-opaque sw0 szL                        11,216    5.43µs    4.85µs    112%*
+circle fill-semi sw0 szS                             594    5.34µs    4.30µs    124%*
+circle fill-semi sw0 szM                           2,781    14.9µs    12.2µs    123%*
+circle fill-semi sw0 szL                          11,216    51.9µs    40.5µs    128%*
+circle fill-opaque-stroke-opaque sw1px szS           680    0.67µs    0.51µs    132%*
+circle fill-opaque-stroke-opaque sw1px szM         2,967    1.90µs    1.59µs    119%*
+circle fill-opaque-stroke-opaque sw1px szL        11,591    6.52µs    5.60µs    117%*
+circle fill-opaque-stroke-semi sw1px szS             680    0.85µs    0.77µs    110%*
+circle fill-opaque-stroke-semi sw1px szM           2,967    2.23µs    2.19µs    102%*
+circle fill-opaque-stroke-semi sw1px szL          11,591    7.41µs    6.41µs    116%*
+circle fill-semi-stroke-opaque sw1px szS             680    7.27µs    5.61µs    130%*
+circle fill-semi-stroke-opaque sw1px szM           2,967    18.6µs    23.1µs     80%
+circle fill-semi-stroke-opaque sw1px szL          11,591    61.3µs    71.7µs     86%
+circle fill-semi-stroke-semi sw1px szS               680    7.62µs    6.06µs    126%*
+circle fill-semi-stroke-semi sw1px szM             2,967    19.5µs    25.4µs     77%
+circle fill-semi-stroke-semi sw1px szL            11,591    64.2µs    72.2µs     89%
+circle fill-opaque-stroke-opaque swS szS           1,242    1.49µs    1.10µs    135%*
+circle fill-opaque-stroke-opaque swM szS           1,890    2.07µs    1.39µs    149%*
+circle fill-opaque-stroke-opaque swL szS           3,186    3.22µs    2.17µs    149%*
+circle fill-opaque-stroke-opaque swS szM           4,182    4.11µs    2.84µs    145%*
+circle fill-opaque-stroke-opaque swM szM           5,584    5.37µs    3.60µs    149%*
+circle fill-opaque-stroke-opaque swL szM           8,388    7.87µs    4.76µs    165%*
+circle fill-opaque-stroke-opaque swS szL          14,031    12.9µs    7.35µs    176%*
+circle fill-opaque-stroke-opaque swM szL          16,847    15.4µs    8.72µs    177%*
+circle fill-opaque-stroke-opaque swL szL          22,478    20.5µs    10.9µs    188%*
+circle fill-opaque-stroke-semi swS szS             1,242    6.12µs    4.45µs    138%*
+circle fill-opaque-stroke-semi swM szS             1,890    7.53µs    7.01µs    107%*
+circle fill-opaque-stroke-semi swL szS             3,186    10.3µs    13.4µs     77%
+circle fill-opaque-stroke-semi swS szM             4,182    12.5µs    8.70µs    144%*
+circle fill-opaque-stroke-semi swM szM             5,584    15.6µs    13.7µs    114%*
+circle fill-opaque-stroke-semi swL szM             8,388    21.7µs    22.7µs     95%
+circle fill-opaque-stroke-semi swS szL            14,031    33.9µs    18.1µs    187%*
+circle fill-opaque-stroke-semi swM szL            16,847    40.0µs    27.6µs    145%*
+circle fill-opaque-stroke-semi swL szL            22,478    52.3µs    46.0µs    114%*
+circle fill-semi-stroke-opaque swS szS             1,242    4.21µs    3.69µs    114%?
+circle fill-semi-stroke-opaque swM szS             1,890    6.40µs    3.48µs    184%?
+circle fill-semi-stroke-opaque swL szS             3,186    10.8µs    4.16µs    259%?
+circle fill-semi-stroke-opaque swS szM             4,182    14.2µs    13.1µs    108%?
+circle fill-semi-stroke-opaque swM szM             5,584    18.9µs    12.7µs    148%?
+circle fill-semi-stroke-opaque swL szM             8,388    28.4µs    12.8µs    223%?
+circle fill-semi-stroke-opaque swS szL            14,031    47.5µs    47.7µs    100%
+circle fill-semi-stroke-opaque swM szL            16,847    57.1µs    42.0µs    136%?
+circle fill-semi-stroke-opaque swL szL            22,478    76.1µs    42.8µs    178%?
+circle fill-semi-stroke-semi swS szS               1,242    9.26µs    8.26µs    112%*
+circle fill-semi-stroke-semi swM szS               1,890    12.3µs    10.2µs    120%*
+circle fill-semi-stroke-semi swL szS               3,186    18.3µs    15.6µs    117%*
+circle fill-semi-stroke-semi swS szM               4,182    22.9µs    19.0µs    121%*
+circle fill-semi-stroke-semi swM szM               5,584    29.5µs    24.1µs    122%*
+circle fill-semi-stroke-semi swL szM               8,388    42.5µs    31.6µs    135%*
+circle fill-semi-stroke-semi swS szL              14,031    68.7µs    59.1µs    116%*
+circle fill-semi-stroke-semi swM szL              16,847    81.8µs    63.5µs    129%*
+circle fill-semi-stroke-semi swL szL              22,478     108µs    78.7µs    137%*
+circle stroke-opaque sw1px szS                        86    0.27µs    0.14µs    193%*
+circle stroke-opaque sw1px szM                       187    0.56µs    0.29µs    194%*
+circle stroke-opaque sw1px szL                       375    1.11µs    0.50µs    222%*
+circle stroke-semi sw1px szS                          86    1.05µs    0.70µs    151%?
+circle stroke-semi sw1px szM                         187    2.28µs    1.86µs    123%?
+circle stroke-semi sw1px szL                         375    4.58µs    4.21µs    109%?
+circle stroke-opaque swS szS                         648    1.04µs    0.73µs    143%?
+circle stroke-opaque swM szS                       1,296    2.09µs    1.08µs    193%?
+circle stroke-opaque swL szS                       2,592    4.17µs    1.84µs    227%?
+circle stroke-opaque swS szM                       1,402    2.26µs    1.51µs    149%?
+circle stroke-opaque swM szM                       2,804    4.51µs    2.08µs    217%?
+circle stroke-opaque swL szM                       5,608    9.02µs    3.26µs    277%?
+circle stroke-opaque swS szL                       2,816    4.53µs    2.59µs    175%?
+circle stroke-opaque swM szL                       5,631    9.06µs    4.04µs    224%?
+circle stroke-opaque swL szL                      11,263    18.1µs    6.49µs    279%?
+circle stroke-semi swS szS                           648    6.81µs    7.09µs     96%
+circle stroke-semi swM szS                         1,296    10.0µs    9.43µs    106%*
+circle stroke-semi swL szS                         2,592    16.4µs    13.2µs    125%*
+circle stroke-semi swS szM                         1,402    10.5µs    14.6µs     72%
+circle stroke-semi swM szM                         2,804    17.4µs    17.3µs    101%*
+circle stroke-semi swL szM                         5,608    31.3µs    22.7µs    138%*
+circle stroke-semi swS szL                         2,816    17.5µs    21.3µs     82%
+circle stroke-semi swM szL                         5,631    31.4µs    28.6µs    110%*
+circle stroke-semi swL szL                        11,263    59.2µs    43.2µs    137%*
+
+--- LINE-DIAG  ---
+Test                                              Est.Px     Floor    Actual    Prox
+------------------------------------------------------------------------------------
+line-diag stroke-opaque sw1px szS                     28    0.10µs    0.16µs     61%
+line-diag stroke-opaque sw1px szM                     60    0.19µs    0.28µs     68%
+line-diag stroke-opaque sw1px szL                    120    0.37µs    0.49µs     75%
+line-diag stroke-semi sw1px szS                       28    0.34µs    0.26µs    129%?
+line-diag stroke-semi sw1px szM                       60    0.73µs    0.58µs    125%?
+line-diag stroke-semi sw1px szL                      120    1.46µs    1.27µs    115%?
+line-diag stroke-opaque swS szS                      206    0.33µs    1.27µs     26%
+line-diag stroke-opaque swM szS                      413    0.66µs    1.60µs     41%
+line-diag stroke-opaque swL szS                      825    1.33µs    2.24µs     59%
+line-diag stroke-opaque swS szM                      446    0.72µs    2.27µs     32%
+line-diag stroke-opaque swM szM                      893    1.44µs    2.85µs     50%
+line-diag stroke-opaque swL szM                    1,785    2.87µs    3.61µs     80%
+line-diag stroke-opaque swS szL                      896    1.44µs    4.08µs     35%
+line-diag stroke-opaque swM szL                    1,793    2.88µs    4.69µs     61%
+line-diag stroke-opaque swL szL                    3,585    5.77µs    6.40µs     90%
+line-diag stroke-semi swS szS                        206    4.63µs    3.02µs    153%*
+line-diag stroke-semi swM szS                        413    5.65µs    5.22µs    108%*
+line-diag stroke-semi swL szS                        825    7.68µs    8.53µs     90%
+line-diag stroke-semi swS szM                        446    5.81µs    6.61µs     88%
+line-diag stroke-semi swM szM                        893    8.01µs    10.7µs     75%
+line-diag stroke-semi swL szM                      1,785    12.4µs    13.5µs     92%
+line-diag stroke-semi swS szL                        896    8.03µs    13.3µs     60%
+line-diag stroke-semi swM szL                      1,793    12.5µs    16.2µs     77%
+line-diag stroke-semi swL szL                      3,585    21.3µs    22.2µs     96%
+
+--- LINE-HORIZ  ---
+Test                                              Est.Px     Floor    Actual    Prox
+------------------------------------------------------------------------------------
+line-horiz stroke-opaque sw1px szS                    28    0.10µs    0.05µs    197%*
+line-horiz stroke-opaque sw1px szM                    60    0.19µs    0.06µs    319%*
+line-horiz stroke-opaque sw1px szL                   120    0.37µs    0.09µs    407%*
+line-horiz stroke-semi sw1px szS                      28    0.34µs    0.15µs    224%?
+line-horiz stroke-semi sw1px szM                      60    0.73µs    0.27µs    269%?
+line-horiz stroke-semi sw1px szL                     120    1.46µs    0.44µs    332%?
+line-horiz stroke-opaque swS szS                     206    0.33µs    0.13µs    255%?
+line-horiz stroke-opaque swM szS                     413    0.66µs    0.21µs    316%?
+line-horiz stroke-opaque swL szS                     825    1.33µs    0.38µs    349%?
+line-horiz stroke-opaque swS szM                     446    0.72µs    0.23µs    312%?
+line-horiz stroke-opaque swM szM                     893    1.44µs    0.41µs    350%?
+line-horiz stroke-opaque swL szM                   1,785    2.87µs    0.80µs    359%?
+line-horiz stroke-opaque swS szL                     896    1.44µs    0.40µs    361%?
+line-horiz stroke-opaque swM szL                   1,793    2.88µs    0.78µs    370%?
+line-horiz stroke-opaque swL szL                   3,585    5.77µs    1.57µs    367%?
+line-horiz stroke-semi swS szS                       206    4.63µs    1.48µs    313%*
+line-horiz stroke-semi swM szS                       413    5.65µs    3.13µs    180%*
+line-horiz stroke-semi swL szS                       825    7.68µs    6.18µs    124%*
+line-horiz stroke-semi swS szM                       446    5.81µs    2.47µs    235%*
+line-horiz stroke-semi swM szM                       893    8.01µs    5.20µs    154%*
+line-horiz stroke-semi swL szM                     1,785    12.4µs    9.54µs    130%*
+line-horiz stroke-semi swS szL                       896    8.03µs    4.06µs    198%*
+line-horiz stroke-semi swM szL                     1,793    12.5µs    7.68µs    162%*
+line-horiz stroke-semi swL szL                     3,585    21.3µs    14.7µs    145%*
+
+--- LINE-VERT  ---
+Test                                              Est.Px     Floor    Actual    Prox
+------------------------------------------------------------------------------------
+line-vert stroke-opaque sw1px szS                     28    0.10µs    0.17µs     58%
+line-vert stroke-opaque sw1px szM                     60    0.19µs    0.32µs     60%
+line-vert stroke-opaque sw1px szL                    120    0.37µs    0.60µs     61%
+line-vert stroke-semi sw1px szS                       28    0.34µs    0.21µs    160%?
+line-vert stroke-semi sw1px szM                       60    0.73µs    0.42µs    173%?
+line-vert stroke-semi sw1px szL                      120    1.46µs    0.81µs    180%?
+line-vert stroke-opaque swS szS                      206    0.33µs    0.18µs    184%?
+line-vert stroke-opaque swM szS                      413    0.66µs    0.26µs    255%?
+line-vert stroke-opaque swL szS                      825    1.33µs    0.42µs    316%?
+line-vert stroke-opaque swS szM                      446    0.72µs    0.33µs    218%?
+line-vert stroke-opaque swM szM                      893    1.44µs    0.48µs    299%?
+line-vert stroke-opaque swL szM                    1,785    2.87µs    0.84µs    342%?
+line-vert stroke-opaque swS szL                      896    1.44µs    0.62µs    233%?
+line-vert stroke-opaque swM szL                    1,793    2.88µs    0.88µs    328%?
+line-vert stroke-opaque swL szL                    3,585    5.77µs    1.56µs    370%?
+line-vert stroke-semi swS szS                        206    4.63µs    2.62µs    177%*
+line-vert stroke-semi swM szS                        413    5.65µs    3.96µs    143%*
+line-vert stroke-semi swL szS                        825    7.68µs    6.50µs    118%*
+line-vert stroke-semi swS szM                        446    5.81µs    5.57µs    104%*
+line-vert stroke-semi swM szM                        893    8.01µs    8.11µs     99%
+line-vert stroke-semi swL szM                      1,785    12.4µs    10.9µs    114%*
+line-vert stroke-semi swS szL                        896    8.03µs    10.7µs     75%
+line-vert stroke-semi swM szL                      1,793    12.5µs    13.7µs     91%
+line-vert stroke-semi swL szL                      3,585    21.3µs    18.7µs    114%*
+
+--- RECT-ROT  ---
+Test                                              Est.Px     Floor    Actual    Prox
+------------------------------------------------------------------------------------
+rect-rot fill-opaque sw0 szS                         740    0.51µs    2.26µs     23%
+rect-rot fill-opaque sw0 szM                       3,389    1.76µs    5.06µs     35%
+rect-rot fill-opaque sw0 szL                      13,678    6.58µs    12.1µs     55%
+rect-rot fill-semi sw0 szS                           740    5.98µs    7.39µs     81%
+rect-rot fill-semi sw0 szM                         3,389    17.6µs    18.0µs     98%
+rect-rot fill-semi sw0 szL                        13,678    62.7µs    52.4µs    120%*
+rect-rot fill-opaque-stroke-opaque sw1px szS         845    0.76µs    2.78µs     27%
+rect-rot fill-opaque-stroke-opaque sw1px szM       3,618    2.25µs    5.72µs     39%
+rect-rot fill-opaque-stroke-opaque sw1px szL      14,138    7.89µs    13.7µs     58%
+rect-rot fill-opaque-stroke-semi sw1px szS           845    0.95µs    2.95µs     32%
+rect-rot fill-opaque-stroke-semi sw1px szM         3,618    2.62µs    6.26µs     42%
+rect-rot fill-opaque-stroke-semi sw1px szL        14,138    8.94µs    14.3µs     63%
+rect-rot fill-semi-stroke-opaque sw1px szS           845    8.09µs    9.56µs     85%
+rect-rot fill-semi-stroke-opaque sw1px szM         3,618    21.8µs    33.0µs     66%
+rect-rot fill-semi-stroke-opaque sw1px szL        14,138    74.0µs    94.4µs     78%
+rect-rot fill-semi-stroke-semi sw1px szS             845    8.48µs    10.2µs     83%
+rect-rot fill-semi-stroke-semi sw1px szM           3,618    22.9µs    34.0µs     67%
+rect-rot fill-semi-stroke-semi sw1px szL          14,138    77.4µs    96.4µs     80%
+rect-rot fill-opaque-stroke-opaque swS szS         1,533    1.75µs    7.22µs     24%
+rect-rot fill-opaque-stroke-opaque swM szS         2,327    2.46µs    8.95µs     27%
+rect-rot fill-opaque-stroke-opaque swL szS         3,915    3.88µs    12.1µs     32%
+rect-rot fill-opaque-stroke-opaque swS szM         5,106    4.94µs    13.8µs     36%
+rect-rot fill-opaque-stroke-opaque swM szM         6,824    6.47µs    15.3µs     42%
+rect-rot fill-opaque-stroke-opaque swL szM        10,258    9.54µs    19.5µs     49%
+rect-rot fill-opaque-stroke-opaque swS szL        17,128    15.7µs    29.1µs     54%
+rect-rot fill-opaque-stroke-opaque swM szL        20,577    18.8µs    29.8µs     63%
+rect-rot fill-opaque-stroke-opaque swL szL        27,475    24.9µs    35.7µs     70%
+rect-rot fill-opaque-stroke-semi swS szS           1,533    6.76µs    27.2µs     25%
+rect-rot fill-opaque-stroke-semi swM szS           2,327    8.48µs    47.0µs     18%
+rect-rot fill-opaque-stroke-semi swL szS           3,915    11.9µs     101µs     12%
+rect-rot fill-opaque-stroke-semi swS szM           5,106    14.5µs    58.2µs     25%
+rect-rot fill-opaque-stroke-semi swM szM           6,824    18.3µs    97.5µs     19%
+rect-rot fill-opaque-stroke-semi swL szM          10,258    25.7µs     173µs     15%
+rect-rot fill-opaque-stroke-semi swS szL          17,128    40.6µs     115µs     35%
+rect-rot fill-opaque-stroke-semi swM szL          20,577    48.1µs     196µs     25%
+rect-rot fill-opaque-stroke-semi swL szL          27,475    63.1µs     383µs     16%
+rect-rot fill-semi-stroke-opaque swS szS           1,533    5.19µs    10.4µs     50%
+rect-rot fill-semi-stroke-opaque swM szS           2,327    7.88µs    11.4µs     69%
+rect-rot fill-semi-stroke-opaque swL szS           3,915    13.3µs    14.5µs     91%
+rect-rot fill-semi-stroke-opaque swS szM           5,106    17.3µs    25.4µs     68%
+rect-rot fill-semi-stroke-opaque swM szM           6,824    23.1µs    25.8µs     90%
+rect-rot fill-semi-stroke-opaque swL szM          10,258    34.7µs    29.0µs    120%?
+rect-rot fill-semi-stroke-opaque swS szL          17,128    58.0µs    78.8µs     74%
+rect-rot fill-semi-stroke-opaque swM szL          20,577    69.7µs    69.7µs    100%
+rect-rot fill-semi-stroke-opaque swL szL          27,475    93.1µs    73.1µs    127%?
+rect-rot fill-semi-stroke-semi swS szS             1,533    10.6µs    31.9µs     33%
+rect-rot fill-semi-stroke-semi swM szS             2,327    14.3µs    51.5µs     28%
+rect-rot fill-semi-stroke-semi swL szS             3,915    21.7µs     103µs     21%
+rect-rot fill-semi-stroke-semi swS szM             5,106    27.2µs    70.8µs     38%
+rect-rot fill-semi-stroke-semi swM szM             6,824    35.2µs     107µs     33%
+rect-rot fill-semi-stroke-semi swL szM            10,258    51.2µs     184µs     28%
+rect-rot fill-semi-stroke-semi swS szL            17,128    83.1µs     166µs     50%
+rect-rot fill-semi-stroke-semi swM szL            20,577    99.2µs     236µs     42%
+rect-rot fill-semi-stroke-semi swL szL            27,475     131µs     417µs     32%
+rect-rot stroke-opaque sw1px szS                     106    0.33µs    0.83µs     39%
+rect-rot stroke-opaque sw1px szM                     229    0.69µs    0.95µs     72%
+rect-rot stroke-opaque sw1px szL                     460    1.36µs    1.52µs     89%
+rect-rot stroke-semi sw1px szS                       106    1.29µs    1.47µs     88%
+rect-rot stroke-semi sw1px szM                       229    2.79µs    3.22µs     87%
+rect-rot stroke-semi sw1px szL                       460    5.61µs    6.74µs     83%
+rect-rot stroke-opaque swS szS                       794    1.28µs    5.03µs     25%
+rect-rot stroke-opaque swM szS                     1,587    2.55µs    6.78µs     38%
+rect-rot stroke-opaque swL szS                     3,175    5.11µs    9.94µs     51%
+rect-rot stroke-opaque swS szM                     1,717    2.76µs    8.76µs     32%
+rect-rot stroke-opaque swM szM                     3,435    5.53µs    10.4µs     53%
+rect-rot stroke-opaque swL szM                     6,869    11.1µs    13.6µs     81%
+rect-rot stroke-opaque swS szL                     3,449    5.55µs    15.6µs     36%
+rect-rot stroke-opaque swM szL                     6,898    11.1µs    17.8µs     62%
+rect-rot stroke-opaque swL szL                    13,796    22.2µs    24.1µs     92%
+rect-rot stroke-semi swS szS                         794    7.53µs    28.9µs     26%
+rect-rot stroke-semi swM szS                       1,587    11.4µs    48.9µs     23%
+rect-rot stroke-semi swL szS                       3,175    19.3µs    96.5µs     20%
+rect-rot stroke-semi swS szM                       1,717    12.1µs    57.2µs     21%
+rect-rot stroke-semi swM szM                       3,435    20.6µs    95.7µs     21%
+rect-rot stroke-semi swL szM                       6,869    37.5µs     170µs     22%
+rect-rot stroke-semi swS szL                       3,449    20.6µs     109µs     19%
+rect-rot stroke-semi swM szL                       6,898    37.7µs     189µs     20%
+rect-rot stroke-semi swL szL                      13,796    71.7µs     369µs     19%
+
+--- ROUNDRECT-AA  ---
+Test                                              Est.Px     Floor    Actual    Prox
+------------------------------------------------------------------------------------
+roundrect-aa fill-opaque sw0 szS                     714    0.50µs    0.45µs    112%*
+roundrect-aa fill-opaque sw0 szM                   3,267    1.70µs    1.65µs    103%*
+roundrect-aa fill-opaque sw0 szL                  13,188    6.35µs    6.01µs    106%*
+roundrect-aa fill-semi sw0 szS                       714    5.86µs    4.55µs    129%*
+roundrect-aa fill-semi sw0 szM                     3,267    17.1µs    13.1µs    130%*
+roundrect-aa fill-semi sw0 szL                    13,188    60.6µs    43.1µs    140%*
+roundrect-aa fill-opaque-stroke-opaque sw1px szS     820    0.75µs    6.45µs     12%
+roundrect-aa fill-opaque-stroke-opaque sw1px szM   3,496    2.18µs    7.79µs     28%
+roundrect-aa fill-opaque-stroke-opaque sw1px szL  13,648    7.63µs    12.8µs     59%
+roundrect-aa fill-opaque-stroke-semi sw1px szS       820    0.93µs    7.40µs     13%
+roundrect-aa fill-opaque-stroke-semi sw1px szM     3,496    2.54µs    9.83µs     26%
+roundrect-aa fill-opaque-stroke-semi sw1px szL    13,648    8.65µs    16.7µs     52%
+roundrect-aa fill-semi-stroke-opaque sw1px szS       820    7.96µs    11.9µs     67%
+roundrect-aa fill-semi-stroke-opaque sw1px szM     3,496    21.2µs    28.2µs     75%
+roundrect-aa fill-semi-stroke-opaque sw1px szL    13,648    71.5µs    74.8µs     96%
+roundrect-aa fill-semi-stroke-semi sw1px szS         820    8.34µs    12.2µs     68%
+roundrect-aa fill-semi-stroke-semi sw1px szM       3,496    22.2µs    30.7µs     72%
+roundrect-aa fill-semi-stroke-semi sw1px szL      13,648    74.9µs    81.2µs     92%
+roundrect-aa fill-opaque-stroke-opaque swS szS     1,507    1.73µs    1.43µs    121%*
+roundrect-aa fill-opaque-stroke-opaque swM szS     2,301    2.43µs    1.94µs    125%*
+roundrect-aa fill-opaque-stroke-opaque swL szS     3,889    3.85µs    2.84µs    136%*
+roundrect-aa fill-opaque-stroke-opaque swS szM     4,985    4.83µs    3.57µs    135%*
+roundrect-aa fill-opaque-stroke-opaque swM szM     6,702    6.37µs    4.67µs    136%*
+roundrect-aa fill-opaque-stroke-opaque swL szM    10,137    9.43µs    5.93µs    159%*
+roundrect-aa fill-opaque-stroke-opaque swS szL    16,637    15.2µs    9.63µs    158%*
+roundrect-aa fill-opaque-stroke-opaque swM szL    20,086    18.3µs    10.9µs    169%*
+roundrect-aa fill-opaque-stroke-opaque swL szL    26,985    24.5µs    13.5µs    181%*
+roundrect-aa fill-opaque-stroke-semi swS szS       1,507    6.70µs    4.49µs    149%*
+roundrect-aa fill-opaque-stroke-semi swM szS       2,301    8.43µs    7.71µs    109%*
+roundrect-aa fill-opaque-stroke-semi swL szS       3,889    11.9µs    13.7µs     87%
+roundrect-aa fill-opaque-stroke-semi swS szM       4,985    14.3µs    9.32µs    153%*
+roundrect-aa fill-opaque-stroke-semi swM szM       6,702    18.0µs    14.9µs    120%*
+roundrect-aa fill-opaque-stroke-semi swL szM      10,137    25.5µs    25.2µs    101%*
+roundrect-aa fill-opaque-stroke-semi swS szL      16,637    39.6µs    20.5µs    193%*
+roundrect-aa fill-opaque-stroke-semi swM szL      20,086    47.1µs    31.8µs    148%*
+roundrect-aa fill-opaque-stroke-semi swL szL      26,985    62.1µs    51.8µs    120%*
+roundrect-aa fill-semi-stroke-opaque swS szS       1,507    5.11µs    4.07µs    125%?
+roundrect-aa fill-semi-stroke-opaque swM szS       2,301    7.79µs    4.80µs    162%?
+roundrect-aa fill-semi-stroke-opaque swL szS       3,889    13.2µs    5.03µs    262%?
+roundrect-aa fill-semi-stroke-opaque swS szM       4,985    16.9µs    14.1µs    120%?
+roundrect-aa fill-semi-stroke-opaque swM szM       6,702    22.7µs    14.9µs    152%?
+roundrect-aa fill-semi-stroke-opaque swL szM      10,137    34.3µs    16.1µs    213%?
+roundrect-aa fill-semi-stroke-opaque swS szL      16,637    56.4µs    51.8µs    109%?
+roundrect-aa fill-semi-stroke-opaque swM szL      20,086    68.0µs    48.1µs    141%?
+roundrect-aa fill-semi-stroke-opaque swL szL      26,985    91.4µs    49.8µs    184%?
+roundrect-aa fill-semi-stroke-semi swS szS         1,507    10.5µs    8.42µs    125%*
+roundrect-aa fill-semi-stroke-semi swM szS         2,301    14.2µs    12.1µs    118%*
+roundrect-aa fill-semi-stroke-semi swL szS         3,889    21.6µs    16.6µs    130%*
+roundrect-aa fill-semi-stroke-semi swS szM         4,985    26.7µs    21.0µs    127%*
+roundrect-aa fill-semi-stroke-semi swM szM         6,702    34.7µs    25.2µs    138%*
+roundrect-aa fill-semi-stroke-semi swL szM        10,137    50.6µs    35.3µs    143%*
+roundrect-aa fill-semi-stroke-semi swS szL        16,637    80.9µs    65.1µs    124%*
+roundrect-aa fill-semi-stroke-semi swM szL        20,086    96.9µs    70.3µs    138%*
+roundrect-aa fill-semi-stroke-semi swL szL        26,985     129µs    89.1µs    145%*
+roundrect-aa stroke-opaque sw1px szS                 106    0.33µs    6.07µs      5%
+roundrect-aa stroke-opaque sw1px szM                 229    0.69µs    6.10µs     11%
+roundrect-aa stroke-opaque sw1px szL                 460    1.36µs    6.86µs     20%
+roundrect-aa stroke-semi sw1px szS                   106    1.29µs    7.42µs     17%
+roundrect-aa stroke-semi sw1px szM                   229    2.79µs    9.75µs     29%
+roundrect-aa stroke-semi sw1px szL                   460    5.61µs    15.0µs     37%
+roundrect-aa stroke-opaque swS szS                   794    1.28µs    1.01µs    126%?
+roundrect-aa stroke-opaque swM szS                 1,587    2.55µs    1.50µs    170%?
+roundrect-aa stroke-opaque swL szS                 3,175    5.11µs    2.41µs    212%?
+roundrect-aa stroke-opaque swS szM                 1,717    2.76µs    1.89µs    146%?
+roundrect-aa stroke-opaque swM szM                 3,435    5.53µs    2.85µs    194%?
+roundrect-aa stroke-opaque swL szM                 6,869    11.1µs    4.24µs    261%?
+roundrect-aa stroke-opaque swS szL                 3,449    5.55µs    3.42µs    162%?
+roundrect-aa stroke-opaque swM szL                 6,898    11.1µs    4.84µs    229%?
+roundrect-aa stroke-opaque swL szL                13,796    22.2µs    7.51µs    296%?
+roundrect-aa stroke-semi swS szS                     794    7.53µs    7.40µs    102%*
+roundrect-aa stroke-semi swM szS                   1,587    11.4µs    10.0µs    114%*
+roundrect-aa stroke-semi swL szS                   3,175    19.3µs    13.1µs    147%*
+roundrect-aa stroke-semi swS szM                   1,717    12.1µs    13.7µs     88%
+roundrect-aa stroke-semi swM szM                   3,435    20.6µs    17.7µs    116%*
+roundrect-aa stroke-semi swL szM                   6,869    37.5µs    24.6µs    152%*
+roundrect-aa stroke-semi swS szL                   3,449    20.6µs    22.7µs     91%
+roundrect-aa stroke-semi swM szL                   6,898    37.7µs    28.6µs    132%*
+roundrect-aa stroke-semi swL szL                  13,796    71.7µs    46.6µs    154%*
+
+--- ROUNDRECT-ROT  ---
+Test                                              Est.Px     Floor    Actual    Prox
+------------------------------------------------------------------------------------
+roundrect-rot fill-opaque sw0 szS                    714    0.50µs    2.61µs     19%
+roundrect-rot fill-opaque sw0 szM                  3,267    1.70µs    4.17µs     41%
+roundrect-rot fill-opaque sw0 szL                 13,188    6.35µs    7.64µs     83%
+roundrect-rot fill-semi sw0 szS                      714    5.86µs    7.27µs     81%
+roundrect-rot fill-semi sw0 szM                    3,267    17.1µs    16.8µs    101%*
+roundrect-rot fill-semi sw0 szL                   13,188    60.6µs    49.1µs    123%*
+roundrect-rot fill-opaque-stroke-opaque sw1px szS     820    0.75µs    3.58µs     21%
+roundrect-rot fill-opaque-stroke-opaque sw1px szM   3,496    2.18µs    5.72µs     38%
+roundrect-rot fill-opaque-stroke-opaque sw1px szL  13,648    7.63µs    10.2µs     75%
+roundrect-rot fill-opaque-stroke-semi sw1px szS      820    0.93µs    3.81µs     24%
+roundrect-rot fill-opaque-stroke-semi sw1px szM    3,496    2.54µs    6.10µs     42%
+roundrect-rot fill-opaque-stroke-semi sw1px szL   13,648    8.65µs    10.8µs     80%
+roundrect-rot fill-semi-stroke-opaque sw1px szS      820    7.96µs    9.95µs     80%
+roundrect-rot fill-semi-stroke-opaque sw1px szM    3,496    21.2µs    32.6µs     65%
+roundrect-rot fill-semi-stroke-opaque sw1px szL   13,648    71.5µs    91.1µs     79%
+roundrect-rot fill-semi-stroke-semi sw1px szS        820    8.34µs    10.6µs     78%
+roundrect-rot fill-semi-stroke-semi sw1px szM      3,496    22.2µs    33.2µs     67%
+roundrect-rot fill-semi-stroke-semi sw1px szL     13,648    74.9µs    95.0µs     79%
+roundrect-rot fill-opaque-stroke-opaque swS szS    1,507    1.73µs    7.73µs     22%
+roundrect-rot fill-opaque-stroke-opaque swM szS    2,301    2.43µs    7.85µs     31%
+roundrect-rot fill-opaque-stroke-opaque swL szS    3,889    3.85µs    9.59µs     40%
+roundrect-rot fill-opaque-stroke-opaque swS szM    4,985    4.83µs    13.2µs     37%
+roundrect-rot fill-opaque-stroke-opaque swM szM    6,702    6.37µs    13.1µs     49%
+roundrect-rot fill-opaque-stroke-opaque swL szM   10,137    9.43µs    14.3µs     66%
+roundrect-rot fill-opaque-stroke-opaque swS szL   16,637    15.2µs    24.5µs     62%
+roundrect-rot fill-opaque-stroke-opaque swM szL   20,086    18.3µs    23.5µs     78%
+roundrect-rot fill-opaque-stroke-opaque swL szL   26,985    24.5µs    25.9µs     95%
+roundrect-rot fill-opaque-stroke-semi swS szS      1,507    6.70µs    11.2µs     60%
+roundrect-rot fill-opaque-stroke-semi swM szS      2,301    8.43µs    13.3µs     63%
+roundrect-rot fill-opaque-stroke-semi swL szS      3,889    11.9µs    20.2µs     59%
+roundrect-rot fill-opaque-stroke-semi swS szM      4,985    14.3µs    19.6µs     73%
+roundrect-rot fill-opaque-stroke-semi swM szM      6,702    18.0µs    23.7µs     76%
+roundrect-rot fill-opaque-stroke-semi swL szM     10,137    25.5µs    34.5µs     74%
+roundrect-rot fill-opaque-stroke-semi swS szL     16,637    39.6µs    35.3µs    112%*
+roundrect-rot fill-opaque-stroke-semi swM szL     20,086    47.1µs    44.3µs    106%*
+roundrect-rot fill-opaque-stroke-semi swL szL     26,985    62.1µs    65.0µs     96%
+roundrect-rot fill-semi-stroke-opaque swS szS      1,507    5.11µs    10.1µs     50%
+roundrect-rot fill-semi-stroke-opaque swM szS      2,301    7.79µs    10.5µs     74%
+roundrect-rot fill-semi-stroke-opaque swL szS      3,889    13.2µs    11.4µs    116%?
+roundrect-rot fill-semi-stroke-opaque swS szM      4,985    16.9µs    25.0µs     67%
+roundrect-rot fill-semi-stroke-opaque swM szM      6,702    22.7µs    23.6µs     96%
+roundrect-rot fill-semi-stroke-opaque swL szM     10,137    34.3µs    24.5µs    140%?
+roundrect-rot fill-semi-stroke-opaque swS szL     16,637    56.4µs    74.8µs     75%
+roundrect-rot fill-semi-stroke-opaque swM szL     20,086    68.0µs    65.6µs    104%?
+roundrect-rot fill-semi-stroke-opaque swL szL     26,985    91.4µs    66.5µs    138%?
+roundrect-rot fill-semi-stroke-semi swS szS        1,507    10.5µs    15.9µs     66%
+roundrect-rot fill-semi-stroke-semi swM szS        2,301    14.2µs    17.8µs     80%
+roundrect-rot fill-semi-stroke-semi swL szS        3,889    21.6µs    23.2µs     93%
+roundrect-rot fill-semi-stroke-semi swS szM        4,985    26.7µs    32.1µs     83%
+roundrect-rot fill-semi-stroke-semi swM szM        6,702    34.7µs    35.3µs     98%
+roundrect-rot fill-semi-stroke-semi swL szM       10,137    50.6µs    45.4µs    111%*
+roundrect-rot fill-semi-stroke-semi swS szL       16,637    80.9µs    87.4µs     93%
+roundrect-rot fill-semi-stroke-semi swM szL       20,086    96.9µs    87.2µs    111%*
+roundrect-rot fill-semi-stroke-semi swL szL       26,985     129µs     106µs    122%*
+roundrect-rot stroke-opaque sw1px szS                106    0.33µs    1.24µs     26%
+roundrect-rot stroke-opaque sw1px szM                229    0.69µs    1.78µs     39%
+roundrect-rot stroke-opaque sw1px szL                460    1.36µs    2.80µs     49%
+roundrect-rot stroke-semi sw1px szS                  106    1.29µs    1.96µs     66%
+roundrect-rot stroke-semi sw1px szM                  229    2.79µs    3.66µs     76%
+roundrect-rot stroke-semi sw1px szL                  460    5.61µs    6.99µs     80%
+roundrect-rot stroke-opaque swS szS                  794    1.28µs    5.23µs     24%
+roundrect-rot stroke-opaque swM szS                1,587    2.55µs    5.35µs     48%
+roundrect-rot stroke-opaque swL szS                3,175    5.11µs    6.80µs     75%
+roundrect-rot stroke-opaque swS szM                1,717    2.76µs    8.43µs     33%
+roundrect-rot stroke-opaque swM szM                3,435    5.53µs    9.67µs     57%
+roundrect-rot stroke-opaque swL szM                6,869    11.1µs    10.3µs    107%?
+roundrect-rot stroke-opaque swS szL                3,449    5.55µs    15.4µs     36%
+roundrect-rot stroke-opaque swM szL                6,898    11.1µs    16.0µs     70%
+roundrect-rot stroke-opaque swL szL               13,796    22.2µs    18.4µs    121%?
+roundrect-rot stroke-semi swS szS                    794    7.53µs    12.7µs     59%
+roundrect-rot stroke-semi swM szS                  1,587    11.4µs    14.0µs     82%
+roundrect-rot stroke-semi swL szS                  3,175    19.3µs    18.8µs    103%*
+roundrect-rot stroke-semi swS szM                  1,717    12.1µs    22.2µs     54%
+roundrect-rot stroke-semi swM szM                  3,435    20.6µs    24.0µs     86%
+roundrect-rot stroke-semi swL szM                  6,869    37.5µs    31.8µs    118%*
+roundrect-rot stroke-semi swS szL                  3,449    20.6µs    36.3µs     57%
+roundrect-rot stroke-semi swM szL                  6,898    37.7µs    40.8µs     92%
+roundrect-rot stroke-semi swL szL                 13,796    71.7µs    59.1µs    121%*
+
+* >100% = genuinely faster than rect-AA floor (e.g., cache-friendly pattern)
+? >100% = likely due to unreliable regression (n<3 or negative intercept clamped)
+
+========================================================================
+PROXIMITY RANKINGS (worst first = most room to improve)
+========================================================================
+  1. roundrect-aa stroke-opaque sw1px szS                 5%   significant room
+  2. roundrect-aa stroke-opaque sw1px szM                11%   significant room
+  3. roundrect-aa fill-opaque-stroke-opaque sw1px szS    12%   significant room
+  4. rect-rot fill-opaque-stroke-semi swL szS            12%   significant room
+  5. roundrect-aa fill-opaque-stroke-semi sw1px szS      13%   significant room
+  6. rect-rot fill-opaque-stroke-semi swL szM            15%   significant room
+  7. arc fill-opaque-stroke-opaque sw1px szM angS        16%   significant room
+  8. arc stroke-opaque sw1px szM angXL                   16%   significant room
+  9. rect-rot fill-opaque-stroke-semi swL szL            16%   significant room
+ 10. arc stroke-opaque sw1px szL angXL                   17%   significant room
+ 11. arc stroke-opaque sw1px szM angL                    17%   significant room
+ 12. arc stroke-opaque sw1px szS angXL                   17%   significant room
+ 13. arc stroke-opaque sw1px szL angM                    17%   significant room
+ 14. roundrect-aa stroke-semi sw1px szS                  17%   significant room
+ 15. arc fill-opaque-stroke-opaque sw1px szL angS        17%   significant room
+ 16. arc stroke-opaque sw1px szS angL                    18%   significant room
+ 17. arc stroke-opaque sw1px szL angL                    18%   significant room
+ 18. arc stroke-opaque sw1px szS angM                    18%   significant room
+ 19. arc stroke-opaque sw1px szM angS                    18%   significant room
+ 20. rect-rot fill-opaque-stroke-semi swM szS            18%   significant room
+ 21. arc stroke-opaque sw1px szM angM                    18%   significant room
+ 22. arc stroke-opaque sw1px szS angS                    18%   significant room
+ 23. arc stroke-opaque sw1px szL angS                    19%   significant room
+ 24. rect-rot fill-opaque-stroke-semi swM szM            19%   significant room
+ 25. rect-rot stroke-semi swS szL                        19%   significant room
+ 26. roundrect-rot fill-opaque sw0 szS                   19%   significant room
+ 27. rect-rot stroke-semi swL szL                        19%   significant room
+ 28. arc fill-opaque-stroke-opaque sw1px szM angM        19%   significant room
+ 29. roundrect-aa stroke-opaque sw1px szL                20%   significant room
+ 30. rect-rot stroke-semi swM szL                        20%   significant room
+     ... and 666 more tests
+
+Summary: 696 shape tests analyzed
+  Mean proximity:   101%
+  Median proximity: 89%
+  Best:  527% (arc stroke-semi sw1px szL angS)
+  Worst: 5% (roundrect-aa stroke-opaque sw1px szS)
+

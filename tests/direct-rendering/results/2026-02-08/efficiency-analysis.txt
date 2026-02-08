@@ -1,0 +1,99 @@
+  Efficiency Analysis — Conclusions
+
+This was obtained in 8 Feb 2026 by launching
+
+node tests/direct-rendering/scripts/benchmark-session.js \
+                                                                   --output benchmark.json \
+                                                                   --filters '{"excludeSize":["szXXS","szXS","szXL","szXXL"],"excludeStroke":["swXXS","swXS","swXL","swXXL"]}' \
+                                                                   --super-measurements 15
+
+and then
+
+node tests/direct-rendering/scripts/analyze-efficiency.js \
+                                                                   --input benchmark.json > efficiency-results.txt
+
+and then asking Claude to commend on the efficiency results file.
+
+
+  Data Quality
+
+  Much better than the previous run. All regressions now have n=3+ (sizes szS/szM/szL), with thick-stroke regressions at n=9 (3 sizes x 3 stroke widths). Two issues remain:
+  - 3 clamped intercepts (stroke-thick-opaq, fillstroke-thick-semi-opaq, stroke-1px-semi) — all the ? markers on those op types should be read skeptically
+  - 2 low R² (fillstroke-thick-opaq-opaq at 0.831, fillstroke-thick-opaq-semi at 0.787) — the linear model doesn't fit combined fill+thick-opaque-stroke well, likely because fill and stroke scale differently with size
+
+  Per-Pixel Cost Hierarchy (from regressions)
+  ┌─────────────────────┬───────┬──────────┬────────────────┐
+  │      Operation      │ ns/px │ Relative │ Fixed overhead │
+  ├─────────────────────┼───────┼──────────┼────────────────┤
+  │ Opaque fill         │ 0.47  │ 1.0x     │ 0.17µs         │
+  ├─────────────────────┼───────┼──────────┼────────────────┤
+  │ Thick opaque stroke │ 1.61  │ 3.4x     │ ~0 (clamped)   │
+  ├─────────────────────┼───────┼──────────┼────────────────┤
+  │ 1px opaque stroke   │ 2.91  │ 6.2x     │ 0.02µs         │
+  ├─────────────────────┼───────┼──────────┼────────────────┤
+  │ Semi fill           │ 4.39  │ 9.3x     │ 2.73µs         │
+  ├─────────────────────┼───────┼──────────┼────────────────┤
+  │ Thick semi stroke   │ 4.94  │ 10.5x    │ 3.61µs         │
+  ├─────────────────────┼───────┼──────────┼────────────────┤
+  │ 1px semi stroke     │ 12.21 │ 26x      │ ~0 (clamped)   │
+  └─────────────────────┴───────┴──────────┴────────────────┘
+  Key insight: alpha blending costs 9-10x more per pixel than opaque writes. This is the single biggest cost multiplier in the engine.
+
+  Shape-by-Shape Verdicts
+
+  Circle — The star performer. Near-optimal or above floor on essentially everything.
+  - Fill: 112-128% (faster than rect-AA due to more cache-sequential scanlines)
+  - 1px stroke opaque: 193-222% (Bresenham 8-fold symmetry = 1/4 the setup of rect-AA's 4 line segments)
+  - Fill+stroke: 102-188%
+  - Verdict: No work needed. Already beyond theoretical floor.
+
+  Horizontal line — Speed demon. 197-407% for opaque, 124-332% for semi. Sequential memset writes are the fastest possible operation. This is the ceiling, not the floor.
+
+  Vertical line — Cache penalty is real but modest. 1px opaque at 58-61% (perpendicular to scanlines). Thick strokes become wide horizontal spans and perform well (104-370%).
+
+  Diagonal line — Middle ground. 1px opaque: 61-75%. Thick: 26-90%, improving with size as fixed overhead amortizes.
+
+  Roundrect-AA — Excellent fill, catastrophic 1px stroke.
+  - Fill: 103-140% — faster than rect-AA, likely due to the rounded-corner scanline being more cache-sequential
+  - Fill+stroke (thick): 121-193% — above floor
+  - 1px stroke: 5-20% — the single worst result in the entire engine. At szS, 6.07µs per shape regardless of size. This is dominated by a massive fixed per-shape cost (path reconstruction?). The proximity barely improves with size (5% ->
+  11% -> 20%), meaning the fixed cost is enormous.
+
+  Arc — Expensive 1px stroke, decent fill.
+  - Fill opaque: 36-64% — scanline intersection computation is significant overhead
+  - 1px stroke opaque: 16-19% constant across all angles and sizes — Bresenham traces the full circle regardless of arc angle, so the cost is pure algorithmic overhead with almost no per-pixel benefit
+  - Thick stroke/fill+stroke: improves with size, reaching 80-99% at szL
+
+  Rect-rot — The optimization goldmine.
+  - Fill opaque: 23-55% — DDA scanline computation overhead is significant for small shapes, improves with size
+  - Fill semi: 81-120% — semi cost (4.39 ns/px) dwarfs rotation overhead, so proximity is good
+  - 1px stroke: 39-89% — reasonable, improves with size
+  - Thick semi stroke: 19-22% across ALL sizes — catastrophically slow. Does not improve with size. At szL swL: 369µs actual vs 72µs floor = 5.1x overhead
+  - Fill-opaque + stroke-semi: 12-35% — the worst combined path. At swL szL: 383µs actual vs 63µs floor = 6.1x overhead
+
+  Roundrect-rot — Similar to rect-rot, slightly better.
+  - Fill opaque: 19-83% — rotation overhead, but reaches 83% at szL
+  - Thick fill+stroke: 22-95% — improves steadily
+  - Thick semi stroke: 54-121% — noticeably better than rect-rot semi stroke
+
+  Top 5 Optimization Targets (by impact)
+  ┌──────────┬──────────────────────────────┬───────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ Priority │          Code Path           │ Proximity │                                                 What's Wrong                                                  │
+  ├──────────┼──────────────────────────────┼───────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 1        │ Rect-rot thick semi stroke   │ 19-22%    │ 5x above floor at all sizes. Does NOT improve with size — suggests algorithmic issue, not just fixed overhead │
+  ├──────────┼──────────────────────────────┼───────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 2        │ Rect-rot fill+stroke-semi    │ 12-35%    │ Combines the semi-stroke catastrophe with fill. 383µs at swL/szL vs 63µs floor                                │
+  ├──────────┼──────────────────────────────┼───────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 3        │ Roundrect-AA 1px stroke      │ 5-20%     │ ~6µs fixed cost per shape regardless of size. Probably reconstructing the rounded path from scratch each time │
+  ├──────────┼──────────────────────────────┼───────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 4        │ Arc 1px stroke opaque        │ 16-19%    │ Constant across angles — Bresenham traces full circle even for small arcs. Architectural limitation           │
+  ├──────────┼──────────────────────────────┼───────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 5        │ Rect-rot fill opaque (small) │ 23-35%    │ DDA scanline overhead. Reaches 55% at szL, so partially size-amortized                                        │
+  └──────────┴──────────────────────────────┴───────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  Key Patterns
+
+  1. Semi-transparency is the great equalizer. When alpha blending dominates (4.39+ ns/px), shape overhead becomes relatively invisible. Many shapes achieve 80-100%+ proximity for semi ops at large sizes.
+  2. Small shapes expose fixed overhead. Proximity universally drops at szS. If a shape has a 2µs per-shape setup cost, and the actual pixel work is 0.5µs, you're at 20% proximity no matter how fast the pixel loop is.
+  3. 1px strokes are disproportionately expensive for complex shapes. They trace complex paths with per-pixel computation but touch relatively few pixels, so the computation-to-pixel ratio is terrible.
+  4. Rect-rot thick semi stroke is a genuine bug-level performance issue. At 19-22% proximity that doesn't improve with size, something is fundamentally wrong — possibly re-computing rotation per scanline, or an O(n^2) inner loop, or
+  missing a fast path that rect-rot thick opaque stroke has

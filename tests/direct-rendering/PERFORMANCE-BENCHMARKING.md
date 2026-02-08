@@ -343,6 +343,95 @@ Scaling is applied to all HTML5 Canvas results.
 
 ---
 
+---
+
+# Part 5: Rendering Efficiency Analysis (Proximity-to-Optimal)
+
+After collecting benchmark data, you can analyze how close each shape renderer is to the theoretical performance floor.
+
+## 5.1 The Concept
+
+The rect-AA renderer is the fastest possible shape renderer that performs the same pixel work (fill, blend, clip). It has zero per-scanline shape computation — just straight span writes. By fitting a linear regression to rect-AA results:
+
+```
+rect_time = a + b × pixels
+```
+
+We get:
+- **`a`** = shared per-shape overhead (Canvas API dispatch, state setup)
+- **`b`** = per-pixel cost (the hardware/memory floor for this pixel operation)
+
+For any shape with an estimated pixel count:
+
+```
+floor = a + b × estimated_pixels
+proximity = floor / actual_time
+```
+
+- **proximity = 1.0**: At the theoretical floor (no room to improve)
+- **proximity = 0.5**: 2× above floor (50% of time is shape-specific overhead)
+- **proximity < 0.3**: Significant optimization opportunity
+
+## 5.2 Usage
+
+```bash
+# Basic analysis
+node tests/direct-rendering/scripts/analyze-efficiency.js \
+  --input results/benchmark.json
+
+# JSON output
+node tests/direct-rendering/scripts/analyze-efficiency.js \
+  --input results/benchmark.json \
+  --format json --output results/efficiency.json
+
+# Filter to specific shape
+node tests/direct-rendering/scripts/analyze-efficiency.js \
+  --input results/benchmark.json \
+  --filter-shape circle
+
+# Before/after comparison
+node tests/direct-rendering/scripts/analyze-efficiency.js \
+  --before results/before.json \
+  --after results/after.json
+```
+
+## 5.3 Interpreting Results
+
+| Proximity | Verdict | Action |
+|-----------|---------|--------|
+| > 70% | Near optimal | Diminishing returns from further optimization |
+| 40-70% | Room to improve | Worth investigating if this is a hot path |
+| < 40% | Significant overhead | Likely worth optimizing |
+| > 100% | Above floor | Shape is faster than floor projection (e.g., cache-friendly lines) |
+
+**Key patterns visible in the report:**
+1. Proximity increases with shape size (fixed overhead amortized over more pixels)
+2. Thick strokes show higher proximity than 1px strokes (scanline approach is closer to rect-AA)
+3. 1px arc stroke proximity is constant across angles (Bresenham traces full circle)
+4. Arc fill proximity varies with angle (fixed scanline setup amortized over fewer pixels)
+
+## 5.4 Regression Quality
+
+The script fits separate regressions per pixel operation type (fill-opaque, fill-semi, stroke-1px-opaque, etc.). Each regression should have R² > 0.90 (ideally > 0.95). The script warns when R² is low, indicating the regression is unreliable.
+
+## 5.5 Worked Example (8 Feb 2026)
+
+A full efficiency analysis was run with sizes szS/szM/szL and strokes sw1px/swS/swM/swL (excluding the extreme brackets to keep runtime reasonable while ensuring n≥3 for all regressions):
+
+```bash
+# Step 1: Run benchmarks (~3-4 hours with these filters)
+node tests/direct-rendering/scripts/benchmark-session.js \
+  --output benchmark.json \
+  --filters '{"excludeSize":["szXXS","szXS","szXL","szXXL"],"excludeStroke":["swXXS","swXS","swXL","swXXL"]}' \
+  --super-measurements 15
+
+# Step 2: Generate efficiency report
+node tests/direct-rendering/scripts/analyze-efficiency.js \
+  --input benchmark.json > efficiency.txt
+```
+
+This produced 696 shape test results with n=3 for fill/1px regressions and n=9 for thick-stroke regressions. Results are archived in [`results/2026-02-08/`](results/2026-02-08/).
+
 ## See Also
 
 - [README.md](README.md#7-performance-testing) - Performance test configuration and usage
