@@ -461,19 +461,6 @@ class CanvasCompatibleContext2D {
     // ===== IMAGE DRAWING =====
 
     drawImage(image, ...args) {
-        // Debug logging for browser troubleshooting
-        if (typeof console !== 'undefined' && console.log) {
-            console.log('CanvasCompatibleContext2D.drawImage called with:', {
-                imageType: image ? image.constructor.name : 'null',
-                hasGetContext: image && typeof image.getContext === 'function',
-                hasWidth: image ? typeof image.width : 'N/A',
-                hasHeight: image ? typeof image.height : 'N/A',
-                hasData: image ? !!image.data : 'N/A',
-                isSWCanvasElement: image instanceof SWCanvasElement,
-                argsLength: args.length
-            });
-        }
-
         // Handle SWCanvasElement specially
         if (image && image instanceof SWCanvasElement) {
             this._core.drawImage(image._imageData, ...args);
