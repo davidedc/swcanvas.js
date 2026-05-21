@@ -62,7 +62,7 @@
       <option value="mixed">mixed</option>
     </select>
   </label>
-  <label><input type="checkbox" id="ctl-checker" checked> Checker bg</label>
+  <label><input type="checkbox" id="ctl-checker"> Transparent bg</label>
   <button id="pause">Pause</button>
   <span class="pill" id="status">starting…</span>
 </div>
@@ -199,8 +199,8 @@
         const scaleHalfRange = Math.abs(scaleSliderPct - 100);
         this.tiltRad   = (Math.random() * 2 - 1) * tiltSliderDeg * Math.PI / 180;
         this.scale     = (100 + (Math.random() * 2 - 1) * scaleHalfRange) / 100;
-        this.colorMode = ctlC.value;          // 'random' | 'black' | 'mixed'
-        this.checkerBg = ctlCB.checked;
+        this.colorMode     = ctlC.value;     // 'random' | 'black' | 'mixed'
+        this.transparentBg = ctlCB.checked;
 
         // Per-textbox colour identity. The baked colorMode at paint time decides
         // which of these gets used; the seed is fixed for the textbox's life.
@@ -221,6 +221,11 @@
         this.displayCanvas.height = h;
         this.wrapper = document.createElement('div');
         this.wrapper.className = 'textbox placeholder';
+        // Transparent-bg mode: drop the wrapper's CSS-default white background
+        // so the stage shows through. Inline style outranks the .textbox class
+        // rule (and the .placeholder tint, as a side effect — the dashed
+        // outline still signals loading state regardless).
+        if (this.transparentBg) this.wrapper.style.background = 'transparent';
         this.wrapper.appendChild(this.displayCanvas);
         const stageRect = stage.getBoundingClientRect();
         // Spawn within stage; the precise size isn't known yet, so leave some
@@ -285,22 +290,13 @@
       paint() {
         if (!this.alive) return;
 
-        // Background. Either a Photoshop-style transparency checker (so the
-        // text fill is visibly drawn ON TOP of something else) or plain white.
+        // Background. Either truly transparent (alpha=0 everywhere on the
+        // SWCanvas surface; combined with the wrapper's inline transparent
+        // background, the stage shows through) or plain opaque white.
         // Always done before the user transform (background stays upright).
         const ctx = this.ctx;
-        if (this.checkerBg) {
-          const CELL = 8;
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, this.w, this.h);
-          ctx.fillStyle = '#d0d0d0';
-          for (let cy = 0; cy < this.h; cy += CELL) {
-            for (let cx = 0; cx < this.w; cx += CELL) {
-              if (((cx / CELL) + (cy / CELL)) % 2 === 1) {
-                ctx.fillRect(cx, cy, CELL, CELL);
-              }
-            }
-          }
+        if (this.transparentBg) {
+          ctx.clearRect(0, 0, this.w, this.h);
         } else {
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, this.w, this.h);
