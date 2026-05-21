@@ -27,7 +27,10 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
-    "format:check": "prettier --check src/"
+    "format:check": "prettier --check src/",
+    "text:download-assets": "./scripts/download-bitmaptext-assets.sh",
+    "text:wrap-for-file": "node vendor/bitmaptext/scripts/image-to-js-converter.js font-assets --webp",
+    "text:smoke-demo": "node scripts/smoke-text-demo.js --playwright-from ../BitmapText.js/node_modules/playwright"
   },
   "keywords": ["canvas", "2d", "deterministic", "raster"],
   "author": "",

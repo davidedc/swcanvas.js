@@ -86,6 +86,16 @@ class Context2D {
         // Cached state flags for direct rendering eligibility (performance optimization)
         this._noShadow = true; // Updated when shadow properties change
         this._isSourceOver = true; // Updated when globalCompositeOperation changes
+
+        // Text state (HTML5 Canvas-compatible). `_font` is the parsed shape produced
+        // by CssFontParser ({style, weight, fontSize, fontFamily}) or null when the
+        // user hasn't assigned a font yet. `null` means "nothing renderable" — we
+        // don't default to '10px sans-serif' because BitmapText would have no atlas
+        // for it and the silent failure would be confusing.
+        this._font = null;
+        this._textAlign = 'start';
+        this._textBaseline = 'alphabetic';
+        this._direction = 'inherit';
     }
 
     // HTML5 Canvas-compatible lineWidth property with validation
@@ -184,7 +194,12 @@ class Context2D {
             shadowOffsetY: this.shadowOffsetY,
             // Cached state flags
             _noShadow: this._noShadow,
-            _isSourceOver: this._isSourceOver
+            _isSourceOver: this._isSourceOver,
+            // Text state
+            font: this._font,
+            textAlign: this._textAlign,
+            textBaseline: this._textBaseline,
+            direction: this._direction
         };
     }
 
@@ -225,6 +240,12 @@ class Context2D {
         // Restore cached state flags
         this._noShadow = snapshot._noShadow ?? true;
         this._isSourceOver = snapshot._isSourceOver ?? true;
+
+        // Restore text state
+        this._font = snapshot.font !== undefined ? snapshot.font : null;
+        this._textAlign = snapshot.textAlign || 'start';
+        this._textBaseline = snapshot.textBaseline || 'alphabetic';
+        this._direction = snapshot.direction || 'inherit';
     }
 
     restore() {
@@ -1534,6 +1555,28 @@ class Context2D {
 
         // End rasterizer operation
         this.rasterizer.endOp();
+    }
+
+    // Text rendering — uses the vendored BitmapText engine via TextRenderer.
+    // Phase 2: fast path only (BitmapText resets transform to identity
+    // internally, so user transforms are not yet honoured). Phase 3 adds the
+    // intermediate-buffer slow path for rotated/scaled text.
+
+    fillText(text, x, y, _maxWidth) {
+        // _maxWidth is HTML5-spec compatible but unused — BitmapText doesn't
+        // shrink-to-fit. We accept the argument for API parity and ignore it.
+        return TextRenderer.fillText(this, text, x, y);
+    }
+
+    measureText(text) {
+        return TextRenderer.measureText(this, text);
+    }
+
+    strokeText() {
+        throw new Error(
+            'strokeText is not supported by SWCanvas\'s BitmapText backend. ' +
+            'Use fillText instead.'
+        );
     }
 
     // Line dash methods

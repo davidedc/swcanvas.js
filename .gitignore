@@ -34,3 +34,16 @@ perf-baselines/
 # Snapshot verification (debug/full JSON files - large, session-specific)
 tests/direct-rendering/snapshot-full.json
 tests/direct-rendering/snapshot-hashes.json
+
+# BitmapText font assets (fetched on demand via scripts/download-bitmaptext-assets.sh).
+# The _smoke/ subset is committed so Node text tests work after a fresh clone.
+font-assets/*
+!font-assets/.gitkeep
+!font-assets/_smoke/
+!font-assets/_smoke/**
+
+# BitmapText vendor tree — populated on first build from vendor/bitmaptext.pin
+# via scripts/vendor-bitmaptext.sh. The pin file and vendor/bitmaptext.UPDATE.md
+# (both siblings, not children of the ignored dir) ARE committed.
+# See vendor/bitmaptext.UPDATE.md.
+vendor/bitmaptext/

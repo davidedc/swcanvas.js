@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SWCanvas — LRU atlas loading + transformed text</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background: #f5f5f5; color: #222; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  p.lead { margin: 0 0 12px; max-width: 880px; color: #555; }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+              padding: 10px 12px; background: white; border-radius: 6px;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 8px; }
+  .controls label { font-size: 13px; }
+  .controls input[type=range] { width: 110px; vertical-align: middle; }
+  .controls .val { display: inline-block; min-width: 28px; text-align: right;
+                   font-variant-numeric: tabular-nums; color: #444; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px;
+           background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+           margin-bottom: 8px; font-size: 12px; }
+  .pill { padding: 3px 8px; border-radius: 999px; background: #eef; color: #225;
+          font-variant-numeric: tabular-nums; }
+  .pill.warn { background: #fee; color: #822; }
+  #stage { position: relative; height: 520px; background: white; overflow: hidden;
+           border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .textbox { position: absolute; padding: 6px; background: white;
+             border: 1px solid #ddd; border-radius: 4px;
+             transition: border-color 200ms, background-color 200ms; }
+  .textbox.placeholder { border-color: #d9a050; background: #fff8ec; }
+  .textbox canvas { display: block; }
+  button { background: #0a6; color: white; border: 0; padding: 6px 12px;
+           border-radius: 4px; cursor: pointer; font-size: 13px; }
+  button.paused { background: #555; }
+</style>
+</head>
+<body>
+<h1>SWCanvas — LRU atlas loading + transformed text</h1>
+<p class="lead">
+  Each textbox renders <code>Hello, World ☺</code> through SWCanvas's <code>fillText</code>,
+  with a random rotation applied via <code>ctx.rotate(...)</code>. Fonts are loaded on
+  demand and cached in a bounded LRU (the same <code>AtlasLRU</code> class vendored from
+  BitmapText.js, reused verbatim). The SWCanvas slow path renders text to an intermediate
+  buffer then <code>drawImage</code>s with the current transform — that's what makes the
+  rotations work.
+  <br><strong>To run this demo:</strong>
+  <code>./scripts/download-bitmaptext-assets.sh</code> once to fetch atlases, then either
+  serve over HTTP (e.g. <code>python3 -m http.server</code> from the SWCanvas root) — or
+  run <code>node scripts/wrap-atlases-for-file-protocol.js</code> once to enable file://
+  loading (adds ~85 MB of base64-wrapped <code>-webp.js</code> files to <code>font-assets/</code>;
+  required because browsers refuse cross-file Image loads under <code>file://</code>).
+</p>
+
+<div class="controls">
+  <label>N (textboxes): <input type="range" id="ctl-N" min="1" max="60" value="20"><span class="val" id="val-N">20</span></label>
+  <label>K (LRU capacity): <input type="range" id="ctl-K" min="4" max="120" value="40"><span class="val" id="val-K">40</span></label>
+  <label>Max lifetime (s): <input type="range" id="ctl-life" min="2" max="20" value="8"><span class="val" id="val-life">8</span></label>
+  <label>Tilt (°): <input type="range" id="ctl-tilt" min="0" max="45" value="15"><span class="val" id="val-tilt">15</span></label>
+  <label>Scale: <input type="range" id="ctl-scale" min="50" max="200" value="100"><span class="val" id="val-scale">100</span>%</label>
+  <label>Color:
+    <select id="ctl-color">
+      <option value="random" selected>random</option>
+      <option value="black">black</option>
+      <option value="mixed">mixed</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="ctl-checker" checked> Checker bg</label>
+  <button id="pause">Pause</button>
+  <span class="pill" id="status">starting…</span>
+</div>
+
+<div class="stats">
+  <span class="pill" id="pill-onscreen">on-screen: 0/0</span>
+  <span class="pill" id="pill-resident">resident: 0/0</span>
+  <span class="pill" id="pill-loading">loading: 0</span>
+  <span class="pill" id="pill-fps">fps: 0</span>
+  <span class="pill" id="pill-slowus">slow µs/frame: 0</span>
+  <span class="pill" id="pill-warn"></span>
+</div>
+
+<div id="stage"></div>
+
+<!-- The order matters: SWCanvas bundles BitmapText + AtlasLRU. -->
+<script src="../dist/swcanvas.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const { BitmapText, FontProperties, TextProperties, AtlasLRU } = SWCanvas.fonts._raw;
+
+  // Tell BitmapText where to find font assets. Relative paths resolve against
+  // the HTML's URL — this demo lives at /examples/ so font-assets/ is one up.
+  BitmapText.setFontDirectory('../font-assets/');
+  const isFileProtocol = window.location.protocol === 'file:';
+
+  const TEXT_CONTENT = 'Hello, World ☺';
+  const PIXEL_DENSITY = 1;
+
+  // The pool of font configurations textboxes draw from. Spans the full size
+  // range BitmapText supports (0 to 96, 0.5-step) across 3 families × 2 weights,
+  // yielding 3 × 2 × 193 = 1158 entries. With the default LRU capacity (40) and
+  // textbox count (20), this is well into the K < N regime where eviction
+  // churn is the steady state — exactly what the demo is meant to stress.
+  //
+  // BitmapText enforces a 9-pixel rasterization floor: for sizes below 9 the
+  // engine uses interpolated metrics from size 9 and forces placeholder-
+  // rectangle rendering (atlases for those sizes don't exist in the release).
+  // Sizes 0–8.5 in this pool therefore render as scaled-down placeholder
+  // rectangles, not real glyphs — useful for visualising the placeholder
+  // behavior end-to-end.
+  const FONT_POOL = [];
+  for (const family of ['Arial', 'Courier New', 'Times New Roman']) {
+    for (const weight of ['normal', 'bold']) {
+      for (let size = 0; size <= 96; size += 0.5) {
+        FONT_POOL.push({ family, style: 'normal', weight, size });
+      }
+    }
+  }
+
+  function fontPoolToIdString(p) {
+    return new FontProperties(PIXEL_DENSITY, p.family, p.style, p.weight, p.size).idString;
+  }
+
+  // Each textbox also needs the BitmapTextInvariant atlas (for the smiley ☺).
+  function invariantIdStringFor(size) {
+    return new FontProperties(PIXEL_DENSITY, 'BitmapTextInvariant', 'normal', 'normal', size).idString;
+  }
+
+  // ---------- DOM refs + controls ----------
+  const stage  = document.getElementById('stage');
+  const ctlN   = document.getElementById('ctl-N');   const valN    = document.getElementById('val-N');
+  const ctlK   = document.getElementById('ctl-K');   const valK    = document.getElementById('val-K');
+  const ctlL   = document.getElementById('ctl-life');const valL    = document.getElementById('val-life');
+  const ctlT   = document.getElementById('ctl-tilt');const valT    = document.getElementById('val-tilt');
+  const ctlS   = document.getElementById('ctl-scale');const valS   = document.getElementById('val-scale');
+  const ctlC   = document.getElementById('ctl-color');
+  const ctlCB  = document.getElementById('ctl-checker');
+  const pause  = document.getElementById('pause');
+  const status = document.getElementById('status');
+  const pillOn = document.getElementById('pill-onscreen');
+  const pillRe = document.getElementById('pill-resident');
+  const pillLd = document.getElementById('pill-loading');
+  const pillFp = document.getElementById('pill-fps');
+  const pillSU = document.getElementById('pill-slowus');
+  const pillWa = document.getElementById('pill-warn');
+
+  function bindSlider(input, valEl, suffix) {
+    valEl.textContent = input.value + (suffix || '');
+    input.addEventListener('input', () => valEl.textContent = input.value + (suffix || ''));
+  }
+  bindSlider(ctlN, valN); bindSlider(ctlK, valK); bindSlider(ctlL, valL);
+  bindSlider(ctlT, valT, '°'); bindSlider(ctlS, valS);
+
+  // Bootstrap the metrics bundle once (must precede the first loadFont call).
+  // BitmapText.loadFont auto-loads metrics on first call, but we want to surface
+  // the loading state in the UI, so we kick it off explicitly.
+  status.textContent = 'loading metrics…';
+  BitmapText.loadFont(fontPoolToIdString(FONT_POOL[0]), { isFileProtocol })
+    .then(start)
+    .catch(err => { status.textContent = 'metrics failed: ' + err.message; throw err; });
+
+  function start() {
+    status.textContent = 'running';
+    let lru = new AtlasLRU(parseInt(ctlK.value, 10), { isFileProtocol });
+    ctlK.addEventListener('input', () => lru.setCapacity(parseInt(ctlK.value, 10)));
+
+    const onScreen = new Set();
+    const dirty    = new Set();
+
+    // Tilt / scale / colour / checker-bg sliders set parameters for the NEXT
+    // spawned textboxes only. Existing textboxes keep their baked-in values.
+    // (See TextBox constructor for the baking.)
+
+    let paused = false;
+    pause.addEventListener('click', () => {
+      paused = !paused;
+      pause.classList.toggle('paused', paused);
+      pause.textContent = paused ? 'Resume' : 'Pause';
+    });
+
+    // ---------- TextBox ----------
+    class TextBox {
+      constructor(fontDesc, lifetimeMs) {
+        this.fontDesc = fontDesc;
+        this.idString = fontPoolToIdString(fontDesc);
+        this.invariantId = invariantIdStringFor(fontDesc.size);
+        this.fontProps = new FontProperties(
+          PIXEL_DENSITY, fontDesc.family, fontDesc.style, fontDesc.weight, fontDesc.size
+        );
+        this.expireAt = performance.now() + lifetimeMs;
+        this.alive = true;
+
+        // Bake the current slider state. Subsequent slider drags will not
+        // change this textbox; only newly-spawned ones will reflect them.
+        //   Tilt: uniform in [-tiltSlider°, +tiltSlider°]
+        //   Scale: symmetric around 100% — slider's distance from 100% sets the
+        //          half-range. At slider=150% → scale ∈ [50%, 150%]. At
+        //          slider=100% → exactly 100% (zero half-range).
+        const tiltSliderDeg  = parseFloat(ctlT.value);
+        const scaleSliderPct = parseFloat(ctlS.value);
+        const scaleHalfRange = Math.abs(scaleSliderPct - 100);
+        this.tiltRad   = (Math.random() * 2 - 1) * tiltSliderDeg * Math.PI / 180;
+        this.scale     = (100 + (Math.random() * 2 - 1) * scaleHalfRange) / 100;
+        this.colorMode = ctlC.value;          // 'random' | 'black' | 'mixed'
+        this.checkerBg = ctlCB.checked;
+
+        // Per-textbox colour identity. The baked colorMode at paint time decides
+        // which of these gets used; the seed is fixed for the textbox's life.
+        this.randomColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 32%)`;
+        this.mixedBlack = Math.random() < 0.5;  // when mode='mixed', use black?
+
+        // Placeholder canvas — tiny rect that shows during font load. Once the
+        // font is warm, spawnOne calls _resizeToFit() to size precisely to the
+        // rotated+scaled ink bbox via BitmapText.computeInkBoundingBox.
+        const w = 40, h = 24;
+        this.canvas = SWCanvas.createCanvas(w, h);
+        this.ctx = this.canvas.getContext('2d');
+        this.w = w; this.h = h;
+
+        // DOM wrapper for positioning + placeholder visual feedback.
+        this.displayCanvas = document.createElement('canvas');
+        this.displayCanvas.width  = w;
+        this.displayCanvas.height = h;
+        this.wrapper = document.createElement('div');
+        this.wrapper.className = 'textbox placeholder';
+        this.wrapper.appendChild(this.displayCanvas);
+        const stageRect = stage.getBoundingClientRect();
+        // Spawn within stage; the precise size isn't known yet, so leave some
+        // margin for the eventual tight rect to fit without going off-stage.
+        const maxW = Math.max(0, stageRect.width  - 200);
+        const maxH = Math.max(0, stageRect.height - 100);
+        this.wrapper.style.left = Math.floor(Math.random() * maxW) + 'px';
+        this.wrapper.style.top  = Math.floor(Math.random() * maxH) + 'px';
+        stage.appendChild(this.wrapper);
+      }
+
+      _resizeToFit() {
+        // Get the un-transformed ink box from BitmapText (anchor at (0, 0)
+        // with the textAlign/textBaseline we'll use at paint time).
+        const textProps = new TextProperties({
+          isKerningEnabled: true,
+          textBaseline: 'middle',
+          textAlign: 'center',
+          textColor: '#000000',     // colour doesn't affect geometry
+        });
+        const ibb = BitmapText.computeInkBoundingBox(
+          TEXT_CONTENT, 0, 0, this.fontProps, textProps
+        );
+        if (!ibb || ibb.status.code !== 0 || !ibb.box) return;
+        const box = ibb.box;
+
+        // Apply this textbox's scale and rotation to the 4 ink corners; take
+        // the AABB. Symmetric canvas so anchor at (w/2, h/2) is the centre,
+        // matching paint()'s translate/rotate/scale pattern.
+        const corners = [
+          { x: box.x,             y: box.y             },
+          { x: box.x + box.width, y: box.y             },
+          { x: box.x,             y: box.y + box.height },
+          { x: box.x + box.width, y: box.y + box.height },
+        ];
+        const cos = Math.cos(this.tiltRad);
+        const sin = Math.sin(this.tiltRad);
+        let minX = +Infinity, maxX = -Infinity, minY = +Infinity, maxY = -Infinity;
+        for (const c of corners) {
+          const sx = c.x * this.scale;
+          const sy = c.y * this.scale;
+          const rx = sx * cos - sy * sin;
+          const ry = sx * sin + sy * cos;
+          if (rx < minX) minX = rx;
+          if (rx > maxX) maxX = rx;
+          if (ry < minY) minY = ry;
+          if (ry > maxY) maxY = ry;
+        }
+        const PADDING = 4;
+        const halfW = Math.max(Math.abs(minX), Math.abs(maxX)) + PADDING;
+        const halfH = Math.max(Math.abs(minY), Math.abs(maxY)) + PADDING;
+        const w = Math.max(8, Math.ceil(2 * halfW));
+        const h = Math.max(8, Math.ceil(2 * halfH));
+        if (w === this.w && h === this.h) return;
+        this.canvas = SWCanvas.createCanvas(w, h);
+        this.ctx    = this.canvas.getContext('2d');
+        this.displayCanvas.width  = w;
+        this.displayCanvas.height = h;
+        this.w = w; this.h = h;
+      }
+
+      paint() {
+        if (!this.alive) return;
+
+        // Background. Either a Photoshop-style transparency checker (so the
+        // text fill is visibly drawn ON TOP of something else) or plain white.
+        // Always done before the user transform (background stays upright).
+        const ctx = this.ctx;
+        if (this.checkerBg) {
+          const CELL = 8;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, this.w, this.h);
+          ctx.fillStyle = '#d0d0d0';
+          for (let cy = 0; cy < this.h; cy += CELL) {
+            for (let cx = 0; cx < this.w; cx += CELL) {
+              if (((cx / CELL) + (cy / CELL)) % 2 === 1) {
+                ctx.fillRect(cx, cy, CELL, CELL);
+              }
+            }
+          }
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, this.w, this.h);
+        }
+
+        // Apply this textbox's baked-in rotation + uniform scale around centre.
+        ctx.save();
+        ctx.translate(this.w / 2, this.h / 2);
+        ctx.rotate(this.tiltRad);
+        ctx.scale(this.scale, this.scale);
+        ctx.translate(-this.w / 2, -this.h / 2);
+
+        ctx.font = `${this.fontDesc.weight === 'bold' ? 'bold ' : ''}${this.fontDesc.size}px ${this.fontDesc.family}`;
+        // Colour from baked colorMode (snapshotted at spawn from the dropdown).
+        ctx.fillStyle = (this.colorMode === 'black') ? '#000000'
+                      : (this.colorMode === 'mixed' && this.mixedBlack) ? '#000000'
+                      : this.randomColor;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        const t0 = performance.now();
+        ctx.fillText(TEXT_CONTENT, this.w / 2, this.h / 2);
+        const tElapsed = performance.now() - t0;
+        ctx.restore();
+
+        // Blit SWCanvas surface to display canvas. SWCanvas's getImageData
+        // returns a plain { width, height, data } object — the browser's
+        // putImageData requires a real ImageData instance, so we wrap.
+        const imgData = ctx.getImageData(0, 0, this.w, this.h);
+        const realImageData = new ImageData(imgData.data, imgData.width, imgData.height);
+        this.displayCanvas.getContext('2d').putImageData(realImageData, 0, 0);
+
+        // Atlas-warmth signal. BitmapText.drawTextFromAtlas paints placeholder
+        // rectangles when atlases are missing (since the batched-colour-path
+        // fix in BitmapText commit c338025), so the fillText above is always
+        // safe. We just check post-paint to decide whether to clear the
+        // placeholder outline and whether to schedule another paint when the
+        // atlases land.
+        const warm = BitmapText.hasAtlas(this.idString) && BitmapText.hasAtlas(this.invariantId);
+        if (warm) {
+          this.wrapper.classList.remove('placeholder');
+          return { warm: true, tElapsed };
+        }
+        this.wrapper.classList.add('placeholder');
+        Promise.all([lru.request(this.idString), lru.request(this.invariantId)])
+          .then(() => { if (this.alive) dirty.add(this); })
+          .catch(() => { /* placeholder mode persists for this textbox */ });
+        return { warm: false, tElapsed };
+      }
+
+      destroy() {
+        this.alive = false;
+        if (this.wrapper.parentNode) this.wrapper.parentNode.removeChild(this.wrapper);
+      }
+    }
+
+    // ---------- Spawn / reap ----------
+    function spawnOne() {
+      const idx = Math.floor(Math.random() * FONT_POOL.length);
+      const lifetimeMs = 1000 + Math.random() * (parseFloat(ctlL.value) * 1000);
+      const tb = new TextBox(FONT_POOL[idx], lifetimeMs);
+      onScreen.add(tb);
+      // Resize + enqueue immediately. _resizeToFit only needs metrics (loaded
+      // before start() runs), not atlases — and paint() is now safe even when
+      // atlases aren't resident (BitmapText paints placeholder rectangles).
+      // Atlas loads get kicked off by paint()'s lru.request when it sees a
+      // non-warm font; no spawn-time Promise.all gate needed.
+      tb._resizeToFit();
+      dirty.add(tb);
+    }
+
+    function reapExpired(now) {
+      for (const tb of onScreen) {
+        if (now >= tb.expireAt) {
+          tb.destroy();
+          onScreen.delete(tb);
+          dirty.delete(tb);
+        }
+      }
+    }
+
+    // ---------- Drain dirty ----------
+    let slowUsAccum = 0, slowUsFrames = 0;
+    function drainDirty(budget) {
+      if (dirty.size === 0) return;
+      const list = Array.from(dirty);
+      dirty.clear();
+      const cap = Math.min(budget, list.length);
+      for (let i = 0; i < cap; i++) {
+        const tb = list[i];
+        if (!tb.alive) continue;
+        // Pin the atlases of textboxes about to repaint so the LRU doesn't
+        // evict them while the paint is in flight.
+        lru.beingUsed(tb.idString);
+        lru.beingUsed(tb.invariantId);
+        const result = tb.paint();
+        if (result) { slowUsAccum += result.tElapsed; slowUsFrames++; }
+      }
+      // Carry leftover work to the next frame.
+      for (let i = cap; i < list.length; i++) dirty.add(list[i]);
+    }
+
+    // ---------- rAF loop ----------
+    let lastSpawn = 0;
+    let frameCount = 0, fpsT0 = performance.now(), fps = 0;
+    function tick(now) {
+      if (!paused) {
+        // Spawn pacing: aim for N target population, cadence 80ms.
+        const N = parseInt(ctlN.value, 10);
+        if (now - lastSpawn > 80 && onScreen.size < N) {
+          spawnOne();
+          lastSpawn = now;
+        }
+        reapExpired(now);
+        drainDirty(8);
+      }
+
+      // Stats refresh once per second.
+      frameCount++;
+      if (now - fpsT0 >= 1000) {
+        fps = Math.round(frameCount * 1000 / (now - fpsT0));
+        frameCount = 0; fpsT0 = now;
+        pillFp.textContent = 'fps: ' + fps;
+        pillOn.textContent = 'on-screen: ' + onScreen.size + '/' + ctlN.value;
+        // "resident" excludes in-flight loads, "/K" is the LRU capacity ceiling.
+        pillRe.textContent = 'resident: ' + lru.loadedCount + '/' + ctlK.value;
+        pillLd.textContent = 'loading: ' + lru.pendingCount;
+        const avgSlow = slowUsFrames ? (slowUsAccum / slowUsFrames * 1000).toFixed(0) : 0;
+        pillSU.textContent = 'slow µs/text: ' + avgSlow;
+        slowUsAccum = 0; slowUsFrames = 0;
+        const K = parseInt(ctlK.value, 10);
+        pillWa.textContent = (K < 2 * onScreen.size) ? 'K < 2·N — expect placeholders' : '';
+        pillWa.classList.toggle('warn', K < 2 * onScreen.size);
+      }
+
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+})();
+</script>
+</body>
+</html>

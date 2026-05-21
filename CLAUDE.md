@@ -23,7 +23,8 @@ node tests/direct-rendering/verify-logs-and-bounds-snapshot.js        # Verify t
 
 - Core pipeline:  `src/core/Context2D.js` → `src/core/Rasterizer.js` → `src/renderers/*Ops.js` → `src/core/Surface.js`
 - HTML5 facade:   `src/compat/CanvasCompatibleContext2D.js` (thin layer over Core)
-- Source layout:  `src/{core,renderers,utils,paint,filters,io,compat}`
+- Text engine:    vendored BitmapText.js under `vendor/bitmaptext/`; wiring in `src/text/{BootstrapText,CssFontParser,FillStyleToTextColor,TextRenderer,FontsNamespace}.js`. Slow path renders to an intermediate `SWCanvasElement` then `drawImage`s with the user transform.
+- Source layout:  `src/{core,renderers,utils,paint,filters,io,compat,text}` + `vendor/bitmaptext/`
 - Hot pixel loops: `src/renderers/*Ops.js`; preprocessor templates in `build-scripts/preprocess.js`
 
 ## Critical invariants (not inferable from code — read these before editing)
@@ -36,6 +37,8 @@ node tests/direct-rendering/verify-logs-and-bounds-snapshot.js        # Verify t
 - **Immutable value objects:** `Transform2D`, `Point`, `Rectangle`, `Color`, `BitmapEncodingOptions`. Clone, don't mutate.
 - **In tests, use standard Canvas API** (`ctx.fillStyle = '...'`, `ctx.getImageData()`). Don't reach into internal classes from test bodies — visual tests must remain runnable against real HTML5 Canvas.
 - **Visual tests (`tests/visual/cases/`) vs perf cases (`tests/direct-rendering/perf-cases/`) are separate architectures** — correctness vs throughput. Don't conflate them.
+- **Text rendering needs assets.** `dist/swcanvas.js` ships the BitmapText engine but no font data. Run `scripts/download-bitmaptext-assets.sh` once to populate `font-assets/` (browser-side WebP), or use the smoke fixture under `font-assets/_smoke/` for Node. Without assets, `ctx.fillText(...)` runs without crashing but emits no pixels — by design.
+- **`vendor/bitmaptext/` is gitignored and regenerated on demand** from the SHA in `vendor/bitmaptext.pin`. `build.sh` auto-fetches on first build via `scripts/vendor-bitmaptext.sh`. Bump by editing the pin and re-running the script (or with `--source <path>` for local-sibling dev, which also rewrites the pin). Don't patch in place — the next vendor run wipes any local edits. See `vendor/bitmaptext.UPDATE.md`. The integration relies on upstream features `BitmapText.setFontLoader`, `setAtlasFormat`, and platform-file self-registration; do not vendor a pre-Sprint-4 BitmapText.
 
 ## Canonical workflows
 
@@ -70,5 +73,6 @@ node tests/direct-rendering/verify-logs-and-bounds-snapshot.js        # Verify t
 | Debug utilities                      | `debug/README.md`                                        |
 | Test naming convention               | `test_naming_convention.md`                              |
 | Doc index & anti-duplication policy  | `DOCS.md`                                                |
+| Vendored BitmapText (text engine)    | `vendor/bitmaptext.UPDATE.md`                            |
 
 Do not duplicate content from these files into this one. If a topic above feels under-specified, open the linked doc rather than expanding here.
