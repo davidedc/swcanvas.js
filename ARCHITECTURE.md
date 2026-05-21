@@ -421,6 +421,20 @@ This ensures BMP output accurately represents how semi-transparent elements woul
 
 This architectural decision ensures HTML5 Canvas compatibility while maintaining optimal performance for rectangle clearing operations.
 
+## Text Rendering System
+
+SWCanvas renders text by embedding [BitmapText.js](https://github.com/davidedc/BitmapText.js) as a vendored text engine. The wiring lives in `src/text/{BootstrapText,CssFontParser,FillStyleToTextColor,TextRenderer,FontsNamespace}.js`, on top of the upstream runtime under `vendor/bitmaptext/`. The vendor tree is gitignored and regenerated on first build from the pinned commit SHA in `vendor/bitmaptext.pin` — see `vendor/bitmaptext.UPDATE.md` for the refresh workflow. Both API surfaces (the Core `Context2D` and the HTML5 compat layer) gain `fillText`, `measureText`, and `strokeText` (the last throws deliberately — BitmapText doesn't stroke glyphs), plus `font` / `textAlign` / `textBaseline` / `direction` state plumbed through `save()` / `restore()`.
+
+`TextRenderer.fillText` has two render paths:
+
+**Fast path (identity-like transform).** When the current transform is a pure integer translation, the renderer pre-applies the translation and calls `BitmapText.drawTextFromAtlas` against the main surface directly. BitmapText resets the transform to identity internally and blits glyphs at the requested coordinates — no intermediate buffer.
+
+**Slow path (rotated / scaled / non-integer-translated).** The renderer calls `BitmapText.computeInkBoundingBox(text, x, y, fontProps, textProps)` to get the exact ink rect in CSS pixels, allocates an intermediate `SWCanvasElement` sized to `ceil(box.{width,height} × pixelDensity)`, draws into it via `drawTextFromAtlas` at `(x − box.x, y − box.y)`, then blits the intermediate via `coreCtx.drawImage(...)` with the user's current transform. This reuses the existing transformed-`drawImage` rasterizer rather than introducing a new direct-rendering hot path, so rotation and scale "just work" without per-feature plumbing.
+
+`drawTextFromAtlas` paints placeholder rectangles for any glyph whose atlas is missing rather than throwing — the same contract holds across BitmapText's colored-batched and per-glyph branches as of vendor commit `c338025`. This means `ctx.fillText(...)` is safe to call before atlases finish loading; it simply produces no visible glyph pixels until then. The LRU demo at `examples/text-lru-atlas-demo.html` exercises this end-to-end with dynamic atlas loading bounded by an LRU cache.
+
+See `TEXT-INTEGRATION-HANDOFF.md` for the integration history, the vendor-refresh workflow, and the as-built design decisions.
+
 ## Interoperability Bridges
 
 The architecture provides seamless interoperability between layers:

@@ -18,6 +18,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **examples/README.md**: Examples documentation and usage instructions
 - **DIRECT-RENDERING-SUMMARY.MD**: Direct rendering system documentation, APIs, conditions, and implementation details
 - **test_naming_convention.md**: Test file naming conventions, facet abbreviations, and naming rules
+- **TEXT-INTEGRATION-HANDOFF.md**: Text rendering integration — vendored BitmapText engine, fast/slow render paths, vendor refresh workflow, LRU demo
 - **CLAUDE.md**: Claude-specific development context and workflow tips ONLY
 
 ### What NOT to Include (Anti-Duplication Rules)
@@ -63,6 +64,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **Debug utilities**: debug/README.md only
 - **Direct rendering system**: DIRECT-RENDERING-SUMMARY.MD only
 - **Test naming conventions**: test_naming_convention.md only
+- **Text rendering integration**: TEXT-INTEGRATION-HANDOFF.md only
 - **Claude guidance**: CLAUDE.md only (no duplication from other docs)
 
 ## Quick Navigation
@@ -79,6 +81,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **Examples and demos** → examples/README.md
 - **Direct rendering system** → DIRECT-RENDERING-SUMMARY.MD
 - **Test naming conventions** → test_naming_convention.md
+- **Text rendering integration** → TEXT-INTEGRATION-HANDOFF.md
 - **Development with Claude** → CLAUDE.md
 
 ## Documentation Maintenance
