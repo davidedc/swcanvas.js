@@ -190,6 +190,8 @@ class ColorParser {
                 result = this._parseHex(trimmed);
             } else if (trimmed.startsWith('rgb')) {
                 result = this._parseRGB(trimmed);
+            } else if (trimmed.startsWith('hsl')) {
+                result = this._parseHSL(trimmed);
             } else if (this._namedColors[trimmed]) {
                 const named = this._namedColors[trimmed];
                 result = { r: named.r, g: named.g, b: named.b, a: 255 };
@@ -269,6 +271,68 @@ class ColorParser {
         }
 
         return { r, g, b, a };
+    }
+
+    /**
+     * Parse HSL/HSLA function notation. Supports the comma form
+     *   hsl(120, 70%, 32%)
+     *   hsla(120, 70%, 32%, 0.5)
+     * Hue is in degrees (modulo 360), saturation and lightness as 0-100%,
+     * alpha as 0-1. Returns the same {r, g, b, a} shape (0-255 each) as the
+     * other parsers.
+     * @private
+     */
+    _parseHSL(hsl) {
+        const match = hsl.match(/hsla?\s*\(\s*([^)]+)\s*\)/);
+        if (!match) return { r: 0, g: 0, b: 0, a: 255 };
+        const parts = match[1].split(',').map(s => s.trim());
+        if (parts.length < 3 || parts.length > 4) return { r: 0, g: 0, b: 0, a: 255 };
+
+        // Hue: number (degrees, normalized to [0, 360))
+        let h = parseFloat(parts[0]);
+        if (isNaN(h)) return { r: 0, g: 0, b: 0, a: 255 };
+        h = ((h % 360) + 360) % 360 / 360;
+
+        // Saturation, lightness: percentages
+        const parsePct = (s) => {
+            const v = parseFloat(s);
+            return isNaN(v) ? 0 : Math.max(0, Math.min(100, v)) / 100;
+        };
+        const s = parsePct(parts[1]);
+        const l = parsePct(parts[2]);
+
+        // Alpha: optional, 0-1
+        let a = 255;
+        if (parts.length === 4) {
+            const av = parseFloat(parts[3]);
+            if (!isNaN(av)) a = Math.round(Math.max(0, Math.min(1, av)) * 255);
+        }
+
+        // Standard HSL → RGB conversion (CSS Color Module Level 3).
+        let r, g, b;
+        if (s === 0) {
+            r = g = b = l;
+        } else {
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+        return {
+            r: Math.round(r * 255),
+            g: Math.round(g * 255),
+            b: Math.round(b * 255),
+            a: a
+        };
     }
 
     /**
