@@ -1706,6 +1706,5000 @@ class Surface {
     }
 }
 
+// StatusCode - Core Runtime Constants
+//
+// This is a CORE RUNTIME module designed for minimal bundle size (~0.5KB).
+// It provides status code constants and pre-created status objects for performance optimization.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - Used by BitmapText for efficient status reporting
+// - No dependencies, pure constants and helper objects
+//
+// PERFORMANCE OPTIMIZATIONS:
+// - Numeric codes for faster comparisons than strings
+// - Pre-created immutable SUCCESS_STATUS object to avoid allocations
+// - Frozen objects for memory safety and immutability
+
+/**
+ * Status codes for BitmapText operations
+ * Using numeric values for optimal performance in comparisons
+ */
+const StatusCode = Object.freeze({
+  SUCCESS: 0,           // Everything worked perfectly
+  NO_METRICS: 1,        // No FontMetrics found at all for this font configuration
+  PARTIAL_METRICS: 2,   // Some characters missing metrics data
+  NO_ATLAS: 3,          // No atlas available (will render placeholder rectangles)
+  PARTIAL_ATLAS: 4      // Some characters missing from atlas (partial placeholders)
+});
+
+/**
+ * Pre-created immutable success status object for performance
+ * Reused for all successful operations to avoid object allocation overhead
+ */
+const SUCCESS_STATUS = Object.freeze({
+  code: StatusCode.SUCCESS
+});
+
+/**
+ * Helper function to create error status objects
+ * @param {number} code - StatusCode value
+ * @param {Object} details - Additional details object
+ * @returns {Object} Immutable status object
+ */
+function createErrorStatus(code, details = {}) {
+  return Object.freeze({
+    code,
+    ...details
+  });
+}
+
+/**
+ * Helper function to check if a status indicates success
+ * @param {Object} status - Status object with code property
+ * @returns {boolean} True if status indicates success
+ */
+function isSuccess(status) {
+  return status?.code === StatusCode.SUCCESS;
+}
+
+/**
+ * Helper function to check if a status indicates complete failure
+ * (NO_METRICS or PARTIAL_METRICS - cannot render at all)
+ * @param {Object} status - Status object with code property
+ * @returns {boolean} True if status indicates complete failure
+ */
+function isCompleteFailure(status) {
+  return status && (
+    status.code === StatusCode.NO_METRICS ||
+    status.code === StatusCode.PARTIAL_METRICS
+  );
+}
+
+/**
+ * Helper function to check if a status indicates partial success
+ * (NO_ATLAS or PARTIAL_ATLAS - can render with placeholders)
+ * @param {Object} status - Status object with code property
+ * @returns {boolean} True if status indicates partial success
+ */
+function isPartialSuccess(status) {
+  return status && (
+    status.code === StatusCode.NO_ATLAS ||
+    status.code === StatusCode.PARTIAL_ATLAS
+  );
+}
+
+/**
+ * Helper function to get human-readable status description
+ * @param {Object} status - Status object with code property
+ * @returns {string} Human-readable description
+ */
+function getStatusDescription(status) {
+  if (!status || typeof status.code !== 'number') {
+    return 'Invalid status';
+  }
+
+  switch (status.code) {
+    case StatusCode.SUCCESS:
+      return 'Success';
+    case StatusCode.NO_METRICS:
+      if (status.requiresMinSize) {
+        return `Font size ${status.requestedSize}px requires size ${status.minSize}px metrics for interpolation. Please load size ${status.minSize}px font assets.`;
+      }
+      return 'No font metrics available';
+    case StatusCode.PARTIAL_METRICS:
+      return `Missing metrics for characters: ${status.missingChars ? [...status.missingChars].join('') : 'unknown'}`;
+    case StatusCode.NO_ATLAS:
+      return 'No atlas available (using placeholders)';
+    case StatusCode.PARTIAL_ATLAS:
+      return `Missing atlas data for characters: ${status.missingAtlasChars ? [...status.missingAtlasChars].join('') : 'unknown'} (using placeholders)`;
+    default:
+      return `Unknown status code: ${status.code}`;
+  }
+}
+// BundleCodec - Shared codec primitives for metrics + positioning bundles
+//
+// Wire format for both bundle types (`font-assets/metrics-bundle.js` and
+// `font-assets/positioning-bundle-density-<N>.js`):
+//
+//     BitmapText.rBundle('<base64>');           // metrics
+//     BitmapText.pBundle(<density>, '<base64>'); // positioning
+//
+// where <base64> decodes to a `deflate-raw` stream of UTF-8 JSON. The decoded
+// JSON is the envelope:
+//
+//     { formatVersion: <N>, records: [...] }                 // metrics
+//     { formatVersion: <N>, density: <D>, records: [...] }   // positioning
+//
+// `formatVersion` is the runtime↔asset schema version; the single source of
+// truth is `BitmapText.BUNDLE_SCHEMA_VERSION`. This module knows nothing
+// about that number — it just decodes bytes.
+//
+// Inside each record's payload, integer streams are encoded as zigzag-varint
+// bytes, then base64 — sometimes with a delta pre-pass (for streams whose
+// values cluster after sorting or share local locality, like the metrics
+// value lookup table and every positioning array). Reusing one helper from
+// both the metrics expander and the positioning store keeps the encoders
+// and decoders in lockstep.
+
+class BundleCodec {
+  // ----- bytes <-> base64 -----
+
+  static base64ToBytes(b64) {
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(b64, 'base64');
+    }
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  static bytesToBase64(bytes) {
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(bytes).toString('base64');
+    }
+    // Browser: chunked btoa to avoid stack overflow on large inputs.
+    const CHUNK = 0x8000;
+    let binary = '';
+    const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    for (let i = 0; i < arr.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, arr.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+  }
+
+  // ----- deflate-raw bundle envelope -----
+
+  static async decodeBundle(b64) {
+    const compressed = BundleCodec.base64ToBytes(b64);
+    const inflated = await BundleCodec.#inflateRaw(compressed);
+    const json = BundleCodec.#bytesToString(inflated);
+    return JSON.parse(json);
+  }
+
+  static async #inflateRaw(bytes) {
+    if (typeof DecompressionStream === 'function' && typeof Response === 'function') {
+      const stream = new Response(bytes).body.pipeThrough(new DecompressionStream('deflate-raw'));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    if (typeof require === 'function') {
+      const zlib = require('zlib');
+      const buf = zlib.inflateRawSync(bytes);
+      return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+    }
+    throw new Error('BundleCodec: no DecompressionStream and no zlib fallback available');
+  }
+
+  static #bytesToString(bytes) {
+    if (typeof TextDecoder === 'function') {
+      return new TextDecoder().decode(bytes);
+    }
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(bytes).toString('utf8');
+    }
+    throw new Error('BundleCodec: no TextDecoder and no Buffer available');
+  }
+
+  // ----- zigzag + varint -----
+  //
+  // Zigzag interleaves signed ints into unsigned: 0,-1,1,-2,2,... → 0,1,2,3,4,...
+  // VarInt then encodes 7 bits per byte with MSB as continuation flag, so small
+  // magnitudes take 1 byte and large ones grow gracefully. Together they make
+  // small absolute values (and small deltas) costliest at 1 byte each.
+
+  static encodeVarInts(signedIntegers) {
+    const bytes = [];
+    for (const value of signedIntegers) {
+      let z = value >= 0 ? value * 2 : -value * 2 - 1;
+      while (z >= 128) {
+        bytes.push((z & 0x7F) | 0x80);
+        z >>>= 7;
+      }
+      bytes.push(z & 0x7F);
+    }
+    return new Uint8Array(bytes);
+  }
+
+  static decodeVarInts(bytes) {
+    const out = [];
+    let i = 0;
+    while (i < bytes.length) {
+      let v = 0;
+      let shift = 0;
+      let byte;
+      do {
+        byte = bytes[i++];
+        v |= (byte & 0x7F) << shift;
+        shift += 7;
+      } while (byte & 0x80);
+      out.push((v & 1) ? -(v + 1) / 2 : v / 2);
+    }
+    return out;
+  }
+
+  // ----- convenience pairs -----
+
+  static encodeVarIntB64(intArr) {
+    return BundleCodec.bytesToBase64(BundleCodec.encodeVarInts(intArr));
+  }
+
+  static decodeVarIntB64(b64) {
+    return BundleCodec.decodeVarInts(BundleCodec.base64ToBytes(b64));
+  }
+
+  // Delta-encode then zigzag-varint-base64. Reverse: decode varints, then
+  // prefix-sum. The metrics value-lookup table feeds magnitude-sorted ints
+  // here so deltas are small; positioning arrays use this directly on the
+  // raw per-glyph integer streams (heights, dy, etc. cluster naturally).
+  static encodeDeltaVarIntB64(intArr) {
+    if (intArr.length === 0) return '';
+    const d = [intArr[0]];
+    for (let i = 1; i < intArr.length; i++) d.push(intArr[i] - intArr[i - 1]);
+    return BundleCodec.encodeVarIntB64(d);
+  }
+
+  static decodeDeltaVarIntB64(b64) {
+    if (!b64) return [];
+    const deltas = BundleCodec.decodeVarIntB64(b64);
+    const out = new Array(deltas.length);
+    out[0] = deltas[0];
+    for (let i = 1; i < deltas.length; i++) out[i] = out[i - 1] + deltas[i];
+    return out;
+  }
+}
+
+/**
+ * CharacterSets - Character set configuration for BitmapText.js
+ *
+ * This class defines the character sets used throughout the BitmapText.js library.
+ * It contains both font-specific characters (required in all fonts) and font-invariant
+ * characters (auto-redirect to BitmapTextInvariant font).
+ *
+ * @class CharacterSets
+ * @static
+ */
+class CharacterSets {
+  // ============================================
+  // Font-Specific Character Set
+  // ============================================
+
+  /**
+   * Font-specific character set constant
+   * Used by both build-time (MetricsMinifier) and runtime (MetricsExpander)
+   * This is the sorted character set that defines the standard order for all font metrics.
+   * ALL font files must contain exactly these characters in this order.
+   *
+   * @type {string}
+   * @static
+   * @readonly
+   */
+  static FONT_SPECIFIC_CHARS = CharacterSets.#generateFontSpecificChars();
+
+  // ============================================
+  // Font-Invariant Character Configuration
+  // ============================================
+
+  /**
+   * Font-invariant characters that auto-redirect to BitmapTextInvariant font.
+   * These Unicode characters render using monospaced Courier New metrics
+   * regardless of the font specified in FontProperties.
+   *
+   * Characters: ☺☹♠♡♦♣│─├└▶▼▲◀✔✘≠↗
+   *
+   * @type {string}
+   * @static
+   * @readonly
+   */
+  static FONT_INVARIANT_CHARS = '☺☹♠♡♦♣│─├└▶▼▲◀✔✘≠↗';
+
+  /**
+   * Font family name for font-invariant characters.
+   * These characters are internally rendered using Courier New to ensure
+   * consistent monospaced appearance across all fonts.
+   *
+   * @type {string}
+   * @static
+   * @readonly
+   */
+  static INVARIANT_FONT_FAMILY = 'BitmapTextInvariant';
+
+  // ============================================
+  // Character Aliasing (Emoji → Symbol Mapping)
+  // ============================================
+  //
+  // WHY THIS EXISTS:
+  // BitmapText.js uses monochrome (black/white) atlases only to minimize
+  // filesystem size, loading time, and runtime memory. Since colored emoji
+  // glyphs aren't supported, we map modern emojis to visually-similar
+  // black/white Unicode symbols from the font-invariant character set.
+  //
+  // This allows users to type emojis (😊) which render as their
+  // corresponding symbols (☺) without duplicating atlas/metrics entries.
+  // If colored atlases were supported, this mechanism would be unnecessary.
+  //
+  // See docs/ARCHITECTURE.md for full architectural rationale.
+  // ============================================
+
+  /**
+   * Maps input emoji characters to their rendered symbol equivalents.
+   * @type {Object.<string, string>}
+   * @static
+   * @readonly
+   */
+  static CHARACTER_ALIASES = {
+    '😊': '☺',  // U+1F60A Smiling Face with Smiling Eyes → U+263A White Smiling Face
+    '😀': '☺',  // U+1F600 Grinning Face → U+263A White Smiling Face
+    '😃': '☺',  // U+1F603 Grinning Face with Big Eyes → U+263A White Smiling Face
+    '😢': '☹',  // U+1F622 Crying Face → U+2639 White Frowning Face
+    '☹️': '☹',  // U+2639 U+FE0F Frowning Face (emoji variant) → U+2639 White Frowning Face
+  };
+
+  /**
+   * Resolves an input character to its rendered equivalent.
+   * Returns the original character if no alias exists.
+   * This method is called during text measurement and rendering
+   * to transparently map emojis to their bitmap symbol equivalents.
+   *
+   * Performance: O(1) object property lookup (~3-5ns)
+   *
+   * @param {string} char - Input character (may be emoji or regular character)
+   * @returns {string} Resolved character for rendering
+   * @static
+   */
+  static resolveCharacter(char) {
+    return CharacterSets.CHARACTER_ALIASES[char] ?? char;
+  }
+
+  /**
+   * Cached regex for string-level alias resolution.
+   * Built lazily on first use, reused for all subsequent calls.
+   * @type {RegExp|null}
+   * @private
+   */
+  static #aliasRegex = null;
+
+  /**
+   * Resolves all character aliases in a string using a single regex pass.
+   * Much faster than per-character resolution, especially for longer strings.
+   *
+   * Performance (100K iterations):
+   * - Short strings (11-31 chars): 2.6-5.1x faster than per-char
+   * - Long strings (900-1000 chars): 4-386x faster than per-char
+   *
+   * @param {string} text - Input text (may contain emojis)
+   * @returns {string} Text with all aliases resolved
+   * @static
+   */
+  static resolveString(text) {
+    // Fast path: no aliases defined
+    if (Object.keys(CharacterSets.CHARACTER_ALIASES).length === 0) {
+      return text;
+    }
+    // Build regex once, cache for reuse
+    if (!CharacterSets.#aliasRegex) {
+      const patterns = Object.keys(CharacterSets.CHARACTER_ALIASES).join('|');
+      CharacterSets.#aliasRegex = new RegExp(patterns, 'gu');
+    }
+    return text.replace(CharacterSets.#aliasRegex, m => CharacterSets.CHARACTER_ALIASES[m]);
+  }
+
+  // ============================================
+  // Private Generator Methods
+  // ============================================
+
+  /**
+   * Generates the font-specific character set.
+   * This includes ASCII printable characters, selected CP-1252 characters,
+   * Latin-1 Supplement characters, and the Full Block character.
+   *
+   * Character composition:
+   * - ASCII printable (32-126): 95 characters
+   * - Windows-1252 subset (CP-1252) + Unicode extras: 12 characters
+   * - Latin-1 Supplement (161-255, excluding 26 rarely-used symbols): 69 characters
+   * - Full Block character (█): 1 character
+   *
+   * @private
+   * @static
+   * @returns {string} Sorted character set string
+   */
+  static #generateFontSpecificChars() {
+    const chars = [];
+
+    // ASCII printable characters (32-126)
+    // Includes space, numbers, letters, and common symbols
+    for (let i = 32; i <= 126; i++) {
+      chars.push(String.fromCharCode(i));
+    }
+
+    // A selection from Windows-1252 (CP-1252) printable characters.
+    // This is the most standard definition of "extended ASCII codes" from 128 to 159
+    // and many of these are common/useful symbols that people "expect to have".
+    // However fromCharCode doesn't work on those as that range is not defined
+    // in UTF-8/Unicode (modern web standard, so we want to include (some of) them but we have
+    // to map them to specific Unicode code points, not the byte values themselves.
+    // NOTE: we could likely shave some of these off, as they are not easily printable
+    // in Javascript and some of them are fairly arcane/
+    const cp1252PrintableChars = [
+      8364, // € Euro sign (CP-1252: 128)
+      //  8218, // ‚ Single low-9 quotation mark (CP-1252: 130)
+      //  402,  // ƒ Latin small letter f with hook (CP-1252: 131)
+      //  8222, // „ Double low-9 quotation mark (CP-1252: 132)
+      8230, // … Horizontal ellipsis (CP-1252: 133)
+      //  8224, // † Dagger (CP-1252: 134)
+      //  8225, // ‡ Double dagger (CP-1252: 135)
+      //  710,  // ˆ Modifier letter circumflex accent (CP-1252: 136)
+      // 8240, // ‰ U+2030 PER MILLE SIGN (CP-1252: 137) - REMOVED: rarely used
+      //  352,  // Š Latin capital letter S with caron (CP-1252: 138)
+
+      // If someone copy-pastes French quotation marks, that's on them.
+      // 8249, // ‹ U+2039 SINGLE LEFT-POINTING ANGLE QUOTATION MARK (CP-1252: 139) - REMOVED: rarely used
+
+      //  338,  // Œ Latin capital ligature OE (CP-1252: 140)
+      381,  // Ž Latin capital letter Z with caron (CP-1252: 142)
+      //  8216, // ' Left single quotation mark (CP-1252: 145)
+
+      // UNFORTUNATELY SOMETIMES USED INSTEAD OF APOSTROPHE AND VERY HARD TO
+      // DEBUG IF WE ENCOUNTER THIS ISSUE, LET'S KEEP IT
+      8217, // ' ""curly apostrophe"" or "right single quotation mark" (CP-1252: 146)
+
+      //  8220, // " Left double quotation mark (CP-1252: 147)
+      //  8221, // " Right double quotation mark (CP-1252: 148)
+      8226, // • Bullet (CP-1252: 149)
+
+      // ============================================
+      // HYPHEN / DASH FAMILY - IMPORTANT FOR DEBUGGING
+      // ============================================
+      // These characters look nearly identical but have different Unicode code points.
+      // Including all of them prevents extremely hard-to-debug rendering issues when
+      // text is copy-pasted from different sources (Word, web, etc.).
+      //
+      // | Name        | Char | Unicode | Length            | Common Use                              | Frequency    |
+      // |-------------|------|---------|-------------------|-----------------------------------------|--------------|
+      // | Hyphen      | -    | U+002D  | short             | Compound words, line breaks, codes      | Very high    |
+      // | Minus sign  | −    | U+2212  | short/med (centered) | Math subtraction, equations          | Low (tech)   |
+      // | En dash     | –    | U+2013  | medium (≈ "N")    | Ranges (5–10), connections (London–Paris)| Moderate     |
+      // | Em dash     | —    | U+2014  | long (≈ "M")      | Breaks in thought, emphasis, asides     | High/rising  |
+      //
+      // Note: Hyphen (U+002D, code 45) is already included in ASCII printable (32-126).
+      8722, // − U+2212 MINUS SIGN - math subtraction (looks like hyphen but vertically centered)
+      8211, // – U+2013 EN DASH - ranges and connections (CP-1252: 150)
+      8212, // — U+2014 EM DASH - breaks in thought, emphasis (CP-1252: 151)
+      //  732,  // ˜ Small tilde (CP-1252: 152)
+      // 8482, // ™ Trade mark sign (CP-1252: 153)
+      353,  // š Latin small letter s with caron (CP-1252: 154)
+
+      // If someone copy-pastes French quotation marks, that's on them.
+      // 8250, // › U+203A SINGLE RIGHT-POINTING ANGLE QUOTATION MARK (CP-1252: 155) - REMOVED: rarely used
+
+      339,  // œ Latin small ligature oe (CP-1252: 156)
+      382,  // ž Latin small letter z with caron (CP-1252: 158)
+      376   // Ÿ Latin capital letter Y with diaeresis (CP-1252: 159)
+    ];
+
+    for (const code of cp1252PrintableChars) {
+      chars.push(String.fromCharCode(code));
+    }
+
+    // Latin-1 Supplement characters (161-255)
+    // These are properly defined in UTF-8/Unicode
+    // Excluded characters:
+    const latin1Exclusions = new Set([
+      173, // U+00AD - soft hyphen (zero width)
+      164, // U+00A4 ¤ - CURRENCY SIGN (rarely used generic currency symbol)
+      165, // U+00A5 ¥ - YEN SIGN (currency-specific)
+      166, // U+00A6 ¦ - BROKEN BAR (legacy character)
+      168, // U+00A8 ¨ - DIAERESIS (standalone modifier, not useful without base char)
+      169, // U+00A9 © - COPYRIGHT SIGN (use text "(c)" or proper legal formatting)
+      170, // U+00AA ª - FEMININE ORDINAL INDICATOR (Spanish/Portuguese specific)
+      171, // U+00AB « - LEFT-POINTING DOUBLE ANGLE QUOTATION MARK (use standard quotes)
+      172, // U+00AC ¬ - NOT SIGN (mathematical/logical, rarely used in text)
+      174, // U+00AE ® - REGISTERED SIGN (use text "(R)" or proper legal formatting)
+      175, // U+00AF ¯ - MACRON (standalone modifier, not useful without base char)
+      176, // U+00B0 ° - DEGREE SIGN (specialized symbol)
+      177, // U+00B1 ± - PLUS-MINUS SIGN (mathematical)
+      178, // U+00B2 ² - SUPERSCRIPT TWO (use proper superscript formatting)
+      179, // U+00B3 ³ - SUPERSCRIPT THREE (use proper superscript formatting)
+      180, // U+00B4 ´ - ACUTE ACCENT (standalone modifier, not useful without base char)
+      181, // U+00B5 µ - MICRO SIGN (use Greek mu or unit formatting)
+      184, // U+00B8 ¸ - CEDILLA (standalone modifier, not useful without base char)
+      185, // U+00B9 ¹ - SUPERSCRIPT ONE (use proper superscript formatting)
+      186, // U+00BA º - MASCULINE ORDINAL INDICATOR (Spanish/Portuguese specific)
+      187, // U+00BB » - RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK (use standard quotes)
+      188, // U+00BC ¼ - VULGAR FRACTION ONE QUARTER (use proper fraction formatting)
+      189, // U+00BD ½ - VULGAR FRACTION ONE HALF (use proper fraction formatting)
+      190, // U+00BE ¾ - VULGAR FRACTION THREE QUARTERS (use proper fraction formatting)
+      215, // U+00D7 × - MULTIPLICATION SIGN (use 'x' or proper math formatting)
+      247, // U+00F7 ÷ - DIVISION SIGN (use '/' or proper math formatting)
+    ]);
+
+    for (let i = 161; i <= 255; i++) {
+      if (!latin1Exclusions.has(i)) {
+        chars.push(String.fromCharCode(i));
+      }
+    }
+
+    // Add Full Block character (allows us to see the maximum space taken by a glyph)
+    chars.push('█');
+
+    // Sort the character set (this is how it's used throughout the codebase)
+    return chars.sort().join('');
+  }
+}
+
+// FontProperties - Core Runtime Class  
+//
+// This is a CORE RUNTIME class designed for minimal bundle size (~2-3KB).
+// It provides essential font configuration management with maximum performance.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - Extended by FontPropertiesFAB for validation and font assets building utilities  
+// - Contains no validation code to minimize runtime overhead
+// - Optimized for performance with pre-computed keys and immutability
+//
+// ARCHITECTURE:
+// - Immutable font configuration object safe to use as Map keys
+// - Pre-computes storage keys and ID strings for optimal lookup performance
+// - Provides factory methods for creating instances from various inputs
+// - Properties in fixed order: pixelDensity, fontFamily, fontStyle, fontWeight, fontSize
+//
+// For validation and font assets building utilities, use FontPropertiesFAB.
+class FontProperties {
+  constructor(pixelDensity, fontFamily, fontStyle, fontWeight, fontSize) {
+    // Direct assignment, no validation in core for performance
+    this.pixelDensity = pixelDensity || 1;
+    this.fontFamily = fontFamily;
+    this.fontStyle = fontStyle || 'normal';
+    this.fontWeight = fontWeight || 'normal';
+    this.fontSize = fontSize;
+    
+    // Pre-compute storage key (critical for performance optimization)
+    // Used for Map lookups in AtlasDataStore
+    this._key = `${this.pixelDensity}:${this.fontFamily}:${this.fontStyle}:${this.fontWeight}:${this.fontSize}`;
+    
+    // Pre-compute ID string for file naming and manifest keys
+    // Format: density-1-0-Arial-style-normal-weight-normal-size-18-0
+    this._idString = `density-${this.#formatNumber(this.pixelDensity)}-${this.fontFamily}-style-${this.fontStyle}-weight-${this.fontWeight}-size-${this.#formatNumber(this.fontSize)}`;
+    
+    // Freeze for immutability (safe to use as Map keys)
+    Object.freeze(this);
+  }
+  
+  // Format number handling non-integers: 1.5 → "1-5", 18.5 → "18-5", 18 → "18-0"
+  #formatNumber(num) {
+    const str = String(num);
+    return str.includes('.') ? str.replace('.', '-') : `${str}-0`;
+  }
+  
+  // Getter for pre-computed storage key
+  get key() {
+    return this._key;
+  }
+  
+  // Getter for pre-computed ID string
+  get idString() {
+    return this._idString;
+  }
+  
+  
+  // Factory method to create FontProperties from ID string
+  // Parses: density-1-0-Arial-style-normal-weight-normal-size-18-0
+  static fromIDString(idString) {
+    const parts = idString.split('-');
+
+    // Extract and format numeric values (handling decimal parts)
+    const pixelDensity = parseFloat(FontProperties.#formatNumericPart(parts[1], parts[2]));
+    const fontSize = parseFloat(FontProperties.#formatNumericPart(parts[9], parts[10]));
+    const fontFamily = parts[3];
+    const fontStyle = parts[5];
+    const fontWeight = parts[7];
+
+    // Return new FontProperties instance
+    return new FontProperties(pixelDensity, fontFamily, fontStyle, fontWeight, fontSize);
+  }
+
+  // Factory method to create FontProperties from storage key
+  // Parses: "1:Arial:normal:normal:19" or "1.5:Arial:italic:bold:18.5"
+  static fromKey(key) {
+    const [pixelDensity, fontFamily, fontStyle, fontWeight, fontSize] = key.split(':');
+
+    // Return new FontProperties instance with parsed numeric values
+    return new FontProperties(
+      parseFloat(pixelDensity),
+      fontFamily,
+      fontStyle,
+      fontWeight,
+      parseFloat(fontSize)
+    );
+  }
+
+  // Helper method to format numeric parts (used by fromIDString)
+  static #formatNumericPart(integerPart, decimalPart) {
+    if (!decimalPart || decimalPart === '0') {
+      return integerPart;
+    }
+    return `${integerPart}.${decimalPart}`;
+  }
+  
+  // Equality comparison based on key
+  equals(other) {
+    if (!(other instanceof FontProperties)) return false;
+    return this._key === other._key;
+  }
+}
+// TextProperties - Core Runtime Class
+//
+// This is a CORE RUNTIME class designed for minimal bundle size (~1-2KB).
+// It provides essential text rendering configuration with maximum performance.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - Manages text rendering properties: kerning, alignment, baseline, color
+// - Contains no validation code to minimize runtime overhead
+// - Optimized for performance with pre-computed keys and immutability
+//
+// ARCHITECTURE:
+// - Immutable text configuration object safe to use as Map keys
+// - Pre-computes storage keys for optimal lookup performance
+// - Provides factory methods for creating instances from various inputs
+// - Properties: isKerningEnabled, textBaseline, textAlign, textColor
+//
+// This class replaces the global isKerningEnabled variable and consolidates
+// all text rendering properties into a single, immutable configuration object.
+class TextProperties {
+  constructor(options = {}) {
+    // Extract options with defaults - optimized for BitmapText usage
+    const {
+      isKerningEnabled = true,        // Enable kerning by default for better text rendering
+      textBaseline = 'bottom',        // BitmapText uses 'bottom' baseline by architectural design (HTML5 Canvas default is 'alphabetic')
+      textAlign = 'left',             // HTML5 Canvas default
+      textColor = '#000000'           // Black color default
+    } = options;
+
+    // Direct assignment, no validation in core for performance
+    this.isKerningEnabled = isKerningEnabled;
+    this.textBaseline = textBaseline;
+    this.textAlign = textAlign;
+    this.textColor = textColor;
+
+    // Pre-compute storage key (for potential caching or Map lookups)
+    this._key = `kerning:${this.isKerningEnabled}:baseline:${this.textBaseline}:align:${this.textAlign}:color:${this.textColor}`;
+
+    // Freeze for immutability (safe to use as Map keys)
+    Object.freeze(this);
+  }
+
+  // Getter for pre-computed storage key
+  get key() {
+    return this._key;
+  }
+
+  // Factory method to create TextProperties with specific kerning setting
+  static withKerning(isKerningEnabled, options = {}) {
+    return new TextProperties({
+      ...options,
+      isKerningEnabled
+    });
+  }
+
+  // Factory method to create TextProperties with specific color
+  static withColor(textColor, options = {}) {
+    return new TextProperties({
+      ...options,
+      textColor
+    });
+  }
+
+  // Factory method to create TextProperties for BitmapText (uses 'bottom' baseline)
+  static forBitmapText(options = {}) {
+    return new TextProperties({
+      textBaseline: 'bottom',  // BitmapText uses bottom baseline positioning
+      ...options
+    });
+  }
+
+  // Create a new TextProperties with modified kerning
+  withKerningEnabled(isKerningEnabled) {
+    return new TextProperties({
+      isKerningEnabled,
+      textBaseline: this.textBaseline,
+      textAlign: this.textAlign,
+      textColor: this.textColor
+    });
+  }
+
+  // Create a new TextProperties with modified color
+  withTextColor(textColor) {
+    return new TextProperties({
+      isKerningEnabled: this.isKerningEnabled,
+      textBaseline: this.textBaseline,
+      textAlign: this.textAlign,
+      textColor
+    });
+  }
+
+  // Equality comparison based on key
+  equals(other) {
+    if (!(other instanceof TextProperties)) return false;
+    return this._key === other._key;
+  }
+
+  // Return plain object for compatibility/debugging
+  toObject() {
+    return {
+      isKerningEnabled: this.isKerningEnabled,
+      textBaseline: this.textBaseline,
+      textAlign: this.textAlign,
+      textColor: this.textColor
+    };
+  }
+}
+// FontMetrics - Core Runtime Class
+//
+// This is a CORE RUNTIME class designed for minimal bundle size (~3-4KB).
+// It encapsulates all metrics data for a single font configuration as an immutable domain object.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - Extended by FontMetricsFAB for font assets building capabilities
+// - Contains only essential metrics data and accessor methods
+// - No font generation, validation, or optimization code
+//
+// ARCHITECTURE:
+// - Immutable object representing all metrics for ONE font configuration
+// - Pre-computed lookups for optimal performance during text rendering
+// - Provides clean API without needing fontProperties passed to every method
+// - Follows same immutable pattern as FontProperties
+//
+// SEPARATION RATIONALE:
+// - Encapsulates related metrics data together
+// - Eliminates repeated fontProperties parameter passing
+// - Serves as domain object for font metrics
+// - Enables cleaner, more object-oriented API
+//
+// For font assets building capabilities, use FontMetricsFAB which extends this class.
+class FontMetrics {
+  constructor(data, options = {}) {
+    // Validate input data structure
+    if (!data || typeof data !== 'object') {
+      throw new Error('FontMetrics constructor requires data object');
+    }
+    
+    // Kerning table: character pairs → adjustment values
+    this._kerningTable = data.kerningTable || {};
+    
+    // Character metrics: character → TextMetrics-compatible object
+    this._characterMetrics = data.characterMetrics || {};
+    
+    // Space advancement override for small font sizes
+    this._spaceAdvancementOverride = data.spaceAdvancementOverrideForSmallSizesInPx || null;
+    
+    // Freeze for immutability (safe to use as value object)
+    // Skip freezing if this is for font assets building (FAB)
+    if (!options.mutable) {
+      Object.freeze(this._kerningTable);
+      Object.freeze(this._characterMetrics);
+      Object.freeze(this);
+    }
+  }
+  
+  /**
+   * Get text measurement metrics for a character
+   * @param {string} char - Character (code point) to get metrics for
+   * @returns {Object} TextMetrics-compatible object
+   */
+  getCharacterMetrics(char) {
+    return this._characterMetrics[char];
+  }
+  
+  /**
+   * Get kerning adjustment between two characters
+   * @param {string} leftChar - Left character in pair
+   * @param {string} rightChar - Right character in pair  
+   * @returns {number} Kerning adjustment value (0 if no adjustment)
+   */
+  getKerningAdjustment(leftChar, rightChar) {
+    if (!leftChar || !rightChar) return 0;
+    return this._kerningTable[leftChar]?.[rightChar] || 0;
+  }
+  
+  /**
+   * Check if glyph exists in this font
+   * @param {string} char - Character (code point) to check
+   * @returns {boolean} True if glyph has metrics
+   */
+  hasGlyph(char) {
+    return char in this._characterMetrics;
+  }
+  
+  /**
+   * Get space advancement override for small font sizes
+   * @returns {number|null} Override value in pixels, or null if no override
+   */
+  getSpaceAdvancementOverride() {
+    return this._spaceAdvancementOverride;
+  }
+  
+  /**
+   * Get the complete kerning table (for compatibility/debugging)
+   * @returns {Object} Complete kerning table
+   */
+  getKerningTable() {
+    return this._kerningTable;
+  }
+  
+  /**
+   * Get all available characters in this font
+   * @returns {string[]} Array of available characters
+   */
+  getAvailableCharacters() {
+    return Object.keys(this._characterMetrics);
+  }
+  
+}
+// InterpolatedFontMetrics - Wrapper for FontMetrics that scales metric values
+//
+// This is a RUNTIME class used by BitmapText to support font sizes < 9px.
+//
+// USAGE:
+// - Font sizes < 9px interpolate metrics from size 9px
+// - All metric values (widths, kerning, baselines) are scaled proportionally
+// - Marker property `isInterpolatedMetrics` enables conditional rounding in BitmapText
+//
+// ARCHITECTURE:
+// - Wraps a FontMetrics instance (typically size 9px)
+// - Scales all metric values by interpolationFactor = targetSize / 9
+// - Delegates glyph checking and kerning table access to base metrics
+// - Used exclusively for rendering placeholder rectangles (atlases never loaded)
+//
+// DEPENDENCIES:
+// - Requires FontMetrics.js to be loaded first
+// - Used by BitmapText.js for sizes < MIN_RENDERABLE_SIZE (9px)
+//
+/**
+ * InterpolatedFontMetrics - Wrapper for FontMetrics that scales all values
+ *
+ * Used for font sizes < 9px which interpolate metrics from size 9px.
+ * All metric values (widths, kerning, baselines) are scaled proportionally.
+ *
+ * Marker property `isInterpolatedMetrics` enables conditional rounding in
+ * calculateAdvancement_CssPx() to preserve linear scaling behavior.
+ */
+class InterpolatedFontMetrics {
+  constructor(baseFontMetrics, targetSize) {
+    this.baseFontMetrics = baseFontMetrics;
+    this.targetSize = targetSize;
+    this.interpolationFactor = targetSize / 9;  // MIN_RENDERABLE_SIZE constant value
+
+    // Marker for detection in calculateAdvancement_CssPx()
+    // Enables float positioning instead of integer rounding
+    this.isInterpolatedMetrics = true;
+  }
+
+  // Interpolate character metrics by scaling all values
+  getCharacterMetrics(char) {
+    const origMetrics = this.baseFontMetrics.getCharacterMetrics(char);
+    if (!origMetrics) return null;
+
+    return {
+      actualBoundingBoxLeft: origMetrics.actualBoundingBoxLeft * this.interpolationFactor,
+      actualBoundingBoxRight: origMetrics.actualBoundingBoxRight * this.interpolationFactor,
+      actualBoundingBoxAscent: origMetrics.actualBoundingBoxAscent * this.interpolationFactor,
+      actualBoundingBoxDescent: origMetrics.actualBoundingBoxDescent * this.interpolationFactor,
+      fontBoundingBoxAscent: origMetrics.fontBoundingBoxAscent * this.interpolationFactor,
+      fontBoundingBoxDescent: origMetrics.fontBoundingBoxDescent * this.interpolationFactor,
+      width: origMetrics.width * this.interpolationFactor
+    };
+  }
+
+  // Delegate glyph checking to base metrics
+  hasGlyph(char) {
+    return this.baseFontMetrics.hasGlyph(char);
+  }
+
+  // Interpolate kerning adjustment by scaling
+  getKerningAdjustment(leftChar, rightChar) {
+    const origKerning = this.baseFontMetrics.getKerningAdjustment(leftChar, rightChar);
+    return origKerning * this.interpolationFactor;
+  }
+
+  // Delegate kerning table getter to base metrics
+  getKerningTable() {
+    return this.baseFontMetrics.getKerningTable();
+  }
+
+  // Interpolate space advancement override if present
+  getSpaceAdvancementOverride() {
+    const override = this.baseFontMetrics.getSpaceAdvancementOverride();
+    return override !== null ? override * this.interpolationFactor : null;
+  }
+
+  // Property getters
+  get fontSize() {
+    return this.targetSize;
+  }
+
+  get alphabeticBaseline_ab() {
+    return this.baseFontMetrics.alphabeticBaseline_ab * this.interpolationFactor;
+  }
+
+  get hangingBaseline_ab() {
+    return this.baseFontMetrics.hangingBaseline_ab * this.interpolationFactor;
+  }
+
+  get ideographicBaseline_ab() {
+    return this.baseFontMetrics.ideographicBaseline_ab * this.interpolationFactor;
+  }
+
+  get middleBaseline_ab() {
+    return this.baseFontMetrics.middleBaseline_ab * this.interpolationFactor;
+  }
+
+  get topBaseline_ab() {
+    return this.baseFontMetrics.topBaseline_ab * this.interpolationFactor;
+  }
+}
+
+// FontMetricsStore - Core Runtime Static Class
+//
+// Holds FontMetrics instances for fast O(1) lookup keyed by `fontProperties.key`
+// (which includes pixelDensity).
+//
+// SOURCE OF TRUTH: MetricsBundleStore. The metrics bundle ships density-agnostic
+// records keyed by (family, style, weight, size). On the first lookup for a
+// given (fontProperties), this store materialises a density-specific FontMetrics
+// from the bundle record (via MetricsExpander.expand with the runtime density)
+// and caches it.
+//
+// Density-1 and density-2 are 99% identical at the data level (only `pixelDensity`
+// varies), so the bundle stores the record once and pays the small cost of
+// per-density materialisation on demand.
+
+class FontMetricsStore {
+  // Density-aware cache: fontProperties.key → FontMetrics instance
+  static #fontMetrics = new Map();
+
+  static getFontMetrics(fontProperties) {
+    const cached = FontMetricsStore.#fontMetrics.get(fontProperties.key);
+    if (cached) return cached;
+
+    // Lazy materialise from the bundle store on first access.
+    if (typeof MetricsBundleStore === 'undefined' || typeof MetricsExpander === 'undefined') {
+      return undefined;
+    }
+    const record = MetricsBundleStore.getRecord(fontProperties);
+    if (!record) return undefined;
+
+    let characterSet;
+    if (typeof CharacterSets !== 'undefined' &&
+        fontProperties.fontFamily === CharacterSets.INVARIANT_FONT_FAMILY) {
+      characterSet = Array.from(CharacterSets.FONT_INVARIANT_CHARS);
+    }
+
+    const fontMetrics = MetricsExpander.expand(record, characterSet, fontProperties.pixelDensity);
+    FontMetricsStore.#fontMetrics.set(fontProperties.key, fontMetrics);
+    return fontMetrics;
+  }
+
+  static setFontMetrics(fontProperties, fontMetrics) {
+    FontMetricsStore.#fontMetrics.set(fontProperties.key, fontMetrics);
+  }
+
+  static hasFontMetrics(fontProperties) {
+    if (FontMetricsStore.#fontMetrics.has(fontProperties.key)) return true;
+    if (typeof MetricsBundleStore !== 'undefined' && MetricsBundleStore.hasRecord(fontProperties)) return true;
+    return false;
+  }
+
+  static deleteFontMetrics(fontProperties) {
+    return FontMetricsStore.#fontMetrics.delete(fontProperties.key);
+  }
+
+  static getAvailableFonts() {
+    return Array.from(FontMetricsStore.#fontMetrics.keys());
+  }
+
+  static clear() {
+    FontMetricsStore.#fontMetrics.clear();
+  }
+
+  static size() {
+    return FontMetricsStore.#fontMetrics.size;
+  }
+}
+
+// MetricsBundleStore - Density-agnostic store of minified metrics records
+//
+// The metrics bundle ships one record per (fontFamily, fontStyle, fontWeight, fontSize)
+// with no density baked in. This store holds those records after bundle decode,
+// keyed by `family:style:weight:size`. FontMetricsStore lazy-materialises a
+// density-specific FontMetrics from a record on first lookup.
+//
+// Density-1 and density-2 metrics differ only in `pixelDensity`; the bundle
+// stores the record once and the runtime injects density at materialisation time.
+
+class MetricsBundleStore {
+  static #records = new Map(); // "family:style:weight:size" → minified array
+
+  static #key(fontFamily, fontStyle, fontWeight, fontSize) {
+    return `${fontFamily}:${fontStyle}:${fontWeight}:${fontSize}`;
+  }
+
+  static setRecord(fontFamily, fontStyle, fontWeight, fontSize, minified) {
+    MetricsBundleStore.#records.set(
+      MetricsBundleStore.#key(fontFamily, fontStyle, fontWeight, fontSize),
+      minified
+    );
+  }
+
+  static getRecord(fontProperties) {
+    return MetricsBundleStore.#records.get(
+      MetricsBundleStore.#key(
+        fontProperties.fontFamily,
+        fontProperties.fontStyle,
+        fontProperties.fontWeight,
+        fontProperties.fontSize
+      )
+    );
+  }
+
+  static hasRecord(fontProperties) {
+    return MetricsBundleStore.#records.has(
+      MetricsBundleStore.#key(
+        fontProperties.fontFamily,
+        fontProperties.fontStyle,
+        fontProperties.fontWeight,
+        fontProperties.fontSize
+      )
+    );
+  }
+
+  static size() {
+    return MetricsBundleStore.#records.size;
+  }
+
+  static clear() {
+    MetricsBundleStore.#records.clear();
+  }
+}
+
+// AtlasPositioning - Core Runtime Class
+//
+// Immutable value object holding atlas positioning data for ONE font configuration.
+// Storage shape is a single `_placements` dict whose values are flat per-character
+// objects { xInAtlas, yInAtlas, tightWidth, tightHeight, dx, dy }. One dict lookup
+// per glyph in the hot path; V8 sees a stable hidden class for the placement
+// objects (all fields written in the same order at construction in
+// PositioningBundleStore.getPositioning) and inlines field reads as fixed offsets.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - Extended by AtlasPositioningFAB for font assets building capabilities
+//
+// IMMUTABILITY:
+// - Frozen by default. AtlasPositioningFAB passes { mutable: true } during build.
+// - When non-mutable, both the dict and each placement object are frozen.
+//
+class AtlasPositioning {
+  constructor(data, options = {}) {
+    if (!data || typeof data !== 'object') {
+      throw new Error('AtlasPositioning constructor requires data object');
+    }
+
+    // _placements[char] = { xInAtlas, yInAtlas, tightWidth, tightHeight, dx, dy }
+    this._placements = data.placements || {};
+
+    if (!options.mutable) {
+      for (const char in this._placements) {
+        Object.freeze(this._placements[char]);
+      }
+      Object.freeze(this._placements);
+      Object.freeze(this);
+    }
+  }
+
+  /**
+   * Check if positioning data exists for a character.
+   * @param {string} char
+   * @returns {boolean}
+   */
+  hasPositioning(char) {
+    return this._placements[char] !== undefined;
+  }
+
+  /**
+   * Get all available characters in this atlas positioning.
+   * @returns {string[]}
+   */
+  getAvailableCharacters() {
+    return Object.keys(this._placements);
+  }
+}
+
+// PositioningBundleStore - Per-density store of pre-computed atlas positioning
+//
+// The positioning bundle ships per-(density, family, style, weight, size) records
+// in sorted-character order. Each array is wire-encoded as a delta+zigzag+varint
+// base64 string by BundleCodec.encodeDeltaVarIntB64 (the same codec used by the
+// metrics value-lookup table). Decoded shape is [tightWidth[], tightHeight[],
+// dx[], dy[]] or 5-array form with yInAtlas[] for multi-row atlases. Replaces
+// the runtime pixel-scan reconstruction (TightAtlasReconstructor) — these values
+// were already computed at build time by AtlasPositioningFAB and are now shipped.
+//
+// xInAtlas is implicit: cumsum(tightWidth). yInAtlas is always 0 (single-row tight
+// atlas). Both are reconstituted at materialisation, not stored.
+//
+// Per-density (not density-agnostic like metrics): physical-pixel offsets and
+// rasteriser rounding genuinely differ across densities.
+
+class PositioningBundleStore {
+  // "density:family:style:weight:size" → { tightWidth: [], tightHeight: [], dx: [], dy: [] }
+  static #records = new Map();
+
+  // Cache of materialised AtlasPositioning instances, keyed by FontProperties.key.
+  static #atlasPositioning = new Map();
+
+  static #key(pixelDensity, fontFamily, fontStyle, fontWeight, fontSize) {
+    return `${pixelDensity}:${fontFamily}:${fontStyle}:${fontWeight}:${fontSize}`;
+  }
+
+  static setRecord(pixelDensity, fontFamily, fontStyle, fontWeight, fontSize, arrays) {
+    PositioningBundleStore.#records.set(
+      PositioningBundleStore.#key(pixelDensity, fontFamily, fontStyle, fontWeight, fontSize),
+      arrays
+    );
+  }
+
+  static getRecord(fontProperties) {
+    return PositioningBundleStore.#records.get(
+      PositioningBundleStore.#key(
+        fontProperties.pixelDensity,
+        fontProperties.fontFamily,
+        fontProperties.fontStyle,
+        fontProperties.fontWeight,
+        fontProperties.fontSize
+      )
+    );
+  }
+
+  static hasRecord(fontProperties) {
+    return PositioningBundleStore.#records.has(
+      PositioningBundleStore.#key(
+        fontProperties.pixelDensity,
+        fontProperties.fontFamily,
+        fontProperties.fontStyle,
+        fontProperties.fontWeight,
+        fontProperties.fontSize
+      )
+    );
+  }
+
+  // Lazy-materialise an AtlasPositioning for `fontProperties`. Arrays are in the
+  // SAME sorted order as `fontMetrics.getAvailableCharacters().sort()` — same
+  // invariant the build pipeline (AtlasBuilder + AtlasPositioningFAB) uses.
+  //
+  // Record shapes (each slot is a base64 string; decode via BundleCodec):
+  //   4 slots: [tightWidth, tightHeight, dx, dy] — single-row tight atlas;
+  //            yInAtlas is implicit 0, xInAtlas is cumsum(tightWidth).
+  //   5 slots: [tightWidth, tightHeight, dx, dy, yInAtlas] — multi-row tight atlas
+  //            (used when total width would exceed cwebp's 16383px limit);
+  //            xInAtlas is cumsum(tightWidth) restarted on each y change.
+  static getPositioning(fontProperties, fontMetrics) {
+    const cached = PositioningBundleStore.#atlasPositioning.get(fontProperties.key);
+    if (cached) return cached;
+
+    const encoded = PositioningBundleStore.getRecord(fontProperties);
+    if (!encoded) return undefined;
+
+    const characters = fontMetrics.getAvailableCharacters().sort();
+    const tightWidthArr  = BundleCodec.decodeDeltaVarIntB64(encoded[0]);
+    const tightHeightArr = BundleCodec.decodeDeltaVarIntB64(encoded[1]);
+    const dxArr          = BundleCodec.decodeDeltaVarIntB64(encoded[2]);
+    const dyArr          = BundleCodec.decodeDeltaVarIntB64(encoded[3]);
+    const yInAtlasArr    = encoded.length === 5 ? BundleCodec.decodeDeltaVarIntB64(encoded[4]) : undefined;
+
+    if (tightWidthArr.length !== characters.length) {
+      throw new Error(
+        `PositioningBundleStore: record length ${tightWidthArr.length} does not match ` +
+        `character set length ${characters.length} for ${fontProperties.key}`
+      );
+    }
+
+    // Materialise one placement object per character. Fields are written in a
+    // fixed order so V8 pins a stable hidden class — see AtlasPositioning header.
+    // xInAtlas is the cumsum of tightWidth, reset whenever yInAtlas changes
+    // (multi-row atlases). yInAtlas is implicit 0 for the single-row form.
+    const placements = {};
+    let runningX = 0;
+    let prevY = 0;
+    for (let i = 0; i < characters.length; i++) {
+      const y = yInAtlasArr ? yInAtlasArr[i] : 0;
+      if (y !== prevY) { runningX = 0; prevY = y; }
+      placements[characters[i]] = {
+        xInAtlas: runningX,
+        yInAtlas: y,
+        tightWidth: tightWidthArr[i],
+        tightHeight: tightHeightArr[i],
+        dx: dxArr[i],
+        dy: dyArr[i]
+      };
+      runningX += tightWidthArr[i];
+    }
+
+    const positioning = new AtlasPositioning({ placements });
+    PositioningBundleStore.#atlasPositioning.set(fontProperties.key, positioning);
+    return positioning;
+  }
+
+  static size() {
+    return PositioningBundleStore.#records.size;
+  }
+
+  static clear() {
+    PositioningBundleStore.#records.clear();
+    PositioningBundleStore.#atlasPositioning.clear();
+  }
+
+  // Clear records + materialised AtlasPositionings for one density only.
+  // Both maps key on "${pixelDensity}:family:style:weight:size" (see #key above and
+  // FontProperties.key), so a prefix match is exact. Already-loaded AtlasData
+  // instances hold their own AtlasPositioning reference and keep rendering
+  // correctly until the atlas itself is unloaded — the cache here is only
+  // consulted on the next bundle->positioning materialisation.
+  static clearDensity(pixelDensity) {
+    const prefix = `${pixelDensity}:`;
+    for (const k of [...PositioningBundleStore.#records.keys()]) {
+      if (k.startsWith(prefix)) PositioningBundleStore.#records.delete(k);
+    }
+    for (const k of [...PositioningBundleStore.#atlasPositioning.keys()]) {
+      if (k.startsWith(prefix)) PositioningBundleStore.#atlasPositioning.delete(k);
+    }
+  }
+}
+
+// AtlasImage - Core Runtime Class
+//
+// This is a CORE RUNTIME class designed for minimal bundle size (~1-2KB).
+// It encapsulates atlas image data as an immutable domain object.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - Extended by AtlasImageFAB for font assets building capabilities
+// - Contains only essential image data and accessor methods
+// - No image generation, validation, or serialization code
+//
+// ARCHITECTURE:
+// - Immutable object representing atlas image for ONE font configuration
+// - Provides clean API for accessing image properties and validation
+// - Follows same immutable pattern as FontProperties, TextProperties, FontMetrics, and AtlasPositioning
+// - Establishes architectural symmetry: AtlasImage + AtlasPositioning = AtlasData
+//
+// SEPARATION RATIONALE:
+// - Encapsulates image-related functionality in dedicated domain object
+// - Eliminates raw Canvas/Image element handling throughout the codebase
+// - Provides consistent interface for image validation and access
+// - Enables cleaner, more object-oriented API design
+//
+// For font assets building capabilities, use AtlasImageFAB which extends this class.
+class AtlasImage {
+  constructor(image, options = {}) {
+    // Validate input image
+    if (!image) {
+      throw new Error('AtlasImage constructor requires image (Canvas or Image element)');
+    }
+
+    if (typeof image !== 'object' || (image.width === undefined && image.naturalWidth === undefined)) {
+      throw new Error('AtlasImage constructor requires Canvas or Image element with width property');
+    }
+
+    // Store image (Canvas or Image element) - public field (object is frozen)
+    this.image = image;
+
+    // Freeze for immutability (safe to use as value object)
+    // Skip freezing if this is for font assets building (FAB)
+    if (!options.mutable) {
+      Object.freeze(this);
+    }
+  }
+
+  /**
+   * Get the width of the atlas image
+   * @returns {number} Width in pixels
+   */
+  get width() {
+    // Handle both Canvas (width) and Image (naturalWidth/width) elements
+    return this.image.naturalWidth || this.image.width || 0;
+  }
+
+  /**
+   * Get the height of the atlas image
+   * @returns {number} Height in pixels
+   */
+  get height() {
+    // Handle both Canvas (height) and Image (naturalHeight/height) elements
+    return this.image.naturalHeight || this.image.height || 0;
+  }
+
+  /**
+   * Check if this atlas image is valid for rendering
+   * @returns {boolean} True if image has valid dimensions
+   */
+  isValid() {
+    return this.image &&
+           typeof this.image === 'object' &&
+           this.width > 0 &&
+           this.height > 0;
+  }
+}
+// AtlasData - Core Runtime Class
+//
+// This is a CORE RUNTIME class designed for minimal bundle size (~2-3KB).
+// It encapsulates both atlas image and positioning data for a font configuration.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - Combines AtlasImage with AtlasPositioning data
+// - Provides unified interface for atlas image and positioning access
+// - Establishes architectural symmetry: AtlasImage + AtlasPositioning = AtlasData
+//
+// ARCHITECTURE:
+// - Immutable object representing atlas image + positioning for ONE font configuration
+// - Stores AtlasImage instance with AtlasPositioning instance
+// - Provides clean API for accessing both image and positioning data
+// - Validates atlas integrity for rendering safety
+//
+// SEPARATION RATIONALE:
+// - Atlas positioning data moved from FontMetrics to be co-located with atlas images
+// - Reduces metrics file sizes (positioning only loaded when atlas is loaded)
+// - Better separation: metrics for measurement, atlas for rendering
+// - Perfect symmetry: both image and positioning are encapsulated in domain objects
+//
+class AtlasData {
+  constructor(atlasImage, atlasPositioning) {
+    // Validate AtlasImage instance
+    if (!(atlasImage instanceof AtlasImage)) {
+      throw new Error('AtlasData constructor requires AtlasImage instance (not raw Canvas/Image)');
+    }
+
+    // Validate AtlasPositioning instance (optional but recommended)
+    if (atlasPositioning && !(atlasPositioning instanceof AtlasPositioning)) {
+      throw new Error('AtlasData constructor requires AtlasPositioning instance (not raw positioning object)');
+    }
+
+    // Store AtlasImage instance (public field - object is frozen)
+    this.atlasImage = atlasImage;
+
+    // Store AtlasPositioning instance (public field - object is frozen)
+    this.atlasPositioning = atlasPositioning;
+
+    // Freeze for immutability (safe to use as value object)
+    Object.freeze(this);
+  }
+
+  /**
+   * Check if this atlas data is valid for rendering
+   * @returns {boolean} True if atlas has valid image and dimensions
+   */
+  isValid() {
+    return this.atlasImage?.isValid();
+  }
+
+  /**
+   * Get the width of the atlas image
+   * @returns {number} Width in pixels
+   */
+  get width() {
+    return this.atlasImage.width;
+  }
+
+  /**
+   * Get the height of the atlas image
+   * @returns {number} Height in pixels
+   */
+  get height() {
+    return this.atlasImage.height;
+  }
+}
+// AtlasDataStore - Core Runtime Static Class
+//
+// This is a CORE RUNTIME static class designed for minimal bundle size (~2-3KB).
+// It provides essential atlas data storage and retrieval for text rendering.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - Extended by AtlasDataStoreFAB for font assets building and generation
+// - Contains only atlas data structures and accessors needed at runtime
+// - No font generation, validation, or optimization code
+//
+// ARCHITECTURE:
+// - Static class with private storage for AtlasData objects
+// - Uses Map-based storage for O(1) atlas lookups by font properties
+// - Provides the minimal atlas interface needed by BitmapText for glyph rendering
+// - Optimized for fast atlas access during text drawing
+// - Separate from FontMetricsStore to enable independent loading strategies
+//
+// SEPARATION RATIONALE:
+// - Atlas data contains both large binary images and positioning data loaded from atlas-*.js files
+// - Can be lazy-loaded on demand to optimize memory usage
+// - Independent of font metrics which are small and loaded upfront
+// - Aligns with file structure: atlas-*.js vs metrics-*.js
+//
+// For font assets building and generation capabilities, use AtlasDataStoreFAB.
+class AtlasDataStore {
+  // Private static storage
+  // Keys are FontProperties.key strings for O(1) lookup
+  static #atlases = new Map(); // fontProperties.key → AtlasData
+
+  static getAtlasData(fontProperties) {
+    return AtlasDataStore.#atlases.get(fontProperties.key);
+  }
+
+  static setAtlasData(fontProperties, atlasData) {
+    // Only accept AtlasData instances
+    if (!(atlasData instanceof AtlasData)) {
+      throw new Error('AtlasDataStore.setAtlasData requires AtlasData instance (not raw images)');
+    }
+    AtlasDataStore.#atlases.set(fontProperties.key, atlasData);
+  }
+
+  // Helper method to check if an atlas is valid for rendering
+  static isValidAtlas(atlas) {
+    // Only work with AtlasData instances
+    if (!(atlas instanceof AtlasData)) {
+      return false;
+    }
+    return atlas.isValid();
+  }
+
+  // Get all available font properties keys
+  static getAvailableFonts() {
+    return Array.from(AtlasDataStore.#atlases.keys());
+  }
+
+  // Check if atlas exists for font properties
+  static hasAtlas(fontProperties) {
+    return AtlasDataStore.#atlases.has(fontProperties.key);
+  }
+
+  // Remove atlas for font properties
+  static deleteAtlas(fontProperties) {
+    return AtlasDataStore.#atlases.delete(fontProperties.key);
+  }
+
+  // Clear all atlases
+  static clear() {
+    AtlasDataStore.#atlases.clear();
+  }
+
+  // Get count of stored atlases
+  static size() {
+    return AtlasDataStore.#atlases.size;
+  }
+}
+
+// FontManifest - Core Runtime Class
+//
+// This is a CORE RUNTIME class designed for minimal bundle size (~1-2KB).
+// It provides centralized font registry management for test and development environments.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - Manages available font IDs without polluting global namespace
+// - Provides clean API for font registry operations
+// - Designed for use in test-renderer and development tools
+//
+// ARCHITECTURE:
+// - Static-only class for singleton behavior
+// - Modern private fields for encapsulation
+// - Returns copies of arrays to prevent external modification
+// - Simple, focused API for font ID management
+//
+// This class replaces the global bitmapTextManifest variable and provides
+// better encapsulation and a cleaner API for managing font registrations.
+class FontManifest {
+  // Private static field to store font IDs
+  static #fontIDs = [];
+
+  // Add one or more font IDs to the registry
+  // Accepts either a single string ID or an array of IDs
+  static addFontIDs(ids) {
+    // Handle both single ID and array inputs
+    const idsArray = Array.isArray(ids) ? ids : [ids];
+
+    // Add IDs, avoiding duplicates
+    for (const id of idsArray) {
+      if (typeof id === 'string' && !this.#fontIDs.includes(id)) {
+        this.#fontIDs.push(id);
+      }
+    }
+  }
+
+  // Get all registered font IDs
+  // Returns a shallow copy to prevent external modification
+  static allFontIDs() {
+    return [...this.#fontIDs];
+  }
+
+  // Check if a specific font ID is registered
+  static hasFontID(id) {
+    return this.#fontIDs.includes(id);
+  }
+
+  // Get the count of registered font IDs
+  static count() {
+    return this.#fontIDs.length;
+  }
+
+  // Clear all registered font IDs
+  // Useful for testing and resetting state
+  static clear() {
+    this.#fontIDs.length = 0;
+  }
+
+  // Get font IDs as a sorted array
+  // Useful for consistent iteration order
+  static allFontIDsSorted() {
+    return [...this.#fontIDs].sort();
+  }
+}
+// FontLoaderBase - Abstract Static Base Class for Font Loading
+//
+// This abstract static class provides the core font loading infrastructure
+// for BitmapText. It defines the public API and shared logic for font loading,
+// while platform-specific implementations (browser, Node.js) extend this class.
+//
+// DISTRIBUTION ROLE:
+// - Used by both browser and Node.js distributions
+// - Defines abstract methods implemented by platform-specific loaders
+// - Contains shared loading orchestration and atlas reconstruction logic
+//
+// ARCHITECTURE:
+// - Abstract static class (not instantiated)
+// - Extended by FontLoaderBrowser and FontLoaderNode
+// - Owns fontDirectory configuration (#fontDirectory private field)
+// - Works with BitmapText's internal stores (#fontMetrics, #atlasData)
+// - Uses Template Method Pattern for platform-specific operations
+// - BitmapText delegates fontDirectory get/set to the platform font loader (this class owns what it uses)
+//
+// LOADING FLOW:
+// 1. loadFonts() orchestrates loading of multiple fonts
+// 2. loadMetricsFile() loads metrics (platform-specific)
+// 3. loadAtlasFile() loads atlas image (platform-specific)
+// 4. loadAtlasFromPackage() reconstructs atlas from image (shared)
+// 5. processPendingAtlas() handles async atlas/metrics loading (shared)
+
+class FontLoaderBase {
+  // ============================================
+  // Shared Static Storage
+  // ============================================
+
+  // Temporary storage for atlas packages before reconstruction
+  static _tempAtlasPackages = {};
+
+  // Pending atlases waiting for metrics
+  static _pendingAtlases = new Map();
+
+  // Loading promises to prevent duplicate loads
+  static _loadingPromises = new Map();
+
+  // Singleton: resolves when the metrics bundle is fully loaded, decoded, and
+  // every record is registered into MetricsBundleStore. Materialisation of
+  // density-specific FontMetrics happens lazily on first FontMetricsStore lookup.
+  static _bundleReadyPromise = null;
+
+  // Internal: set by `BitmapText.registerBundle` when the bundle script executes.
+  // The platform-specific `loadBundleFile` awaits this after `script.onload` /
+  // `eval()` returns.
+  static _bundleDecodePromise = null;
+
+  // Per-density singletons: resolves when the positioning bundle for a given
+  // density is fully loaded, decoded, and every record is registered into
+  // PositioningBundleStore. Materialisation of AtlasPositioning happens lazily
+  // on first PositioningBundleStore.getPositioning lookup.
+  static _positioningBundleReadyPromises = new Map(); // density → Promise
+
+  // Internal: set by `BitmapText.registerPositioningBundle` when the bundle
+  // script executes. The platform-specific `loadPositioningBundleFile` awaits
+  // this after `script.onload` / `eval()` returns.
+  static _positioningBundleDecodePromises = new Map(); // density → Promise
+
+  // Browser-only: references to the <script> elements injected by the platform
+  // loader. The browser override populates these in loadBundleFile and
+  // loadPositioningBundleFile; the unload* methods read them via the
+  // _removeMetricsScriptElement / _removePositioningScriptElement hooks below
+  // and detach them from document.head. Node leaves these untouched — its
+  // `eval`-based loader has no DOM to clean.
+  static _metricsScriptElement = null;             // HTMLScriptElement | null
+  static _positioningScriptElements = new Map();   // density → HTMLScriptElement
+
+  // ============================================
+  // Configuration
+  // ============================================
+
+  /**
+   * Default font directory for all platforms
+   * @constant {string}
+   */
+  static DEFAULT_FONT_DIRECTORY = './font-assets/';
+
+  /**
+   * User-configured font directory override (null = use default)
+   * @private
+   */
+  static #fontDirectory = null;
+
+  /**
+   * Set font directory (overrides default)
+   * @param {string} path - Path to font assets directory
+   */
+  static setFontDirectory(path) {
+    FontLoaderBase.#fontDirectory = path;
+  }
+
+  /**
+   * Get font directory (returns override or default)
+   * @returns {string} Font directory path
+   */
+  static getFontDirectory() {
+    return FontLoaderBase.#fontDirectory ?? FontLoaderBase.DEFAULT_FONT_DIRECTORY;
+  }
+
+  /**
+   * Get default font directory (shared across all platforms)
+   * @deprecated Use getFontDirectory() instead
+   * @returns {string} Font directory path
+   */
+  static getDefaultFontDirectory() {
+    return FontLoaderBase.DEFAULT_FONT_DIRECTORY;
+  }
+
+  // ============================================
+  // Registration API (called by asset files)
+  // ============================================
+
+  /**
+   * Decode the metrics bundle and register every record into MetricsBundleStore.
+   * Called by `BitmapText.registerBundle` (which is called by the bundle JS file).
+   *
+   * Bundle envelope: `{ formatVersion, records: [...] }` where formatVersion
+   * matches `BitmapText.BUNDLE_SCHEMA_VERSION`. The runtime refuses to load
+   * mismatched-version assets — stale bundles must be regenerated, not papered over.
+   *
+   * @param {string} b64 - Base64-encoded deflate-raw stream of the bundle JSON.
+   * @returns {Promise<void>} Resolves once every record is registered.
+   */
+  static async processBundle(b64) {
+    if (typeof BundleCodec === 'undefined') {
+      throw new Error('FontLoader.processBundle: BundleCodec not available');
+    }
+    if (typeof MetricsBundleStore === 'undefined') {
+      throw new Error('FontLoader.processBundle: MetricsBundleStore not available');
+    }
+
+    const envelope = await BundleCodec.decodeBundle(b64);
+    if (!envelope || envelope.formatVersion !== BitmapText.BUNDLE_SCHEMA_VERSION) {
+      throw new Error(
+        `FontLoader.processBundle: metrics-bundle.js formatVersion mismatch ` +
+        `(got ${envelope && envelope.formatVersion}, expected ${BitmapText.BUNDLE_SCHEMA_VERSION}). ` +
+        `Regenerate font-assets/ with the current build.`
+      );
+    }
+    const records = envelope.records;
+
+    const styleByIdx = ['normal', 'italic', 'oblique'];
+    const ids = [];
+    for (const [fontFamily, styleIdx, weightIdx, fontSize, minified] of records) {
+      const fontStyle = styleByIdx[styleIdx];
+      const fontWeight = weightIdx === 0 ? 'normal' : (weightIdx === 1 ? 'bold' : String(weightIdx));
+      MetricsBundleStore.setRecord(fontFamily, fontStyle, fontWeight, fontSize, minified);
+
+      if (typeof FontManifest !== 'undefined') {
+        // The bundle is density-agnostic. Register both density-1 and density-2
+        // idStrings so consumers that enumerate via FontManifest see what's available.
+        const sizeStr = Number.isInteger(fontSize) ? `${fontSize}-0` : String(fontSize).replace('.', '-');
+        ids.push(`density-1-0-${fontFamily}-style-${fontStyle}-weight-${fontWeight}-size-${sizeStr}`);
+        ids.push(`density-2-0-${fontFamily}-style-${fontStyle}-weight-${fontWeight}-size-${sizeStr}`);
+      }
+    }
+    if (typeof FontManifest !== 'undefined' && ids.length) {
+      FontManifest.addFontIDs(ids);
+    }
+  }
+
+  /**
+   * Decode a per-density positioning bundle and register every record into
+   * PositioningBundleStore. Called by `BitmapText.registerPositioningBundle`
+   * (which is called by `positioning-bundle-density-<N>.js`).
+   *
+   * Bundle envelope: `{ formatVersion, density: <N>, records: [...] }`.
+   *
+   * @param {number} density - Pixel density this bundle is for (1, 1.5, 2, ...).
+   * @param {string} b64 - Base64-encoded deflate-raw stream of the bundle JSON.
+   * @returns {Promise<void>} Resolves once every record is registered.
+   */
+  static async processPositioningBundle(density, b64) {
+    if (typeof BundleCodec === 'undefined') {
+      throw new Error('FontLoader.processPositioningBundle: BundleCodec not available');
+    }
+    if (typeof PositioningBundleStore === 'undefined') {
+      throw new Error('FontLoader.processPositioningBundle: PositioningBundleStore not available');
+    }
+
+    const envelope = await BundleCodec.decodeBundle(b64);
+    if (!envelope || envelope.formatVersion !== BitmapText.BUNDLE_SCHEMA_VERSION) {
+      throw new Error(
+        `FontLoader.processPositioningBundle: positioning-bundle-density-${density}.js formatVersion mismatch ` +
+        `(got ${envelope && envelope.formatVersion}, expected ${BitmapText.BUNDLE_SCHEMA_VERSION}). ` +
+        `Regenerate font-assets/ with the current build.`
+      );
+    }
+    if (envelope.density !== density) {
+      throw new Error(
+        `FontLoader.processPositioningBundle: density mismatch ` +
+        `(envelope says ${envelope.density}, expected ${density})`
+      );
+    }
+    const records = envelope.records;
+
+    const styleByIdx = ['normal', 'italic', 'oblique'];
+    for (const [fontFamily, styleIdx, weightIdx, fontSize, arrays] of records) {
+      const fontStyle = styleByIdx[styleIdx];
+      const fontWeight = weightIdx === 0 ? 'normal' : (weightIdx === 1 ? 'bold' : String(weightIdx));
+      PositioningBundleStore.setRecord(density, fontFamily, fontStyle, fontWeight, fontSize, arrays);
+    }
+  }
+
+  /**
+   * Register atlas from atlas-*.js file (base64 only, positioning reconstructed later)
+   * Called by self-registering atlas files
+   * @param {string} idString - Font ID string
+   * @param {string} base64Data - Base64-encoded atlas data
+   */
+  static registerAtlas(idString, base64Data) {
+    if (typeof idString !== 'string' || typeof base64Data !== 'string') {
+      console.warn('FontLoader.registerAtlas: Invalid arguments - idString and base64Data must be strings');
+      return;
+    }
+
+    FontLoaderBase._tempAtlasPackages[idString] = { base64Data };
+  }
+
+  // ============================================
+  // Public Loading API
+  // ============================================
+
+  /**
+   * Load a single font
+   * @param {string} idString - Font ID string
+   * @param {Object} options - Loading options
+   * @param {Function} [options.onProgress] - Progress callback (loaded, total)
+   * @param {boolean} [options.isFileProtocol] - Whether using file:// protocol
+   * @param {Object} bitmapTextClass - BitmapText class reference
+   * @returns {Promise} Resolves when font is loaded
+   */
+  static async loadFont(idString, options, bitmapTextClass) {
+    return this.loadFonts([idString], options, bitmapTextClass);
+  }
+
+  /**
+   * Load multiple fonts
+   * @param {Array<string>} idStrings - Array of font ID strings
+   * @param {Object} options - Loading options
+   * @param {Function} [options.onProgress] - Progress callback (loaded, total)
+   * @param {boolean} [options.isFileProtocol] - Whether using file:// protocol
+   * @param {boolean} [options.loadMetrics] - Load metrics (default: true)
+   * @param {boolean} [options.loadAtlases] - Load atlases (default: true)
+   * @param {Object} bitmapTextClass - BitmapText class reference
+   * @returns {Promise} Resolves when all fonts are loaded
+   */
+  static async loadFonts(idStrings, options = {}, bitmapTextClass) {
+    const {
+      onProgress = null,
+      isFileProtocol = false,
+      loadMetrics = true,
+      loadAtlases = true
+    } = options;
+
+    const filesPerFont = (loadMetrics ? 1 : 0) + (loadAtlases ? 1 : 0);
+    const totalFiles = idStrings.length * filesPerFont;
+    let loadedFiles = 0;
+
+    const reportProgress = () => {
+      if (onProgress) onProgress(loadedFiles, totalFiles);
+    };
+
+    for (const idString of idStrings) {
+      // Check if already loading
+      if (FontLoaderBase._loadingPromises.has(idString)) {
+        await FontLoaderBase._loadingPromises.get(idString);
+        continue;
+      }
+
+      const loadPromise = (async () => {
+        try {
+          if (loadMetrics) {
+            await this.loadMetricsFile(idString, bitmapTextClass);
+            loadedFiles++;
+            reportProgress();
+          }
+
+          if (loadAtlases) {
+            await this.loadAtlasFile(idString, isFileProtocol, bitmapTextClass);
+            loadedFiles++;
+            reportProgress();
+          }
+        } finally {
+          FontLoaderBase._loadingPromises.delete(idString);
+        }
+      })();
+
+      FontLoaderBase._loadingPromises.set(idString, loadPromise);
+      await loadPromise;
+    }
+  }
+
+  /**
+   * Load only metrics for fonts
+   * @param {Array<string>} idStrings - Array of font ID strings
+   * @param {Object} options - Loading options
+   * @param {Object} bitmapTextClass - BitmapText class reference
+   * @returns {Promise} Resolves when metrics are loaded
+   */
+  static async loadMetrics(idStrings, options, bitmapTextClass) {
+    return this.loadFonts(idStrings, { ...options, loadAtlases: false }, bitmapTextClass);
+  }
+
+  /**
+   * Load only atlases for fonts (metrics must be loaded first)
+   * @param {Array<string>} idStrings - Array of font ID strings
+   * @param {Object} options - Loading options
+   * @param {Object} bitmapTextClass - BitmapText class reference
+   * @returns {Promise} Resolves when atlases are loaded
+   */
+  static async loadAtlases(idStrings, options, bitmapTextClass) {
+    return this.loadFonts(idStrings, { ...options, loadMetrics: false }, bitmapTextClass);
+  }
+
+  // ============================================
+  // Platform-Specific Loading (Abstract Methods)
+  // ============================================
+
+  /**
+   * Ensure the metrics bundle is loaded (idempotent singleton).
+   * The first call triggers the platform's `loadBundleFile`; subsequent calls
+   * return the same Promise.
+   * @returns {Promise<void>} Resolves once every record is in MetricsBundleStore.
+   */
+  static async loadMetricsFile(/* idString, bitmapTextClass */) {
+    if (!FontLoaderBase._bundleReadyPromise) {
+      FontLoaderBase._bundleReadyPromise = BitmapText._fontLoader.loadBundleFile();
+    }
+    return FontLoaderBase._bundleReadyPromise;
+  }
+
+  /**
+   * Ensure the positioning bundle for `pixelDensity` is loaded (idempotent
+   * singleton, per density). The first call for a density triggers the
+   * platform's `loadPositioningBundleFile`; subsequent calls return the
+   * same Promise.
+   * @param {number} pixelDensity
+   * @returns {Promise<void>} Resolves once every record is in PositioningBundleStore.
+   */
+  static async loadPositioningFile(pixelDensity) {
+    if (!FontLoaderBase._positioningBundleReadyPromises.has(pixelDensity)) {
+      FontLoaderBase._positioningBundleReadyPromises.set(
+        pixelDensity,
+        BitmapText._fontLoader.loadPositioningBundleFile(pixelDensity)
+      );
+    }
+    return FontLoaderBase._positioningBundleReadyPromises.get(pixelDensity);
+  }
+
+  // ============================================
+  // Bundle Unload API
+  // ============================================
+  //
+  // Mirrors the load pairs above. Each unload:
+  //   1. Wipes the data store entries (records + materialised caches).
+  //   2. Drops the cached ready/decode promises so a subsequent load re-fetches.
+  //   3. Calls the platform cleanup hook to detach the injected <script>
+  //      element (browser; no-op on Node).
+  //
+  // Idempotency: safe to call multiple times. Calling on a never-loaded bundle
+  // is a no-op (clear/delete on absent keys are no-ops; the cleanup hook
+  // tolerates a null/missing element).
+  //
+  // In-flight load race: if an atlas load is in flight at the moment of
+  // unloadPositioningBundle, its inner `loadPositioningFile(density)` may
+  // have already captured the promise from `_positioningBundleReadyPromises`
+  // BEFORE this method deletes that entry. The load will then complete and
+  // re-populate `PositioningBundleStore` with that density's records — a
+  // benign transient (the atlas still finishes loading correctly), but the
+  // bundle records reappear in the store. Callers that want a fully-clean
+  // unload should either (a) only call this after all in-flight loads of
+  // that density resolve, or (b) accept the transient and call unload again
+  // if needed. See public/lru-atlas-loading-demo-bundled.html for an example
+  // of strategy (a): the demo retires LRU entries of a density before
+  // calling unloadPositioningBundle for it.
+
+  /**
+   * Unload the metrics bundle: clear MetricsBundleStore records, drop the
+   * bundle ready/decode promises, and detach the <script> element (browser).
+   *
+   * FontManifest entries are NOT cleared — the manifest is a registry of
+   * known idStrings whose lifetime is decoupled from the records here.
+   * Clearing it would break enumerators that already cached its content;
+   * callers wanting a manifest reset can call `FontManifest.clear()`.
+   */
+  static unloadMetricsBundle() {
+    if (typeof MetricsBundleStore !== 'undefined') {
+      MetricsBundleStore.clear();
+    }
+    FontLoaderBase._bundleReadyPromise = null;
+    FontLoaderBase._bundleDecodePromise = null;
+    BitmapText._fontLoader?._removeMetricsScriptElement();
+  }
+
+  /**
+   * Unload the per-density positioning bundle: clear PositioningBundleStore
+   * records for that density, drop the per-density ready/decode promises,
+   * and detach the <script> element (browser).
+   * @param {number} pixelDensity
+   */
+  static unloadPositioningBundle(pixelDensity) {
+    if (typeof PositioningBundleStore !== 'undefined') {
+      PositioningBundleStore.clearDensity(pixelDensity);
+    }
+    FontLoaderBase._positioningBundleReadyPromises.delete(pixelDensity);
+    FontLoaderBase._positioningBundleDecodePromises.delete(pixelDensity);
+    BitmapText._fontLoader?._removePositioningScriptElement(pixelDensity);
+  }
+
+  // Platform cleanup hooks. Base impls are no-ops so Node inherits the right
+  // behaviour for free (its eval-based loader has no DOM to clean). The
+  // browser BitmapTextFontLoaderBrowser overrides these to detach the
+  // <script> from document.head.
+  static _removeMetricsScriptElement() { /* no-op base impl */ }
+  static _removePositioningScriptElement(/* pixelDensity */) { /* no-op base impl */ }
+
+  /**
+   * Load atlas file for a font
+   * @abstract Must be implemented by derived classes
+   * @param {string} idString - Font ID string
+   * @param {boolean} isFileProtocol - Whether using file:// protocol
+   * @param {Object} bitmapTextClass - BitmapText class reference
+   * @returns {Promise} Resolves when atlas is loaded
+   */
+  static async loadAtlasFile(idString, isFileProtocol, bitmapTextClass) {
+    throw new Error('FontLoaderBase.loadAtlasFile() must be implemented by derived class');
+  }
+
+  // ============================================
+  // Shared Atlas Loading Logic
+  // ============================================
+
+  /**
+   * Load atlas from package: wrap the image, look up the pre-shipped positioning
+   * for this font from PositioningBundleStore, store as AtlasData. The positioning
+   * bundle for this density is awaited inline (idempotent singleton — first call
+   * fetches, subsequent calls reuse the same Promise). No canvas readback, no
+   * pixel scan.
+   *
+   * @param {string} idString - Font ID string
+   * @param {HTMLImageElement|HTMLCanvasElement} atlasImage - Already-tight atlas
+   * @param {Object} bitmapTextClass - BitmapText class reference (unused; kept for API parity)
+   * @returns {Promise<boolean>} True on success, false if metrics not yet loaded
+   */
+  static async _loadAtlasFromPackage(idString, atlasImage, bitmapTextClass) {
+    const fontProperties = FontProperties.fromIDString(idString);
+
+    // Clean up temporary package storage
+    delete FontLoaderBase._tempAtlasPackages[idString];
+
+    // Get font metrics (still required for the character set; the bundle records
+    // are positional arrays in sorted-character order).
+    const fontMetrics = FontMetricsStore.getFontMetrics(fontProperties);
+
+    if (!fontMetrics) {
+      // Store atlas for later when metrics become available.
+      FontLoaderBase._pendingAtlases.set(idString, { atlasImage, bitmapTextClass });
+      return false;
+    }
+
+    // Idempotent per density: first call kicks off the bundle fetch + decode;
+    // subsequent calls reuse the cached Promise.
+    await FontLoaderBase.loadPositioningFile(fontProperties.pixelDensity);
+
+    const atlasPositioning = PositioningBundleStore.getPositioning(fontProperties, fontMetrics);
+    if (!atlasPositioning) {
+      throw new Error(
+        `FontLoader: no positioning record for ${idString} ` +
+        `(density ${fontProperties.pixelDensity}) — positioning bundle missing this font?`
+      );
+    }
+
+    const wrappedAtlasImage = new AtlasImage(atlasImage);
+    const atlasData = new AtlasData(wrappedAtlasImage, atlasPositioning);
+
+    AtlasDataStore.setAtlasData(fontProperties, atlasData);
+
+    return true;
+  }
+
+  /**
+   * Process pending atlas that was waiting for metrics. Async; mirrors
+   * _loadAtlasFromPackage's signature.
+   * @param {string} idString - Font ID string
+   * @returns {Promise<void>}
+   */
+  static async _processPendingAtlas(idString) {
+    // Check if there's a pending atlas waiting for these metrics
+    if (!FontLoaderBase._pendingAtlases.has(idString)) {
+      return;
+    }
+
+    const { atlasImage, bitmapTextClass } = FontLoaderBase._pendingAtlases.get(idString);
+    FontLoaderBase._pendingAtlases.delete(idString);
+
+    // Try to load the atlas now that metrics are available
+    await FontLoaderBase._loadAtlasFromPackage(idString, atlasImage, bitmapTextClass);
+  }
+}
+
+// BitmapText - Static Core Runtime Class
+//
+// Status constants are loaded as global variables by StatusCode.js (loaded before this file)
+// In Node.js bundles, StatusCode.js is concatenated before this file
+if (typeof StatusCode === 'undefined' || typeof SUCCESS_STATUS === 'undefined' || typeof createErrorStatus === 'undefined') {
+  throw new Error('StatusCode.js must be loaded before BitmapText.js');
+}
+//
+// This is a STATIC CORE RUNTIME class designed for minimal bundle size and zero-ceremony usage.
+// It provides essential text rendering capabilities for consuming pre-built bitmap fonts.
+//
+// DISTRIBUTION ROLE:
+// - Part of "runtime-only" distribution for production applications
+// - All methods are static - no instantiation needed
+// - Contains no font generation code to keep bundle size minimal
+//
+// ARCHITECTURE:
+// - Facade pattern: Delegates storage to AtlasDataStore/FontMetricsStore, font loading to the platform font loader
+// - fontDirectory configuration owned by the platform font loader (this class delegates get/set)
+// - Auto-detects environment (browser vs Node.js) for canvas creation
+// - Draws text by looking up glyphs from atlases and positioning them with metrics/kerning
+// - Uses textBaseline='bottom' positioning (y = bottom of text bounding box)
+// - Supports placeholder rectangles when atlases are missing but metrics are available
+//
+// CANVAS FACTORY (Node.js only):
+// - Node.js has no DOM, thus no native Canvas
+// - BitmapText needs Canvas to:
+//   1. Load atlas images from files
+//   2. Scan pixels to find tight bounding boxes for each glyph
+//   3. Create tight atlas from scanned data
+// - Cannot pass class reference: HTMLCanvasElement is NOT constructible
+//   (new HTMLCanvasElement() throws "Illegal constructor")
+// - Must pass factory function: () => new BitmapTextCanvas()
+// - Browser: via document.createElement('canvas')
+// - Node.js: Must configure with canvas-mock providing BitmapTextCanvas constructor
+//   (or any Canvas-compatible class from node-canvas, skia-canvas, etc.)
+//
+// USAGE:
+// - Zero configuration for browser: Just call BitmapText.drawTextFromAtlas()
+// - Node.js: Optionally set canvas factory: BitmapText.setCanvasFactory(() => new BitmapTextCanvas())
+// - Loading: BitmapText.loadFont(idString) or BitmapText.loadFonts([idStrings])
+// - Query: BitmapText.hasFont(idString), BitmapText.getLoadedFonts()
+//
+class BitmapText {
+  // ============================================
+  // Static Constants
+  // ============================================
+
+  // Kerning unit divisor (kerning measured in 1/1000 em units)
+  static KERNING_UNIT_DIVISOR = 1000;
+
+  // Minimum renderable font size (sizes < 9 use interpolated metrics from 9)
+  static MIN_RENDERABLE_SIZE = 9;
+
+  // Runtime↔asset bundle schema version. Stamped into the deflated envelope of
+  // every metrics-bundle.js / positioning-bundle-density-*.js. Bump when ANY
+  // wire-level or record-shape contract changes — codec swap, slot reordering,
+  // character-set convention shift, etc. The runtime refuses bundles whose
+  // envelope.formatVersion doesn't match this value. Atlases have no schema
+  // version (the wrapper API is stable and the inner WebP/QOI is self-describing).
+  static BUNDLE_SCHEMA_VERSION = 2;
+
+  // Font asset naming conventions
+  static METRICS_PREFIX = 'metrics-';
+  static ATLAS_PREFIX = 'atlas-';
+  static WEBP_EXTENSION = '.webp';
+  static QOI_EXTENSION = '.qoi';
+  static JS_EXTENSION = '.js';
+
+  // Default text color (matches TextProperties default)
+  static #DEFAULT_TEXT_COLOR = '#000000';
+
+  /**
+   * Fast font-invariant character detection helper
+   * Uses string.includes() for ~1-2ns lookup performance
+   *
+   * @private
+   * @param {string} char - Already-resolved character (caller must resolve aliases first)
+   * @returns {boolean} True if character is font-invariant
+   */
+  static #isInvariantCharacter(char) {
+    return CharacterSets.FONT_INVARIANT_CHARS.includes(char);
+  }
+
+  /**
+   * Calculate optimal grid dimensions for atlas layout
+   * Uses square-ish approach (ceil(sqrt(N))) to minimize max dimension
+   *
+   * For 204 characters: 15 columns × 14 rows (6 empty cells)
+   *
+   * @param {number} characterCount - Number of characters to arrange
+   * @returns {{columns: number, rows: number}} Grid dimensions
+   */
+  static calculateOptimalGridDimensions(characterCount) {
+    if (characterCount <= 0) {
+      throw new Error('BitmapText: Character count must be positive');
+    }
+
+    // Square-ish grid: minimizes max dimension while keeping layout simple
+    const columns = Math.ceil(Math.sqrt(characterCount));
+    const rows = Math.ceil(characterCount / columns);
+
+    return { columns, rows };
+  }
+
+  // ============================================
+  // Static Storage & Configuration
+  // ============================================
+
+  // Font data storage delegated to AtlasDataStore and FontMetricsStore
+  // (no private maps - stores are the single source of truth)
+
+  // Configuration (user overrides, delegates to the platform font loader for defaults)
+  // fontDirectory is owned by the platform font loader (it's the component that uses it)
+  static #canvasFactory = (typeof document !== 'undefined' ? () => document.createElement('canvas') : null);         // Optional user override
+
+  // Rendering resources (lazy-initialized on first render)
+  static #coloredGlyphCanvas = null;    // Shared scratch canvas for coloring
+  static #coloredGlyphCtx = null;       // 2D context for scratch canvas
+
+  // Font loader (platform-specific, set at runtime)
+  static _fontLoader = null;            // BitmapTextFontLoaderBrowser or BitmapTextFontLoaderNode
+
+  // Atlas storage format. Default is 'imageElement' (HTMLImageElement on
+  // Browser, canvas-mock-style Canvas on Node). Embedders without DOM (web
+  // workers, software canvases like SWCanvas) can opt into 'imageData' to
+  // store atlases as plain {width, height, data: Uint8ClampedArray}. See
+  // setAtlasFormat for the call-time contract.
+  static _atlasFormat = 'imageElement';
+
+  // ============================================
+  // Configuration API (Optional)
+  // ============================================
+
+  /**
+   * Set font directory (overrides default)
+   * Delegates to the platform font loader which owns this configuration
+   * @param {string} path - Path to font assets directory
+   */
+  static setFontDirectory(path) {
+    BitmapText._ensureFontLoader();
+    BitmapText._fontLoader.setFontDirectory(path);
+  }
+
+  /**
+   * Get font directory (returns override or default)
+   * Delegates to the platform font loader which owns this configuration
+   * @returns {string} Font directory path
+   */
+  static getFontDirectory() {
+    BitmapText._ensureFontLoader();
+    return BitmapText._fontLoader.getFontDirectory();
+  }
+
+  /**
+   * Override canvas factory (Node.js only, testing, or custom canvas implementations)
+   *
+   * WHY A FACTORY FUNCTION?
+   * HTMLCanvasElement is not constructible in JavaScript - new HTMLCanvasElement()
+   * throws "Illegal constructor". Browser uses document.createElement('canvas'),
+   * Node.js requires canvas-mock providing BitmapTextCanvas constructor (or
+   * any Canvas-compatible class from node-canvas, skia-canvas, etc.).
+   *
+   * @param {Function} factory - Function that returns a canvas instance
+   * @example
+   * // Node.js
+   * BitmapText.setCanvasFactory(() => new BitmapTextCanvas());
+   *
+   * // Browser (custom implementation)
+   * BitmapText.setCanvasFactory(() => new OffscreenCanvas(0, 0));
+   */
+  static setCanvasFactory(factory) {
+    BitmapText.#canvasFactory = factory;
+    // Reset canvas to use new factory on next render
+    BitmapText.#coloredGlyphCanvas = null;
+    BitmapText.#coloredGlyphCtx = null;
+  }
+
+  /**
+   * Get canvas factory (with fallback to platform default)
+   *
+   * USAGE PATTERN:
+   * const canvas = BitmapText.getCanvasFactory()();  // Note double invocation
+   *   - First ():  Gets the factory function
+   *   - Second (): Invokes factory to create canvas
+   *
+   * @returns {Function} Canvas factory function
+   */
+  static getCanvasFactory() {
+    return BitmapText.#canvasFactory;
+  }
+
+  /**
+   * Explicitly register a platform font loader class.
+   *
+   * Standalone browser/Node bundles don't need this — each platform file
+   * self-registers via this same API at script load time (see the footers of
+   * src/platform/FontLoaderBrowser.js and …Node.js). Use this only when:
+   *   - running in a context where neither footer auto-registers (e.g. web
+   *     workers, sandboxed iframes, embedder bundles that ship a custom loader)
+   *   - tests want to inject a stub
+   *
+   * Assigns the class (not an instance), matching the convention used by the
+   * platform self-registration footers.
+   *
+   * @param {Function} loaderClass - A class extending FontLoaderBase
+   * @example
+   *   class MyLoader extends FontLoaderBase { … }
+   *   BitmapText.setFontLoader(MyLoader);
+   *   await BitmapText.loadFont(fontProps.idString);
+   */
+  static setFontLoader(loaderClass) {
+    BitmapText._fontLoader = loaderClass;
+  }
+
+  /**
+   * Select how atlases are stored in AtlasDataStore.
+   *
+   * Two valid values:
+   *   - 'imageElement' (default) — atlases stored as the platform's native
+   *     image type: HTMLImageElement in Browser, canvas-mock-style Canvas
+   *     (or whatever the configured `canvasFactory` returns) in Node.
+   *   - 'imageData' — atlases stored as plain `{width, height, data:
+   *     Uint8ClampedArray}` objects. Enables embedders without DOM (web
+   *     workers, software canvases like SWCanvas) to consume the same
+   *     bundles. On Browser this triggers a one-time offscreen-canvas decode
+   *     at load time using `document.createElement('canvas')` directly (NOT
+   *     the configured canvasFactory — see ARCHITECTURE.md for rationale);
+   *     on Node it skips the canvas-mock putImageData round-trip and stores
+   *     the QOI-decoded pixels directly.
+   *
+   * CALL-TIME CONTRACT — IMPORTANT:
+   *   setAtlasFormat MUST be called before the first BitmapText.loadFont /
+   *   BitmapText.a / BitmapText.registerAtlas call. Setting it AFTER atlases
+   *   are registered results in mixed-shape storage in AtlasDataStore (some
+   *   entries 'imageElement'-shaped, others 'imageData'-shaped) — the user's
+   *   ctx.drawImage typically only accepts ONE of those shapes, so half the
+   *   atlases would render and half wouldn't. The simplest safe pattern is
+   *   "set once at boot, before any font work."
+   *
+   * Whichever format is chosen, the per-glyph hot loop is monomorphic per
+   * deploy: each app sees one stable shape in `atlasImage.image` and V8's
+   * hidden-class stability holds.
+   *
+   * @param {'imageElement'|'imageData'} format - Storage format selector
+   * @example
+   *   // Embedder boot (e.g. SWCanvas, web worker):
+   *   BitmapText.setAtlasFormat('imageData');
+   *   await BitmapText.loadFont(fontProps.idString);
+   *   BitmapText.drawTextFromAtlas(ctx, "Hello", 10, 50, fontProps);
+   */
+  static setAtlasFormat(format) {
+    if (format !== 'imageElement' && format !== 'imageData') {
+      throw new Error(
+        `BitmapText.setAtlasFormat: invalid format '${format}'. ` +
+        `Must be 'imageElement' or 'imageData'.`
+      );
+    }
+    BitmapText._atlasFormat = format;
+  }
+
+  /**
+   * Configure multiple options at once
+   * @param {Object} options - Configuration options
+   * @param {string} [options.fontDirectory] - Font assets directory
+   * @param {Function} [options.canvasFactory] - Canvas factory function
+   * @param {Function} [options.fontLoader] - Platform font loader class (extends FontLoaderBase)
+   * @param {'imageElement'|'imageData'} [options.atlasFormat] - Atlas storage format (see setAtlasFormat for the call-time contract)
+   */
+  static configure(options = {}) {
+    if (options.fontDirectory !== undefined) {
+      BitmapText.setFontDirectory(options.fontDirectory);
+    }
+    if (options.canvasFactory !== undefined) {
+      BitmapText.setCanvasFactory(options.canvasFactory);
+    }
+    if (options.fontLoader !== undefined) {
+      BitmapText.setFontLoader(options.fontLoader);
+    }
+    if (options.atlasFormat !== undefined) {
+      BitmapText.setAtlasFormat(options.atlasFormat);
+    }
+  }
+
+  /**
+   * Ensure a platform font loader has been registered.
+   *
+   * Standalone browser/Node bundles auto-register via the platform files'
+   * self-registration footers. If neither footer ran (e.g. web worker, sandboxed
+   * context, embedder that strips the platform files), the embedder must call
+   * BitmapText.setFontLoader(MyLoader) before any font-loading API.
+   *
+   * @private
+   */
+  static _ensureFontLoader() {
+    if (BitmapText._fontLoader) return;
+    throw new Error(
+      'BitmapText: no font loader registered. ' +
+      'Ensure a platform-specific loader is loaded before calling font-loading APIs ' +
+      '(BitmapTextFontLoaderBrowser in browsers, BitmapTextFontLoaderNode in Node), ' +
+      'or call BitmapText.setFontLoader(yourLoaderClass) explicitly.'
+    );
+  }
+
+  /**
+   * Check if font size requires minimum size redirection
+   * @param {number} fontSize - Font size in CSS pixels
+   * @returns {boolean} True if size < 9 and should use interpolated metrics
+   * @private
+   */
+  static _shouldUseMinSize(fontSize) {
+    return fontSize < BitmapText.MIN_RENDERABLE_SIZE;
+  }
+
+  /**
+   * Create FontProperties with minimum renderable size (9)
+   * @param {FontProperties} fontProperties - Original font properties
+   * @returns {FontProperties} New FontProperties with size 9
+   * @private
+   */
+  static _createFontPropsAtMinSize(fontProperties) {
+    return new FontProperties(
+      fontProperties.pixelDensity,
+      fontProperties.fontFamily,
+      fontProperties.fontStyle,
+      fontProperties.fontWeight,
+      BitmapText.MIN_RENDERABLE_SIZE
+    );
+  }
+
+  /**
+   * Create interpolated FontMetrics wrapper for sizes < 9
+   * Returns a wrapper object that interpolates all metric values proportionally
+   * @param {FontMetrics} metricsAt9 - Font metrics at size 9
+   * @param {number} targetSize - Desired font size (< 9)
+   * @returns {InterpolatedFontMetrics} Interpolated metrics wrapper with FontMetrics-compatible interface
+   * @private
+   */
+  static #createInterpolatedFontMetrics(metricsAt9, targetSize) {
+    return new InterpolatedFontMetrics(metricsAt9, targetSize);
+  }
+
+  /**
+   * Try to materialise interpolated metrics for a sub-9px size by looking up
+   * the font's size-9 metrics in the store. Returns null when the size-9 entry
+   * isn't in the bundle either; callers handle the null case (error return or
+   * silent fallback). Shared by measureText, drawTextFromAtlas, and
+   * #resolveInvariantFont.
+   *
+   * @param {FontProperties} fontProperties - sub-9px font properties
+   * @returns {InterpolatedFontMetrics|null}
+   * @private
+   */
+  static #lookupInterpolatedMetricsForSmallSize(fontProperties) {
+    const minSizeProps = BitmapText._createFontPropsAtMinSize(fontProperties);
+    const metricsAt9 = FontMetricsStore.getFontMetrics(minSizeProps);
+    if (!metricsAt9) return null;
+    return BitmapText.#createInterpolatedFontMetrics(metricsAt9, fontProperties.fontSize);
+  }
+
+  // ============================================
+  // Rendering API
+  // ============================================
+
+  /**
+   * Measure text dimensions
+   *
+   * RETURN VALUES: All measurements are in CSS PIXELS
+   * - width, actualBoundingBox* values are CSS pixels
+   * - Measurements are independent of canvas setup or context transforms
+   * - To convert to physical pixels: multiply by fontProperties.pixelDensity
+   *
+   * NOTE: This method does NOT draw anything and is NOT affected by context transforms.
+   * It purely calculates metrics based on font data.
+   *
+   * The metrics object has the same shape and meaning as the TextMetrics object (see
+   * https://developer.mozilla.org/en-US/docs/Web/API/TextMetrics ):
+   * - width: sum of character advancements (minus kerning adjustments)
+   * - actualBoundingBoxLeft: actualBoundingBoxLeft of first character
+   * - actualBoundingBoxRight: sum of advancements (excluding last) + last char's actualBoundingBoxRight
+   *
+   * @param {string} text - Text to measure
+   * @param {FontProperties} fontProperties - Font configuration
+   * @param {TextProperties} [textProperties] - Text rendering configuration (optional)
+   * @returns {{metrics: {width: number, actualBoundingBoxLeft: number, actualBoundingBoxRight: number, actualBoundingBoxAscent: number, actualBoundingBoxDescent: number, fontBoundingBoxAscent: number, fontBoundingBoxDescent: number}|null, status: {code: number, missingChars?: Set}}}
+   *   All numeric values in metrics are CSS pixels
+   */
+  static measureText(text, fontProperties, textProperties) {
+    if (!textProperties) {
+      textProperties = new TextProperties();
+    }
+
+    // FAST PATH: Handle empty text (100% success)
+    if (text.length === 0) {
+      return {
+        metrics: {
+          width: 0,
+          actualBoundingBoxLeft: 0,
+          actualBoundingBoxRight: 0,
+          actualBoundingBoxAscent: 0,
+          actualBoundingBoxDescent: 0,
+          fontBoundingBoxAscent: 0,
+          fontBoundingBoxDescent: 0
+        },
+        status: SUCCESS_STATUS
+      };
+    }
+
+    // Check if FontMetrics exists at all
+    let fontMetrics = FontMetricsStore.getFontMetrics(fontProperties);
+
+    // If metrics not found and size < 9, try interpolating from size 9
+    if (!fontMetrics && BitmapText._shouldUseMinSize(fontProperties.fontSize)) {
+      fontMetrics = BitmapText.#lookupInterpolatedMetricsForSmallSize(fontProperties);
+      if (!fontMetrics) {
+        // Even 9px metrics don't exist
+        return {
+          metrics: null,
+          status: createErrorStatus(StatusCode.NO_METRICS, {
+            requiresMinSize: true,
+            requestedSize: fontProperties.fontSize,
+            minSize: BitmapText.MIN_RENDERABLE_SIZE
+          })
+        };
+      }
+    } else if (!fontMetrics) {
+      return {
+        metrics: null,
+        status: createErrorStatus(StatusCode.NO_METRICS)
+      };
+    }
+
+    const { invariantFontProps, invariantFontMetrics, hasInvariantFont, chars } =
+      BitmapText.#resolveRenderContext(text, fontProperties);
+
+    const missingChars = BitmapText.#scanForMissingChars(chars, fontMetrics, invariantFontMetrics, hasInvariantFont);
+
+    // If any glyphs missing, can't calculate accurate metrics
+    if (missingChars.size > 0) {
+      return {
+        metrics: null,
+        status: createErrorStatus(StatusCode.PARTIAL_METRICS, {
+          missingChars: missingChars
+        })
+      };
+    }
+
+    // SUCCESS PATH: Calculate metrics normally
+    let width_CssPx = 0;
+
+    // First character (already resolved)
+    const firstChar = chars[0];
+
+    // Determine font for first character
+    const firstCharIsInvariant = hasInvariantFont && BitmapText.#isInvariantCharacter(firstChar);
+    let currentFontMetrics = firstCharIsInvariant ? invariantFontMetrics : fontMetrics;
+    let currentFontProps = firstCharIsInvariant ? invariantFontProps : fontProperties;
+
+    let characterMetrics = currentFontMetrics.getCharacterMetrics(firstChar);
+    const actualBoundingBoxLeft_CssPx = characterMetrics.actualBoundingBoxLeft;
+    let actualBoundingBoxAscent = 0;
+    let actualBoundingBoxDescent = 0;
+    let actualBoundingBoxRight_CssPx;
+    let advancement_CssPx = 0;
+
+    // Hoist the rounding-mode decision out of the per-glyph loop (constant per render).
+    const advancementFn_CssPx = fontMetrics.isInterpolatedMetrics
+      ? BitmapText.#calcAdvancementInterpolated_CssPx
+      : BitmapText.#calcAdvancementCrisp_CssPx;
+
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i];
+      const nextChar = chars[i + 1];
+
+      // FAST CHECK: Is this a font-invariant character? Switch fonts if needed
+      const isInvariant = hasInvariantFont && BitmapText.#isInvariantCharacter(char);
+      if (isInvariant && currentFontProps !== invariantFontProps) {
+        currentFontMetrics = invariantFontMetrics;
+        currentFontProps = invariantFontProps;
+      } else if (!isInvariant && currentFontProps !== fontProperties) {
+        currentFontMetrics = fontMetrics;
+        currentFontProps = fontProperties;
+      }
+
+      characterMetrics = currentFontMetrics.getCharacterMetrics(char);
+
+      actualBoundingBoxAscent = Math.max(actualBoundingBoxAscent, characterMetrics.actualBoundingBoxAscent);
+      actualBoundingBoxDescent = Math.min(actualBoundingBoxDescent, characterMetrics.actualBoundingBoxDescent);
+
+      advancement_CssPx = advancementFn_CssPx(currentFontMetrics, currentFontProps, char, nextChar, textProperties, characterMetrics);
+      width_CssPx += advancement_CssPx;
+    }
+
+    actualBoundingBoxRight_CssPx = width_CssPx - advancement_CssPx;
+    actualBoundingBoxRight_CssPx += characterMetrics.actualBoundingBoxRight;
+
+    return {
+      metrics: {
+        width: width_CssPx,
+        actualBoundingBoxLeft: actualBoundingBoxLeft_CssPx,
+        actualBoundingBoxRight: actualBoundingBoxRight_CssPx,
+        actualBoundingBoxAscent,
+        actualBoundingBoxDescent,
+        fontBoundingBoxAscent: characterMetrics.fontBoundingBoxAscent,
+        fontBoundingBoxDescent: characterMetrics.fontBoundingBoxDescent
+      },
+      status: SUCCESS_STATUS
+    };
+  }
+
+  /**
+   * Compute the ink bounding box that drawTextFromAtlas would paint, given
+   * the same arguments. Useful when an embedder needs to render text into an
+   * intermediate buffer at the smallest necessary size before compositing
+   * into a destination — see README.md "Embedder Integration" for the
+   * canonical "compute box, allocate intermediate, draw, blit" pattern.
+   *
+   * UNITS: x, y, and the returned box.{x,y,width,height} are all in CSS
+   * pixels (floats), matching drawTextFromAtlas's input convention.
+   * drawTextFromAtlas multiplies by fontProperties.pixelDensity internally
+   * to derive physical pixel positions; this method returns the un-scaled
+   * CSS-px box. Embedders who want PHYSICAL pixels — e.g. to size an
+   * intermediate canvas — multiply by pixelDensity themselves and apply
+   * Math.ceil at canvas allocation, per BitmapText's invariant 6
+   * ("position floats, draw integers").
+   *
+   * SINGLE SOURCE OF TRUTH: this method delegates to the same private
+   * helpers drawTextFromAtlas uses (#calculateBaselineOffsetToBottom,
+   * #calculateAlignmentOffsetToLeft) so the offset math stays consistent.
+   * If drawTextFromAtlas ever changes a sign convention or adds a baseline
+   * mode, this method's output tracks automatically — embedders don't have
+   * to re-derive formulas.
+   *
+   * @param {string} text - Text to measure
+   * @param {number} x - X position in CSS pixels (same convention as drawTextFromAtlas)
+   * @param {number} y - Y position in CSS pixels
+   * @param {FontProperties} fontProperties - Font configuration
+   * @param {TextProperties} [textProperties] - Text rendering configuration (optional)
+   * @returns {{box: {x: number, y: number, width: number, height: number}|null, status: Object}}
+   *   `box` in CSS-px floats, or null if measurement failed (status carries the reason).
+   *
+   * @example
+   *   // Embedder slow path: render to intermediate, blit to destination.
+   *   const { box, status } = BitmapText.computeInkBoundingBox(text, x, y, fp, tp);
+   *   if (status.code !== 0 || !box) return; // measurement failed
+   *   // Allocate intermediate at PHYSICAL pixel size:
+   *   const w_phys = Math.ceil(box.width  * fp.pixelDensity);
+   *   const h_phys = Math.ceil(box.height * fp.pixelDensity);
+   *   const inter = new MyEmbedderCanvas(w_phys, h_phys);
+   *   // Draw at the offset that lands ink at the intermediate's (0,0).
+   *   // (x - box.x, y - box.y) STAYS in CSS pixels — drawTextFromAtlas scales:
+   *   BitmapText.drawTextFromAtlas(inter.getContext('2d'), text,
+   *                                x - box.x, y - box.y, fp, tp);
+   *   // Blit intermediate to destination at box.{x,y} in destination space.
+   *   destCtx.drawImage(inter, 0, 0, w_phys, h_phys,
+   *                     box.x, box.y, box.width, box.height);
+   */
+  static computeInkBoundingBox(text, x, y, fontProperties, textProperties = null) {
+    if (!textProperties) textProperties = new TextProperties();
+
+    // 1) Public measureText is the single gate for all failure modes
+    //    (empty text → zero metrics + SUCCESS; missing font → NO_METRICS;
+    //    missing glyphs → PARTIAL_METRICS; size < 9 → interpolated fallback
+    //    or NO_METRICS). Propagate the status as-is so callers can branch.
+    const measureResult = BitmapText.measureText(text, fontProperties, textProperties);
+    if (measureResult.status.code !== 0 || !measureResult.metrics) {
+      return { box: null, status: measureResult.status };
+    }
+    const m = measureResult.metrics;
+
+    // 2) Empty text: measureText returned zero metrics + SUCCESS. Map to a
+    //    degenerate zero-area box at the caller's (x, y).
+    if (text.length === 0) {
+      return { box: { x, y, width: 0, height: 0 }, status: measureResult.status };
+    }
+
+    // 3) Resolve fontMetrics + chars — same prologue as drawTextFromAtlas
+    //    at BitmapText.js:557-585. measureText already validated these don't
+    //    fail; we need the actual references for first-char baseline lookup
+    //    AND for re-deriving actualBoundingBoxDescent (see step 6 comment).
+    let fontMetrics = FontMetricsStore.getFontMetrics(fontProperties);
+    if (BitmapText._shouldUseMinSize(fontProperties.fontSize)) {
+      fontMetrics = BitmapText.#lookupInterpolatedMetricsForSmallSize(fontProperties);
+    }
+    const renderContext = BitmapText.#resolveRenderContext(text, fontProperties);
+    const { invariantFontMetrics, hasInvariantFont, chars } = renderContext;
+
+    // 4) First-char baseline lookup — same pattern as drawTextFromAtlas:631-632.
+    const firstChar = chars.find(c => fontMetrics.hasGlyph(c)) || chars[0];
+    const characterMetricsForBaseline = fontMetrics.getCharacterMetrics(firstChar);
+
+    // 5) Offset math — same helpers drawTextFromAtlas uses at lines 633-647.
+    const baselineOffset_CssPx = characterMetricsForBaseline
+      ? BitmapText.#calculateBaselineOffsetToBottom(textProperties.textBaseline, characterMetricsForBaseline)
+      : 0;
+    const alignmentOffset_CssPx = textProperties.textAlign === 'left'
+      ? 0
+      : BitmapText.#calculateAlignmentOffsetToLeft(textProperties.textAlign, m.width);
+
+    // 6) measureText's actualBoundingBoxDescent is broken — it uses Math.min
+    //    starting at 0 against characterMetrics.actualBoundingBoxDescent which
+    //    is reported as a POSITIVE distance below baseline (standard Canvas
+    //    convention), so it always clamps to 0 and loses the descender info.
+    //    Recompute via Math.max over the resolved chars (mirroring the
+    //    font-switching pattern measureText uses for ascent). Bug pre-dates
+    //    Sprint 5; fixing it inside measureText would change measureText's
+    //    return shape which Sprint 5 is not allowed to touch.
+    let actualBoundingBoxDescent_CssPx = 0;
+    for (const c of chars) {
+      const isInvariant = hasInvariantFont && BitmapText.#isInvariantCharacter(c);
+      const fm = isInvariant ? invariantFontMetrics : fontMetrics;
+      const cm = fm && fm.getCharacterMetrics(c);
+      if (cm && cm.actualBoundingBoxDescent > actualBoundingBoxDescent_CssPx) {
+        actualBoundingBoxDescent_CssPx = cm.actualBoundingBoxDescent;
+      }
+    }
+
+    // 7) Compose the ink rectangle in CSS pixels (floats throughout — invariant 6).
+    //    The alphabetic baseline lands at:
+    //      alphaY = y + baselineOffset - fontBoundingBoxDescent
+    //    (BitmapText positions glyphs to 'bottom' baseline; alphabetic sits
+    //    fontBoundingBoxDescent above 'bottom'). actualBoundingBox{Left,Right}
+    //    are ink extents from the offset-corrected origin; actualBoundingBox
+    //    {Ascent,Descent} are ink extents from alphabetic baseline.
+    //
+    //    PHYSICAL-PIXEL NOTES FOR EMBEDDERS:
+    //    - To size an intermediate canvas: multiply by fp.pixelDensity and
+    //      Math.ceil at the integer boundary.
+    //         const w_phys = Math.ceil(box.width  * fp.pixelDensity);
+    //         const h_phys = Math.ceil(box.height * fp.pixelDensity);
+    //    - The (x - box.x, y - box.y) draw position passed back to
+    //      drawTextFromAtlas STAYS in CSS pixels (no scaling) —
+    //      drawTextFromAtlas multiplies internally. Don't double-scale.
+    const alphaY   = y + baselineOffset_CssPx - m.fontBoundingBoxDescent;
+    const inkLeft  = x + alignmentOffset_CssPx - m.actualBoundingBoxLeft;
+    const inkRight = x + alignmentOffset_CssPx + m.actualBoundingBoxRight;
+    const inkTop   = alphaY - m.actualBoundingBoxAscent;
+    // Standard Canvas convention: descent is a positive distance below baseline.
+    const inkBot   = alphaY + actualBoundingBoxDescent_CssPx;
+
+    return {
+      box: {
+        x: inkLeft,
+        y: inkTop,
+        width:  inkRight - inkLeft,
+        height: inkBot   - inkTop,
+      },
+      status: measureResult.status,
+    };
+  }
+
+  /**
+   * Draw text using pre-rendered glyphs from atlas
+   *
+   * COORDINATE SYSTEM:
+   * - All coordinates are in CSS PIXELS relative to canvas origin (0,0)
+   * - BitmapText IGNORES all context transforms (scale, translate, rotate, etc.)
+   * - Internal conversion: physicalPixels = cssPixels × fontProperties.pixelDensity
+   * - Transform is reset to identity during rendering, then restored
+   *
+   * TRANSFORM BEHAVIOR:
+   * BitmapText will reset the context transform to identity before drawing,
+   * meaning any ctx.scale(), ctx.translate(), ctx.rotate(), etc. are IGNORED.
+   * This ensures pixel-perfect rendering at exact physical pixel positions.
+   *
+   * Example:
+   *   ctx.scale(2, 2);          // User scales context
+   *   ctx.translate(100, 50);    // User translates
+   *   BitmapText.drawTextFromAtlas(ctx, "Hello", 10, 30, fontProps);
+   *   // Text renders at (10, 30) CSS pixels from origin, NOT (120, 80)!
+   *   // Transforms are ignored - coordinates are always absolute
+   *
+   * PIXEL DENSITY:
+   * - Specified via fontProperties.pixelDensity (e.g., window.devicePixelRatio)
+   * - Canvas should be sized: canvas.width = cssWidth × pixelDensity
+   * - Do NOT use ctx.scale(dpr, dpr) - BitmapText handles density internally
+   *
+   * @param {CanvasRenderingContext2D} ctx - Canvas 2D context (transform will be temporarily reset)
+   * @param {string} text - Text to render
+   * @param {number} x_CssPx - X position in CSS pixels (absolute, from canvas origin)
+   * @param {number} y_CssPx - Y position in CSS pixels (absolute, from canvas origin, bottom baseline)
+   * @param {FontProperties} fontProperties - Font configuration (including pixelDensity)
+   * @param {TextProperties} [textProperties] - Text rendering configuration (optional)
+   * @returns {{rendered: boolean, status: {code: number, missingChars?: Set, missingAtlasChars?: Set, placeholdersUsed?: boolean}}}
+   *   Rendering result and status information
+   */
+  static drawTextFromAtlas(ctx, text, x_CssPx, y_CssPx, fontProperties, textProperties = null) {
+    textProperties = textProperties || new TextProperties();
+
+    // Lazy-initialize canvas on first render
+    if (!BitmapText.#coloredGlyphCanvas) {
+      // Explicit factory invocation: get factory, then call it
+      BitmapText.#coloredGlyphCanvas = BitmapText.getCanvasFactory()();
+      BitmapText.#coloredGlyphCtx = BitmapText.#coloredGlyphCanvas.getContext('2d');
+    }
+
+    // Check FontMetrics availability first
+    let fontMetrics = FontMetricsStore.getFontMetrics(fontProperties);
+    let forceInvalidAtlas = false;
+
+    // For sizes < 9, always use interpolated metrics from 9 and force placeholder mode
+    // (the rasterization floor invariant — atlases below 9px don't exist).
+    if (BitmapText._shouldUseMinSize(fontProperties.fontSize)) {
+      fontMetrics = BitmapText.#lookupInterpolatedMetricsForSmallSize(fontProperties);
+      if (!fontMetrics) {
+        // Size 9 metrics don't exist either - can't render
+        return {
+          rendered: false,
+          status: createErrorStatus(StatusCode.NO_METRICS, {
+            requiresMinSize: true,
+            requestedSize: fontProperties.fontSize,
+            minSize: BitmapText.MIN_RENDERABLE_SIZE
+          })
+        };
+      }
+      forceInvalidAtlas = true; // Always use placeholders for sizes < 9
+    } else if (!fontMetrics) {
+      // Normal size but metrics not found
+      return {
+        rendered: false,
+        status: createErrorStatus(StatusCode.NO_METRICS)
+      };
+    }
+
+    const { invariantFontProps, invariantFontMetrics, hasInvariantFont, chars } =
+      BitmapText.#resolveRenderContext(text, fontProperties);
+
+    const missingMetricsChars = BitmapText.#scanForMissingChars(chars, fontMetrics, invariantFontMetrics, hasInvariantFont);
+
+    if (missingMetricsChars.size > 0) {
+      return {
+        rendered: false,
+        status: createErrorStatus(StatusCode.PARTIAL_METRICS, {
+          missingChars: missingMetricsChars
+        })
+      };
+    }
+
+    // Check atlas data availability (force invalid for sizes < 9)
+    let atlasData = forceInvalidAtlas ? null : AtlasDataStore.getAtlasData(fontProperties);
+    const atlasValid = forceInvalidAtlas ? false : BitmapText._isValidAtlas(atlasData);
+
+    const invariantAtlasData = invariantFontMetrics ?
+      AtlasDataStore.getAtlasData(invariantFontProps) : null;
+    const invariantAtlasValid = invariantFontMetrics ?
+      BitmapText._isValidAtlas(invariantAtlasData) : false;
+
+    // Track current font to minimize redundant lookups
+    let currentFontProps = fontProperties;
+    let currentFontMetrics = fontMetrics;
+    let currentAtlasData = atlasData;
+    let currentAtlasValid = atlasValid;
+
+    // Track which glyphs are missing from atlas (for partial atlas status)
+    const missingAtlasChars = new Set();
+    let placeholdersUsed = false;
+
+    // CRITICAL: Reset transform to identity for pixel-perfect physical rendering
+    // BitmapText ignores ALL context transforms (scale, translate, rotate, etc.)
+    // Coordinates are ALWAYS relative to canvas origin (0,0)
+    // This ensures:
+    // 1. Predictable positioning regardless of context state
+    // 2. Pixel-perfect rendering at physical pixel boundaries
+    // 3. No double-scaling when users apply ctx.scale(dpr, dpr)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);  // Reset to identity matrix
+    const textColor = textProperties.textColor;
+
+    // BASELINE SUPPORT: Convert user's y from their chosen baseline to 'bottom' baseline
+    // Get baseline data from first character (baseline values are identical for all characters in a font)
+    // Use first actual character, or fallback to space character for baseline calculation
+    const firstChar = chars.find(c => fontMetrics.hasGlyph(c)) || chars[0];
+    const characterMetricsForBaseline = fontMetrics.getCharacterMetrics(firstChar);
+    const baselineOffset_CssPx = characterMetricsForBaseline
+      ? BitmapText.#calculateBaselineOffsetToBottom(textProperties.textBaseline, characterMetricsForBaseline)
+      : 0;
+
+    // ALIGNMENT SUPPORT: Convert user's x from their chosen alignment to 'left' alignment
+    // Measure text width to calculate alignment offset (measureText accounts for kerning if enabled)
+    let alignmentOffset_CssPx = 0;
+    if (textProperties.textAlign !== 'left') {
+      const measureResult = BitmapText.measureText(text, fontProperties, textProperties);
+      if (measureResult.status.code === 0 && measureResult.metrics) {
+        // Successfully measured text - calculate alignment offset
+        alignmentOffset_CssPx = BitmapText.#calculateAlignmentOffsetToLeft(
+          textProperties.textAlign,
+          measureResult.metrics.width
+        );
+      } else {
+        // Failed to measure (missing glyphs, etc.) - default to left alignment (offset = 0)
+        // Text will still render but won't be aligned as requested
+        console.warn(`BitmapText: Failed to measure text for alignment '${textProperties.textAlign}', defaulting to left alignment`);
+      }
+    }
+
+    // Apply baseline and alignment offsets, then convert to physical pixels
+    const position_PhysPx = {
+      x: (x_CssPx + alignmentOffset_CssPx) * fontProperties.pixelDensity,
+      y: (y_CssPx + baselineOffset_CssPx) * fontProperties.pixelDensity
+    };
+
+    // OPTIMIZATION: Batch colored text rendering (single composite operation)
+    // Check if we're rendering colored text with a valid atlas
+    const isColoredText = textColor !== BitmapText.#DEFAULT_TEXT_COLOR;
+    if (isColoredText && atlasValid) {
+      // Use optimized batch rendering for colored text
+      // This reduces composite operations from N (per character) to 1 (per text string)
+      const batchResult = BitmapText.#drawColoredTextBatched(
+        ctx, text, chars, position_PhysPx, atlasData, fontMetrics, fontProperties, textProperties,
+        invariantFontProps, invariantFontMetrics, hasInvariantFont
+      );
+
+      // Merge batch results into tracking sets
+      batchResult.missingAtlasChars.forEach(char => missingAtlasChars.add(char));
+      placeholdersUsed = placeholdersUsed || batchResult.placeholdersUsed;
+
+      // Skip character-by-character loop for colored text
+    } else {
+      // Black text or invalid atlas: use character-by-character rendering
+      // Note: chars array is already resolved (emojis→symbols) from resolvedText
+      //
+      // Hoist the rounding-mode decision out of the per-glyph loop. fontMetrics
+      // is constant for this render; if it's interpolated, all glyph advancements
+      // stay as floats; otherwise we round per-glyph.
+      const advancementFn_PhysPx = fontMetrics.isInterpolatedMetrics
+        ? BitmapText.#calcAdvancementInterpolated_PhysPx
+        : BitmapText.#calcAdvancementCrisp_PhysPx;
+
+      // Hoist the colour-mode decision out of the per-glyph loop (constant per render).
+      const isBlackText = textColor === BitmapText.#DEFAULT_TEXT_COLOR;
+
+      for (let i = 0; i < chars.length; i++) {
+        const currentChar = chars[i];
+        const nextChar = chars[i + 1];
+
+        // FAST CHECK: Is this a font-invariant character? (string.includes on 18 chars = ~1-2ns)
+        const isInvariant = hasInvariantFont && BitmapText.#isInvariantCharacter(currentChar);
+
+        // Switch font ONLY if needed (avoids redundant assignments)
+        if (isInvariant && currentFontProps !== invariantFontProps) {
+          currentFontProps = invariantFontProps;
+          currentFontMetrics = invariantFontMetrics;
+          currentAtlasData = invariantAtlasData;
+          currentAtlasValid = invariantAtlasValid;
+        } else if (!isInvariant && currentFontProps !== fontProperties) {
+          // Switch back to base font
+          currentFontProps = fontProperties;
+          currentFontMetrics = fontMetrics;
+          currentAtlasData = atlasData;
+          currentAtlasValid = atlasValid;
+        }
+
+        // Spaces never draw anything (no atlas glyph, placeholder rectangle is a
+        // no-op for ' '), so we skip the whole branch and just advance.
+        if (currentChar !== ' ') {
+          if (!currentAtlasValid) {
+            // Invalid atlas: track + placeholder rectangle from character metrics.
+            // (currentAtlasValid is hoisted; avoids a per-glyph _isValidAtlas call.)
+            missingAtlasChars.add(currentChar);
+            placeholdersUsed = true;
+            const characterMetrics = currentFontMetrics.getCharacterMetrics(currentChar);
+            if (characterMetrics) {
+              BitmapText.#drawPlaceholderRectangle(ctx, currentChar, position_PhysPx, characterMetrics, textColor);
+            }
+          } else {
+            // One dict lookup per non-space glyph; pre-checking with hasPositioning
+            // would redo the same lookup (it's `_placements[char] !== undefined`).
+            const p = currentAtlasData.atlasPositioning._placements[currentChar];
+            if (p === undefined) {
+              // Valid atlas but glyph absent — track, draw nothing.
+              missingAtlasChars.add(currentChar);
+              placeholdersUsed = true;
+            } else if (isBlackText) {
+              // FAST PATH: direct drawImage from atlas, no dispatch.
+              const atlasImage = currentAtlasData.atlasImage.image;
+              ctx.drawImage(
+                atlasImage,
+                p.xInAtlas, p.yInAtlas,
+                p.tightWidth, p.tightHeight,
+                Math.round(position_PhysPx.x + p.dx),
+                Math.round(position_PhysPx.y + p.dy),
+                p.tightWidth, p.tightHeight
+              );
+            } else {
+              // SLOW PATH: colored text. Reached only when the active font's atlas
+              // is valid but base atlas was invalid (colored normally batches up
+              // front via #drawColoredTextBatched); rare in practice.
+              const atlasImage = currentAtlasData.atlasImage.image;
+              const coloredGlyphCanvas = BitmapText.#createColoredGlyph(
+                atlasImage, p.xInAtlas, p.yInAtlas, p.tightWidth, p.tightHeight, textColor
+              );
+              BitmapText.#renderGlyphToMainCanvas(
+                ctx, coloredGlyphCanvas, position_PhysPx,
+                p.tightWidth, p.tightHeight, p.dx, p.dy
+              );
+            }
+          }
+        }
+
+        // Calculate advancement using current font's metrics
+        position_PhysPx.x += advancementFn_PhysPx(currentFontMetrics, currentFontProps, currentChar, nextChar, textProperties);
+      }
+    }
+
+    // Determine status code
+    let statusCode;
+    if (!atlasValid) {
+      statusCode = StatusCode.NO_ATLAS;
+    } else if (missingAtlasChars.size > 0) {
+      statusCode = StatusCode.PARTIAL_ATLAS;
+    } else {
+      // Complete success
+      ctx.restore();  // Restore original transform
+      return {
+        rendered: true,
+        status: SUCCESS_STATUS
+      };
+    }
+
+    // Return detailed status for non-success cases
+    ctx.restore();  // Restore original transform
+    return {
+      rendered: true,
+      status: createErrorStatus(statusCode, {
+        missingAtlasChars: missingAtlasChars.size > 0 ? missingAtlasChars : undefined,
+        placeholdersUsed: placeholdersUsed
+      })
+    };
+  }
+
+  // ============================================
+  // Internal Rendering Helpers
+  // ============================================
+
+  /**
+   * Pre-create and pre-fetch the font-invariant font's properties and metrics.
+   * Handles size<9 interpolation when the invariant font isn't directly available
+   * at the requested size. Shared by measureText and drawTextFromAtlas.
+   *
+   * @param {FontProperties} fontProperties - Caller's font properties
+   * @returns {{invariantFontProps: FontProperties, invariantFontMetrics: (FontMetrics|null), hasInvariantFont: boolean}}
+   * @private
+   */
+  static #resolveInvariantFont(fontProperties) {
+    // Pre-create font-invariant font properties (avoids per-character allocation
+    // in the hot rendering loop). Invariant font is always normal/normal.
+    const invariantFontProps = new FontProperties(
+      fontProperties.pixelDensity,
+      CharacterSets.INVARIANT_FONT_FAMILY,
+      'normal',
+      'normal',
+      fontProperties.fontSize
+    );
+
+    let invariantFontMetrics = FontMetricsStore.getFontMetrics(invariantFontProps);
+
+    // If invariant font not found and size < 9, try interpolating from size 9.
+    // Silent null on failure: the caller treats hasInvariantFont = false as "no
+    // invariant available" and falls back to the base font.
+    if (!invariantFontMetrics && BitmapText._shouldUseMinSize(fontProperties.fontSize)) {
+      invariantFontMetrics = BitmapText.#lookupInterpolatedMetricsForSmallSize(invariantFontProps);
+    }
+
+    // FontMetricsStore.getFontMetrics returns `undefined` when the font isn't
+    // in the bundle (e.g. invariant font set covers sizes 9–72 while the regular
+    // font set goes to 96; sizes 73+ have no invariant entry). The auto-redirect
+    // path that branches on this flag dereferences the metrics, so it has to be
+    // a real truthy check, not `!== null` (which lets undefined slip through).
+    const hasInvariantFont = invariantFontMetrics != null;
+
+    return { invariantFontProps, invariantFontMetrics, hasInvariantFont };
+  }
+
+  /**
+   * Resolve render context (invariant font + alias-resolved char array) — the
+   * shared prologue of measureText and drawTextFromAtlas. Both begin with the
+   * same three steps: resolve the font-invariant variant, alias-resolve the
+   * text, spread to a char array. Called once per render (not per glyph), so
+   * the extra function-call cost is irrelevant.
+   *
+   * @param {string} text - Raw input text
+   * @param {FontProperties} fontProperties - Caller's font properties
+   * @returns {{invariantFontProps: FontProperties, invariantFontMetrics: (FontMetrics|null), hasInvariantFont: boolean, chars: string[]}}
+   * @private
+   */
+  static #resolveRenderContext(text, fontProperties) {
+    const { invariantFontProps, invariantFontMetrics, hasInvariantFont } =
+      BitmapText.#resolveInvariantFont(fontProperties);
+    // Resolve all character aliases upfront using fast regex pass
+    // (2-386x faster than per-character resolution; see CharacterSets.resolveString)
+    const chars = [...CharacterSets.resolveString(text)];
+    return { invariantFontProps, invariantFontMetrics, hasInvariantFont, chars };
+  }
+
+  /**
+   * Scan an already-resolved character array for glyphs missing from the
+   * appropriate font (base or font-invariant). Shared by measureText and
+   * drawTextFromAtlas for pre-flight validation.
+   *
+   * @param {string[]} chars - Already-resolved character array (emoji→symbol applied)
+   * @param {FontMetrics} fontMetrics - Base font metrics
+   * @param {FontMetrics|null} invariantFontMetrics - Invariant font metrics (may be null)
+   * @param {boolean} hasInvariantFont - Whether the invariant font is available
+   * @returns {Set<string>} Set of characters missing from their target font
+   * @private
+   */
+  static #scanForMissingChars(chars, fontMetrics, invariantFontMetrics, hasInvariantFont) {
+    const missingChars = new Set();
+    for (const char of chars) {
+      if (char !== ' ') {
+        const isInvariant = hasInvariantFont && BitmapText.#isInvariantCharacter(char);
+        const checkFontMetrics = isInvariant ? invariantFontMetrics : fontMetrics;
+        if (!checkFontMetrics.hasGlyph(char)) {
+          missingChars.add(char);
+        }
+      }
+    }
+    return missingChars;
+  }
+
+  // Advancement = cursor delta AFTER drawing the i-th character (so the i+1-th
+  // sits in the right place). Composed from the glyph's metric advancement plus
+  // the kerning correction for the (i, i+1) pair.
+  //
+  // STRUCTURE: the shared float computation lives in #computeAdvancement_CssPx_Float;
+  // four specialised wrappers select unit (CssPx / PhysPx) and rounding mode
+  // (crisp / interpolated) so the per-glyph hot path is a monomorphic call to a
+  // single non-branching function — the isInterpolatedMetrics decision is hoisted
+  // out of the loop by the caller (see drawTextFromAtlas / measureText). The
+  // public dispatcher `calculateAdvancement_CssPx` is retained for the FAB caller
+  // (BitmapTextFAB.js) where per-call overhead doesn't matter.
+
+  /**
+   * Shared float computation: characterMetrics.width (or space override),
+   * minus kerning correction in 1/1000-em units scaled by fontSize.
+   * Returns an unrounded CSS-px float. Has NO defensive null checks — all callers
+   * must pass real textProperties and characterMetrics.
+   * @private
+   */
+  static #computeAdvancement_CssPx_Float(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics) {
+    let x_CssPx;
+    if (char === " ") {
+      const spaceOverride = fontMetrics.getSpaceAdvancementOverride();
+      x_CssPx = (spaceOverride !== null) ? spaceOverride : characterMetrics.width;
+    } else {
+      x_CssPx = characterMetrics.width;
+    }
+    const kerningCorrection = BitmapText.#getKerningCorrection(fontMetrics, char, nextChar, textProperties);
+    return x_CssPx - fontProperties.fontSize * kerningCorrection / BitmapText.KERNING_UNIT_DIVISOR;
+  }
+
+  // Hot-path PhysPx variants — look up characterMetrics, apply rounding mode,
+  // multiply by pixelDensity. Called once per glyph from the per-glyph loops in
+  // drawTextFromAtlas and #drawColoredTextBatched (via hoisted local reference).
+  static #calcAdvancementCrisp_PhysPx(fontMetrics, fontProperties, char, nextChar, textProperties) {
+    const characterMetrics = fontMetrics.getCharacterMetrics(char);
+    const x_CssPx = BitmapText.#computeAdvancement_CssPx_Float(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics);
+    return Math.round(x_CssPx) * fontProperties.pixelDensity;
+  }
+
+  static #calcAdvancementInterpolated_PhysPx(fontMetrics, fontProperties, char, nextChar, textProperties) {
+    const characterMetrics = fontMetrics.getCharacterMetrics(char);
+    const x_CssPx = BitmapText.#computeAdvancement_CssPx_Float(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics);
+    return x_CssPx * fontProperties.pixelDensity;
+  }
+
+  // CssPx variants for measureText — characterMetrics is passed in (caller already
+  // looked it up to read ascent/descent), no density multiply.
+  static #calcAdvancementCrisp_CssPx(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics) {
+    const x_CssPx = BitmapText.#computeAdvancement_CssPx_Float(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics);
+    return Math.round(x_CssPx);
+  }
+
+  static #calcAdvancementInterpolated_CssPx(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics) {
+    return BitmapText.#computeAdvancement_CssPx_Float(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics);
+  }
+
+  // Public API kept for BitmapTextFAB.js (builder-side kerning preview). Not hot;
+  // a single conditional at the end is fine here.
+  static calculateAdvancement_CssPx(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics = null) {
+    if (!characterMetrics) {
+      characterMetrics = fontMetrics.getCharacterMetrics(char);
+    }
+    const x_CssPx = BitmapText.#computeAdvancement_CssPx_Float(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics);
+    return fontMetrics.isInterpolatedMetrics ? x_CssPx : Math.round(x_CssPx);
+  }
+
+  static #getKerningCorrection(fontMetrics, char, nextChar, textProperties) {
+    if (textProperties.isKerningEnabled && nextChar) {
+      return fontMetrics.getKerningAdjustment(char, nextChar);
+    }
+    return 0;
+  }
+
+  /**
+   * Calculate y-offset to convert from specified textBaseline to 'bottom' baseline
+   *
+   * INTERNAL REFERENCE: BitmapText uses 'bottom' baseline for all dy calculations.
+   * All glyph dy offsets are pre-calculated assuming y is at the bottom of the em square.
+   * This method converts user's chosen baseline to that internal reference.
+   *
+   * COORDINATE SYSTEM: y increases downward (Canvas convention)
+   * All baseline distances are in CSS pixels and relative to alphabetic baseline (ab = 0)
+   *
+   * BASELINE GEOMETRY:
+   * - top: At fontBoundingBoxAscent above alphabetic
+   * - hanging: At hangingBaseline above alphabetic (Tibetan, Devanagari)
+   * - middle: At (fontBoundingBoxAscent - fontBoundingBoxDescent) / 2 above alphabetic
+   * - alphabetic: At 0 (reference point for Latin scripts)
+   * - ideographic: At ideographicBaseline below alphabetic (CJK scripts, negative value)
+   * - bottom: At fontBoundingBoxDescent below alphabetic
+   *
+   * @private
+   * @param {string} textBaseline - User's chosen baseline ('top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom')
+   * @param {Object} characterMetrics - Metrics containing baseline data (fba, fbd, hb, ab, ib)
+   * @returns {number} Offset in CSS pixels to add to y coordinate to reach 'bottom' baseline
+   */
+  static #calculateBaselineOffsetToBottom(textBaseline, characterMetrics) {
+    // Extract baseline measurements from character metrics
+    // These values are captured from browser's TextMetrics during font generation
+    const fba = characterMetrics.fontBoundingBoxAscent;    // Distance from alphabetic to top of em square (positive)
+    const fbd = characterMetrics.fontBoundingBoxDescent;   // Distance from alphabetic to bottom of em square (positive, downward)
+    const hb = characterMetrics.hangingBaseline;           // Distance from alphabetic to hanging baseline (positive, upward)
+    const ib = characterMetrics.ideographicBaseline;       // Distance from alphabetic to ideographic baseline (negative, downward)
+
+    // Convert from user's baseline to bottom baseline
+    // Formulas derived from geometric relationships in em square coordinate system
+    switch (textBaseline) {
+      case 'top':
+        // Top of em square → Bottom of em square
+        // Move down by full em height: ascent + descent
+        return fba + fbd;
+
+      case 'hanging':
+        // Hanging baseline → Bottom of em square
+        // Hanging is hb above alphabetic, bottom is fbd below alphabetic
+        // Total distance: hb (up to alphabetic) + fbd (down to bottom)
+        return hb + fbd;
+
+      case 'middle':
+        // Middle of em square → Bottom of em square
+        // Middle is halfway between top and bottom
+        // Distance from middle to bottom: (ascent + descent) / 2
+        return (fba + fbd) / 2;
+
+      case 'alphabetic':
+        // Alphabetic baseline → Bottom of em square
+        // Alphabetic is fbd above bottom (standard for Latin text)
+        return fbd;
+
+      case 'ideographic':
+        // Ideographic baseline → Bottom of em square
+        // Ideographic is ib pixels relative to alphabetic (negative = below alphabetic)
+        // Distance from ideographic to bottom: fbd + ib
+        // Example: if fbd=4 and ib=-4.0264, offset = 4 + (-4.0264) = -0.0264
+        // This small negative offset places ideographic just above bottom, matching native Canvas
+        return fbd + ib;
+
+      case 'bottom':
+        // Already at bottom baseline - no offset needed
+        return 0;
+
+      default:
+        // Unknown baseline value - warn and default to bottom
+        console.warn(`BitmapText: Unknown textBaseline '${textBaseline}', defaulting to 'bottom'. Valid values: top, hanging, middle, alphabetic, ideographic, bottom`);
+        return 0;
+    }
+  }
+
+  /**
+   * Calculate x-offset to convert from specified textAlign to 'left' alignment
+   *
+   * INTERNAL REFERENCE: BitmapText uses 'left' alignment for internal rendering.
+   * All text rendering starts from the x-coordinate and advances rightward.
+   * This method converts user's chosen alignment to that internal reference.
+   *
+   * COORDINATE SYSTEM: x increases rightward (Canvas convention)
+   * All measurements are in CSS pixels
+   *
+   * ALIGNMENT GEOMETRY:
+   * - left: x marks the start of the text (no offset needed)
+   * - center: x marks the center of the text (offset by -width/2)
+   * - right: x marks the end of the text (offset by -width)
+   *
+   * @private
+   * @param {string} textAlign - User's chosen alignment ('left', 'center', 'right')
+   * @param {number} textWidth_CssPx - Total width of the text in CSS pixels
+   * @returns {number} Offset in CSS pixels to add to x coordinate to reach 'left' alignment
+   */
+  static #calculateAlignmentOffsetToLeft(textAlign, textWidth_CssPx) {
+    // Convert from user's alignment to left alignment (internal reference)
+    switch (textAlign) {
+      case 'left':
+        // Already at left alignment - no offset needed
+        return 0;
+
+      case 'center':
+        // Center alignment → Left alignment
+        // Text is centered at x, need to shift left by half width to get start position
+        return -textWidth_CssPx / 2;
+
+      case 'right':
+        // Right alignment → Left alignment
+        // Text ends at x, need to shift left by full width to get start position
+        return -textWidth_CssPx;
+
+      default:
+        // Unknown alignment value - warn and default to left
+        console.warn(`BitmapText: Unknown textAlign '${textAlign}', defaulting to 'left'. Valid values: left, center, right`);
+        return 0;
+    }
+  }
+
+  /**
+   * Draw colored text using optimized batch rendering
+   *
+   * OPTIMIZATION: Instead of switching composite operations for EACH character:
+   * 1. Measure total text extent ONCE
+   * 2. Draw ALL glyphs to one scratch canvas (in original black form)
+   * 3. Apply color transformation ONCE using composite operation
+   * 4. Copy entire colored text block to main canvas ONCE
+   *
+   * This reduces expensive composite operation switches from N (per character) to 1 (per text string)
+   * Expected performance improvement: 2-5x faster for colored text rendering
+   *
+   * @private
+   * @param {CanvasRenderingContext2D} ctx - Main canvas context
+   * @param {string} text - Full text string to render
+   * @param {Array<string>} chars - Text split into characters
+   * @param {Object} startPosition_PhysPx - Starting position in physical pixels {x, y}
+   * @param {AtlasData} atlasData - Atlas data containing glyphs
+   * @param {FontMetrics} fontMetrics - Font metrics for measurements
+   * @param {FontProperties} fontProperties - Font configuration
+   * @param {TextProperties} textProperties - Text rendering configuration
+   * @returns {{missingAtlasChars: Set, placeholdersUsed: boolean}} Status information
+   */
+  static #drawColoredTextBatched(ctx, text, chars, startPosition_PhysPx, atlasData, fontMetrics, fontProperties, textProperties,
+                                  invariantFontProps, invariantFontMetrics, hasInvariantFont) {
+    const missingAtlasChars = new Set();
+    let placeholdersUsed = false;
+
+    // Step 1: Measure text to determine bounding box for scratch canvas
+    const measureResult = BitmapText.measureText(text, fontProperties, textProperties);
+    if (measureResult.status.code !== 0 || !measureResult.metrics) {
+      // Cannot measure - fallback to character-by-character rendering
+      console.warn('BitmapText: Batch rendering failed (cannot measure text), falling back to per-character rendering');
+      return { missingAtlasChars, placeholdersUsed };
+    }
+
+    const metrics = measureResult.metrics;
+
+    // invariantFontProps / invariantFontMetrics / hasInvariantFont are passed by the
+    // single caller (drawTextFromAtlas) so we don't redo #resolveInvariantFont here.
+    const invariantAtlasData = invariantFontMetrics ?
+      AtlasDataStore.getAtlasData(invariantFontProps) : null;
+    // Mirror drawTextFromAtlas's per-glyph branch — the caller has already
+    // validated the primary atlas (the if-isColoredText-&&-atlasValid guard
+    // at the entry to this batched path), so atlasValid is implicitly true
+    // for the primary font. Invariant atlas may not be loaded though, so
+    // we have to track it per-glyph and fall back to placeholder rectangles
+    // for invariant chars whose atlas isn't resident.
+    const invariantAtlasValid = invariantFontMetrics ?
+      BitmapText._isValidAtlas(invariantAtlasData) : false;
+
+    // Track current font to minimize lookups
+    let currentFontProps = fontProperties;
+    let currentFontMetrics = fontMetrics;
+    let currentAtlasData = atlasData;
+    let currentAtlasValid = true;  // caller validated primary; switches below may flip this
+
+    // Calculate scratch canvas dimensions in physical pixels
+    // CRITICAL: Use FONT bounding box (not actual text bounding box)
+    // This ensures we have room for ALL characters in the font, not just those in this text
+    // Example: "hello" has small actualBoundingBoxAscent (x-height only)
+    //          but we need room for "HELLO" (cap-height) when rendering any text
+    //
+    // CRITICAL: Calculate VISUAL width (actual pixel span) not typographic width (advancement)
+    //
+    // Canvas API Semantics:
+    // - metrics.width = sum of character advancements (includes kerning, represents "cursor advancement")
+    // - metrics.actualBoundingBoxLeft = distance from text start to leftmost pixel
+    // - metrics.actualBoundingBoxRight = distance from text start to rightmost pixel
+    // - Visual width = actualBoundingBoxLeft + actualBoundingBoxRight (actual pixels occupied)
+    //
+    // WIDTH DIMENSION ROUNDING: Use Math.ceil on physical pixels for visual width
+    // Canvas width must accommodate all pixels including those at fractional positions.
+    // Math.ceil ensures glyphs drawing at rounded-up positions won't be clipped.
+    // Example: visualWidth=24.4 → Math.ceil(24.4)=25 → canvas [0-24] → glyph at px 24 fits ✓
+    const visualWidth_CssPx = metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight;
+    const textWidth_PhysPx = Math.ceil(visualWidth_CssPx * fontProperties.pixelDensity);
+
+    // HEIGHT DIMENSION ROUNDING: MUST match GlyphFAB.js calculation EXACTLY
+    // CRITICAL: GlyphFAB.js (lines 247-252) uses Math.round on CSS pixels, then multiplies by pixelDensity
+    // The dy offsets in atlas were calculated based on THIS EXACT canvas height
+    const fontBoundingBoxHeight_CssPx = Math.round(
+      metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent
+    );
+    const textHeight_PhysPx = fontBoundingBoxHeight_CssPx * fontProperties.pixelDensity;
+
+    // Pre-round position offset values for consistent positioning throughout
+    // CRITICAL: These values are used both for positioning glyphs inside scratch canvas
+    // and for positioning the final scratch canvas copy to main canvas
+    // Using the SAME rounded values prevents 1-pixel misalignment from float rounding discrepancies
+    const actualBoundingBoxLeft_PhysPx = Math.round(metrics.actualBoundingBoxLeft * fontProperties.pixelDensity);
+
+    // CRITICAL: Baseline position must match GlyphFAB.js (GlyphFAB.js:288)
+    // GlyphFAB positions baseline at "canvas.height / pixelDensity - 1" in CSS pixels
+    // In physical pixels: baseline_y = canvas.height - pixelDensity
+    // The dy offsets in atlas are calculated relative to THIS baseline position
+    // Missing this offset causes descender clipping (bottom row of j, y, g, p, q cut off)
+    const baselineY_PhysPx = textHeight_PhysPx - fontProperties.pixelDensity;
+
+    // Safety check: ensure dimensions are reasonable
+    if (textWidth_PhysPx <= 0 || textHeight_PhysPx <= 0 || textWidth_PhysPx > 32000 || textHeight_PhysPx > 32000) {
+      console.warn(`BitmapText: Invalid scratch canvas dimensions (${textWidth_PhysPx}x${textHeight_PhysPx}), falling back`);
+      return { missingAtlasChars, placeholdersUsed };
+    }
+
+    // Step 2: Setup scratch canvas sized for entire text block
+    BitmapText.#coloredGlyphCanvas.width = textWidth_PhysPx;
+    BitmapText.#coloredGlyphCanvas.height = textHeight_PhysPx;
+    BitmapText.#coloredGlyphCtx.clearRect(0, 0, textWidth_PhysPx, textHeight_PhysPx);
+
+    // Step 3: Draw ALL glyphs to scratch canvas in their original black form
+    // Position relative to scratch canvas origin (not main canvas)
+    const position_PhysPx = {
+      // Horizontal: Start at actualBoundingBoxLeft to account for glyphs that protrude left (e.g., italic 'f')
+      // CRITICAL: Use pre-rounded value (line 950) for consistency with final copy (line 1017+)
+      x: actualBoundingBoxLeft_PhysPx,
+      // Vertical: Position baseline to match GlyphFAB.js rendering (GlyphFAB.js:288)
+      // Baseline is at "canvas.height / pixelDensity - 1" in CSS pixels
+      // which equals "canvas.height - pixelDensity" in physical pixels
+      // NOT at canvas bottom, but one pixel-row above it
+      // Glyphs draw upward/downward from here using their dy offsets from atlas
+      // CRITICAL: Must match glyph building baseline or dy offsets will be wrong (descenders clip)
+      y: baselineY_PhysPx
+    };
+
+    // Hoist the rounding-mode decision out of the per-glyph loop (constant per render).
+    const advancementFn_PhysPx = fontMetrics.isInterpolatedMetrics
+      ? BitmapText.#calcAdvancementInterpolated_PhysPx
+      : BitmapText.#calcAdvancementCrisp_PhysPx;
+
+    // Note: chars array is already resolved (emojis→symbols) from caller
+    for (let i = 0; i < chars.length; i++) {
+      const currentChar = chars[i];
+      const nextChar = chars[i + 1];
+
+      // FAST CHECK: Is this a font-invariant character? (string.includes on 18 chars = ~1-2ns)
+      const isInvariant = hasInvariantFont && BitmapText.#isInvariantCharacter(currentChar);
+
+      // Switch font ONLY if needed (avoids redundant assignments)
+      if (isInvariant && currentFontProps !== invariantFontProps) {
+        currentFontProps = invariantFontProps;
+        currentFontMetrics = invariantFontMetrics;
+        currentAtlasData = invariantAtlasData;
+        currentAtlasValid = invariantAtlasValid;
+      } else if (!isInvariant && currentFontProps !== fontProperties) {
+        // Switch back to base font
+        currentFontProps = fontProperties;
+        currentFontMetrics = fontMetrics;
+        currentAtlasData = atlasData;
+        currentAtlasValid = true;  // caller validated primary atlas
+      }
+
+      // One dict lookup per non-space glyph; pre-checking with hasPositioning
+      // would redo the same lookup (it's `_placements[char] !== undefined`).
+      // Spaces have no visual glyph and are skipped here; advancement still applies.
+      if (currentChar !== ' ') {
+        if (!currentAtlasValid) {
+          // Active atlas isn't loaded (typical case: invariant atlas not yet
+          // resident, primary still warm). Mirror drawTextFromAtlas's
+          // per-glyph branch — draw a placeholder rectangle in textColor.
+          // We draw to the MAIN canvas, not the scratch canvas: #drawPlaceholderRectangle
+          // already accepts textColor as a parameter, so the rect comes out in
+          // the right colour without relying on the source-in tinting step
+          // (which would also work, but ties two unrelated mechanisms together).
+          // The scratch→main coordinate mapping mirrors the final drawImage at
+          // the end of this function.
+          missingAtlasChars.add(currentChar);
+          placeholdersUsed = true;
+          const characterMetrics = currentFontMetrics.getCharacterMetrics(currentChar);
+          if (characterMetrics) {
+            const placeholderPosition = {
+              x: Math.round(startPosition_PhysPx.x) + (position_PhysPx.x - actualBoundingBoxLeft_PhysPx),
+              y: Math.round(startPosition_PhysPx.y)
+            };
+            BitmapText.#drawPlaceholderRectangle(ctx, currentChar, placeholderPosition, characterMetrics, textProperties.textColor);
+          }
+        } else {
+          const p = currentAtlasData.atlasPositioning._placements[currentChar];
+          if (p === undefined) {
+            missingAtlasChars.add(currentChar);
+            placeholdersUsed = true;
+          } else {
+            const atlasImage = currentAtlasData.atlasImage.image;
+            BitmapText.#coloredGlyphCtx.drawImage(
+              atlasImage,
+              p.xInAtlas, p.yInAtlas,
+              p.tightWidth, p.tightHeight,
+              Math.round(position_PhysPx.x + p.dx),
+              Math.round(position_PhysPx.y + p.dy),
+              p.tightWidth, p.tightHeight
+            );
+          }
+        }
+      }
+
+      // Advance position for next character
+      position_PhysPx.x += advancementFn_PhysPx(
+        currentFontMetrics, currentFontProps, currentChar, nextChar, textProperties
+      );
+    }
+
+    // Step 4: Apply color transformation ONCE to entire text
+    // This is the key optimization - only ONE composite operation instead of N
+    BitmapText.#coloredGlyphCtx.globalCompositeOperation = 'source-in';
+    BitmapText.#coloredGlyphCtx.fillStyle = textProperties.textColor;
+    BitmapText.#coloredGlyphCtx.fillRect(0, 0, textWidth_PhysPx, textHeight_PhysPx);
+
+    // Reset composite operation for future use
+    BitmapText.#coloredGlyphCtx.globalCompositeOperation = 'source-over';
+
+    // Step 5: Copy entire colored text block to main canvas ONCE
+    // POSITIONING GEOMETRY:
+    // - Main canvas: startPosition_PhysPx.y is at the bottom baseline (textBaseline='bottom')
+    // - Scratch canvas: baseline is at y = baselineY_PhysPx (textHeight - pixelDensity, NOT at canvas bottom)
+    // - To align baselines: scratch canvas top = startPosition_PhysPx.y - baselineY_PhysPx
+    // - Horizontal: account for actualBoundingBoxLeft offset (glyphs that protrude left)
+    // CRITICAL: Use baselineY_PhysPx (line 957) not textHeight_PhysPx to account for baseline offset
+    ctx.drawImage(
+      BitmapText.#coloredGlyphCanvas,
+      0, 0,
+      textWidth_PhysPx, textHeight_PhysPx,
+      Math.round(startPosition_PhysPx.x) - actualBoundingBoxLeft_PhysPx,
+      Math.round(startPosition_PhysPx.y) - baselineY_PhysPx,
+      textWidth_PhysPx, textHeight_PhysPx
+    );
+
+    return { missingAtlasChars, placeholdersUsed };
+  }
+
+  // Rendering optimizations:
+  // 1. ✓ IMPLEMENTED: Black text fast path inlined into drawTextFromAtlas (no dispatch per glyph)
+  // 2. ✓ IMPLEMENTED: Batch colored text rendering (single composite operation per text string)
+  // 3. FUTURE: Cache colored glyphs in LRU cache to avoid re-coloring same characters
+  static #createColoredGlyph(atlasImage, xInAtlas, yInAtlas, tightWidth, tightHeight, textColor) {
+    // Setup temporary canvas, same size as the glyph
+    BitmapText.#coloredGlyphCanvas.width = tightWidth;
+    BitmapText.#coloredGlyphCanvas.height = tightHeight;
+    BitmapText.#coloredGlyphCtx.clearRect(0, 0, tightWidth, tightHeight);
+
+    // Draw original glyph
+    BitmapText.#coloredGlyphCtx.globalCompositeOperation = 'source-over';
+    BitmapText.#coloredGlyphCtx.drawImage(
+      atlasImage,
+      xInAtlas, yInAtlas,
+      tightWidth, tightHeight,
+      0, 0,
+      tightWidth, tightHeight
+    );
+
+    // Apply color
+    BitmapText.#coloredGlyphCtx.globalCompositeOperation = 'source-in';
+    BitmapText.#coloredGlyphCtx.fillStyle = textColor;
+    BitmapText.#coloredGlyphCtx.fillRect(0, 0, tightWidth, tightHeight);
+
+    return BitmapText.#coloredGlyphCanvas;
+  }
+
+  static #renderGlyphToMainCanvas(ctx, coloredGlyphCanvas, position_PhysPx, tightWidth, tightHeight, dx, dy) {
+    // Round coordinates at draw stage for crisp, pixel-aligned rendering
+    // Position tracking uses floats to avoid accumulation errors, but final
+    // draw coordinates must be integers to prevent subpixel antialiasing
+    // see https://stackoverflow.com/a/6061102
+    ctx.drawImage(
+      coloredGlyphCanvas,
+      0, 0,
+      tightWidth, tightHeight,
+      Math.round(position_PhysPx.x + dx),
+      Math.round(position_PhysPx.y + dy),
+      tightWidth, tightHeight
+    );
+  }
+
+  static #drawPlaceholderRectangle(ctx, char, position_PhysPx, characterMetrics, textColor) {
+    if (char === ' ') return;
+
+    if (characterMetrics.actualBoundingBoxLeft === undefined ||
+      characterMetrics.actualBoundingBoxRight === undefined ||
+      characterMetrics.actualBoundingBoxAscent === undefined ||
+      characterMetrics.actualBoundingBoxDescent === undefined) {
+      console.warn(`Missing bounding box metrics for character '${char}'`);
+      return;
+    }
+
+    const pixelDensity = characterMetrics.pixelDensity || 1;
+
+    // Use CHARACTER-SPECIFIC actual bounding box (not font-wide fontBoundingBox)
+    // This makes:
+    // - 'a' shorter than 'A' (x-height vs cap-height)
+    // - 'g' extends below baseline (shows descender)
+    // - '.' very short (near baseline only)
+    // Width: actualBoundingBoxLeft + actualBoundingBoxRight (CSS px) * pixelDensity → physical px
+    // Height: actualBoundingBoxAscent + actualBoundingBoxDescent (CSS px) * pixelDensity → physical px
+    const width_PhysPx = Math.round(
+      characterMetrics.actualBoundingBoxLeft + characterMetrics.actualBoundingBoxRight
+    ) * pixelDensity;
+
+
+    const height_PhysPx = Math.round(
+      characterMetrics.actualBoundingBoxAscent + characterMetrics.actualBoundingBoxDescent
+    ) * pixelDensity;
+
+    // X position: Account for actualBoundingBoxLeft (glyphs may protrude left, e.g., italic 'f')
+    // This matches the dx offset calculation in atlas rendering (AtlasPositioningFAB.js:92)
+    const rectX_PhysPx = position_PhysPx.x
+      - Math.round(characterMetrics.actualBoundingBoxLeft) * pixelDensity;
+
+    // Y position calculation:
+    // - position_PhysPx.y is at em square BOTTOM (textBaseline='bottom')
+    // - Em square bottom is fontBoundingBoxDescent below the alphabetic baseline
+    // - So: alphabetic_baseline_y = position_PhysPx.y - fontBoundingBoxDescent * pixelDensity
+    // - Character top = alphabetic_baseline_y - actualBoundingBoxAscent * pixelDensity
+    // Result: rectY = position_PhysPx.y - fontBoundingBoxDescent * pixelDensity - actualBoundingBoxAscent * pixelDensity
+    const rectY_PhysPx = position_PhysPx.y
+      - characterMetrics.fontBoundingBoxDescent * pixelDensity
+      - characterMetrics.actualBoundingBoxAscent * pixelDensity;
+
+    const actualColor = textColor || 'black';
+
+    // Draw character-specific rectangle
+    // Round coordinates at draw stage for crisp, pixel-aligned rendering
+    // Position tracking uses floats to avoid accumulation errors, but final
+    // draw coordinates must be integers to prevent subpixel antialiasing
+    ctx.fillStyle = actualColor;
+    ctx.fillRect(
+      Math.round(rectX_PhysPx),
+      Math.round(rectY_PhysPx),
+      Math.round(width_PhysPx),
+      Math.round(height_PhysPx)
+    );
+  }
+
+  /**
+   * Check if atlas data is valid and ready for rendering
+   * @private
+   * @param {*} atlasData - Potential AtlasData instance
+   * @returns {boolean} True if atlasData is an AtlasData instance and is valid
+   */
+  static _isValidAtlas(atlasData) {
+    if (!(atlasData instanceof AtlasData)) {
+      return false;
+    }
+    return atlasData.isValid();
+  }
+
+  // ============================================
+  // Testing Helpers
+  // ============================================
+
+  /**
+   * Reset all state for testing
+   * @private
+   */
+  static __resetForTesting() {
+    FontMetricsStore.clear();
+    AtlasDataStore.clear();
+    // Clear platform font loader state
+    if (FontLoaderBase._loadingPromises) {
+      FontLoaderBase._loadingPromises.clear();
+    }
+    if (FontLoaderBase._tempAtlasPackages) {
+      FontLoaderBase._tempAtlasPackages = {};
+    }
+    if (FontLoaderBase._pendingAtlases) {
+      FontLoaderBase._pendingAtlases.clear();
+    }
+    // Reset platform font loader configuration
+    if (FontLoaderBase.setFontDirectory) {
+      FontLoaderBase.setFontDirectory(null);
+    }
+    BitmapText.#coloredGlyphCanvas = null;
+    BitmapText.#coloredGlyphCtx = null;
+    BitmapText.#canvasFactory = null;
+    BitmapText._fontLoader = null;
+  }
+
+}
+
+// BitmapTextRegistration - Cold-path methods for BitmapText
+//
+// Extends BitmapText with registration, loading, storage-access, and query
+// methods that run once per app launch (or rarely). Concatenated AFTER
+// BitmapText.js by the bundler; methods are attached directly to the
+// existing BitmapText class so the public API surface is unchanged.
+//
+// Hot rendering code (drawTextFromAtlas, measureText, per-glyph helpers)
+// stays in BitmapText.js. The config API (setFontDirectory, setCanvasFactory,
+// configure) also stays there because it touches private render state
+// (#coloredGlyphCanvas, #coloredGlyphCtx, #canvasFactory).
+//
+// Aliases (BitmapText.rBundle / .pBundle / .a) live at the bottom of this
+// file because they reference registerBundle / registerPositioningBundle /
+// registerAtlas, which are defined here.
+
+// ============================================
+// Internal helpers
+// ============================================
+
+/**
+ * Redirect idString for sizes < 9 to size 9.
+ * @param {string} idString - Original font ID string
+ * @param {boolean} silent - If true, suppress console warning
+ * @returns {{redirected: boolean, idString: string, originalSize: number}} Redirection result
+ */
+BitmapText._redirectIdStringIfNeeded = function(idString, silent = false) {
+  const fontProps = FontProperties.fromIDString(idString);
+
+  if (BitmapText._shouldUseMinSize(fontProps.fontSize)) {
+    const minSizeProps = BitmapText._createFontPropsAtMinSize(fontProps);
+    if (!silent) {
+      console.warn(
+        `BitmapText: Font size ${fontProps.fontSize}px requested. Redirecting to size ${BitmapText.MIN_RENDERABLE_SIZE}px ` +
+        `(minimum supported size). Sizes < ${BitmapText.MIN_RENDERABLE_SIZE}px render using interpolated placeholder rectangles.`
+      );
+    }
+    return {
+      redirected: true,
+      idString: minSizeProps.idString,
+      originalSize: fontProps.fontSize
+    };
+  }
+
+  return {
+    redirected: false,
+    idString: idString,
+    originalSize: fontProps.fontSize
+  };
+};
+
+/**
+ * Convert registration parameters to ID string.
+ * Used by registerAtlas to build the idString from per-asset arguments.
+ * @param {number} density - Pixel density
+ * @param {string} fontFamily - Font family name
+ * @param {number} styleIdx - Style index (0=normal, 1=italic, 2=oblique)
+ * @param {number} weightIdx - Weight index (0=normal, 1=bold, or numeric)
+ * @param {number} size - Font size
+ * @returns {string} ID string (e.g., "density-1-0-Arial-style-normal-weight-normal-size-19-0")
+ */
+BitmapText._parametersToIDString = function(density, fontFamily, styleIdx, weightIdx, size) {
+  // Decompress style and weight indices
+  const style = styleIdx === 0 ? 'normal' : (styleIdx === 1 ? 'italic' : 'oblique');
+  const weight = weightIdx === 0 ? 'normal' : (weightIdx === 1 ? 'bold' : String(weightIdx));
+
+  // Format density (1 → 1-0, 1.5 → 1-5)
+  const densityStr = String(density);
+  const densityFormatted = densityStr.includes('.') ? densityStr.replace('.', '-') : `${densityStr}-0`;
+
+  // Format size (18 → 18-0, 18.5 → 18-5)
+  const sizeStr = String(size);
+  const sizeFormatted = sizeStr.includes('.') ? sizeStr.replace('.', '-') : `${sizeStr}-0`;
+
+  // Reconstruct full ID
+  return `density-${densityFormatted}-${fontFamily}-style-${style}-weight-${weight}-size-${sizeFormatted}`;
+};
+
+// ============================================
+// Registration API (called by asset files)
+// ============================================
+
+/**
+ * Ensure the metrics bundle has been loaded, decoded, and registered. Use this
+ * when you want to enumerate available fonts (via `FontManifest.allFontIDs()`)
+ * before calling `loadFont`/`loadFonts`. Idempotent: safe to call multiple times.
+ * @returns {Promise<void>}
+ */
+BitmapText.ensureMetricsBundleLoaded = async function() {
+  BitmapText._ensureFontLoader();
+  return FontLoaderBase.loadMetricsFile();
+};
+
+/**
+ * Ensure the per-density positioning bundle has been loaded, decoded, and
+ * registered. Idempotent and per-density. Apps that pick one density at
+ * startup pay the cost once for the density they actually use.
+ * @param {number} pixelDensity - Pixel density to load (1, 1.5, 2, ...)
+ * @returns {Promise<void>}
+ */
+BitmapText.ensurePositioningBundleLoaded = async function(pixelDensity) {
+  BitmapText._ensureFontLoader();
+  return FontLoaderBase.loadPositioningFile(pixelDensity);
+};
+
+/**
+ * Register the metrics bundle (called once by `font-assets/metrics-bundle.js`).
+ *
+ * Kicks off async base64 → deflate-raw → JSON decode. Stores the resulting
+ * Promise on FontLoaderBase so `loadFont()` can await it.
+ *
+ * @param {string} b64 - Base64-encoded deflate-raw stream containing the bundle JSON.
+ */
+BitmapText.registerBundle = function(b64) {
+  BitmapText._ensureFontLoader();
+  FontLoaderBase._bundleDecodePromise = FontLoaderBase.processBundle(b64);
+};
+
+/**
+ * Register a per-density positioning bundle (called once by
+ * `font-assets/positioning-bundle-density-<N>.js`).
+ *
+ * @param {number} pixelDensity - Pixel density this bundle is for.
+ * @param {string} b64 - Base64-encoded deflate-raw stream containing the bundle JSON.
+ */
+BitmapText.registerPositioningBundle = function(pixelDensity, b64) {
+  BitmapText._ensureFontLoader();
+  FontLoaderBase._positioningBundleDecodePromises.set(
+    pixelDensity,
+    FontLoaderBase.processPositioningBundle(pixelDensity, b64)
+  );
+};
+
+/**
+ * Register atlas from atlas-*.js file (base64 only, positioning reconstructed later)
+ * Delegates to the platform font loader which handles platform-specific details
+ * @param {number} density - Pixel density (e.g., 1 or 1.5)
+ * @param {string} fontFamily - Font family name (e.g., 'Arial')
+ * @param {number} styleIdx - Style index (0=normal, 1=italic, 2=oblique)
+ * @param {number} weightIdx - Weight index (0=normal, 1=bold, or numeric weight)
+ * @param {number} size - Font size (e.g., 18 or 18.5)
+ * @param {string} base64Data - Base64-encoded atlas data
+ */
+BitmapText.registerAtlas = function(density, fontFamily, styleIdx, weightIdx, size, base64Data) {
+  BitmapText._ensureFontLoader();
+  const fullIDString = BitmapText._parametersToIDString(density, fontFamily, styleIdx, weightIdx, size);
+  FontLoaderBase.registerAtlas(fullIDString, base64Data);
+};
+
+// ============================================
+// Loading API (Delegates to the platform font loader)
+// ============================================
+
+/**
+ * Load a single font
+ * @param {string} idString - Font ID string
+ * @param {Object} options - Loading options
+ * @param {Function} [options.onProgress] - Progress callback (loaded, total)
+ * @param {boolean} [options.isFileProtocol] - Whether using file:// protocol
+ * @returns {Promise} Resolves when font is loaded
+ */
+BitmapText.loadFont = async function(idString, options = {}) {
+  BitmapText._ensureFontLoader();
+  // Redirect sizes < 9 to size 9
+  const redirection = BitmapText._redirectIdStringIfNeeded(idString);
+  return BitmapText._fontLoader.loadFont(redirection.idString, options, BitmapText);
+};
+
+/**
+ * Load multiple fonts
+ * @param {Array<string>} idStrings - Array of font ID strings
+ * @param {Object} options - Loading options
+ * @param {Function} [options.onProgress] - Progress callback (loaded, total)
+ * @param {boolean} [options.isFileProtocol] - Whether using file:// protocol
+ * @param {boolean} [options.loadMetrics] - Load metrics (default: true)
+ * @param {boolean} [options.loadAtlases] - Load atlases (default: true)
+ * @returns {Promise} Resolves when all fonts are loaded
+ */
+BitmapText.loadFonts = async function(idStrings, options = {}) {
+  BitmapText._ensureFontLoader();
+  // Redirect sizes < 9 to size 9 for all idStrings
+  const redirectedIdStrings = idStrings.map(idString => {
+    const redirection = BitmapText._redirectIdStringIfNeeded(idString);
+    return redirection.idString;
+  });
+  return BitmapText._fontLoader.loadFonts(redirectedIdStrings, options, BitmapText);
+};
+
+/**
+ * Load only metrics for fonts
+ * @param {Array<string>} idStrings - Array of font ID strings
+ * @param {Object} options - Loading options
+ * @returns {Promise} Resolves when metrics are loaded
+ */
+BitmapText.loadMetrics = async function(idStrings, options = {}) {
+  BitmapText._ensureFontLoader();
+  // Redirect sizes < 9 to size 9 for all idStrings
+  const redirectedIdStrings = idStrings.map(idString => {
+    const redirection = BitmapText._redirectIdStringIfNeeded(idString);
+    return redirection.idString;
+  });
+  return BitmapText._fontLoader.loadMetrics(redirectedIdStrings, options, BitmapText);
+};
+
+/**
+ * Load only atlases for fonts (metrics must be loaded first)
+ * @param {Array<string>} idStrings - Array of font ID strings
+ * @param {Object} options - Loading options
+ * @returns {Promise} Resolves when atlases are loaded
+ */
+BitmapText.loadAtlases = async function(idStrings, options = {}) {
+  BitmapText._ensureFontLoader();
+  // Redirect sizes < 9 to size 9 for all idStrings
+  const redirectedIdStrings = idStrings.map(idString => {
+    const redirection = BitmapText._redirectIdStringIfNeeded(idString);
+    return redirection.idString;
+  });
+  return BitmapText._fontLoader.loadAtlases(redirectedIdStrings, options, BitmapText);
+};
+
+// ============================================
+// Builder/Testing Tool API
+// ============================================
+
+/**
+ * Set atlas data for a font (for builder/testing tools)
+ * Public API - delegates to AtlasDataStore
+ * @param {FontProperties} fontProperties - Font configuration
+ * @param {AtlasData} atlasData - Atlas data to store
+ */
+BitmapText.setAtlasData = function(fontProperties, atlasData) {
+  AtlasDataStore.setAtlasData(fontProperties, atlasData);
+};
+
+/**
+ * Get atlas data for a font
+ * Public API - delegates to AtlasDataStore
+ * @param {FontProperties} fontProperties - Font configuration
+ * @returns {AtlasData|undefined} Atlas data or undefined if not found
+ */
+BitmapText.getAtlasData = function(fontProperties) {
+  return AtlasDataStore.getAtlasData(fontProperties);
+};
+
+/**
+ * Delete atlas data for a font
+ * Public API - delegates to AtlasDataStore
+ * @param {FontProperties} fontProperties - Font configuration
+ * @returns {boolean} True if atlas was deleted
+ */
+BitmapText.deleteAtlas = function(fontProperties) {
+  return AtlasDataStore.deleteAtlas(fontProperties);
+};
+
+/**
+ * Set font metrics for a font (for builder/testing tools)
+ * Public API - delegates to FontMetricsStore
+ * @param {FontProperties} fontProperties - Font configuration
+ * @param {FontMetrics} fontMetrics - Font metrics to store
+ */
+BitmapText.setFontMetrics = function(fontProperties, fontMetrics) {
+  FontMetricsStore.setFontMetrics(fontProperties, fontMetrics);
+};
+
+/**
+ * Get font metrics for a font
+ * Public API - delegates to FontMetricsStore
+ * @param {FontProperties} fontProperties - Font configuration
+ * @returns {FontMetrics|undefined} Font metrics or undefined if not found
+ */
+BitmapText.getFontMetrics = function(fontProperties) {
+  return FontMetricsStore.getFontMetrics(fontProperties);
+};
+
+/**
+ * Unload both metrics and atlas for a font
+ * @param {string} idString - Font ID string
+ */
+BitmapText.unloadFont = function(idString) {
+  const fontProperties = FontProperties.fromIDString(idString);
+  FontMetricsStore.deleteFontMetrics(fontProperties);
+  AtlasDataStore.deleteAtlas(fontProperties);
+};
+
+/**
+ * Unload multiple fonts
+ * @param {Array<string>} idStrings - Array of font ID strings
+ */
+BitmapText.unloadFonts = function(idStrings) {
+  idStrings.forEach(id => BitmapText.unloadFont(id));
+};
+
+/**
+ * Unload metrics (cascades to unload atlas)
+ * @param {string} idString - Font ID string
+ */
+BitmapText.unloadMetrics = function(idString) {
+  const fontProperties = FontProperties.fromIDString(idString);
+  FontMetricsStore.deleteFontMetrics(fontProperties);
+  AtlasDataStore.deleteAtlas(fontProperties); // Cascade: no metrics = no atlas
+};
+
+/**
+ * Unload atlas only (keeps metrics)
+ * @param {string} idString - Font ID string
+ */
+BitmapText.unloadAtlas = function(idString) {
+  const fontProperties = FontProperties.fromIDString(idString);
+  AtlasDataStore.deleteAtlas(fontProperties);
+};
+
+/**
+ * Unload all fonts (both metrics and atlases)
+ */
+BitmapText.unloadAllFonts = function() {
+  FontMetricsStore.clear();
+  AtlasDataStore.clear();
+};
+
+/**
+ * Unload all atlases (keep metrics)
+ */
+BitmapText.unloadAllAtlases = function() {
+  AtlasDataStore.clear();
+};
+
+/**
+ * Unload the metrics bundle: clears MetricsBundleStore records, drops the
+ * cached bundle promises, and (in browser) detaches the injected <script>
+ * element from `document.head`. Safe to call when the bundle was never
+ * loaded.
+ *
+ * Note: this does NOT clear FontManifest; callers wanting a full reset can
+ * call `FontManifest.clear()` separately. See `FontLoaderBase.unloadMetricsBundle`
+ * for the in-flight-load race contract.
+ */
+BitmapText.unloadMetricsBundle = function() {
+  BitmapText._ensureFontLoader();
+  FontLoaderBase.unloadMetricsBundle();
+};
+
+/**
+ * Unload the per-density positioning bundle: clears PositioningBundleStore
+ * records + materialised AtlasPositionings for that density, drops the
+ * cached per-density promises, and (in browser) detaches the injected
+ * <script> element from `document.head`. Safe to call when the bundle was
+ * never loaded.
+ *
+ * In-flight atlas loads of `pixelDensity` may complete after this call and
+ * transiently re-populate the store; callers needing a clean unload should
+ * first retire those loads. See `FontLoaderBase.unloadPositioningBundle`
+ * for the full contract.
+ *
+ * @param {number} pixelDensity
+ */
+BitmapText.unloadPositioningBundle = function(pixelDensity) {
+  BitmapText._ensureFontLoader();
+  FontLoaderBase.unloadPositioningBundle(pixelDensity);
+};
+
+// ============================================
+// Query API
+// ============================================
+
+/**
+ * Check if font is fully loaded (both metrics and atlas)
+ * For sizes < 9, checks if size 9 metrics exist (atlas always false for < 9)
+ * @param {string} idString - Font ID string
+ * @returns {boolean} True if both metrics and atlas are loaded
+ */
+BitmapText.hasFont = function(idString) {
+  return BitmapText.hasMetrics(idString) && BitmapText.hasAtlas(idString);
+};
+
+/**
+ * Check if metrics are loaded for a font
+ * For sizes < 9, checks if size 9 metrics exist
+ * @param {string} idString - Font ID string
+ * @returns {boolean} True if metrics are loaded
+ */
+BitmapText.hasMetrics = function(idString) {
+  // Redirect sizes < 9 to check for 9 metrics (silent to avoid log spam)
+  const redirection = BitmapText._redirectIdStringIfNeeded(idString, true);
+  const fontProperties = FontProperties.fromIDString(redirection.idString);
+  return FontMetricsStore.hasFontMetrics(fontProperties);
+};
+
+/**
+ * Check if atlas is loaded for a font
+ * For sizes < 9, always returns false (these sizes use placeholder mode)
+ * @param {string} idString - Font ID string
+ * @returns {boolean} True if atlas is loaded
+ */
+BitmapText.hasAtlas = function(idString) {
+  const fontProperties = FontProperties.fromIDString(idString);
+
+  // Sizes < 9 never have atlases (always use placeholder mode)
+  if (BitmapText._shouldUseMinSize(fontProperties.fontSize)) {
+    return false;
+  }
+
+  const atlasData = AtlasDataStore.getAtlasData(fontProperties);
+  return atlasData && BitmapText._isValidAtlas(atlasData);
+};
+
+/**
+ * Get list of fully loaded fonts (both metrics and atlas)
+ * @returns {Array<string>} Array of font ID strings
+ */
+BitmapText.getLoadedFonts = function() {
+  const loaded = [];
+  for (const key of FontMetricsStore.getAvailableFonts()) {
+    const fontProperties = FontProperties.fromKey(key);
+    const atlasData = AtlasDataStore.getAtlasData(fontProperties);
+    if (atlasData && BitmapText._isValidAtlas(atlasData)) {
+      loaded.push(fontProperties.idString);
+    }
+  }
+  return loaded;
+};
+
+/**
+ * Get list of fonts with loaded metrics
+ * @returns {Array<string>} Array of font ID strings
+ */
+BitmapText.getLoadedMetrics = function() {
+  const loaded = [];
+  for (const key of FontMetricsStore.getAvailableFonts()) {
+    const fontProperties = FontProperties.fromKey(key);
+    loaded.push(fontProperties.idString);
+  }
+  return loaded;
+};
+
+/**
+ * Get list of fonts with loaded atlases
+ * @returns {Array<string>} Array of font ID strings
+ */
+BitmapText.getLoadedAtlases = function() {
+  const loaded = [];
+  for (const key of AtlasDataStore.getAvailableFonts()) {
+    const fontProperties = FontProperties.fromKey(key);
+    const atlasData = AtlasDataStore.getAtlasData(fontProperties);
+    if (BitmapText._isValidAtlas(atlasData)) {
+      loaded.push(fontProperties.idString);
+    }
+  }
+  return loaded;
+};
+
+// ============================================
+// Aliases (load-bearing - referenced by every checked-in asset .js file)
+// ============================================
+// TIER 6b OPTIMIZATION: Short aliases for registration methods (saves ~15 bytes per file)
+BitmapText.rBundle = BitmapText.registerBundle;
+BitmapText.pBundle = BitmapText.registerPositioningBundle;
+BitmapText.a = BitmapText.registerAtlas;
+
+// Static utility class for expanding minified font metrics data.
+//
+// Reverses MetricsMinifier.minify into a FontMetrics instance. Wire format
+// documented in MetricsMinifier — six slots `[kv, k, b, v, chars, s]`.
+// Requires BundleCodec.js + FontMetrics.js + CharacterSets.js to be loaded first.
+
+class MetricsExpander {
+  constructor() {
+    throw new Error('MetricsExpander cannot be instantiated - use static methods');
+  }
+
+  /**
+   * Expand a minified 6-slot record into a FontMetrics instance.
+   *
+   * @param {Array} minified - 6-element [kv, k, b, v, chars, s]
+   * @param {Array<string>} [characterSet=CharacterSets.FONT_SPECIFIC_CHARS]
+   * @param {number} [overrideDensity] - Bundle records ship with pd=null; the
+   *   runtime supplies the density to inject into baseline[5] here.
+   * @returns {FontMetrics}
+   * @throws {Error} On format mismatch
+   */
+  static expand(minified, characterSet = CharacterSets.FONT_SPECIFIC_CHARS, overrideDensity) {
+    if (typeof FontMetrics === 'undefined') {
+      throw new Error('FontMetrics class not found. Please ensure FontMetrics.js is loaded before MetricsExpander.js');
+    }
+    if (!Array.isArray(minified) || minified.length !== 6) {
+      throw new Error(
+        `Invalid format - expected 6-element array, got ${typeof minified === 'object' ? 'array' : typeof minified} with ${minified?.length || 0} elements.\n` +
+        `Please regenerate font assets with the current version.`
+      );
+    }
+
+    const [kvInts, k, bArr, vEnc, charsEnc, s] = minified;
+
+    // Value tables (×10000 ints → floats).
+    const kv = kvInts.map(MetricsExpander.#toFloat);
+    const v  = BundleCodec.decodeDeltaVarIntB64(vEnc).map(MetricsExpander.#toFloat);
+
+    // Baseline. baseline[5] (pixelDensity) is null in the bundle; the runtime
+    // supplies it here.
+    if (!Array.isArray(bArr) || bArr.length !== 6) {
+      throw new Error(`Invalid baseline array - expected 6 elements, got ${bArr?.length}.`);
+    }
+    const baseline = {
+      fba: bArr[0], fbd: bArr[1], hb: bArr[2], ab: bArr[3], ib: bArr[4],
+      pd:  overrideDensity !== undefined ? overrideDensity : bArr[5],
+    };
+
+    // Per-character 5-index stream.
+    const flat = BundleCodec.decodeVarIntB64(charsEnc);
+    const expectedLen = characterSet.length * 5;
+    if (flat.length !== expectedLen) {
+      throw new Error(
+        `Char stream length ${flat.length} does not match ${expectedLen} ` +
+        `(${characterSet.length} chars × 5). Bundle and runtime character sets disagree.`
+      );
+    }
+
+    const expandedData = {
+      kerningTable: MetricsExpander.#expandKerningTable(k, kv, characterSet),
+      characterMetrics: MetricsExpander.#expandCharacterMetrics(flat, baseline, v, characterSet),
+      spaceAdvancementOverrideForSmallSizesInPx: s,
+    };
+
+    return new FontMetrics(expandedData);
+  }
+
+  // ----- internals -----
+
+  static #toFloat(n) { return n / 10000; }
+
+  // Reverse the 2D range compression + value indexing.
+  //   pass 1 (left):  "A-B":{"s":0} → {A:{s:0}, B:{s:0}}
+  //   pass 2 (right): {A:{"0-1":0}} → {A:{0:0, 1:0}}
+  //   pass 3 (values): A.s = kv[index]
+  static #expandKerningTable(minified, kv, characterSet) {
+    const leftExpanded = MetricsExpander.#expandLeftSide(minified, characterSet);
+    const expanded = {};
+    for (const [leftChar, pairs] of Object.entries(leftExpanded)) {
+      const rightExpanded = MetricsExpander.#expandKerningPairs(pairs, characterSet);
+      expanded[leftChar] = {};
+      for (const [rightChar, index] of Object.entries(rightExpanded)) {
+        expanded[leftChar][rightChar] = kv[index];
+      }
+    }
+    return expanded;
+  }
+
+  static #expandLeftSide(minified, characterSet) {
+    const expanded = {};
+    for (const [key, obj] of Object.entries(minified)) {
+      if (key.includes('-') && key.length >= 3) {
+        const hyphenIndex = key.indexOf('-');
+        const startChar = key.substring(0, hyphenIndex);
+        const endChar   = key.substring(hyphenIndex + 1);
+        if (startChar.length === 1 && endChar.length === 1) {
+          const startIndex = characterSet.indexOf(startChar);
+          const endIndex   = characterSet.indexOf(endChar);
+          if (startIndex !== -1 && endIndex !== -1 && startIndex <= endIndex) {
+            for (let i = startIndex; i <= endIndex; i++) expanded[characterSet[i]] = obj;
+            continue;
+          }
+        }
+      }
+      expanded[key] = obj;
+    }
+    return expanded;
+  }
+
+  static #expandKerningPairs(pairs, characterSet) {
+    const expanded = {};
+    for (const [key, value] of Object.entries(pairs)) {
+      for (const char of MetricsExpander.#parseCompactCharString(key, characterSet)) {
+        expanded[char] = value;
+      }
+    }
+    return expanded;
+  }
+
+  // Dash-at-start = literal; X-Y in middle = range of length ≥ 3.
+  static #parseCompactCharString(compactStr, characterSet) {
+    const chars = [];
+    let i = 0;
+    if (compactStr[0] === '-') { chars.push('-'); i = 1; }
+    while (i < compactStr.length) {
+      const cur = compactStr[i];
+      if (i + 2 < compactStr.length && compactStr[i + 1] === '-') {
+        const startChar = cur;
+        const endChar = compactStr[i + 2];
+        const startIndex = characterSet.indexOf(startChar);
+        const endIndex   = characterSet.indexOf(endChar);
+        if (startIndex !== -1 && endIndex !== -1 && startIndex < endIndex) {
+          for (let j = startIndex; j <= endIndex; j++) chars.push(characterSet[j]);
+          i += 3;
+        } else {
+          chars.push(cur);
+          i++;
+        }
+      } else {
+        chars.push(cur);
+        i++;
+      }
+    }
+    return chars;
+  }
+
+  // Per-character expansion: read 5 indices from the flat stream, look up
+  // values from the value table, attach the shared baseline fields.
+  static #expandCharacterMetrics(flat, baseline, v, characterSet) {
+    const expanded = {};
+    const chars = Array.isArray(characterSet) ? characterSet : Array.from(characterSet);
+    for (let i = 0; i < chars.length; i++) {
+      const base = i * 5;
+      const width                    = v[flat[base + 0]];
+      const actualBoundingBoxLeft    = v[flat[base + 1]];
+      const actualBoundingBoxRight   = v[flat[base + 2]];
+      const actualBoundingBoxAscent  = v[flat[base + 3]];
+      const actualBoundingBoxDescent = v[flat[base + 4]];
+      expanded[chars[i]] = {
+        width,
+        actualBoundingBoxLeft,
+        actualBoundingBoxRight,
+        actualBoundingBoxAscent,
+        actualBoundingBoxDescent,
+        fontBoundingBoxAscent:  baseline.fba,
+        fontBoundingBoxDescent: baseline.fbd,
+        emHeightAscent:         baseline.fba,
+        emHeightDescent:        baseline.fbd,
+        hangingBaseline:        baseline.hb,
+        alphabeticBaseline:     baseline.ab,
+        ideographicBaseline:    baseline.ib,
+        pixelDensity:           baseline.pd,
+      };
+    }
+    return expanded;
+  }
+}
+
+// AtlasCellDimensions - Utility for calculating atlas cell dimensions
+//
+// Provides centralized formulas for calculating cell dimensions from character
+// metrics. These are CSS-pixel cell dimensions used by font metric measurement;
+// the runtime tight atlas is single-row and per-glyph dimensions live in the
+// positioning bundle.
+//
+// - Cell width:  actualBoundingBoxLeft + actualBoundingBoxRight (varies per character)
+// - Cell height: fontBoundingBoxAscent + fontBoundingBoxDescent (constant per font)
+
+class AtlasCellDimensions {
+  // Private constructor - prevent instantiation
+  constructor() {
+    throw new Error('AtlasCellDimensions cannot be instantiated - use static methods');
+  }
+
+  /**
+   * Calculate cell width for a character
+   * CRITICAL: Must match GlyphFAB.js:155-160 which uses Math.round()
+   * @param {Object} charMetrics - Character metrics from FontMetrics
+   * @returns {number} Cell width in pixels (rounded, matching GlyphFAB canvas creation)
+   */
+  static getWidth(charMetrics) {
+    return Math.round(
+      charMetrics.actualBoundingBoxLeft +
+      charMetrics.actualBoundingBoxRight
+    );
+  }
+
+  /**
+   * Calculate cell height for a font
+   * CRITICAL: Must match GlyphFAB.js:170-175 which uses Math.round()
+   * @param {Object} charMetrics - Character metrics (any character from the font)
+   * @returns {number} Cell height in pixels (rounded, constant for entire font)
+   */
+  static getHeight(charMetrics) {
+    return Math.round(
+      charMetrics.fontBoundingBoxAscent +
+      charMetrics.fontBoundingBoxDescent
+    );
+  }
+
+  /**
+   * Calculate both dimensions
+   * @param {Object} charMetrics - Character metrics
+   * @returns {{width: number, height: number}}
+   */
+  static getDimensions(charMetrics) {
+    return {
+      width: this.getWidth(charMetrics),
+      height: this.getHeight(charMetrics)
+    };
+  }
+}
+
+// BitmapTextFontLoaderBrowser - Browser-Specific Font Loader
+//
+// Browser implementation of the FontLoaderBase abstract methods.
+//
+// METRICS:
+//   The whole metrics corpus is shipped as one file: `font-assets/metrics-bundle.js`.
+//   On first metrics request the file is injected as a `<script>` tag (works under
+//   `file://` because there is no `fetch` involved). The script wrapper calls
+//   `BitmapText.registerBundle("<base64>")`, which sets `FontLoaderBase._bundleDecodePromise`
+//   to the async base64 → deflate-raw → JSON decode. We await that promise after
+//   `script.onload` fires.
+//
+// ATLAS:
+//   Per-font, as before — direct WebP fetch over HTTP(S), or base64-WebP via a
+//   `<script>` tag under `file://`.
+
+class BitmapTextFontLoaderBrowser extends FontLoaderBase {
+  // ============================================
+  // File Name Constants
+  // ============================================
+
+  static ATLAS_PREFIX = 'atlas-';
+  static JS_EXTENSION = '.js';
+  static WEBP_EXTENSION = '.webp';
+  static METRICS_BUNDLE_FILENAME = 'metrics-bundle.js';
+  static POSITIONING_BUNDLE_PREFIX = 'positioning-bundle-density-';
+
+  // ============================================
+  // Atlas Format Conversion
+  // ============================================
+
+  /**
+   * Decode an HTMLImageElement into a plain {width, height, data} object
+   * via an offscreen canvas. Used when BitmapText._atlasFormat === 'imageData'.
+   *
+   * CRITICAL: uses `document.createElement('canvas')` directly, NOT
+   * `BitmapText.getCanvasFactory()()`. The configured canvasFactory is for
+   * OUTPUT canvases (the ones BitmapText draws into); embedders may have set
+   * it to a DOM-less canvas (e.g. SWCanvas) that can't accept HTMLImageElement
+   * via drawImage — exactly the case `setAtlasFormat('imageData')` is meant
+   * to support. The decode SOURCE must be a real browser canvas. This file
+   * is already browser-specific, so direct DOM access is fine here.
+   *
+   * @private
+   * @param {HTMLImageElement} img - Decoded image element
+   * @returns {{width: number, height: number, data: Uint8ClampedArray}}
+   */
+  static _htmlImageToImageData(img) {
+    const tmp = document.createElement('canvas');
+    tmp.width = img.naturalWidth || img.width;
+    tmp.height = img.naturalHeight || img.height;
+    const tmpCtx = tmp.getContext('2d');
+    tmpCtx.drawImage(img, 0, 0);
+    const imageData = tmpCtx.getImageData(0, 0, tmp.width, tmp.height);
+    return { width: imageData.width, height: imageData.height, data: imageData.data };
+  }
+
+  // ============================================
+  // Browser-Specific Loading Implementation
+  // ============================================
+
+  /**
+   * Inject the metrics-bundle script tag once and await full decode.
+   * Singleton-safe: `FontLoaderBase.loadMetricsFile` calls this only on the first invocation.
+   * @returns {Promise<void>} Resolves once every record is in MetricsBundleStore.
+   */
+  static async loadBundleFile() {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      const fontDirectory = FontLoaderBase.getFontDirectory();
+      script.src = `${fontDirectory}${BitmapTextFontLoaderBrowser.METRICS_BUNDLE_FILENAME}`;
+
+      script.onload = () => {
+        const decodePromise = FontLoaderBase._bundleDecodePromise;
+        if (!decodePromise) {
+          reject(new Error('metrics-bundle.js loaded but did not call BitmapText.registerBundle'));
+          return;
+        }
+        decodePromise.then(resolve, reject);
+      };
+
+      script.onerror = () => {
+        script.remove();
+        FontLoaderBase._metricsScriptElement = null;
+        reject(new Error(`Failed to load metrics bundle from ${script.src}`));
+      };
+
+      // Track the element so `BitmapText.unloadMetricsBundle()` can detach it
+      // later via the `_removeMetricsScriptElement` hook.
+      FontLoaderBase._metricsScriptElement = script;
+      document.head.appendChild(script);
+    });
+  }
+
+  /**
+   * Inject the per-density positioning-bundle script tag once and await full
+   * decode. Singleton-safe per density: `FontLoaderBase.loadPositioningFile`
+   * calls this only on the first invocation for each density.
+   * @param {number} pixelDensity
+   * @returns {Promise<void>} Resolves once every record is in PositioningBundleStore.
+   */
+  static async loadPositioningBundleFile(pixelDensity) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      const fontDirectory = FontLoaderBase.getFontDirectory();
+      script.src = `${fontDirectory}${BitmapTextFontLoaderBrowser.POSITIONING_BUNDLE_PREFIX}${pixelDensity}.js`;
+
+      script.onload = () => {
+        const decodePromise = FontLoaderBase._positioningBundleDecodePromises.get(pixelDensity);
+        if (!decodePromise) {
+          reject(new Error(`positioning-bundle-density-${pixelDensity}.js loaded but did not call BitmapText.registerPositioningBundle`));
+          return;
+        }
+        decodePromise.then(resolve, reject);
+      };
+
+      script.onerror = () => {
+        script.remove();
+        FontLoaderBase._positioningScriptElements.delete(pixelDensity);
+        reject(new Error(`Failed to load positioning bundle from ${script.src}`));
+      };
+
+      // Track the element so `BitmapText.unloadPositioningBundle(d)` can
+      // detach it later via the `_removePositioningScriptElement` hook.
+      FontLoaderBase._positioningScriptElements.set(pixelDensity, script);
+      document.head.appendChild(script);
+    });
+  }
+
+  // Cleanup hooks called by FontLoaderBase.unload*. Browser implementation
+  // detaches the tracked <script> element from document.head; Node inherits
+  // the base no-ops.
+  static _removeMetricsScriptElement() {
+    const el = FontLoaderBase._metricsScriptElement;
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+    FontLoaderBase._metricsScriptElement = null;
+  }
+
+  static _removePositioningScriptElement(pixelDensity) {
+    const el = FontLoaderBase._positioningScriptElements.get(pixelDensity);
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+    FontLoaderBase._positioningScriptElements.delete(pixelDensity);
+  }
+
+  /**
+   * Load atlas file (chooses strategy based on protocol)
+   * @param {string} idString - Font ID string
+   * @param {boolean} isFileProtocol - Whether using file:// protocol
+   * @param {Object} bitmapTextClass - BitmapText class reference
+   * @returns {Promise} Resolves when atlas is loaded
+   */
+  static async loadAtlasFile(idString, isFileProtocol, bitmapTextClass) {
+    if (isFileProtocol) {
+      return BitmapTextFontLoaderBrowser._loadAtlasFromJS(idString, bitmapTextClass);
+    } else {
+      return BitmapTextFontLoaderBrowser._loadAtlasFromWebP(idString, bitmapTextClass);
+    }
+  }
+
+  // ============================================
+  // Browser-Specific Atlas Loading Strategies
+  // ============================================
+
+  /**
+   * Load atlas from JS file (for file:// protocol)
+   * JS file contains base64-encoded WebP data
+   * @private
+   * @param {string} idString - Font ID string
+   * @param {Object} bitmapTextClass - BitmapText class reference
+   * @returns {Promise} Resolves when atlas is loaded
+   */
+  static _loadAtlasFromJS(idString, bitmapTextClass) {
+    return new Promise((resolve, reject) => {
+      const tFetchStart = performance.now();
+      const imageScript = document.createElement('script');
+      const fontDirectory = FontLoaderBase.getFontDirectory();
+      imageScript.src = `${fontDirectory}${BitmapTextFontLoaderBrowser.ATLAS_PREFIX}${idString}-webp${BitmapTextFontLoaderBrowser.JS_EXTENSION}`;
+
+      imageScript.onload = () => {
+        const pkg = FontLoaderBase._tempAtlasPackages[idString];
+
+        if (!pkg || !pkg.base64Data) {
+          console.warn(`Image data not found in JS file for ${idString} - will use placeholder rectangles`);
+          imageScript.remove();
+          resolve();
+          return;
+        }
+
+        const img = new Image();
+        img.src = `data:image/webp;base64,${pkg.base64Data}`;
+
+        img.onload = async () => {
+          const tImgOnload = performance.now();
+          try {
+            // Force the WebP decode to complete off-main-thread before the
+            // reconstructor reads pixels (otherwise the first getImageData
+            // call would synchronously trigger the decode on the UI thread).
+            // decode() is supported in all modern browsers; if it isn't, we
+            // fall back to assuming onload is sufficient.
+            if (typeof img.decode === 'function') {
+              try { await img.decode(); } catch (_) { /* fall through */ }
+            }
+            const tDecoded = performance.now();
+            const atlasImage = (BitmapText._atlasFormat === 'imageData')
+              ? BitmapTextFontLoaderBrowser._htmlImageToImageData(img)
+              : img;
+            // Atlas will be reconstructed now or later when metrics are available
+            await FontLoaderBase._loadAtlasFromPackage(idString, atlasImage, bitmapTextClass);
+            console.log(
+              `[atlas-fetch] ${idString} (file://): ` +
+              `script=${(tImgOnload - tFetchStart).toFixed(1)}ms ` +
+              `decode=${(tDecoded - tImgOnload).toFixed(1)}ms`
+            );
+          } finally {
+            imageScript.remove();
+            resolve();
+          }
+        };
+
+        img.onerror = () => {
+          console.warn(`Failed to decode base64 WebP data for ${idString} - will use placeholder rectangles`);
+          imageScript.remove();
+          delete FontLoaderBase._tempAtlasPackages[idString];
+          resolve();
+        };
+      };
+
+      imageScript.onerror = () => {
+        console.warn(`Atlas JS not found: atlas-${idString}-webp.js - will use placeholder rectangles`);
+        imageScript.remove();
+        resolve();
+      };
+
+      document.head.appendChild(imageScript);
+    });
+  }
+
+  /**
+   * Load atlas from WebP file directly (for http/https protocols)
+   * @private
+   * @param {string} idString - Font ID string
+   * @param {Object} bitmapTextClass - BitmapText class reference
+   * @returns {Promise} Resolves when atlas is loaded
+   */
+  static _loadAtlasFromWebP(idString, bitmapTextClass) {
+    return new Promise((resolve, reject) => {
+      const tFetchStart = performance.now();
+      const img = new Image();
+      const fontDirectory = FontLoaderBase.getFontDirectory();
+      img.src = `${fontDirectory}${BitmapTextFontLoaderBrowser.ATLAS_PREFIX}${idString}${BitmapTextFontLoaderBrowser.WEBP_EXTENSION}`;
+
+      img.onload = async () => {
+        const tImgOnload = performance.now();
+        try {
+          // Force the WebP decode to complete off-main-thread before the
+          // reconstructor reads pixels. Without this, the first getImageData
+          // call (inside the reconstructor) synchronously decodes the image
+          // on the UI thread — a major contributor to per-load FPS spikes.
+          if (typeof img.decode === 'function') {
+            try { await img.decode(); } catch (_) { /* fall through */ }
+          }
+          const tDecoded = performance.now();
+          const atlasImage = (BitmapText._atlasFormat === 'imageData')
+            ? BitmapTextFontLoaderBrowser._htmlImageToImageData(img)
+            : img;
+          // Atlas will be reconstructed now or later when metrics are available
+          await FontLoaderBase._loadAtlasFromPackage(idString, atlasImage, bitmapTextClass);
+          console.log(
+            `[atlas-fetch] ${idString} (http): ` +
+            `fetch=${(tImgOnload - tFetchStart).toFixed(1)}ms ` +
+            `decode=${(tDecoded - tImgOnload).toFixed(1)}ms`
+          );
+        } finally {
+          resolve();
+        }
+      };
+
+      img.onerror = () => {
+        console.warn(`Atlas image not found: atlas-${idString}.webp - will use placeholder rectangles`);
+        resolve();
+      };
+    });
+  }
+}
+
+// Self-register if `document` is available. `document` (not `window`) is the
+// precise test — this loader uses <script>-tag injection (see line 39, etc.)
+// which needs the DOM, not just "is this a browser-ish global". Web workers
+// have `self` but no `document`, and this loader cannot function there;
+// FontLoaderNode's matching footer also opts out in workers, so an embedder
+// running in a worker MUST call BitmapText.setFontLoader explicitly — that's
+// fail-loud, which beats silently auto-registering the wrong loader.
+//
+// `typeof BitmapText !== 'undefined'` is paranoia in case load ordering ever
+// changes; in normal concatenation BitmapText loads before this file and the
+// guard is a no-op.
+if (typeof document !== 'undefined' && typeof BitmapText !== 'undefined') {
+  BitmapText.setFontLoader(BitmapTextFontLoaderBrowser);
+}
+
+// BitmapTextFontLoaderNode - Node.js-Specific Font Loader
+//
+// Node implementation of the FontLoaderBase abstract methods.
+//
+// METRICS:
+//   The whole metrics corpus is one file: `font-assets/metrics-bundle.js`.
+//   On the first metrics request we `fs.readFileSync` it and `eval` it; the
+//   wrapper calls `BitmapText.registerBundle("<base64>")`, which sets
+//   `FontLoaderBase._bundleDecodePromise` to the async decode work. The decode
+//   uses `DecompressionStream('deflate-raw')` on Node 18+ or `zlib.inflateRawSync`
+//   on Node ≤ 17 (handled inside BundleCodec).
+//
+// ATLAS:
+//   Per-font, unchanged: read QOI base64 wrapper, decode, paint into a canvas.
+
+class BitmapTextFontLoaderNode extends FontLoaderBase {
+
+  // ============================================
+  // File Name Constants
+  // ============================================
+
+  static ATLAS_PREFIX = 'atlas-';
+  static JS_EXTENSION = '.js';
+  static METRICS_BUNDLE_FILENAME = 'metrics-bundle.js';
+  static POSITIONING_BUNDLE_PREFIX = 'positioning-bundle-density-';
+
+  // ============================================
+  // Node.js-Specific Loading Implementation
+  // ============================================
+
+  /**
+   * Read + eval the metrics bundle once, then await the decode promise that
+   * `BitmapText.registerBundle` set as a side effect of the eval.
+   * @returns {Promise<void>} Resolves once every record is in MetricsBundleStore.
+   */
+  static async loadBundleFile() {
+    if (typeof require === 'undefined') {
+      throw new Error('BitmapTextFontLoaderNode.loadBundleFile requires Node.js environment');
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+
+    const fontDirectory = FontLoaderBase.getFontDirectory();
+    const bundlePath = path.resolve(fontDirectory, BitmapTextFontLoaderNode.METRICS_BUNDLE_FILENAME);
+    const bundleCode = fs.readFileSync(bundlePath, 'utf8');
+    eval(bundleCode);
+
+    const decodePromise = FontLoaderBase._bundleDecodePromise;
+    if (!decodePromise) {
+      throw new Error('metrics-bundle.js evaluated but did not call BitmapText.registerBundle');
+    }
+    return decodePromise;
+  }
+
+  /**
+   * Read + eval the per-density positioning bundle once, then await the decode
+   * promise that `BitmapText.registerPositioningBundle` set as a side effect of
+   * the eval.
+   * @param {number} pixelDensity
+   * @returns {Promise<void>} Resolves once every record is in PositioningBundleStore.
+   */
+  static async loadPositioningBundleFile(pixelDensity) {
+    if (typeof require === 'undefined') {
+      throw new Error('BitmapTextFontLoaderNode.loadPositioningBundleFile requires Node.js environment');
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+
+    const fontDirectory = FontLoaderBase.getFontDirectory();
+    const bundlePath = path.resolve(
+      fontDirectory,
+      `${BitmapTextFontLoaderNode.POSITIONING_BUNDLE_PREFIX}${pixelDensity}.js`
+    );
+    const bundleCode = fs.readFileSync(bundlePath, 'utf8');
+    eval(bundleCode);
+
+    const decodePromise = FontLoaderBase._positioningBundleDecodePromises.get(pixelDensity);
+    if (!decodePromise) {
+      throw new Error(
+        `positioning-bundle-density-${pixelDensity}.js evaluated but did not call BitmapText.registerPositioningBundle`
+      );
+    }
+    return decodePromise;
+  }
+
+  /**
+   * Load atlas file via fs.readFileSync + QOIDecode
+   * @param {string} idString - Font ID string
+   * @param {boolean} isFileProtocol - Not used in Node.js
+   * @param {Object} bitmapTextClass - BitmapText class reference
+   * @returns {Promise} Resolves when atlas is loaded
+   */
+  static async loadAtlasFile(idString, isFileProtocol, bitmapTextClass) {
+    if (typeof require === 'undefined') {
+      throw new Error('BitmapTextFontLoaderNode.loadAtlasFile requires Node.js environment');
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+
+    const fontDirectory = FontLoaderBase.getFontDirectory();
+    const atlasPath = path.resolve(fontDirectory, `${BitmapTextFontLoaderNode.ATLAS_PREFIX}${idString}-qoi${BitmapTextFontLoaderNode.JS_EXTENSION}`);
+
+    try {
+      const atlasCode = fs.readFileSync(atlasPath, 'utf8');
+      // Execute with BitmapText in scope to call registerAtlas
+      // The atlas file will call BitmapText.registerAtlas()
+      eval(atlasCode);
+
+      // Now reconstruct the atlas
+      const pkg = FontLoaderBase._tempAtlasPackages[idString];
+      if (pkg && pkg.base64Data) {
+        // Decode QOI
+        if (typeof QOIDecode === 'undefined') {
+          throw new Error('BitmapTextFontLoaderNode: QOIDecode not available - required for atlas loading');
+        }
+
+        const qoiData = Uint8Array.from(atob(pkg.base64Data), c => c.charCodeAt(0));
+        const decoded = QOIDecode(qoiData.buffer);
+
+        let atlasImage;
+        if (BitmapText._atlasFormat === 'imageData') {
+          // Skip the canvas-mock putImageData round-trip — pass the raw
+          // decoded pixels straight to the base class. Saves one allocation
+          // and one full-buffer copy at every atlas load. Wrap in
+          // Uint8ClampedArray (the contract shape) without copying — same
+          // backing buffer, different typed view.
+          atlasImage = {
+            width: decoded.width,
+            height: decoded.height,
+            data: new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength)
+          };
+        } else {
+          // Default 'imageElement' path: wrap in the configured canvas
+          // (canvas-mock by default; node-canvas / skia-canvas if the
+          // embedder overrode setCanvasFactory).
+          const canvas = bitmapTextClass.getCanvasFactory()();
+          canvas.width = decoded.width;
+          canvas.height = decoded.height;
+          const ctx = canvas.getContext('2d');
+          const imageData = ctx.createImageData(decoded.width, decoded.height);
+          imageData.data.set(decoded.data);
+          ctx.putImageData(imageData, 0, 0);
+          atlasImage = canvas;
+        }
+
+        // Wrap the atlas image + look up positioning from the per-density bundle.
+        await FontLoaderBase._loadAtlasFromPackage(idString, atlasImage, bitmapTextClass);
+      }
+    } catch (error) {
+      console.warn(`Atlas loading error for ${atlasPath}: ${error.message}`);
+      console.warn('Will use placeholder rectangles');
+    }
+  }
+}
+
+// Self-register only in a require()-capable, DOM-less environment:
+//   - `typeof document === 'undefined'` rules out browser-main-thread.
+//   - `typeof require === 'function'` rules out web workers (no `document`,
+//     no `require`).
+// In a worker, NEITHER this footer nor FontLoaderBrowser's auto-registers —
+// the embedder must call BitmapText.setFontLoader explicitly. Fail-loud beats
+// silently auto-registering the wrong loader (the failure mode of checking
+// only `typeof window === 'undefined'`).
+//
+// `typeof BitmapText !== 'undefined'` is paranoia in case load ordering ever
+// changes; in normal concatenation BitmapText loads before this file and the
+// guard is a no-op.
+if (typeof document === 'undefined' && typeof require === 'function' && typeof BitmapText !== 'undefined') {
+  BitmapText.setFontLoader(BitmapTextFontLoaderNode);
+}
+
+// AtlasLRU - Bounded-size atlas cache layered on BitmapText's runtime stores.
+//
+// The actual atlas bytes live in AtlasDataStore (BitmapText's own store); this
+// class is an ordering structure that decides when to call
+// `BitmapText.loadFont(idString)` and `BitmapText.unloadAtlas(idString)`,
+// keeping `AtlasDataStore.size() ≤ capacity` (K).
+//
+// LOADING THIS FILE:
+//   Classic <script> tag (no module wrapper). The demo at
+//   public/lru-atlas-loading-demo-bundled.html includes it via
+//   <script src="../src/utils/AtlasLRU.js"></script>; the class then lives
+//   in the page's top-level scope alongside BitmapText. For ES-module
+//   consumers, package.json's `"./utils/*": "./src/utils/*"` wildcard exposes
+//   the path directly.
+//
+// PUBLIC API:
+//   new AtlasLRU(capacity, loadOptions = {})
+//                            — `loadOptions` is forwarded as the second
+//                              argument to every BitmapText.loadFont call.
+//                              Typical usage: `new AtlasLRU(K, { isFileProtocol })`
+//                              to thread the file:// flag through.
+//   request(idString)        — load if missing + bump recency. Returns a
+//                              Promise resolving when the atlas is resident
+//                              ('loaded' | 'evicted-during-load'). Triggers
+//                              eviction synchronously (before kicking off
+//                              the load) if entries.size would exceed K.
+//   beingUsed(idString)      — bump recency only (no load side effect). Used
+//                              by consumers to keep an atlas pinned across a
+//                              wait that constitutes a "use" in their domain.
+//   setCapacity(newCapacity) — shrink or grow K. Shrinks evict down to n as
+//                              far as the pin window allows; entries.size may
+//                              temporarily exceed n if too many entries are
+//                              pinned/loading.
+//   loadStats()              — { p50, p95, max, n } percentile wall-clock
+//                              load times over the last LOAD_HISTORY_CAP loads.
+//   size (getter)            — current entries.size
+//   loadedCount (getter)     — entries.size minus in-flight loads
+//
+// EVICTION POLICY (#evictOne):
+//   • Skip entries with state !== 'loaded' (in-flight loads are NEVER
+//     evictable — the load can't be cancelled mid-flight).
+//   • Skip entries whose pinUntil > now.
+//   • Among the rest, evict the smallest lastUsed.
+//   • If no eligible victim, return false; the caller proceeds and
+//     entries.size temporarily exceeds capacity.
+//
+// DEPENDENCIES IN SCOPE AT RUNTIME:
+//   • BitmapText (from dist/bitmaptext{,-node}.min.js)
+//   • performance.now()
+//
+// No implicit globals — load options (including `isFileProtocol` for file://
+// contexts) are passed in at construction and stored as `this.loadOptions`.
+// This lets the class live at top-level (global) scope without reaching into
+// the calling page's IIFE for variables it can't see.
+
+// Pin window — never evict freshly-touched / just-loaded entries.
+const PIN_GRACE_MS = 250;
+// Cap on the rolling load-duration buffer used by loadStats().
+const LOAD_HISTORY_CAP = 50;
+
+class AtlasLRU {
+  constructor(capacity, loadOptions = {}) {
+    this.capacity     = capacity;
+    this.loadOptions  = loadOptions; // forwarded verbatim to BitmapText.loadFont
+    this.entries      = new Map();   // idString -> entry record (see below)
+    this.pendingCount = 0;
+    this.reloadCount  = 0;           // diagnostic: how many times we re-loaded an evicted atlas
+    this.loadDurationsMs = [];       // ring buffer of recent load wall times
+  }
+
+  // "I'm using this atlas right now — refresh its recency." No load side effect:
+  // returns silently if the atlas isn't tracked. Use this from contexts that
+  // constitute a real "use" of the atlas in the calling app's domain (e.g.
+  // editing text in a textbox), as opposed to passive on-screen presence
+  // (which the LRU has no way to observe and which the caller usually
+  // doesn't want to count). Pairs with request(): request = "load if
+  // missing + bump recency", beingUsed = "bump recency only".
+  beingUsed(idString) {
+    const e = this.entries.get(idString);
+    if (!e) return false;
+    const now = performance.now();
+    e.lastUsed = now;
+    e.pinUntil = now + PIN_GRACE_MS;
+    return true;
+  }
+
+  // Called by a TextBox at every paint. Returns a Promise that resolves when the
+  // atlas is in AtlasDataStore. If already there, resolves immediately and bumps recency.
+  request(idString) {
+    const now = performance.now();
+    let e = this.entries.get(idString);
+
+    if (e) {
+      e.lastUsed = now;
+      e.pinUntil = now + PIN_GRACE_MS;
+      return e.state === 'loaded' ? Promise.resolve('loaded') : e.promise;
+    }
+
+    // New idString — find a slot.
+    while (this.entries.size >= this.capacity) {
+      if (!this.#evictOne(now)) break;   // no evictable victim; proceed (capacity will be temporarily over)
+    }
+
+    // Reserve and kick off the load.
+    const tStart = performance.now();
+    const promise = BitmapText.loadFont(idString, this.loadOptions)
+      .then(() => {
+        const x = this.entries.get(idString);
+        if (!x) {
+          // Slot was removed under us (only happens on load failure path or capacity=0).
+          return 'evicted-during-load';
+        }
+        x.state    = 'loaded';
+        x.lastUsed = performance.now();        // KEY: load completion = a fresh use
+        x.pinUntil = x.lastUsed + PIN_GRACE_MS; // protect briefly so requester can paint
+        this.pendingCount--;
+        this.#recordLoadDuration(performance.now() - tStart);
+        return 'loaded';
+      })
+      .catch(err => {
+        this.entries.delete(idString);
+        this.pendingCount--;
+        throw err;
+      });
+
+    e = { state: 'loading', lastUsed: now, pinUntil: now + PIN_GRACE_MS, promise };
+    this.entries.set(idString, e);
+    this.pendingCount++;
+    return promise;
+  }
+
+  #recordLoadDuration(ms) {
+    this.loadDurationsMs.push(ms);
+    if (this.loadDurationsMs.length > LOAD_HISTORY_CAP) {
+      this.loadDurationsMs.shift();
+    }
+  }
+
+  // p50/p95/max wall-clock load duration (fetch + decode + reconstruction)
+  // over the last LOAD_HISTORY_CAP loads. Surfaces the actual signal behind
+  // the FPS spikes: the runtime emits per-load [atlas-fetch] / [atlas-reconstruct]
+  // log lines, but their per-line firehose makes them unreadable at 30+
+  // textboxes spawning. This collapses them to one number.
+  loadStats() {
+    const n = this.loadDurationsMs.length;
+    if (n === 0) return { p50: 0, p95: 0, max: 0, n: 0 };
+    const sorted = [...this.loadDurationsMs].sort((a, b) => a - b);
+    const pick = q => sorted[Math.min(n - 1, Math.floor(n * q))];
+    return { p50: pick(0.5), p95: pick(0.95), max: sorted[n - 1], n };
+  }
+
+  // Returns true if a victim was evicted, false if no eligible victim was found.
+  #evictOne(now) {
+    let victimId = null, victimT = Infinity;
+    for (const [id, e] of this.entries) {
+      if (e.state !== 'loaded') continue;     // never touch in-flight loads
+      if (now < e.pinUntil)     continue;     // never evict freshly-touched/just-loaded
+      if (e.lastUsed < victimT) { victimT = e.lastUsed; victimId = id; }
+    }
+    if (!victimId) return false;
+    BitmapText.unloadAtlas(victimId);
+    this.entries.delete(victimId);
+    return true;
+  }
+
+  // Slider lowered K below current size — shrink as much as the pin window allows.
+  setCapacity(newCapacity) {
+    this.capacity = newCapacity;
+    const now = performance.now();
+    while (this.entries.size > this.capacity) {
+      if (!this.#evictOne(now)) break;
+    }
+  }
+
+  get size()        { return this.entries.size; }
+  get loadedCount() { return this.entries.size - this.pendingCount; }
+}
+
 /**
  * SpanOps - Static utility methods for horizontal span filling
  * Used by all shape *Ops classes for optimized pixel rendering.
@@ -15601,6 +20595,8 @@ class ColorParser {
                 result = this._parseHex(trimmed);
             } else if (trimmed.startsWith('rgb')) {
                 result = this._parseRGB(trimmed);
+            } else if (trimmed.startsWith('hsl')) {
+                result = this._parseHSL(trimmed);
             } else if (this._namedColors[trimmed]) {
                 const named = this._namedColors[trimmed];
                 result = { r: named.r, g: named.g, b: named.b, a: 255 };
@@ -15680,6 +20676,68 @@ class ColorParser {
         }
 
         return { r, g, b, a };
+    }
+
+    /**
+     * Parse HSL/HSLA function notation. Supports the comma form
+     *   hsl(120, 70%, 32%)
+     *   hsla(120, 70%, 32%, 0.5)
+     * Hue is in degrees (modulo 360), saturation and lightness as 0-100%,
+     * alpha as 0-1. Returns the same {r, g, b, a} shape (0-255 each) as the
+     * other parsers.
+     * @private
+     */
+    _parseHSL(hsl) {
+        const match = hsl.match(/hsla?\s*\(\s*([^)]+)\s*\)/);
+        if (!match) return { r: 0, g: 0, b: 0, a: 255 };
+        const parts = match[1].split(',').map(s => s.trim());
+        if (parts.length < 3 || parts.length > 4) return { r: 0, g: 0, b: 0, a: 255 };
+
+        // Hue: number (degrees, normalized to [0, 360))
+        let h = parseFloat(parts[0]);
+        if (isNaN(h)) return { r: 0, g: 0, b: 0, a: 255 };
+        h = ((h % 360) + 360) % 360 / 360;
+
+        // Saturation, lightness: percentages
+        const parsePct = (s) => {
+            const v = parseFloat(s);
+            return isNaN(v) ? 0 : Math.max(0, Math.min(100, v)) / 100;
+        };
+        const s = parsePct(parts[1]);
+        const l = parsePct(parts[2]);
+
+        // Alpha: optional, 0-1
+        let a = 255;
+        if (parts.length === 4) {
+            const av = parseFloat(parts[3]);
+            if (!isNaN(av)) a = Math.round(Math.max(0, Math.min(1, av)) * 255);
+        }
+
+        // Standard HSL → RGB conversion (CSS Color Module Level 3).
+        let r, g, b;
+        if (s === 0) {
+            r = g = b = l;
+        } else {
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+        return {
+            r: Math.round(r * 255),
+            g: Math.round(g * 255),
+            b: Math.round(b * 255),
+            a: a
+        };
     }
 
     /**
@@ -16208,6 +21266,413 @@ class Pattern {
     static createSolid(width, height, color, repetition = 'repeat') {
         const imageData = ImageProcessor.createBlankImage(width, height, color);
         return new Pattern(imageData, repetition);
+    }
+}
+
+/**
+ * CssFontParser
+ *
+ * Parses a CSS-Canvas font shorthand into BitmapText.FontProperties.
+ *
+ * Supports the subset of the CSS font spec that BitmapText can actually render:
+ *   [<style>] [<weight>] <size>px <family>
+ *
+ * where:
+ *   - <style>  ∈ {normal, italic, oblique}      (default: normal)
+ *   - <weight> ∈ {normal, bold, 100..900}        (default: normal)
+ *   - <size>   is an integer or float, units 'px' only (no em/%, no line-height)
+ *   - <family> is a single family name (quoted or unquoted). Comma-separated
+ *              fallback lists are not supported — BitmapText needs one family.
+ *
+ * Examples that parse:
+ *   "16px Arial"
+ *   "bold 12px 'Courier New'"
+ *   "italic bold 18px Georgia"
+ *
+ * Examples that throw:
+ *   "16em Arial"                (non-px units)
+ *   "16px Arial, sans-serif"    (fallback list)
+ *   "small-caps 16px Arial"     (font-variant not supported)
+ *
+ * The parser is deliberately strict so unsupported inputs fail loudly rather
+ * than producing misleading text. Callers (CanvasCompatibleContext2D.font
+ * setter) should catch and ignore — HTML5 spec says invalid font strings are
+ * silently ignored, leaving the previous value in place.
+ */
+class CssFontParser {
+    /**
+     * Parse a CSS font string. Returns a plain object with the fields needed
+     * to construct a BitmapText.FontProperties — the caller does the actual
+     * FontProperties construction (we don't depend on BitmapText here so this
+     * file stays a pure utility).
+     *
+     * @param {string} cssFont - CSS font shorthand
+     * @returns {{style: string, weight: string, fontSize: number, fontFamily: string}}
+     * @throws {Error} if the string can't be parsed into the supported subset
+     */
+    static parse(cssFont) {
+        if (typeof cssFont !== 'string') {
+            throw new Error('CssFontParser.parse: expected string, got ' + typeof cssFont);
+        }
+        const input = cssFont.trim();
+        if (!input) {
+            throw new Error('CssFontParser.parse: empty font string');
+        }
+
+        // Find the px-size token. It marks the boundary between
+        // optional style/weight (before) and family (after).
+        // Regex: a number (int or decimal) followed by 'px', as a whole token.
+        const sizeMatch = input.match(/(^|\s)(\d+(?:\.\d+)?)px(\s|$)/);
+        if (!sizeMatch) {
+            throw new Error(
+                'CssFontParser.parse: no <size>px token in "' + cssFont + '". ' +
+                'Only px units are supported.'
+            );
+        }
+        const fontSize = parseFloat(sizeMatch[2]);
+        const sizeStart = input.indexOf(sizeMatch[0]) + sizeMatch[1].length;
+        const sizeEnd = sizeStart + sizeMatch[2].length + 2; // 2 = 'px'
+
+        const beforeSize = input.slice(0, sizeStart).trim();
+        const afterSize = input.slice(sizeEnd).trim();
+
+        if (!afterSize) {
+            throw new Error('CssFontParser.parse: missing font-family in "' + cssFont + '"');
+        }
+        if (afterSize.indexOf(',') !== -1) {
+            throw new Error(
+                'CssFontParser.parse: comma-separated font-family list is not supported; ' +
+                'BitmapText needs a single family. Got "' + cssFont + '".'
+            );
+        }
+
+        // Unquote family if needed.
+        let fontFamily = afterSize;
+        if ((fontFamily.startsWith('"') && fontFamily.endsWith('"')) ||
+            (fontFamily.startsWith("'") && fontFamily.endsWith("'"))) {
+            fontFamily = fontFamily.slice(1, -1);
+        }
+
+        // Parse the optional style/weight prefix.
+        let style = 'normal';
+        let weight = 'normal';
+        if (beforeSize) {
+            const tokens = beforeSize.split(/\s+/);
+            for (const tok of tokens) {
+                if (tok === 'italic' || tok === 'oblique') {
+                    style = tok;
+                } else if (tok === 'normal') {
+                    // Either style or weight default; ignore.
+                } else if (tok === 'bold' || tok === 'bolder' || tok === 'lighter') {
+                    weight = tok === 'bold' ? 'bold' : 'normal';
+                } else if (/^[1-9]00$/.test(tok)) {
+                    weight = tok;
+                } else {
+                    throw new Error(
+                        'CssFontParser.parse: unsupported font token "' + tok +
+                        '" in "' + cssFont + '". Supported: italic, oblique, bold, ' +
+                        'numeric weights 100..900.'
+                    );
+                }
+            }
+        }
+
+        return { style: style, weight: weight, fontSize: fontSize, fontFamily: fontFamily };
+    }
+}
+
+/**
+ * FillStyleToTextColor
+ *
+ * Adapts Core Context2D's _fillStyle (a Color, Gradient, or Pattern) into
+ * BitmapText's TextProperties.textColor — a CSS color string.
+ *
+ * BitmapText doesn't render text through gradients/patterns; if fillStyle is
+ * one of those, we fall back to opaque black with a console warning so the
+ * caller sees text but is informed of the limitation.
+ *
+ * Alpha multiplication via globalAlpha happens in TextRenderer (passed
+ * separately to BitmapText), not here.
+ */
+class FillStyleToTextColor {
+    /**
+     * @param {Color|Gradient|Pattern|null} fillStyle - Core context's _fillStyle
+     * @returns {string} CSS color string suitable for TextProperties.textColor
+     */
+    static toCssColor(fillStyle) {
+        if (!fillStyle || !(fillStyle instanceof Color)) {
+            if (fillStyle) {
+                console.warn(
+                    'SWCanvas: gradient/pattern fillStyle is not supported for text; ' +
+                    'falling back to opaque black.'
+                );
+            }
+            return '#000000';
+        }
+        const r = fillStyle.r;
+        const g = fillStyle.g;
+        const b = fillStyle.b;
+        const a = fillStyle.a;
+        if (a === 255) {
+            return '#' +
+                r.toString(16).padStart(2, '0') +
+                g.toString(16).padStart(2, '0') +
+                b.toString(16).padStart(2, '0');
+        }
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + (a / 255) + ')';
+    }
+}
+
+/**
+ * TextRenderer
+ *
+ * Bridge between SWCanvas's Core Context2D and BitmapText.drawTextFromAtlas.
+ *
+ * Two paths:
+ *   - Fast path (identity-like transform): the current transform is just an
+ *     integer translation (a=1, b=0, c=0, d=1, integer e/f). We pre-apply the
+ *     translation to the user's coordinates and call BitmapText directly
+ *     against the main context. BitmapText resets the transform to identity
+ *     internally, then blits glyphs at our pre-translated coords — no
+ *     intermediate buffer needed.
+ *   - Slow path (rotated, scaled, or non-integer-translated transform): ask
+ *     BitmapText for the exact ink bounding box via computeInkBoundingBox,
+ *     render into an intermediate SWCanvasElement sized to that box, then
+ *     drawImage the result onto the main context with the current transform
+ *     applied.
+ */
+class TextRenderer {
+    /**
+     * @param {{style: string, weight: string, fontSize: number, fontFamily: string}|null} parsedFont
+     * @param {number} pixelDensity
+     * @returns {FontProperties|null}
+     */
+    static _toFontProperties(parsedFont, pixelDensity) {
+        if (!parsedFont) return null;
+        return new FontProperties(
+            pixelDensity || 1,
+            parsedFont.fontFamily,
+            parsedFont.style,
+            parsedFont.weight,
+            parsedFont.fontSize
+        );
+    }
+
+    static _toTextProperties(textAlign, textBaseline, textColor) {
+        return new TextProperties({
+            isKerningEnabled: true,
+            textBaseline: textBaseline || 'alphabetic',
+            textAlign: textAlign || 'start',
+            textColor: textColor,
+        });
+    }
+
+    /**
+     * Fast-path eligibility check. The transform must be a pure integer
+     * translation (no rotation, no skew, no scale, only integer offsets).
+     * @param {Transform2D} t
+     * @returns {boolean}
+     */
+    static _isIdentityLike(t) {
+        return t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1 &&
+               Number.isInteger(t.e) && Number.isInteger(t.f);
+    }
+
+    /**
+     * Render text at (x, y).
+     *
+     * @param {Context2D} coreCtx
+     * @param {string} text
+     * @param {number} x
+     * @param {number} y
+     * @returns {{rendered: boolean, status: object}}
+     */
+    static fillText(coreCtx, text, x, y) {
+        const fontProps = TextRenderer._toFontProperties(coreCtx._font, 1);
+        if (!fontProps) {
+            return { rendered: false, status: { code: 1 /* NO_METRICS */ } };
+        }
+        const textColor = FillStyleToTextColor.toCssColor(coreCtx._fillStyle);
+        const userTextProps = TextRenderer._toTextProperties(
+            coreCtx._textAlign, coreCtx._textBaseline, textColor
+        );
+
+        const t = coreCtx._transform;
+        if (TextRenderer._isIdentityLike(t)) {
+            // Fast path: pre-apply the integer translation and call BitmapText
+            // directly against the main context (which it'll reset to identity).
+            return BitmapText.drawTextFromAtlas(
+                coreCtx, text, x + t.e, y + t.f, fontProps, userTextProps
+            );
+        }
+
+        // Slow path. BitmapText.computeInkBoundingBox returns the exact ink
+        // rect in CSS pixels (accounting for the user's textAlign/textBaseline);
+        // we allocate an intermediate of that size, draw at the offset that
+        // lands ink at (0, 0), then blit with the user's transform.
+        const ibb = BitmapText.computeInkBoundingBox(text, x, y, fontProps, userTextProps);
+        if (!ibb || ibb.status.code !== 0 || !ibb.box) {
+            return { rendered: false, status: (ibb && ibb.status) || { code: 1 } };
+        }
+        const box = ibb.box;
+
+        // Empty / zero-extent text — nothing to draw.
+        if (box.width === 0 || box.height === 0) {
+            return { rendered: true, status: { code: 0 } };
+        }
+
+        const dpr   = fontProps.pixelDensity;
+        const wPhys = Math.max(1, Math.ceil(box.width  * dpr));
+        const hPhys = Math.max(1, Math.ceil(box.height * dpr));
+        const intermediate = TextRenderer._makeIntermediate(wPhys, hPhys);
+        const interCtx     = intermediate.getContext('2d');
+
+        // (x - box.x, y - box.y) stays in CSS pixels — drawTextFromAtlas
+        // multiplies by pixelDensity internally. Don't double-scale.
+        BitmapText.drawTextFromAtlas(
+            interCtx, text, x - box.x, y - box.y, fontProps, userTextProps
+        );
+
+        // Blit the intermediate. drawImage applies the current transform, so
+        // rotation/scale are honoured.
+        coreCtx.drawImage(
+            intermediate, 0, 0, wPhys, hPhys,
+            box.x, box.y, box.width, box.height
+        );
+
+        return { rendered: true, status: { code: 0 } };
+    }
+
+    static measureText(coreCtx, text) {
+        const fontProps = TextRenderer._toFontProperties(coreCtx._font, 1);
+        if (!fontProps) return null;
+        const textColor = FillStyleToTextColor.toCssColor(coreCtx._fillStyle);
+        const textProps = TextRenderer._toTextProperties(
+            coreCtx._textAlign, coreCtx._textBaseline, textColor
+        );
+        const result = BitmapText.measureText(text, fontProps, textProps);
+        return result && result.metrics ? result.metrics : null;
+    }
+
+    /**
+     * Allocate an SWCanvasElement-shaped intermediate buffer. The build wires
+     * the createCanvas factory through BitmapText.setCanvasFactory; we mirror
+     * it here so the slow path uses the same canvas class without reaching
+     * across the module boundary.
+     *
+     * @private
+     */
+    static _makeIntermediate(w, h) {
+        return new SWCanvasElement(w, h);
+    }
+}
+
+/**
+ * FontsNamespace — populates SWCanvas.fonts
+ *
+ * CSS-Font-Loading-API-shaped wrapper over BitmapText's static loader API.
+ * Plus an escape hatch (`_raw`) exposing BitmapText internals for advanced
+ * use — e.g., the LRU atlas demo, custom loaders.
+ *
+ * Build wiring: this file runs after BitmapText + the platform FontLoaders.
+ * The actual attachment to the SWCanvas global happens in the build.sh
+ * footer (see Phase 4.7), where SWCanvas's public surface is assembled.
+ */
+class FontsNamespace {
+    /**
+     * Load a font. Accepts either:
+     *   - a BitmapText idString:  "density-1-0-Arial-style-normal-weight-normal-size-16-0"
+     *   - a descriptor object:    { family, style?, weight?, size, pixelDensity? }
+     *
+     * @returns {Promise<void>}
+     */
+    static load(familyOrIdOrDescriptor, options) {
+        const idString = FontsNamespace._toIdString(familyOrIdOrDescriptor, options);
+        return BitmapText.loadFont(idString, options || {});
+    }
+
+    static has(familyOrIdOrDescriptor, options) {
+        const idString = FontsNamespace._toIdString(familyOrIdOrDescriptor, options);
+        // BitmapText.hasAtlas may return undefined for never-touched ids; force
+        // boolean for a stable API.
+        return !!BitmapText.hasAtlas(idString);
+    }
+
+    static unload(familyOrIdOrDescriptor, options) {
+        const idString = FontsNamespace._toIdString(familyOrIdOrDescriptor, options);
+        return BitmapText.unloadAtlas(idString);
+    }
+
+    /**
+     * Convert any accepted input shape into a BitmapText idString.
+     *
+     * - String containing 'density-' and '-size-' → assumed to be an idString already
+     * - Object { family, size, style?, weight?, pixelDensity? } → build via FontProperties
+     * - String 'family-name' + options object → build via FontProperties
+     */
+    static _toIdString(input, options) {
+        if (typeof input === 'string' &&
+            input.indexOf('density-') === 0 &&
+            input.indexOf('-size-') !== -1) {
+            return input;
+        }
+        let family, style, weight, size, pixelDensity;
+        if (typeof input === 'string') {
+            family = input;
+            options = options || {};
+            style = options.style || 'normal';
+            weight = options.weight || 'normal';
+            size = options.size;
+            pixelDensity = options.pixelDensity || 1;
+        } else if (input && typeof input === 'object') {
+            family = input.family;
+            style = input.style || 'normal';
+            weight = input.weight || 'normal';
+            size = input.size;
+            pixelDensity = input.pixelDensity || 1;
+        }
+        if (!family || size === undefined) {
+            throw new Error(
+                'SWCanvas.fonts: missing family or size. Pass an idString or ' +
+                '{ family, size, style?, weight?, pixelDensity? }.'
+            );
+        }
+        return new FontProperties(pixelDensity, family, style, weight, size).idString;
+    }
+}
+
+/**
+ * BootstrapText — runtime configuration of vendored BitmapText.
+ *
+ * Wires BitmapText's canvas factory to SWCanvas's createCanvas (so the
+ * colored-glyph staging canvas and the Node atlas-load canvas are both
+ * SWCanvasElements — ImageLike-compatible with SWCanvas's drawImage), and
+ * sets atlasFormat='imageData' (so atlases land as Uint8ClampedArray-backed
+ * ImageLike instead of HTMLImageElement / canvas-mock-style canvases).
+ *
+ * setAtlasFormat's call-time contract: must run BEFORE the first loadFont /
+ * BitmapText.a / registerAtlas call. This file is emitted at the very end of
+ * dist/swcanvas.js (see build.sh Phase 4.7), which is the earliest any
+ * SWCanvas consumer can reach BitmapText — so the contract is satisfied by
+ * construction.
+ *
+ * The platform FontLoaders (BitmapTextFontLoaderBrowser / Node) self-register
+ * via their own file footers; we don't wire `_fontLoader` here.
+ */
+class BootstrapText {
+    static initialize(swcanvasNamespace) {
+        if (typeof BitmapText === 'undefined') {
+            throw new Error(
+                'BootstrapText.initialize: BitmapText is not defined. ' +
+                'Vendored BitmapText runtime must be concatenated before src/text/.'
+            );
+        }
+        BitmapText.configure({
+            canvasFactory: function () {
+                return swcanvasNamespace.createCanvas(1, 1);
+            },
+            atlasFormat: 'imageData',
+        });
     }
 }
 
@@ -17008,6 +22473,16 @@ class Context2D {
         // Cached state flags for direct rendering eligibility (performance optimization)
         this._noShadow = true; // Updated when shadow properties change
         this._isSourceOver = true; // Updated when globalCompositeOperation changes
+
+        // Text state (HTML5 Canvas-compatible). `_font` is the parsed shape produced
+        // by CssFontParser ({style, weight, fontSize, fontFamily}) or null when the
+        // user hasn't assigned a font yet. `null` means "nothing renderable" — we
+        // don't default to '10px sans-serif' because BitmapText would have no atlas
+        // for it and the silent failure would be confusing.
+        this._font = null;
+        this._textAlign = 'start';
+        this._textBaseline = 'alphabetic';
+        this._direction = 'inherit';
     }
 
     // HTML5 Canvas-compatible lineWidth property with validation
@@ -17106,7 +22581,12 @@ class Context2D {
             shadowOffsetY: this.shadowOffsetY,
             // Cached state flags
             _noShadow: this._noShadow,
-            _isSourceOver: this._isSourceOver
+            _isSourceOver: this._isSourceOver,
+            // Text state
+            font: this._font,
+            textAlign: this._textAlign,
+            textBaseline: this._textBaseline,
+            direction: this._direction
         };
     }
 
@@ -17147,6 +22627,12 @@ class Context2D {
         // Restore cached state flags
         this._noShadow = snapshot._noShadow ?? true;
         this._isSourceOver = snapshot._isSourceOver ?? true;
+
+        // Restore text state
+        this._font = snapshot.font !== undefined ? snapshot.font : null;
+        this._textAlign = snapshot.textAlign || 'start';
+        this._textBaseline = snapshot.textBaseline || 'alphabetic';
+        this._direction = snapshot.direction || 'inherit';
     }
 
     restore() {
@@ -18458,6 +23944,28 @@ class Context2D {
         this.rasterizer.endOp();
     }
 
+    // Text rendering — uses the vendored BitmapText engine via TextRenderer.
+    // Phase 2: fast path only (BitmapText resets transform to identity
+    // internally, so user transforms are not yet honoured). Phase 3 adds the
+    // intermediate-buffer slow path for rotated/scaled text.
+
+    fillText(text, x, y, _maxWidth) {
+        // _maxWidth is HTML5-spec compatible but unused — BitmapText doesn't
+        // shrink-to-fit. We accept the argument for API parity and ignore it.
+        return TextRenderer.fillText(this, text, x, y);
+    }
+
+    measureText(text) {
+        return TextRenderer.measureText(this, text);
+    }
+
+    strokeText() {
+        throw new Error(
+            'strokeText is not supported by SWCanvas\'s BitmapText backend. ' +
+            'Use fillText instead.'
+        );
+    }
+
     // Line dash methods
 
     /**
@@ -19128,6 +24636,14 @@ class CanvasCompatibleContext2D {
         this._fillStyle = '#000000';
         this._strokeStyle = '#000000';
         this._shadowColor = 'rgba(0, 0, 0, 0)'; // Transparent black (no shadow)
+        // Last-successfully-set font string. The getter returns '10px sans-serif'
+        // (HTML5 default) when null. Core stores the parsed shape on this._core._font.
+        this._font = null;
+        // Parallel stack for compat-layer-only string state that the core
+        // snapshot can't round-trip (the core only knows about the parsed font
+        // shape, not the user's original string). Pushed in save(), popped in
+        // restore() to keep the font getter consistent across state restores.
+        this._fontStack = [];
     }
 
     /**
@@ -19337,14 +24853,64 @@ class CanvasCompatibleContext2D {
         // Silently ignore invalid values (matches HTML5 Canvas behavior)
     }
 
+    // ===== TEXT PROPERTIES =====
+
+    get font() {
+        return this._font || '10px sans-serif';
+    }
+    set font(value) {
+        // HTML5 spec: silently ignore unparseable values; previous value stays.
+        if (typeof value !== 'string') return;
+        try {
+            const parsed = CssFontParser.parse(value);
+            this._font = value;
+            this._core._font = parsed;
+        } catch (_e) {
+            // Ignore — getter still returns whatever was last successfully set.
+        }
+    }
+
+    get textAlign() {
+        return this._core._textAlign;
+    }
+    set textAlign(value) {
+        if (value === 'start' || value === 'end' || value === 'left' ||
+            value === 'right' || value === 'center') {
+            this._core._textAlign = value;
+        }
+    }
+
+    get textBaseline() {
+        return this._core._textBaseline;
+    }
+    set textBaseline(value) {
+        if (value === 'top' || value === 'hanging' || value === 'middle' ||
+            value === 'alphabetic' || value === 'ideographic' || value === 'bottom') {
+            this._core._textBaseline = value;
+        }
+    }
+
+    get direction() {
+        return this._core._direction;
+    }
+    set direction(value) {
+        if (value === 'inherit' || value === 'ltr' || value === 'rtl') {
+            this._core._direction = value;
+        }
+    }
+
     // ===== STATE MANAGEMENT =====
 
     save() {
+        this._fontStack.push(this._font);
         this._core.save();
     }
 
     restore() {
         this._core.restore();
+        if (this._fontStack.length > 0) {
+            this._font = this._fontStack.pop();
+        }
     }
 
     // ===== TRANSFORMS =====
@@ -19527,6 +25093,21 @@ class CanvasCompatibleContext2D {
             // Fallback to core implementation (includes HTMLImageElement and other types)
             this._core.drawImage(image, ...args);
         }
+    }
+
+    // ===== TEXT RENDERING =====
+
+    fillText(text, x, y, maxWidth) {
+        return this._core.fillText(text, x, y, maxWidth);
+    }
+
+    measureText(text) {
+        return this._core.measureText(text);
+    }
+
+    strokeText() {
+        // Re-throws Core's "not supported" — explicit failure beats silent no-op.
+        this._core.strokeText();
     }
 
     // ===== IMAGE DATA API =====
@@ -19933,6 +25514,20 @@ function createImageData(width, height) {
 }
 
 
+// Build the SWCanvas.fonts namespace + _raw escape hatch (advanced users / demos).
+var swcanvasFonts = {
+    load: FontsNamespace.load,
+    has: FontsNamespace.has,
+    unload: FontsNamespace.unload,
+    _raw: {
+        BitmapText: BitmapText,
+        FontProperties: FontProperties,
+        TextProperties: TextProperties,
+        AtlasDataStore: AtlasDataStore,
+        AtlasLRU: AtlasLRU
+    }
+};
+
 // Export to global scope with clean dual API architecture
 if (typeof window !== 'undefined') {
     // Browser
@@ -19940,8 +25535,11 @@ if (typeof window !== 'undefined') {
         // HTML5 Canvas-compatible API (recommended for portability)
         createCanvas: createCanvas,
         createImageData: createImageData,
-        
-        // Core API namespace (recommended for performance/control)  
+
+        // Text loading namespace (CSS-Font-Loading-API-shaped).
+        fonts: swcanvasFonts,
+
+        // Core API namespace (recommended for performance/control)
         Core: {
             Surface: CoreSurfaceFactory,
             Context2D: Context2D,
@@ -19988,6 +25586,9 @@ if (typeof window !== 'undefined') {
         createCanvas: createCanvas,
         createImageData: createImageData,
 
+        // Text loading namespace (CSS-Font-Loading-API-shaped).
+        fonts: swcanvasFonts,
+
         // Core API namespace (recommended for performance/control)
         Core: {
             Surface: CoreSurfaceFactory,
@@ -20028,6 +25629,30 @@ if (typeof window !== 'undefined') {
             debugWarn: debugWarn
         }
     };
+}
+
+// Phase 4.7: Text bootstrap. Runs AFTER the SWCanvas namespace is built (so we
+// can hand BootstrapText a reference to createCanvas for BitmapText's canvas
+// factory) and BEFORE any consumer code can call SWCanvas.fonts.load — this is
+// the last executable line in dist/swcanvas.js, satisfying setAtlasFormat's
+// call-time contract (must precede the first loadFont / registerAtlas).
+var _swcanvasNs = (typeof window !== 'undefined') ? window.SWCanvas
+                : (typeof module !== 'undefined' && module.exports) ? module.exports
+                : null;
+if (_swcanvasNs) {
+    BootstrapText.initialize(_swcanvasNs);
+}
+
+// Expose BitmapText on the global so the script-tag-injected asset files
+// (metrics-bundle.js, positioning-bundle-density-*.js, atlas-*-webp.js) can
+// reach the registration callbacks (BitmapText.rBundle, .pBundle, .a). Those
+// scripts execute in the page's global scope, not inside this IIFE — without
+// this line they ReferenceError on first load. BitmapText's own dist bundle
+// avoids the IIFE entirely, so all its classes are naturally global; SWCanvas
+// wraps everything in an IIFE for hygiene and re-exposes only what the
+// dynamically-loaded asset pipeline needs.
+if (typeof globalThis !== 'undefined') {
+    globalThis.BitmapText = BitmapText;
 }
 
 })();

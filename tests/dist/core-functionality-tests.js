@@ -1795,6 +1795,175 @@
         });
 
 
+        // Test: ctx.font setter accepts the supported CSS subset and rejects unsupported
+
+        test('ctx.font: basic "16px Arial" parses and round-trips', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = '16px Arial';
+            assertEquals(ctx.font, '16px Arial');
+        });
+
+        test('ctx.font: "bold 12px Courier" parses and round-trips', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = 'bold 12px Courier';
+            assertEquals(ctx.font, 'bold 12px Courier');
+        });
+
+        test('ctx.font: "italic bold 18px Georgia" parses and round-trips', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = 'italic bold 18px Georgia';
+            assertEquals(ctx.font, 'italic bold 18px Georgia');
+        });
+
+        test('ctx.font: default before assignment is "10px sans-serif"', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            assertEquals(ctx.font, '10px sans-serif');
+        });
+
+        test('ctx.font: invalid value silently leaves previous value in place', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = '16px Arial';
+            ctx.font = '16em Arial';      // non-px units — should be rejected
+            assertEquals(ctx.font, '16px Arial');
+            ctx.font = '16px Arial, sans-serif';  // comma list — rejected
+            assertEquals(ctx.font, '16px Arial');
+        });
+
+        test('ctx.font: numeric weights (100..900) parse', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = '700 14px Arial';
+            assertEquals(ctx.font, '700 14px Arial');
+        });
+
+
+        // Test: font, textAlign, textBaseline survive save()/restore()
+
+        test('save/restore preserves font, textAlign, textBaseline', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            ctx.save();
+            ctx.font = '12px Courier';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'top';
+            assertEquals(ctx.font, '12px Courier');
+            assertEquals(ctx.textAlign, 'right');
+            assertEquals(ctx.textBaseline, 'top');
+
+            ctx.restore();
+            assertEquals(ctx.font, '16px Arial');
+            assertEquals(ctx.textAlign, 'center');
+            assertEquals(ctx.textBaseline, 'middle');
+        });
+
+        test('textAlign accepts the six standard values; rejects others', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            for (const v of ['start', 'end', 'left', 'right', 'center']) {
+                ctx.textAlign = v;
+                assertEquals(ctx.textAlign, v);
+            }
+            ctx.textAlign = 'bogus';
+            assertEquals(ctx.textAlign, 'center');  // unchanged from previous valid set
+        });
+
+        test('textBaseline accepts the six standard values; rejects others', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            for (const v of ['top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom']) {
+                ctx.textBaseline = v;
+                assertEquals(ctx.textBaseline, v);
+            }
+            ctx.textBaseline = 'bogus';
+            assertEquals(ctx.textBaseline, 'bottom');  // unchanged from previous valid set
+        });
+
+
+        // Test: strokeText throws "not supported" — explicit failure beats silent no-op.
+
+        test('ctx.strokeText throws "not supported"', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = '16px Arial';
+            assertThrows(() => ctx.strokeText('hello', 10, 20), 'not supported');
+        });
+
+
+        // Test: SWCanvas.fonts namespace shape
+
+        test('SWCanvas.fonts exposes load/has/unload + _raw', () => {
+            assertEquals(typeof SWCanvas.fonts, 'object');
+            assertEquals(typeof SWCanvas.fonts.load, 'function');
+            assertEquals(typeof SWCanvas.fonts.has, 'function');
+            assertEquals(typeof SWCanvas.fonts.unload, 'function');
+            assertEquals(typeof SWCanvas.fonts._raw, 'object');
+        });
+
+        test('SWCanvas.fonts._raw exposes the BitmapText runtime escape hatch', () => {
+            const raw = SWCanvas.fonts._raw;
+            assertEquals(typeof raw.BitmapText, 'function');     // class
+            assertEquals(typeof raw.FontProperties, 'function');
+            assertEquals(typeof raw.TextProperties, 'function');
+            assertEquals(typeof raw.AtlasDataStore, 'function');
+            assertEquals(typeof raw.AtlasLRU, 'function');
+        });
+
+        test('SWCanvas.fonts.has returns false for an unloaded font', () => {
+            // Just check the call shape — we can't load anything in Phase 2 (no atlases
+            // available in test env yet). False is the only legal return here.
+            const result = SWCanvas.fonts.has({ family: 'NonexistentFont', size: 99 });
+            assertEquals(result, false);
+        });
+
+
+        // Test: fillText with no font atlas loaded should not crash.
+        // Phase 2 doesn't ship a font fixture, so all fillText calls hit the
+        // NO_METRICS path. They must return cleanly without writing pixels.
+
+        test('fillText with no font loaded does not crash, leaves canvas untouched', () => {
+            const canvas = SWCanvas.createCanvas(20, 20);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 20, 20);
+            // Snapshot a pixel before fillText.
+            const before = ctx.getImageData(10, 10, 1, 1).data;
+
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'black';
+            ctx.fillText('hi', 0, 16);
+
+            const after = ctx.getImageData(10, 10, 1, 1).data;
+            // Pixel unchanged — no atlas means nothing rendered.
+            assertEquals(after[0], before[0]);
+            assertEquals(after[1], before[1]);
+            assertEquals(after[2], before[2]);
+            assertEquals(after[3], before[3]);
+        });
+
+        test('fillText with no font assigned does not crash', () => {
+            const canvas = SWCanvas.createCanvas(20, 20);
+            const ctx = canvas.getContext('2d');
+            // No ctx.font assignment — _font stays null.
+            ctx.fillText('hi', 0, 16);  // must not throw
+        });
+
+        test('measureText with no font assigned returns null', () => {
+            const canvas = SWCanvas.createCanvas(20, 20);
+            const ctx = canvas.getContext('2d');
+            const m = ctx.measureText('hi');
+            assertEquals(m, null);
+        });
+
+
         return testResults;
     }
     
