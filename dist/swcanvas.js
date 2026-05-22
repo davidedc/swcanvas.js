@@ -25532,6 +25532,7 @@ var swcanvasFonts = {
         FontProperties: FontProperties,
         TextProperties: TextProperties,
         AtlasDataStore: AtlasDataStore,
+        FontManifest: FontManifest,
         AtlasLRU: AtlasLRU
     }
 };
