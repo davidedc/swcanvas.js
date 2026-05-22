@@ -1,9 +1,9 @@
 // SWCanvas Build Information
-// Generated: 2026-05-22T16:02:05.680Z
+// Generated: 2026-05-22T20:27:49.293Z
 window.SWCANVAS_BUILD_INFO = {
-  "timestamp": "2026-05-22T16:02:05.680Z",
-  "commit": "c0453db",
-  "commitFull": "c0453db2b6f3bdf4ebd7443b1bee1bbdf78bd85d",
+  "timestamp": "2026-05-22T20:27:49.293Z",
+  "commit": "93b8969",
+  "commitFull": "93b896909b109854935a9e825c2196bbb141243b",
   "branch": "main",
   "version": "1.0.0",
   "type": "dev"
