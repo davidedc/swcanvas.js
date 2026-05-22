@@ -9847,6 +9847,261 @@
     });
 
 
+    // Test: Basic fillText — different fonts, colors, and an invariant character.
+    // Smoke fixture provides Arial regular + bold + BitmapTextInvariant, all at
+    // size 16 density-1. Text in this file stays at size 16 so the smoke set has
+    // matching atlases (any other size hits NO_METRICS, no pixels written).
+
+    registerVisualTest('text-basic', {
+        name: 'Basic fillText: regular, bold, colored, invariant character',
+        width: 300, height: 140,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 300, 140);
+
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'black';
+            ctx.fillText('Hello, World!', 10, 25);
+
+            ctx.font = 'bold 16px Arial';
+            ctx.fillStyle = '#003388';
+            ctx.fillText('Hello, World! (bold)', 10, 55);
+
+            ctx.font = '16px Arial';
+            ctx.fillStyle = '#aa2222';
+            ctx.fillText('Red — slow path (recolor)', 10, 85);
+
+            // The smiley auto-redirects to BitmapTextInvariant at the same
+            // size+density via the FONT_INVARIANT_CHARS mapping.
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'black';
+            ctx.fillText('Smiley ☺ via invariant atlas', 10, 115);
+        }
+    });
+
+
+    // Test: textAlign matrix — left / center / right anchored at the same x.
+    // A vertical guide line marks the anchor x; each label is anchored to it.
+
+    registerVisualTest('text-align-matrix', {
+        name: 'textAlign: left, center, right at the same anchor x',
+        width: 300, height: 120,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 300, 120);
+
+            // Vertical guide line at the anchor x.
+            ctx.strokeStyle = '#cccccc';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(150, 0);
+            ctx.lineTo(150, 120);
+            ctx.stroke();
+
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'black';
+
+            ctx.textAlign = 'left';
+            ctx.fillText('left', 150, 30);
+
+            ctx.textAlign = 'center';
+            ctx.fillText('center', 150, 60);
+
+            ctx.textAlign = 'right';
+            ctx.fillText('right', 150, 90);
+        }
+    });
+
+
+    // Test: textBaseline matrix — top, hanging, middle, alphabetic, ideographic,
+    // bottom. A horizontal guide line marks the anchor y; each label is anchored
+    // to it (so different baselines produce text at different y positions).
+
+    registerVisualTest('text-baseline-matrix', {
+        name: 'textBaseline: top, hanging, middle, alphabetic, ideographic, bottom',
+        width: 510, height: 80,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 510, 80);
+
+            // Horizontal guide line at the anchor y.
+            ctx.strokeStyle = '#cccccc';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, 40);
+            ctx.lineTo(510, 40);
+            ctx.stroke();
+
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'black';
+            ctx.textAlign = 'left';
+
+            const baselines = ['top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom'];
+            for (let i = 0; i < baselines.length; i++) {
+                ctx.textBaseline = baselines[i];
+                ctx.fillText(baselines[i], 10 + i * 84, 40);
+            }
+        }
+    });
+
+
+    // Test: rotated text — exercises the TextRenderer slow path with rotation.
+    // Multiple labels at different angles around a common centre, each rendered
+    // via translate → rotate → fillText.
+
+    registerVisualTest('text-rotated', {
+        name: 'Rotated text at 0, 30, 60, 90, 120, 150, 180 degrees',
+        width: 280, height: 280,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 280, 280);
+
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'black';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'left';
+
+            const cx = 140, cy = 140;
+            const angles = [0, 30, 60, 90, 120, 150, 180];
+            for (let i = 0; i < angles.length; i++) {
+                const deg = angles[i];
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(deg * Math.PI / 180);
+                ctx.fillText(deg + ' deg', 10, 0);
+                ctx.restore();
+            }
+        }
+    });
+
+
+    // Test: scaled text — exercises the TextRenderer slow path with non-uniform
+    // and uniform scale. The atlas is rasterised at 16px; ctx.scale stretches the
+    // intermediate buffer at drawImage time via SWCanvas's blit.
+
+    registerVisualTest('text-scaled', {
+        name: 'Text scaled with ctx.scale at factors 1x, 1.5x, 2x',
+        width: 360, height: 160,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 360, 160);
+
+            ctx.fillStyle = 'black';
+            ctx.font = '16px Arial';
+            ctx.textBaseline = 'top';
+
+            ctx.save();
+            ctx.fillText('scale 1x', 10, 10);
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(10, 40);
+            ctx.scale(1.5, 1.5);
+            ctx.fillText('scale 1.5x', 0, 0);
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(10, 90);
+            ctx.scale(2, 2);
+            ctx.fillText('scale 2x', 0, 0);
+            ctx.restore();
+        }
+    });
+
+
+    // Test: clipped text — a circular clip region constrains the rendered glyphs.
+    // Multiple horizontal lines of text are drawn; only the portions inside the
+    // circle should be visible. Exercises the clip/text interaction in the
+    // rasteriser's drawImage path.
+
+    registerVisualTest('text-clipped', {
+        name: 'Text rendered with a circular clip region',
+        width: 240, height: 160,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 240, 160);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(120, 80, 60, 0, 2 * Math.PI);
+            ctx.clip();
+
+            ctx.fillStyle = 'black';
+            ctx.font = '16px Arial';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+            // Repeating string so something is visible across most of the clip
+            // ellipse regardless of where the centre lands.
+            for (let y = 25; y <= 145; y += 20) {
+                ctx.fillText('clip-clip-clip-clip', 120, y);
+            }
+            ctx.restore();
+        }
+    });
+
+
+    // Test: text with globalAlpha — four lines of black text fading from fully
+    // opaque to mostly transparent. Verifies alpha integrates with the
+    // per-glyph composite path.
+
+    registerVisualTest('text-alpha', {
+        name: 'Text with globalAlpha 1.0, 0.75, 0.5, 0.25',
+        width: 200, height: 160,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 200, 160);
+
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'black';
+            ctx.textBaseline = 'top';
+
+            const alphas = [1.0, 0.75, 0.5, 0.25];
+            for (let i = 0; i < alphas.length; i++) {
+                ctx.save();
+                ctx.globalAlpha = alphas[i];
+                ctx.fillText('alpha ' + alphas[i].toFixed(2), 10, 10 + i * 35);
+                ctx.restore();
+            }
+        }
+    });
+
+
+    // Test: combined transforms — text rendered through a translate + rotate +
+    // scale stack with a non-black fill (forces the per-glyph composite recolor
+    // slow path on top of the intermediate-buffer transform path).
+
+    registerVisualTest('text-combined-transforms', {
+        name: 'Text with combined translate + rotate + scale + colored fill',
+        width: 300, height: 200,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 300, 200);
+
+            ctx.font = 'bold 16px Arial';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+
+            ctx.save();
+            ctx.translate(150, 100);
+            ctx.rotate(-15 * Math.PI / 180);
+            ctx.scale(1.5, 1.5);
+            ctx.fillStyle = '#0066cc';
+            ctx.fillText('Combined', 0, -10);
+            ctx.fillStyle = '#cc0066';
+            ctx.fillText('Transforms', 0, 10);
+            ctx.restore();
+        }
+    });
+
+
     const VisualRenderingTests = {
         getTests: function() { return visualTests; },
         getTest: function(name) { return visualTests[name]; },
