@@ -253,10 +253,10 @@
       </select>
     </label>
     <label>Text color
-      <select id="ctrl-color" title="Black takes BitmapText's fast direct-blit path; any other color forces the per-glyph composite recolor path.">
-        <option value="000">#000 (fast)</option>
-        <option value="222">#222 (slow)</option>
+      <select id="ctrl-color" title="Black takes BitmapText's fast direct-blit path; any non-black colour forces the per-glyph composite recolor path. 'Mixed' coin-flips per textbox.">
+        <option value="black">Black (fast)</option>
         <option value="random">Random (slow)</option>
+        <option value="mixed">Mixed (50% black, 50% random)</option>
       </select>
     </label>
     <!-- SWCanvas-specific exercise paths follow. None of these exist in
@@ -350,13 +350,16 @@
   function pickTextProps() {
     const mode = COLOR_INPUT.value;
     let textColor;
-    if (mode === 'random') {
+    // 'mixed' coin-flips per textbox between black (fast direct-blit path)
+    // and a random HSL colour (slow per-glyph composite recolor path) so
+    // both paths run concurrently on the stage. The coin is baked into
+    // textProps at construction time, so each textbox keeps the same
+    // colour for its entire life — re-rolling per paint would flicker.
+    if (mode === 'random' || (mode === 'mixed' && Math.random() >= 0.5)) {
       // HSL with capped luminance for legibility against white.
       textColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 32%)`;
-    } else if (mode === '222') {
-      textColor = '#222222';
     } else {
-      textColor = '#000000';   // BitmapText fast path (direct atlas blit)
+      textColor = '#000000';   // 'black', or 'mixed' coin-flip heads
     }
     return new TextProperties({ ...TEXT_PROPERTIES_BASE, textColor });
   }
