@@ -6099,7 +6099,17 @@ class BitmapTextFontLoaderBrowser extends FontLoaderBase {
     const tmp = document.createElement('canvas');
     tmp.width = img.naturalWidth || img.width;
     tmp.height = img.naturalHeight || img.height;
-    const tmpCtx = tmp.getContext('2d');
+    // willReadFrequently:true is load-bearing — every getImageData call
+    // here would otherwise force a GPU→CPU readback per atlas, which
+    // dominates the load wall-clock in 'imageData' embedders (e.g.
+    // SWCanvas). The hint allocates the canvas backing in CPU memory
+    // from the start so getImageData is a CPU-side memcpy. Silently
+    // ignored by browsers older than Chrome 89 / Firefox 109 / Safari 17.
+    // Don't strip this: the helper is dead code on the default
+    // 'imageElement' path, so the slowdown is invisible to the project's
+    // own demos — only embedders in 'imageData' mode hit it, once per
+    // atlas load.
+    const tmpCtx = tmp.getContext('2d', { willReadFrequently: true });
     tmpCtx.drawImage(img, 0, 0);
     const imageData = tmpCtx.getImageData(0, 0, tmp.width, tmp.height);
     return { width: imageData.width, height: imageData.height, data: imageData.data };
