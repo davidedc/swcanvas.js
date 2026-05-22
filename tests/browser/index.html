@@ -156,6 +156,7 @@
     <div class="test-section">
         <h2>Visual Rendering Tests</h2>
         <p>Side-by-side comparison of HTML5 Canvas vs SWCanvas for all visual rendering test cases:</p>
+        <div id="smoke-fonts-status" style="font-size: 12px; padding: 8px 10px; border-radius: 4px; margin-bottom: 8px; background: #f0f0f0; color: #666;">Loading text fonts from font-assets/&hellip;</div>
         <div id="visual-comparisons"></div>
     </div>
 
@@ -167,12 +168,64 @@
     <script>
         let browserVisualTests;
 
-        function initializeTests() {
+        // The three idStrings that match what tests/run-tests.js preloads in
+        // Node. The browser path consumes WebP atlases from the full
+        // font-assets/ download (smoke fixture is QOI, Node-only).
+        const SMOKE_FONT_IDS = [
+            'density-1-0-Arial-style-normal-weight-normal-size-16-0',
+            'density-1-0-Arial-style-normal-weight-bold-size-16-0',
+            'density-1-0-BitmapTextInvariant-style-normal-weight-normal-size-16-0',
+        ];
+
+        async function loadSmokeFontsInBrowser() {
+            const { BitmapText } = SWCanvas.fonts._raw;
+            // Relative to tests/browser/index.html → ../../font-assets/
+            BitmapText.setFontDirectory('../../font-assets/');
+            const isFileProtocol = window.location.protocol === 'file:';
+            // loadFont's missing-file path is non-throwing (it console.warns
+            // and resolves to placeholder behaviour). Use hasAtlas after the
+            // await to check actual outcome.
+            await Promise.all(SMOKE_FONT_IDS.map(id =>
+                BitmapText.loadFont(id, { isFileProtocol })
+            ));
+            return SMOKE_FONT_IDS.every(id => BitmapText.hasAtlas(id));
+        }
+
+        function setSmokeStatus(success, isFileProtocol) {
+            const el = document.getElementById('smoke-fonts-status');
+            if (!el) return;
+            if (success) {
+                el.style.background = '#e8f5e9';
+                el.style.color = '#2e7d32';
+                el.textContent = '✓ Text fonts loaded from font-assets/ — text visual tests render real glyphs below.';
+            } else {
+                el.style.background = '#fff5e0';
+                el.style.color = '#8a5b00';
+                const hint = isFileProtocol
+                    ? 'Run ./scripts/download-bitmaptext-assets.sh AND npm run text:wrap-for-file to enable text rendering under file://.'
+                    : 'Run ./scripts/download-bitmaptext-assets.sh to enable text rendering. Without it, text tests below render placeholder rectangles instead of glyphs.';
+                el.innerHTML = '⚠ Text fonts not found at font-assets/. ' + hint;
+            }
+        }
+
+        async function initializeTests() {
             // Initialize browser visual tests (if needed)
             if (typeof createBrowserVisualTests === 'function') {
                 browserVisualTests = createBrowserVisualTests(SWCanvas);
             }
-            
+
+            // Preload the smoke fonts so the text visual tests (200-207)
+            // render real glyphs in the browser, matching the Node-generated
+            // golden PNGs at tests/output/text-*.basic.png.
+            const isFileProtocol = window.location.protocol === 'file:';
+            let smokeOK = false;
+            try {
+                smokeOK = await loadSmokeFontsInBrowser();
+            } catch (err) {
+                console.warn('Smoke font preload failed:', err);
+            }
+            setSmokeStatus(smokeOK, isFileProtocol);
+
             // Automatically run both test suites
             runSharedTests();
             runVisualComparison();
