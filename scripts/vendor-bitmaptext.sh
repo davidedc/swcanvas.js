@@ -157,7 +157,7 @@ fi
 # error, bad pin, dirty source), the previous vendor/ survives intact.
 
 rm -rf vendor/bitmaptext
-mkdir -p vendor/bitmaptext/runtime vendor/bitmaptext/platform vendor/bitmaptext/utils vendor/bitmaptext/builder vendor/bitmaptext/scripts
+mkdir -p vendor/bitmaptext/runtime vendor/bitmaptext/platform vendor/bitmaptext/utils vendor/bitmaptext/builder vendor/bitmaptext/scripts vendor/bitmaptext/lib
 
 # Runtime: copy everything.
 rsync -a --delete "$SOURCE_ABS/src/runtime/" vendor/bitmaptext/runtime/
@@ -189,6 +189,14 @@ rsync -a "$SOURCE_ABS/src/utils/AtlasCellDimensions.js" vendor/bitmaptext/utils/
 # file's own "VENDORING NOTES" block. SWCanvas calls it through
 # `npm run text:wrap-for-file` with the --webp flag.
 rsync -a "$SOURCE_ABS/scripts/image-to-js-converter.js" vendor/bitmaptext/scripts/
+
+# Lib: QOIDecode is a standalone function used by FontLoaderNode to decode
+# QOI-encoded atlas bytes back into raw pixels. BitmapText's own
+# build-runtime-bundle.sh concatenates lib/QOIDecode.js into its Node-runtime
+# bundle and exposes it via `global.QOIDecode = QOIDecode;` — we do the same
+# inside our IIFE via build.sh's Phase 1.7 (no global exposure needed because
+# FontLoaderNode is concatenated in the same scope).
+rsync -a "$SOURCE_ABS/lib/QOIDecode.js" vendor/bitmaptext/lib/
 
 # ----- Pin rewrite (local-source mode, when allowed) -----
 

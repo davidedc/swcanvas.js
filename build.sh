@@ -168,6 +168,14 @@ cat vendor/bitmaptext/utils/AtlasCellDimensions.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat vendor/bitmaptext/platform/FontLoaderBrowser.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
+# QOIDecode: standalone codec used by FontLoaderNode to decode QOI atlas
+# bytes. Must come BEFORE FontLoaderNode (which checks `typeof QOIDecode`).
+# In BitmapText's own Node-runtime build this is concatenated then exposed
+# via `global.QOIDecode = QOIDecode;`; we don't need that here because the
+# whole dist runs inside one IIFE, so QOIDecode is in scope for the
+# FontLoaderNode reference automatically.
+cat vendor/bitmaptext/lib/QOIDecode.js >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
 cat vendor/bitmaptext/platform/FontLoaderNode.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat vendor/bitmaptext/utils/AtlasLRU.js >> dist/swcanvas.js
