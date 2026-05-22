@@ -3680,14 +3680,18 @@
                 ctx.lineTo(200, 50 + i * 30);
                 ctx.stroke();
                 
-                // Label the width
+                // Label the width. Probe the canvas type, not ctx.fillText —
+                // both SWCanvas's compat layer and HTML5 Canvas define fillText,
+                // but only HTML5 will draw text without an asset bundle loaded.
                 ctx.fillStyle = 'black';
-                if (ctx.fillText) {
-                    // HTML5Canvas: use fillText
+                const isHTML5 = typeof HTMLCanvasElement !== 'undefined'
+                             && canvas instanceof HTMLCanvasElement;
+                if (isHTML5) {
+                    // HTML5Canvas: use fillText for readable labels in the browser view
                     ctx.font = '10px Arial';
                     ctx.fillText(strokeWidths[i].toString(), 10, 55 + i * 30);
                 } else {
-                    // SWCanvas: use a small rect to indicate width
+                    // SWCanvas: use a small rect to indicate width (no font assets in tests)
                     ctx.fillRect(20, 45 + i * 30, 2, strokeWidths[i] * 10 + 2);
                 }
             }
