@@ -24,7 +24,7 @@ See [index page](https://davidedc.github.io/swcanvas.js/) for link to all browse
 
 SWCanvas focuses on deterministic 2D graphics primitives and does not implement several HTML5 Canvas features:
 
-- **Text Rendering / Advanced Typography**: No `fillText()`, `strokeText()`, `measureText()` or font handling, no text baseline, direction, or complex text layout
+- **Advanced Typography**: Text rendering (`fillText()`, `measureText()`, `font`, `textAlign`, `textBaseline`, `textPixelDensity`) is supported via the vendored BitmapText.js bitmap-font engine — see `TEXT-INTEGRATION-HANDOFF.md`. `strokeText()` throws (BitmapText doesn't stroke glyphs). No complex text layout, no `direction` handling beyond storage, no `maxWidth` shrink-to-fit.
 - **Image Loading**: No built-in image loading from URLs or files (use ImageLike objects with raw pixel data)
 - **Video/Media**: No video frame rendering or media stream support
 - **Filter Effects**: No CSS-style filters or convolution matrices
