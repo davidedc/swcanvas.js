@@ -63,7 +63,7 @@ class TextRenderer {
      * @returns {{rendered: boolean, status: object}}
      */
     static fillText(coreCtx, text, x, y) {
-        const fontProps = TextRenderer._toFontProperties(coreCtx._font, 1);
+        const fontProps = TextRenderer._toFontProperties(coreCtx._font, coreCtx._textPixelDensity);
         if (!fontProps) {
             return { rendered: false, status: { code: 1 /* NO_METRICS */ } };
         }
@@ -73,7 +73,11 @@ class TextRenderer {
         );
 
         const t = coreCtx._transform;
-        if (TextRenderer._isIdentityLike(t)) {
+        // Fast path requires density === 1. At density > 1 drawTextFromAtlas
+        // would multiply x/y by N and draw glyphs at N× size against the main
+        // surface — wrong logical coords AND size. The slow path's intermediate
+        // + drawImage downsamples back to CSS pixels, preserving correctness.
+        if (TextRenderer._isIdentityLike(t) && fontProps.pixelDensity === 1) {
             // Fast path: pre-apply the integer translation and call BitmapText
             // directly against the main context (which it'll reset to identity).
             return BitmapText.drawTextFromAtlas(
@@ -119,7 +123,7 @@ class TextRenderer {
     }
 
     static measureText(coreCtx, text) {
-        const fontProps = TextRenderer._toFontProperties(coreCtx._font, 1);
+        const fontProps = TextRenderer._toFontProperties(coreCtx._font, coreCtx._textPixelDensity);
         if (!fontProps) return null;
         const textColor = FillStyleToTextColor.toCssColor(coreCtx._fillStyle);
         const textProps = TextRenderer._toTextProperties(

@@ -63,6 +63,14 @@
     </select>
   </label>
   <label><input type="checkbox" id="ctl-checker"> Transparent bg</label>
+  <label>Pixel density:
+    <select id="ctl-dpr">
+      <option value="auto" selected>Auto</option>
+      <option value="1">1 only</option>
+      <option value="2">2 only</option>
+      <option value="both">Both (mix)</option>
+    </select>
+  </label>
   <button id="pause">Pause</button>
   <span class="pill" id="status">starting…</span>
 </div>
@@ -92,7 +100,6 @@
   const isFileProtocol = window.location.protocol === 'file:';
 
   const TEXT_CONTENT = 'Hello, World ☺';
-  const PIXEL_DENSITY = 1;
 
   // The pool of font configurations textboxes draw from. Spans the full size
   // range BitmapText supports (0 to 96, 0.5-step) across 3 families × 2 weights,
@@ -115,13 +122,13 @@
     }
   }
 
-  function fontPoolToIdString(p) {
-    return new FontProperties(PIXEL_DENSITY, p.family, p.style, p.weight, p.size).idString;
+  function fontPoolToIdString(p, pixelDensity) {
+    return new FontProperties(pixelDensity, p.family, p.style, p.weight, p.size).idString;
   }
 
   // Each textbox also needs the BitmapTextInvariant atlas (for the smiley ☺).
-  function invariantIdStringFor(size) {
-    return new FontProperties(PIXEL_DENSITY, 'BitmapTextInvariant', 'normal', 'normal', size).idString;
+  function invariantIdStringFor(size, pixelDensity) {
+    return new FontProperties(pixelDensity, 'BitmapTextInvariant', 'normal', 'normal', size).idString;
   }
 
   // ---------- DOM refs + controls ----------
@@ -133,7 +140,20 @@
   const ctlS   = document.getElementById('ctl-scale');const valS   = document.getElementById('val-scale');
   const ctlC   = document.getElementById('ctl-color');
   const ctlCB  = document.getElementById('ctl-checker');
+  const ctlDPR = document.getElementById('ctl-dpr');
   const pause  = document.getElementById('pause');
+
+  // Per-spawn density derived from the dropdown. Auto follows the OS-reported
+  // devicePixelRatio (re-read at spawn so dragging the window between monitors
+  // affects subsequent textboxes). 'Both (mix)' rolls a coin per spawn so the
+  // stage shows density-1 and density-2 side by side under the same controls.
+  function densityForMode(mode) {
+    if (mode === '1') return 1;
+    if (mode === '2') return 2;
+    if (mode === 'both') return Math.random() < 0.5 ? 1 : 2;
+    // 'auto'
+    return (window.devicePixelRatio >= 1.5) ? 2 : 1;
+  }
   const status = document.getElementById('status');
   const pillOn = document.getElementById('pill-onscreen');
   const pillRe = document.getElementById('pill-resident');
@@ -151,9 +171,11 @@
 
   // Bootstrap the metrics bundle once (must precede the first loadFont call).
   // BitmapText.loadFont auto-loads metrics on first call, but we want to surface
-  // the loading state in the UI, so we kick it off explicitly.
+  // the loading state in the UI, so we kick it off explicitly. Density 1 is
+  // fine here — metrics are density-agnostic; per-textbox density picks the
+  // matching positioning bundle and atlases when those load lazily.
   status.textContent = 'loading metrics…';
-  BitmapText.loadFont(fontPoolToIdString(FONT_POOL[0]), { isFileProtocol })
+  BitmapText.loadFont(fontPoolToIdString(FONT_POOL[0], 1), { isFileProtocol })
     .then(start)
     .catch(err => { status.textContent = 'metrics failed: ' + err.message; throw err; });
 
@@ -180,10 +202,15 @@
     class TextBox {
       constructor(fontDesc, lifetimeMs) {
         this.fontDesc = fontDesc;
-        this.idString = fontPoolToIdString(fontDesc);
-        this.invariantId = invariantIdStringFor(fontDesc.size);
+        // Bake density at spawn — affects which atlas this textbox requests
+        // through the LRU, which FontProperties it constructs, the SWCanvas
+        // backing-buffer size (physical = logical × density), and the base
+        // ctx.scale applied in paint() so that user coords stay logical.
+        this.pixelDensity = densityForMode(ctlDPR.value);
+        this.idString = fontPoolToIdString(fontDesc, this.pixelDensity);
+        this.invariantId = invariantIdStringFor(fontDesc.size, this.pixelDensity);
         this.fontProps = new FontProperties(
-          PIXEL_DENSITY, fontDesc.family, fontDesc.style, fontDesc.weight, fontDesc.size
+          this.pixelDensity, fontDesc.family, fontDesc.style, fontDesc.weight, fontDesc.size
         );
         this.expireAt = performance.now() + lifetimeMs;
         this.alive = true;
@@ -210,15 +237,28 @@
         // Placeholder canvas — tiny rect that shows during font load. Once the
         // font is warm, spawnOne calls _resizeToFit() to size precisely to the
         // rotated+scaled ink bbox via BitmapText.computeInkBoundingBox.
-        const w = 40, h = 24;
-        this.canvas = SWCanvas.createCanvas(w, h);
+        //
+        // SWCanvas backing buffer is sized in physical pixels (cssSize × dpr);
+        // paint() applies ctx.scale(dpr,dpr) so the rest of the painting stays
+        // in CSS pixels. Display canvas matches the physical size but its CSS
+        // box (style.width/height) is logical — the browser then downsamples
+        // for display so density>1 reveals extra detail when pixel-peeping
+        // (matches the BitmapText.js LRU demo's behaviour).
+        const cssW = 40, cssH = 24;
+        const dpr = this.pixelDensity;
+        const physW = cssW * dpr;
+        const physH = cssH * dpr;
+        this.canvas = SWCanvas.createCanvas(physW, physH);
         this.ctx = this.canvas.getContext('2d');
-        this.w = w; this.h = h;
+        this.cssW = cssW; this.cssH = cssH;
+        this.w = physW; this.h = physH;
 
         // DOM wrapper for positioning + placeholder visual feedback.
         this.displayCanvas = document.createElement('canvas');
-        this.displayCanvas.width  = w;
-        this.displayCanvas.height = h;
+        this.displayCanvas.width  = physW;
+        this.displayCanvas.height = physH;
+        this.displayCanvas.style.width  = cssW + 'px';
+        this.displayCanvas.style.height = cssH + 'px';
         this.wrapper = document.createElement('div');
         this.wrapper.className = 'textbox placeholder';
         // Transparent-bg mode: drop the wrapper's CSS-default white background
@@ -277,39 +317,58 @@
         const PADDING = 4;
         const halfW = Math.max(Math.abs(minX), Math.abs(maxX)) + PADDING;
         const halfH = Math.max(Math.abs(minY), Math.abs(maxY)) + PADDING;
-        const w = Math.max(8, Math.ceil(2 * halfW));
-        const h = Math.max(8, Math.ceil(2 * halfH));
-        if (w === this.w && h === this.h) return;
-        this.canvas = SWCanvas.createCanvas(w, h);
+        const cssW = Math.max(8, Math.ceil(2 * halfW));
+        const cssH = Math.max(8, Math.ceil(2 * halfH));
+        if (cssW === this.cssW && cssH === this.cssH) return;
+        // Backing buffer at physical resolution (CSS × density) so density>1
+        // produces visibly higher-resolution pixels when the browser displays
+        // the canvas at its logical CSS size. paint()'s ctx.scale(dpr,dpr)
+        // keeps user-space coords logical.
+        const dpr = this.pixelDensity;
+        const physW = cssW * dpr;
+        const physH = cssH * dpr;
+        this.canvas = SWCanvas.createCanvas(physW, physH);
         this.ctx    = this.canvas.getContext('2d');
-        this.displayCanvas.width  = w;
-        this.displayCanvas.height = h;
-        this.w = w; this.h = h;
+        this.displayCanvas.width  = physW;
+        this.displayCanvas.height = physH;
+        this.displayCanvas.style.width  = cssW + 'px';
+        this.displayCanvas.style.height = cssH + 'px';
+        this.cssW = cssW; this.cssH = cssH;
+        this.w = physW; this.h = physH;
       }
 
       paint() {
         if (!this.alive) return;
 
+        // The SWCanvas backing buffer is physical (cssW × dpr, cssH × dpr).
+        // Apply ctx.scale(dpr, dpr) as the base transform so the rest of the
+        // painting works in CSS pixels — matching the BitmapText.js LRU demo
+        // pattern. Combined with ctx.textPixelDensity = dpr, the slow path's
+        // intermediate physical size matches the destination rect physical
+        // size, giving a 1:1 blit at full physical resolution.
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.scale(this.pixelDensity, this.pixelDensity);
+
         // Background. Either truly transparent (alpha=0 everywhere on the
         // SWCanvas surface; combined with the wrapper's inline transparent
-        // background, the stage shows through) or plain opaque white.
-        // Always done before the user transform (background stays upright).
-        const ctx = this.ctx;
+        // background, the stage shows through) or plain opaque white. In
+        // CSS pixels now, thanks to the base scale above.
         if (this.transparentBg) {
-          ctx.clearRect(0, 0, this.w, this.h);
+          ctx.clearRect(0, 0, this.cssW, this.cssH);
         } else {
           ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, this.w, this.h);
+          ctx.fillRect(0, 0, this.cssW, this.cssH);
         }
 
         // Apply this textbox's baked-in rotation + uniform scale around centre.
-        ctx.save();
-        ctx.translate(this.w / 2, this.h / 2);
+        ctx.translate(this.cssW / 2, this.cssH / 2);
         ctx.rotate(this.tiltRad);
         ctx.scale(this.scale, this.scale);
-        ctx.translate(-this.w / 2, -this.h / 2);
+        ctx.translate(-this.cssW / 2, -this.cssH / 2);
 
         ctx.font = `${this.fontDesc.weight === 'bold' ? 'bold ' : ''}${this.fontDesc.size}px ${this.fontDesc.family}`;
+        ctx.textPixelDensity = this.pixelDensity;
         // Colour from baked colorMode (snapshotted at spawn from the dropdown).
         ctx.fillStyle = (this.colorMode === 'black') ? '#000000'
                       : (this.colorMode === 'mixed' && this.mixedBlack) ? '#000000'
@@ -317,13 +376,15 @@
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'center';
         const t0 = performance.now();
-        ctx.fillText(TEXT_CONTENT, this.w / 2, this.h / 2);
+        ctx.fillText(TEXT_CONTENT, this.cssW / 2, this.cssH / 2);
         const tElapsed = performance.now() - t0;
         ctx.restore();
 
         // Blit SWCanvas surface to display canvas. SWCanvas's getImageData
         // returns a plain { width, height, data } object — the browser's
         // putImageData requires a real ImageData instance, so we wrap.
+        // Both surfaces are at physical resolution; the display canvas's CSS
+        // box is at logical, so the browser downsamples for display.
         const imgData = ctx.getImageData(0, 0, this.w, this.h);
         const realImageData = new ImageData(imgData.data, imgData.width, imgData.height);
         this.displayCanvas.getContext('2d').putImageData(realImageData, 0, 0);

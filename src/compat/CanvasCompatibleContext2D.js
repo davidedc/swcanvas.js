@@ -295,6 +295,18 @@ class CanvasCompatibleContext2D {
         }
     }
 
+    // Non-standard. Picks the BitmapText atlas density used for fillText.
+    // Default at construction: window.devicePixelRatio in browsers, 1 in Node.
+    // Snapshotted through save()/restore() via the core snapshot.
+    get textPixelDensity() {
+        return this._core._textPixelDensity;
+    }
+    set textPixelDensity(value) {
+        if (typeof value === 'number' && value > 0 && isFinite(value)) {
+            this._core._textPixelDensity = value;
+        }
+    }
+
     // ===== STATE MANAGEMENT =====
 
     save() {

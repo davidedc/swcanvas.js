@@ -96,6 +96,9 @@ class Context2D {
         this._textAlign = 'start';
         this._textBaseline = 'alphabetic';
         this._direction = 'inherit';
+        // Picks up window.devicePixelRatio in browsers, defaults to 1 in Node.
+        // Tests force determinism via `ctx.textPixelDensity = 1`.
+        this._textPixelDensity = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     }
 
     // HTML5 Canvas-compatible lineWidth property with validation
@@ -199,7 +202,8 @@ class Context2D {
             font: this._font,
             textAlign: this._textAlign,
             textBaseline: this._textBaseline,
-            direction: this._direction
+            direction: this._direction,
+            textPixelDensity: this._textPixelDensity
         };
     }
 
@@ -246,6 +250,7 @@ class Context2D {
         this._textAlign = snapshot.textAlign || 'start';
         this._textBaseline = snapshot.textBaseline || 'alphabetic';
         this._direction = snapshot.direction || 'inherit';
+        this._textPixelDensity = snapshot.textPixelDensity !== undefined ? snapshot.textPixelDensity : 1;
     }
 
     restore() {
