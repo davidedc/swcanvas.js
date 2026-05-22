@@ -315,7 +315,9 @@
   //      rendering for rotated/scaled text.
   //    - The Transparent bg checkbox toggles between clearRect (alpha=0)
   //      and a fillRect of white, exercising the alpha pipeline.
-  //    - The Slow µs/text stat measures TextRenderer.fillText wall-clock.
+  //    - The Draw µs/text stat measures ctx.fillText wall-clock (which
+  //      goes through TextRenderer.fillText's slow path here, because
+  //      every textbox has a transform).
   //    - Bootstrapping uses BitmapText.ensureMetricsBundleLoaded and
   //      BitmapText.ensurePositioningBundleLoaded directly (same as the
   //      BitmapText demo) — minimum-set loading per the DPR mode.
@@ -715,8 +717,8 @@
   let spawnTimer = null;
   let dirty      = new Set();
   let totalSpawned = 0;
-  let slowUsAccum  = 0;
-  let slowUsFrames = 0;
+  let drawUsAccum  = 0;
+  let drawUsFrames = 0;
 
   // ---------- Slider wiring ----------
   const N_INPUT      = document.getElementById('ctrl-n');
@@ -898,7 +900,7 @@
         // painted-or-frozen.
         try {
           const result = tb.paint();
-          if (result) { slowUsAccum += result.tElapsed; slowUsFrames++; }
+          if (result) { drawUsAccum += result.tElapsed; drawUsFrames++; }
         } catch (err) {
           console.error('drainDirty: paint() threw for', tb.idString, err);
         }
@@ -916,8 +918,9 @@
   //
   // Each STAT_KEYS entry becomes one inline pill. updateStats runs every
   // rAF tick and pulls live state from lru, AtlasDataStore, and the local
-  // sets. SWCanvas-specific stat: `slowUs` (TextRenderer.fillText
-  // wall-clock).
+  // sets. `drawUs` is the wall-clock for the engine draw call
+  // (`ctx.fillText`, which routes through TextRenderer.fillText's slow
+  // path here because every textbox has a transform).
 
   const STAT_KEYS = [
     ['onScreen',     'On-screen'],
@@ -930,7 +933,7 @@
     ['reloadCount',  'Reloads'],
     ['totalSpawned', 'Spawned'],
     ['loadP95',      'Load p95'],
-    ['slowUs',       'Slow µs/text'],
+    ['drawUs',       'Draw µs/text'],
   ];
 
   function buildStatsPanel() {
@@ -950,7 +953,7 @@
     }
 
     const resident = AtlasDataStore.size();
-    const avgSlow  = slowUsFrames > 0 ? (slowUsAccum / slowUsFrames * 1000).toFixed(0) : '—';
+    const avgDraw  = drawUsFrames > 0 ? (drawUsAccum / drawUsFrames * 1000).toFixed(0) : '—';
 
     setStat('onScreen',      `${onScreen.size} / ${N}`);
     setStat('resident',      `${resident} / ${K}`,    resident > K);
@@ -963,11 +966,11 @@
     setStat('totalSpawned',  `${totalSpawned}`);
     const ls = lru.loadStats();
     setStat('loadP95',       ls.n > 0 ? `${ls.p95.toFixed(0)}ms` : '—');
-    setStat('slowUs',        avgSlow);
+    setStat('drawUs',        avgDraw);
 
-    // Reset the slowUs accumulator each second.
-    slowUsAccum = 0;
-    slowUsFrames = 0;
+    // Reset the draw-µs accumulator each second.
+    drawUsAccum = 0;
+    drawUsFrames = 0;
   }
 
   function setStat(key, value, bad = false) {
