@@ -27,10 +27,16 @@ ASSET_NAME='font-assets-min.zip'
 # Bump this when SWCanvas should track a newer BitmapText font-assets release.
 # Override per-invocation with --tag <name> if needed.
 #
+# IMPORTANT: keep in sync with SWCANVAS_PINNED_TAG in
+# scripts/download-bitmaptext-smoke-fixture.sh — both scripts target the
+# same tag (one tag, two assets per sibling agreement).
+#
 # 2026-05-20: first release with v2 wire format (delta-varint metrics +
 # positioning). Earlier releases (font-assets-2026-13-05, font-assets-2026-05-05)
 # were cut from pre-v2 source and are incompatible with the vendored runtime.
-SWCANVAS_PINNED_TAG='font-assets-2026-05-20'
+# 2026-05-22: added font-assets-smoke-set.zip as a second asset (tiny 3-font
+# Node-loadable QOI subset for SWCanvas's text rendering tests).
+SWCANVAS_PINNED_TAG='font-assets-2026-05-22'
 
 TAG="$SWCANVAS_PINNED_TAG"
 FORCE=0

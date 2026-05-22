@@ -25,6 +25,28 @@ if (fs.existsSync(path.join(directRenderingTestsDir, 'direct-rendering-test-util
     directRenderingTestUtils = require('./direct-rendering/direct-rendering-test-utils.js');
 }
 
+// Preload the smoke fixture's 3 fonts so positive-rendering text tests
+// (Arial reg+bold + BitmapTextInvariant at size 16, density-1) can write
+// real glyph pixels. Tests that need to exercise the NO_METRICS path use
+// fonts/sizes deliberately outside this set (see 304-text-fillText-no-atlas-test.js,
+// which uses Courier New 24).
+async function preloadSmokeFonts() {
+    const { BitmapText } = SWCanvas.fonts._raw;
+    const smokeDir = path.resolve(__dirname, '..', 'font-assets', '_smoke') + '/';
+    if (!fs.existsSync(path.join(smokeDir, 'metrics-bundle.js'))) {
+        throw new Error(
+            'Smoke fixture missing at font-assets/_smoke/. ' +
+            'Run: ./scripts/download-bitmaptext-smoke-fixture.sh'
+        );
+    }
+    BitmapText.setFontDirectory(smokeDir);
+    await Promise.all([
+        BitmapText.loadFont('density-1-0-Arial-style-normal-weight-normal-size-16-0'),
+        BitmapText.loadFont('density-1-0-Arial-style-normal-weight-bold-size-16-0'),
+        BitmapText.loadFont('density-1-0-BitmapTextInvariant-style-normal-weight-normal-size-16-0'),
+    ]);
+}
+
 console.log('Running SWCanvas Tests in Node.js...\n');
 
 // Helper function to save PNG files (same as in core-functionality-tests.js)
@@ -50,7 +72,12 @@ function savePNG(surface, filename, description, SWCanvasRef) {
     }
 }
 
+(async () => {
 try {
+    // Smoke-fixture preload — must happen before runSharedTests since the
+    // positive-rendering text tests (306+) assert on real glyph pixels.
+    await preloadSmokeFonts();
+
     // Run the core functionality test suite
     const results = CoreFunctionalityTests.runSharedTests(SWCanvas);
     
@@ -164,6 +191,7 @@ try {
     console.error('Error running tests:', error.message);
     process.exit(1);
 }
+})();
 
 /**
  * Run a single direct rendering test

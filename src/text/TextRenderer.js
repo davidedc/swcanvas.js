@@ -34,10 +34,17 @@ class TextRenderer {
     }
 
     static _toTextProperties(textAlign, textBaseline, textColor) {
+        // BitmapText accepts only left/center/right; HTML5's 'start' and 'end'
+        // need to be resolved. SWCanvas doesn't support RTL, so start→left,
+        // end→right. Any other value is passed through (BitmapText will warn).
+        const resolvedAlign =
+            (textAlign === 'start' || !textAlign) ? 'left'  :
+            (textAlign === 'end')                 ? 'right' :
+            textAlign;
         return new TextProperties({
             isKerningEnabled: true,
             textBaseline: textBaseline || 'alphabetic',
-            textAlign: textAlign || 'start',
+            textAlign: resolvedAlign,
             textColor: textColor,
         });
     }

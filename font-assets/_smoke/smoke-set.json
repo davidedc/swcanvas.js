@@ -1,0 +1,21 @@
+{
+  "_comment": "Smoke-set fixture used by embedders (e.g. SWCanvas) for Node-side text-rendering tests. Shipped as font-assets-smoke-set.zip on each font-assets release. Three fonts at density-1 size 16: enough to exercise the full drawTextFromAtlas path including the font-invariant character branch. Source of truth — scripts/build-smoke-set.js reads this to know what to include in the zip.",
+  "fontSets": [
+    {
+      "name": "Smoke set — Arial 16 (normal + bold)",
+      "density": [1],
+      "families": ["Arial"],
+      "styles": ["normal"],
+      "weights": ["normal", "bold"],
+      "sizes": [16]
+    },
+    {
+      "name": "Smoke set — BitmapTextInvariant 16",
+      "density": [1],
+      "families": ["BitmapTextInvariant"],
+      "styles": ["normal"],
+      "weights": ["normal"],
+      "sizes": [16]
+    }
+  ]
+}
