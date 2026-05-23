@@ -28,7 +28,17 @@ The example automatically uses the minified version (`swcanvas.min.js`) if avail
 - Performance timing display
 - Comprehensive feature descriptions
 
-**Note:** SWCanvas focuses on graphics primitives and does not implement text rendering (`fillText`, `strokeText`, etc.). The showcase demonstrates all supported Canvas 2D API features.
+### `text-lru-atlas-demo.html`
+Live text-rendering benchmark driving the vendored BitmapText.js engine through SWCanvas's HTML5-compatible API. Mirrors the upstream BitmapText.js demo so the two stay visually comparable side-by-side.
+
+**Demonstrates:**
+- `ctx.fillText` / `measureText` against per-size bitmap atlases
+- HiDPI rendering via `ctx.textPixelDensity` (density toggle in the UI)
+- Atlas LRU eviction under load (size-range pill + character-set pill)
+- Color modes (Black / Random / Mixed) and the alpha-on-transparent path
+- Live FPS histogram, draw µs/text, repaint-budget slider
+
+**Prerequisites:** Run `./scripts/download-bitmaptext-assets.sh` once to populate `font-assets/`. Without the assets the page loads but renders no glyph pixels (by design). Asset-download mechanics and the two-pin layout (`vendor/bitmaptext.pin` for the engine, `vendor/bitmaptext-release.pin` for the font release) are documented in [`vendor/bitmaptext.UPDATE.md`](../vendor/bitmaptext.UPDATE.md).
 
 ## Creating New Examples
 

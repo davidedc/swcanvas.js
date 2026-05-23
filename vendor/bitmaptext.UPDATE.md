@@ -124,14 +124,66 @@ Vendored (mirrors upstream's `COMMON_FILES + BROWSER_SPECIFIC_FILES + NODE_SPECI
   `npm run text:wrap-for-file` — see its file-top "VENDORING NOTES" block for
   the contract upstream is committing to)
 
+Also vendored from upstream's `lib/` (not part of the `src/` snapshot, but
+needed at runtime for Node-side text rendering tests):
+
+- `lib/QOIDecode.js` — decodes the QOI-encoded smoke-fixture atlases at
+  Node load time. Node has no built-in WebP decoder, so the Node-side
+  smoke set is shipped as QOI rather than WebP. Vendored alongside the
+  rest of the engine on each pin bump.
+
 **Not** vendored:
 
 - `src/platform/canvas-mock.js` — SWCanvas provides its own canvas factory.
 - `scripts/rebuild-from-minimal.sh`, `scripts/webp-to-qoi-converter.js` —
-  needed only if SWCanvas grows Node-side text rendering tests. Deferred per
-  TEXT-INTEGRATION-HANDOFF.md §15 Part 2.
-- Anything under upstream's `lib/` — would be needed if vendoring the qoi
-  converter; not yet warranted.
+  upstream tooling for regenerating the smoke fixture. SWCanvas consumes
+  the pre-built fixture from each release tag (see "The font-assets
+  release-tag pin" below) and never regenerates locally.
+
+## The font-assets release-tag pin
+
+The engine source (this file's main subject) and the published font assets
+are two independent cadences with two independent pins:
+
+| Pin file                          | Pins                                  | Bump trigger                                        |
+|-----------------------------------|---------------------------------------|-----------------------------------------------------|
+| `vendor/bitmaptext.pin`           | BitmapText.js source SHA              | New upstream commit you want to vendor              |
+| `vendor/bitmaptext-release.pin`   | Font-assets release tag               | New `font-assets-YYYY-MM-DD` release published      |
+
+`vendor/bitmaptext-release.pin` is read at runtime by both
+`scripts/download-bitmaptext-assets.sh` (the full ~157 MB WebP set) and
+`scripts/download-bitmaptext-smoke-fixture.sh` (the ~40 KB QOI smoke set
+for Node tests). One bump there moves both downloaders in lockstep — there
+is no second copy of the tag anywhere in the tree, so cross-site drift is
+structurally impossible.
+
+### Drift check
+
+```bash
+npm run text:check-pin
+```
+
+Compares the local pin against
+`api.github.com/repos/davidedc/BitmapText.js/releases/latest`. Exit 0
+on match, exit 1 (with a diff) on drift. Set `GITHUB_TOKEN` if you hit
+the unauthenticated 60-req/hour limit.
+
+### Bumping the release pin
+
+```bash
+# Edit vendor/bitmaptext-release.pin to the new tag, then:
+./scripts/download-bitmaptext-assets.sh --force         # full set (browser)
+./scripts/download-bitmaptext-smoke-fixture.sh --force  # smoke (Node)
+npm run build && npm test                               # confirms Node text tests still pass
+git diff vendor/bitmaptext-release.pin font-assets/_smoke/
+git add vendor/bitmaptext-release.pin font-assets/_smoke/
+git commit -m "bump font-assets release pin to <tag>"
+```
+
+The full `font-assets/` is gitignored (only `_smoke/` is committed), so the
+commit diff is just the pin file plus whatever changed in the smoke
+fixture. The engine SHA (`vendor/bitmaptext.pin`) need not move when only
+the asset release changes.
 
 ## Invariants
 
@@ -142,3 +194,6 @@ Vendored (mirrors upstream's `COMMON_FILES + BROWSER_SPECIFIC_FILES + NODE_SPECI
   it's generated metadata. Edit `vendor/bitmaptext.pin`, run the script.
 - **`scripts/vendor-bitmaptext.sh` is the single entry point.** Don't write a
   parallel script for "just download" or "just rsync" — use the modes.
+- **`vendor/bitmaptext-release.pin` is the single source of truth for the
+  font-assets tag.** Don't hard-code the tag in either downloader; both
+  scripts already read the pin at runtime.

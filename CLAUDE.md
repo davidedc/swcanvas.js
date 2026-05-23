@@ -6,7 +6,7 @@ Deterministic 2D raster engine with a dual API: HTML5-compatible (`SWCanvas.crea
 
 ```bash
 npm run build                                # REQUIRED before every test run (expands @inline markers)
-npm test                                     # 37 core + 144 visual tests
+npm test                                     # 45 core + 152 visual tests
 npm run test:direct-rendering                # 79 direct-renderer correctness tests
 npm run test:direct-rendering:perf           # Quick perf sanity check — NOT a measurement
 npm run lint           # / lint:fix          # ESLint on src/
@@ -14,6 +14,7 @@ npm run format         # / format:check      # Prettier on src/
 npm run check:test-metadata                  # Validate test metadata, signatures, filenames
 npm run check:register-consistency           # Quick filename ↔ registration check
 npm run update-test-counts                   # Re-sync test counts across docs after adding/removing tests
+npm run text:check-pin                       # Drift check: vendor/bitmaptext-release.pin vs GitHub releases/latest
 
 node tests/direct-rendering/scripts/benchmark-session.js              # Production perf measurement (IQR-filtered, ~0.8% CV)
 node tests/direct-rendering/verify-logs-and-bounds-snapshot.js        # Verify test positioning hasn't regressed
@@ -38,6 +39,7 @@ node tests/direct-rendering/verify-logs-and-bounds-snapshot.js        # Verify t
 - **In tests, use standard Canvas API** (`ctx.fillStyle = '...'`, `ctx.getImageData()`). Don't reach into internal classes from test bodies — visual tests must remain runnable against real HTML5 Canvas.
 - **Visual tests (`tests/visual/cases/`) vs perf cases (`tests/direct-rendering/perf-cases/`) are separate architectures** — correctness vs throughput. Don't conflate them.
 - **Text rendering needs assets.** `dist/swcanvas.js` ships the BitmapText engine but no font data. Run `scripts/download-bitmaptext-assets.sh` once to populate `font-assets/` (browser-side WebP), or use the smoke fixture under `font-assets/_smoke/` for Node. Without assets, `ctx.fillText(...)` runs without crashing but emits no pixels — by design.
+- **Two BitmapText pin files, different cadences.** `vendor/bitmaptext.pin` (SHA) pins the engine source; `vendor/bitmaptext-release.pin` (tag) pins the font-assets release that both downloaders read at runtime. The asset-release pin can drift independently when a new font release is published upstream — `npm run text:check-pin` compares it against GitHub `releases/latest` (exit 1 on drift). See `vendor/bitmaptext.UPDATE.md` for both bump procedures.
 - **`vendor/bitmaptext/` is gitignored and regenerated on demand** from the SHA in `vendor/bitmaptext.pin`. `build.sh` auto-fetches on first build via `scripts/vendor-bitmaptext.sh`. Bump by editing the pin and re-running the script (or with `--source <path>` for local-sibling dev, which also rewrites the pin). Don't patch in place — the next vendor run wipes any local edits. See `vendor/bitmaptext.UPDATE.md`. The integration relies on upstream features `BitmapText.setFontLoader`, `setAtlasFormat`, and platform-file self-registration; do not vendor a pre-Sprint-4 BitmapText.
 
 ## Canonical workflows
