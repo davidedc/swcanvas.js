@@ -8,8 +8,8 @@
 #   font-assets-min.zip          ← downloaded by download-bitmaptext-assets.sh
 #   font-assets-smoke-set.zip    ← downloaded by THIS script
 #
-# Both pin to the same SWCANVAS_PINNED_TAG (slaved cadence: a release-cut
-# bumps both; never just one). Inside the smoke zip:
+# Both read the release tag from vendor/bitmaptext-release.pin — one bump
+# there propagates to both downloaders. Inside the smoke zip:
 #
 #   metrics-bundle.js                                    (subset metrics bundle)
 #   positioning-bundle-density-1.js                      (subset positioning bundle)
@@ -34,11 +34,24 @@ REPO_OWNER='davidedc'
 REPO_NAME='BitmapText.js'
 ASSET_NAME='font-assets-smoke-set.zip'
 
-# Bump this when SWCanvas should track a newer BitmapText release.
-# IMPORTANT: keep in sync with SWCANVAS_PINNED_TAG in
-# scripts/download-bitmaptext-assets.sh — both download scripts target the
-# same tag (one tag, two assets per sibling agreement).
-SWCANVAS_PINNED_TAG='font-assets-2026-05-22'
+# Release tag is pinned in vendor/bitmaptext-release.pin — single source of
+# truth shared with scripts/download-bitmaptext-assets.sh (one tag, two
+# assets per sibling agreement). Bump there once and both downloaders
+# follow. Override per-invocation with --tag <name>.
+# Verify the pin matches GitHub releases/latest with: npm run text:check-pin
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PIN_FILE="$PROJECT_ROOT/vendor/bitmaptext-release.pin"
+if [ ! -f "$PIN_FILE" ]; then
+    echo "ERROR: pin file missing: $PIN_FILE" >&2
+    exit 1
+fi
+SWCANVAS_PINNED_TAG="$(tr -d ' \t\r\n' < "$PIN_FILE")"
+if [ -z "$SWCANVAS_PINNED_TAG" ]; then
+    echo "ERROR: pin file is empty: $PIN_FILE" >&2
+    exit 1
+fi
 
 TAG="$SWCANVAS_PINNED_TAG"
 FORCE=0
@@ -59,8 +72,6 @@ if [ "$SHOW_HELP" -eq 1 ]; then
     exit 0
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 SMOKE_DIR="$PROJECT_ROOT/font-assets/_smoke"

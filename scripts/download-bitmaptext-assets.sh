@@ -4,8 +4,8 @@
 #
 # The minimum set (metrics-bundle.js + positioning-bundle-density-*.js +
 # atlas-*.webp) is distributed via GitHub Releases on the BitmapText.js repo.
-# SWCanvas pins to a specific tag for reproducibility — bump SWCANVAS_PINNED_TAG
-# below when a newer BitmapText release should be the supported baseline.
+# SWCanvas pins to a specific tag for reproducibility — bump the value in
+# vendor/bitmaptext-release.pin when a newer release should be the baseline.
 #
 # Note: this script fetches the WebP minimum set only. For Node tests that need
 # QOI-encoded atlases, see font-assets/_smoke/ (a small committed subset that
@@ -24,19 +24,32 @@ REPO_OWNER='davidedc'
 REPO_NAME='BitmapText.js'
 ASSET_NAME='font-assets-min.zip'
 
-# Bump this when SWCanvas should track a newer BitmapText font-assets release.
-# Override per-invocation with --tag <name> if needed.
+# Release tag is pinned in vendor/bitmaptext-release.pin — single source of
+# truth shared with scripts/download-bitmaptext-smoke-fixture.sh (one tag,
+# two assets per sibling agreement). Bump there once and both downloaders
+# follow. Override per-invocation with --tag <name>.
+# Verify the pin matches GitHub releases/latest with: npm run text:check-pin
 #
-# IMPORTANT: keep in sync with SWCANVAS_PINNED_TAG in
-# scripts/download-bitmaptext-smoke-fixture.sh — both scripts target the
-# same tag (one tag, two assets per sibling agreement).
-#
-# 2026-05-20: first release with v2 wire format (delta-varint metrics +
-# positioning). Earlier releases (font-assets-2026-13-05, font-assets-2026-05-05)
-# were cut from pre-v2 source and are incompatible with the vendored runtime.
-# 2026-05-22: added font-assets-smoke-set.zip as a second asset (tiny 3-font
-# Node-loadable QOI subset for SWCanvas's text rendering tests).
-SWCANVAS_PINNED_TAG='font-assets-2026-05-22'
+# Tag-history notes:
+# - 2026-05-20: first release with v2 wire format (delta-varint metrics +
+#   positioning). Earlier releases (font-assets-2026-13-05,
+#   font-assets-2026-05-05) were cut from pre-v2 source and are incompatible
+#   with the vendored runtime.
+# - 2026-05-22: added font-assets-smoke-set.zip as a second asset (tiny
+#   3-font Node-loadable QOI subset for SWCanvas's text rendering tests).
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PIN_FILE="$PROJECT_ROOT/vendor/bitmaptext-release.pin"
+if [ ! -f "$PIN_FILE" ]; then
+    echo "ERROR: pin file missing: $PIN_FILE" >&2
+    exit 1
+fi
+SWCANVAS_PINNED_TAG="$(tr -d ' \t\r\n' < "$PIN_FILE")"
+if [ -z "$SWCANVAS_PINNED_TAG" ]; then
+    echo "ERROR: pin file is empty: $PIN_FILE" >&2
+    exit 1
+fi
 
 TAG="$SWCANVAS_PINNED_TAG"
 FORCE=0
@@ -57,8 +70,6 @@ if [ "$SHOW_HELP" -eq 1 ]; then
     exit 0
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # Refuse to clobber a populated font-assets/ unless --force.
