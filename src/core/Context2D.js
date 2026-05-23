@@ -1567,9 +1567,17 @@ class Context2D {
     // internally, so user transforms are not yet honoured). Phase 3 adds the
     // intermediate-buffer slow path for rotated/scaled text.
 
-    fillText(text, x, y, _maxWidth) {
-        // _maxWidth is HTML5-spec compatible but unused — BitmapText doesn't
-        // shrink-to-fit. We accept the argument for API parity and ignore it.
+    fillText(text, x, y, maxWidth) {
+        // maxWidth (HTML5 "shrink-to-fit") is not implementable on top of
+        // BitmapText's pre-rasterised atlas glyphs. Rather than silently
+        // ignore the argument and quietly mis-render long strings, we
+        // throw — explicit failure beats silent no-op, mirroring strokeText.
+        if (maxWidth !== undefined) {
+            throw new Error(
+                'fillText: maxWidth is not supported by SWCanvas\'s BitmapText backend. ' +
+                'Drop the argument or pre-measure with measureText and adjust your layout.'
+            );
+        }
         return TextRenderer.fillText(this, text, x, y);
     }
 
