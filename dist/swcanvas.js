@@ -4202,19 +4202,21 @@ class BitmapText {
     const { invariantFontProps, invariantFontMetrics, hasInvariantFont, chars } =
       BitmapText.#resolveRenderContext(text, fontProperties);
 
-    const missingChars = BitmapText.#scanForMissingChars(chars, fontMetrics, invariantFontMetrics, hasInvariantFont);
+    // Fallback character metrics for chars not in either font's character set
+    // (e.g. '°' from latin1Exclusions). '?' is canonical: in FONT_SPECIFIC_CHARS,
+    // so any standard font has it. May be null when the active base font is
+    // BitmapTextInvariant (18-char set without '?'); in that case missing chars
+    // contribute zero to the width — degenerate but rare. Converges measureText's
+    // failure mode with the post-c338025 drawTextFromAtlas behaviour: a string
+    // containing one unrecognized char no longer drops the entire measurement.
+    const fallbackCharacterMetrics = fontMetrics.getCharacterMetrics('?');
 
-    // If any glyphs missing, can't calculate accurate metrics
-    if (missingChars.size > 0) {
-      return {
-        metrics: null,
-        status: createErrorStatus(StatusCode.PARTIAL_METRICS, {
-          missingChars: missingChars
-        })
-      };
-    }
+    // Track which chars were not in any font's character set. Reported back
+    // via PARTIAL_METRICS so callers can detect approximate measurements.
+    const missingChars = new Set();
 
-    // SUCCESS PATH: Calculate metrics normally
+    // SUCCESS PATH: Calculate metrics (treating missing chars as '?'-equivalent
+    // for the per-char math — width is approximate, status flags the approximation).
     let width_CssPx = 0;
 
     // First character (already resolved)
@@ -4225,8 +4227,14 @@ class BitmapText {
     let currentFontMetrics = firstCharIsInvariant ? invariantFontMetrics : fontMetrics;
     let currentFontProps = firstCharIsInvariant ? invariantFontProps : fontProperties;
 
-    let characterMetrics = currentFontMetrics.getCharacterMetrics(firstChar);
-    const actualBoundingBoxLeft_CssPx = characterMetrics.actualBoundingBoxLeft;
+    // First-char metrics for actualBoundingBoxLeft: substitute fallback if absent.
+    // If even fallback is unavailable, default to 0 (the most defensible value).
+    let firstCharMetrics = currentFontMetrics.getCharacterMetrics(firstChar);
+    if (!firstCharMetrics && firstChar !== ' ') {
+      missingChars.add(firstChar);
+      firstCharMetrics = fallbackCharacterMetrics;
+    }
+    const actualBoundingBoxLeft_CssPx = firstCharMetrics ? firstCharMetrics.actualBoundingBoxLeft : 0;
     let actualBoundingBoxAscent = 0;
     let actualBoundingBoxDescent = 0;
     let actualBoundingBoxRight_CssPx;
@@ -4236,6 +4244,10 @@ class BitmapText {
     const advancementFn_CssPx = fontMetrics.isInterpolatedMetrics
       ? BitmapText.#calcAdvancementInterpolated_CssPx
       : BitmapText.#calcAdvancementCrisp_CssPx;
+
+    // characterMetrics is reused outside the loop for actualBoundingBoxRight and
+    // the fontBoundingBox* fields — track the LAST iteration's effective metrics.
+    let characterMetrics = null;
 
     for (let i = 0; i < chars.length; i++) {
       const char = chars[i];
@@ -4251,17 +4263,37 @@ class BitmapText {
         currentFontProps = fontProperties;
       }
 
-      characterMetrics = currentFontMetrics.getCharacterMetrics(char);
+      const realCm = currentFontMetrics.getCharacterMetrics(char);
+      // Substitute fallback metrics + '?' for advancement when char is absent.
+      // This keeps width approximately correct (and visible to callers via the
+      // PARTIAL_METRICS status) instead of dropping the whole string.
+      let advChar = char;
+      if (!realCm) {
+        if (char !== ' ') missingChars.add(char);
+        characterMetrics = fallbackCharacterMetrics;  // may be null in degenerate cases
+        advChar = '?';
+      } else {
+        characterMetrics = realCm;
+      }
 
-      actualBoundingBoxAscent = Math.max(actualBoundingBoxAscent, characterMetrics.actualBoundingBoxAscent);
-      actualBoundingBoxDescent = Math.min(actualBoundingBoxDescent, characterMetrics.actualBoundingBoxDescent);
-
-      advancement_CssPx = advancementFn_CssPx(currentFontMetrics, currentFontProps, char, nextChar, textProperties, characterMetrics);
-      width_CssPx += advancement_CssPx;
+      if (characterMetrics) {
+        actualBoundingBoxAscent = Math.max(actualBoundingBoxAscent, characterMetrics.actualBoundingBoxAscent);
+        actualBoundingBoxDescent = Math.min(actualBoundingBoxDescent, characterMetrics.actualBoundingBoxDescent);
+        advancement_CssPx = advancementFn_CssPx(currentFontMetrics, currentFontProps, advChar, nextChar, textProperties, characterMetrics);
+        width_CssPx += advancement_CssPx;
+      } else {
+        // No metrics, no fallback (BitmapTextInvariant base font + missing char).
+        // Treat as zero-advance so the rest of the string still measures cleanly.
+        advancement_CssPx = 0;
+      }
     }
 
     actualBoundingBoxRight_CssPx = width_CssPx - advancement_CssPx;
-    actualBoundingBoxRight_CssPx += characterMetrics.actualBoundingBoxRight;
+    actualBoundingBoxRight_CssPx += characterMetrics ? characterMetrics.actualBoundingBoxRight : 0;
+
+    // Use fallback for fontBoundingBox* if the last char had no metrics. Both
+    // values are typically font-wide constants so any character's metrics work.
+    const boxCm = characterMetrics || fallbackCharacterMetrics || firstCharMetrics;
 
     return {
       metrics: {
@@ -4270,10 +4302,12 @@ class BitmapText {
         actualBoundingBoxRight: actualBoundingBoxRight_CssPx,
         actualBoundingBoxAscent,
         actualBoundingBoxDescent,
-        fontBoundingBoxAscent: characterMetrics.fontBoundingBoxAscent,
-        fontBoundingBoxDescent: characterMetrics.fontBoundingBoxDescent
+        fontBoundingBoxAscent: boxCm ? boxCm.fontBoundingBoxAscent : 0,
+        fontBoundingBoxDescent: boxCm ? boxCm.fontBoundingBoxDescent : 0
       },
-      status: SUCCESS_STATUS
+      status: missingChars.size > 0
+        ? createErrorStatus(StatusCode.PARTIAL_METRICS, { missingChars })
+        : SUCCESS_STATUS
     };
   }
 
@@ -4331,6 +4365,11 @@ class BitmapText {
     //    (empty text → zero metrics + SUCCESS; missing font → NO_METRICS;
     //    missing glyphs → PARTIAL_METRICS; size < 9 → interpolated fallback
     //    or NO_METRICS). Propagate the status as-is so callers can branch.
+    //    NOTE: as of the SWCanvas char-not-in-atlas fix, measureText returns
+    //    PARTIAL_METRICS with NON-NULL approximate metrics (computed using '?'
+    //    as a sizing proxy for missing chars). computeInkBoundingBox still
+    //    bails on any non-zero status — embedders wanting an approximate bbox
+    //    for partial strings should use measureText directly.
     const measureResult = BitmapText.measureText(text, fontProperties, textProperties);
     if (measureResult.status.code !== 0 || !measureResult.metrics) {
       return { box: null, status: measureResult.status };
@@ -4494,16 +4533,16 @@ class BitmapText {
     const { invariantFontProps, invariantFontMetrics, hasInvariantFont, chars } =
       BitmapText.#resolveRenderContext(text, fontProperties);
 
-    const missingMetricsChars = BitmapText.#scanForMissingChars(chars, fontMetrics, invariantFontMetrics, hasInvariantFont);
-
-    if (missingMetricsChars.size > 0) {
-      return {
-        rendered: false,
-        status: createErrorStatus(StatusCode.PARTIAL_METRICS, {
-          missingChars: missingMetricsChars
-        })
-      };
-    }
+    // Fallback metrics for chars not in any atlas's character set (e.g. '°',
+    // '×' — excluded from FONT_SPECIFIC_CHARS' latin1Exclusions and not in
+    // FONT_INVARIANT_CHARS). '?' is canonical: always in FONT_SPECIFIC_CHARS,
+    // so any standard font atlas has it. May be null if the active font is
+    // BitmapTextInvariant (18-char set, no '?'); in that case the per-glyph
+    // arms skip the placeholder for missing chars in that font (degenerate,
+    // rare). Converges the "char absent from font" failure mode with c338025's
+    // missing-atlas placeholder behaviour: every unrenderable glyph becomes a
+    // placeholder rect in textColor, never silently dropped.
+    const fallbackCharacterMetrics = fontMetrics.getCharacterMetrics('?');
 
     // Check atlas data availability (force invalid for sizes < 9)
     let atlasData = forceInvalidAtlas ? null : AtlasDataStore.getAtlasData(fontProperties);
@@ -4601,6 +4640,11 @@ class BitmapText {
       for (let i = 0; i < chars.length; i++) {
         const currentChar = chars[i];
         const nextChar = chars[i + 1];
+        // advChar: the character whose metrics drive advancement. Equals
+        // currentChar in the common case; substituted to '?' below when
+        // currentChar has no metrics in the active font (so position_PhysPx.x
+        // still advances by a sensible amount instead of stalling at 0/NaN).
+        let advChar = currentChar;
 
         // FAST CHECK: Is this a font-invariant character? (string.includes on 18 chars = ~1-2ns)
         const isInvariant = hasInvariantFont && BitmapText.#isInvariantCharacter(currentChar);
@@ -4636,9 +4680,27 @@ class BitmapText {
             // would redo the same lookup (it's `_placements[char] !== undefined`).
             const p = currentAtlasData.atlasPositioning._placements[currentChar];
             if (p === undefined) {
-              // Valid atlas but glyph absent — track, draw nothing.
+              // Valid atlas but glyph absent — converge with c338025's pattern:
+              // track + placeholder rect in textColor for every unrenderable
+              // glyph. Two sub-cases share this arm:
+              //   (a) char has metrics, atlas missing the glyph (rare — partial
+              //       atlas) → use real characterMetrics for sizing.
+              //   (b) char not in font's character set (e.g. '°' from
+              //       FONT_SPECIFIC_CHARS' latin1Exclusions) → no real metrics;
+              //       fall back to '?' via fallbackCharacterMetrics for sizing,
+              //       AND substitute '?' for advancement so layout flows.
+              // Degenerate fall-through (BitmapTextInvariant base font + missing
+              // char): no metrics, no fallback — draw nothing, advancement returns
+              // NaN/0 and subsequent chars may pile up. Acceptable: caller is
+              // using a 18-char font for non-invariant text.
               missingAtlasChars.add(currentChar);
               placeholdersUsed = true;
+              const realCm = currentFontMetrics.getCharacterMetrics(currentChar);
+              const cm = realCm || fallbackCharacterMetrics;
+              if (cm) {
+                BitmapText.#drawPlaceholderRectangle(ctx, currentChar, position_PhysPx, cm, textColor);
+              }
+              if (!realCm) advChar = '?';
             } else if (isBlackText) {
               // FAST PATH: direct drawImage from atlas, no dispatch.
               const atlasImage = currentAtlasData.atlasImage.image;
@@ -4666,8 +4728,10 @@ class BitmapText {
           }
         }
 
-        // Calculate advancement using current font's metrics
-        position_PhysPx.x += advancementFn_PhysPx(currentFontMetrics, currentFontProps, currentChar, nextChar, textProperties);
+        // Calculate advancement using current font's metrics. advChar is
+        // usually currentChar; only differs when currentChar is missing from
+        // the active font's character set (see p === undefined arm above).
+        position_PhysPx.x += advancementFn_PhysPx(currentFontMetrics, currentFontProps, advChar, nextChar, textProperties);
       }
     }
 
@@ -5008,15 +5072,25 @@ class BitmapText {
     const missingAtlasChars = new Set();
     let placeholdersUsed = false;
 
-    // Step 1: Measure text to determine bounding box for scratch canvas
+    // Step 1: Measure text to determine bounding box for scratch canvas.
+    // measureText is now resilient to chars missing from the active font's
+    // character set (returns PARTIAL_METRICS with NON-NULL metrics computed
+    // using '?' as a sizing proxy for missing chars). We only bail when
+    // metrics is truly null — e.g. NO_METRICS (active font has no metrics
+    // at all), or below-min-size with no interpolation available.
     const measureResult = BitmapText.measureText(text, fontProperties, textProperties);
-    if (measureResult.status.code !== 0 || !measureResult.metrics) {
-      // Cannot measure - fallback to character-by-character rendering
-      console.warn('BitmapText: Batch rendering failed (cannot measure text), falling back to per-character rendering');
+    if (!measureResult.metrics) {
+      console.warn(`BitmapText: Batch rendering failed (cannot measure text, status.code=${measureResult.status.code})`);
       return { missingAtlasChars, placeholdersUsed };
     }
 
     const metrics = measureResult.metrics;
+
+    // Fallback character metrics for chars not in the active font's character
+    // set (same role as in measureText / drawTextFromAtlas — see the comment
+    // near the top of drawTextFromAtlas). Used for placeholder-rect sizing
+    // and advancement substitution below.
+    const fallbackCharacterMetrics = fontMetrics.getCharacterMetrics('?');
 
     // invariantFontProps / invariantFontMetrics / hasInvariantFont are passed by the
     // single caller (drawTextFromAtlas) so we don't redo #resolveInvariantFont here.
@@ -5114,6 +5188,10 @@ class BitmapText {
     for (let i = 0; i < chars.length; i++) {
       const currentChar = chars[i];
       const nextChar = chars[i + 1];
+      // advChar drives advancement; substituted to '?' below when currentChar
+      // has no metrics in the active font (mirrors the per-glyph branch in
+      // drawTextFromAtlas).
+      let advChar = currentChar;
 
       // FAST CHECK: Is this a font-invariant character? (string.includes on 18 chars = ~1-2ns)
       const isInvariant = hasInvariantFont && BitmapText.#isInvariantCharacter(currentChar);
@@ -5159,8 +5237,27 @@ class BitmapText {
         } else {
           const p = currentAtlasData.atlasPositioning._placements[currentChar];
           if (p === undefined) {
+            // Valid atlas but glyph absent — converge with c338025's pattern:
+            // track + placeholder rect in textColor on the MAIN canvas (same
+            // route the !currentAtlasValid arm above uses). Two sub-cases:
+            //   (a) char has metrics, atlas missing the glyph (rare partial atlas)
+            //       → real characterMetrics for sizing.
+            //   (b) char not in font's character set (e.g. '°' which is in
+            //       FONT_SPECIFIC_CHARS' latin1Exclusions, or any non-Latin
+            //       codepoint) → fallbackCharacterMetrics ('?') for sizing,
+            //       AND substitute '?' for advancement so layout flows.
             missingAtlasChars.add(currentChar);
             placeholdersUsed = true;
+            const realCm = currentFontMetrics.getCharacterMetrics(currentChar);
+            const cm = realCm || fallbackCharacterMetrics;
+            if (cm) {
+              const placeholderPosition = {
+                x: Math.round(startPosition_PhysPx.x) + (position_PhysPx.x - actualBoundingBoxLeft_PhysPx),
+                y: Math.round(startPosition_PhysPx.y)
+              };
+              BitmapText.#drawPlaceholderRectangle(ctx, currentChar, placeholderPosition, cm, textProperties.textColor);
+            }
+            if (!realCm) advChar = '?';
           } else {
             const atlasImage = currentAtlasData.atlasImage.image;
             BitmapText.#coloredGlyphCtx.drawImage(
@@ -5175,9 +5272,11 @@ class BitmapText {
         }
       }
 
-      // Advance position for next character
+      // Advance position for next character. advChar is usually currentChar;
+      // only differs when currentChar is missing from the active font's
+      // character set (see p === undefined arm above).
       position_PhysPx.x += advancementFn_PhysPx(
-        currentFontMetrics, currentFontProps, currentChar, nextChar, textProperties
+        currentFontMetrics, currentFontProps, advChar, nextChar, textProperties
       );
     }
 
