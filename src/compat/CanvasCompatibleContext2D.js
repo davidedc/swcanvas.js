@@ -32,14 +32,6 @@ class CanvasCompatibleContext2D {
         this._fillStyle = '#000000';
         this._strokeStyle = '#000000';
         this._shadowColor = 'rgba(0, 0, 0, 0)'; // Transparent black (no shadow)
-        // Last-successfully-set font string. The getter returns '10px sans-serif'
-        // (HTML5 default) when null. Core stores the parsed shape on this._core._font.
-        this._font = null;
-        // Parallel stack for compat-layer-only string state that the core
-        // snapshot can't round-trip (the core only knows about the parsed font
-        // shape, not the user's original string). Pushed in save(), popped in
-        // restore() to keep the font getter consistent across state restores.
-        this._fontStack = [];
     }
 
     /**
@@ -252,15 +244,18 @@ class CanvasCompatibleContext2D {
     // ===== TEXT PROPERTIES =====
 
     get font() {
-        return this._font || '10px sans-serif';
+        // HTML5 spec: getter returns the *serialized* (canonical) form of the
+        // current font, not the user's verbatim input. Core stores the parsed
+        // shape on this._core._font; we format it back through CssFontParser.
+        return this._core._font === null
+            ? '10px sans-serif'
+            : CssFontParser.format(this._core._font);
     }
     set font(value) {
         // HTML5 spec: silently ignore unparseable values; previous value stays.
         if (typeof value !== 'string') return;
         try {
-            const parsed = CssFontParser.parse(value);
-            this._font = value;
-            this._core._font = parsed;
+            this._core._font = CssFontParser.parse(value);
         } catch (_e) {
             // Ignore — getter still returns whatever was last successfully set.
         }
@@ -310,15 +305,11 @@ class CanvasCompatibleContext2D {
     // ===== STATE MANAGEMENT =====
 
     save() {
-        this._fontStack.push(this._font);
         this._core.save();
     }
 
     restore() {
         this._core.restore();
-        if (this._fontStack.length > 0) {
-            this._font = this._fontStack.pop();
-        }
     }
 
     // ===== TRANSFORMS =====

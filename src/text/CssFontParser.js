@@ -108,4 +108,27 @@ class CssFontParser {
 
         return { style: style, weight: weight, fontSize: fontSize, fontFamily: fontFamily };
     }
+
+    /**
+     * Format a parsed font shape back into canonical CSS shorthand.
+     * Inverse of parse() over the supported subset; matches the HTML5
+     * Canvas spec's "serialized form" rules for the `font` IDL getter:
+     * default `style`/`weight` omitted, single-space separators, family
+     * wrapped in double quotes when it contains whitespace or a comma.
+     *
+     * @param {{style: string, weight: string, fontSize: number, fontFamily: string}} parsed
+     * @returns {string}
+     */
+    static format(parsed) {
+        const parts = [];
+        if (parsed.style !== 'normal') parts.push(parsed.style);
+        if (parsed.weight !== 'normal') parts.push(parsed.weight);
+        parts.push(String(parsed.fontSize) + 'px');
+        parts.push(CssFontParser._formatFamily(parsed.fontFamily));
+        return parts.join(' ');
+    }
+
+    static _formatFamily(name) {
+        return /[\s,]/.test(name) ? '"' + name + '"' : name;
+    }
 }
