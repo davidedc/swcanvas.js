@@ -22473,6 +22473,22 @@ class Rasterizer {
 
         const globalAlpha = this._currentOp.globalAlpha;
 
+        // Precompute source-to-dest scale factors. When destWidth === sourceWidth
+        // (the same-size 1:1 blit, e.g., the per-glyph + scratch-to-main
+        // drawImage calls BitmapText emits for colored text), the ratio is
+        // exactly 1.0 in IEEE 754 and the inner-loop mapping reduces to
+        // `sourceX + (destPoint.x - destX)` — bit-exact integer arithmetic.
+        // Critical: do NOT compute the mapping as `(d / dW) * sW` inside the
+        // loop. For many denominators (e.g. dW=191), `((d/191)*191)` rounds
+        // to d−ε (e.g. 27.999...) for some integer d, then `Math.floor`
+        // drops the result to d−1. That silently swaps the sampled source
+        // column for an adjacent one — sometimes a transparent neighbour —
+        // dropping or duplicating pixels in an FP-precision-of-the-denominator
+        // pattern. Multiplication by a precomputed ratio sidesteps the issue
+        // entirely.
+        const xScale = (destWidth === sourceWidth) ? 1 : sourceWidth / destWidth;
+        const yScale = (destHeight === sourceHeight) ? 1 : sourceHeight / destHeight;
+
         // Render each pixel in the bounding box
         for (let deviceY = minY; deviceY <= maxY; deviceY++) {
             for (let deviceX = minX; deviceX <= maxX; deviceX++) {
@@ -22494,9 +22510,11 @@ class Rasterizer {
                     continue;
                 }
 
-                // Map destination coordinates to source coordinates
-                const sourceXf = sourceX + ((destPoint.x - destX) / destWidth) * sourceWidth;
-                const sourceYf = sourceY + ((destPoint.y - destY) / destHeight) * sourceHeight;
+                // Map destination coordinates to source coordinates.
+                // See the xScale/yScale comment above for why this form is
+                // FP-stable in the same-size case.
+                const sourceXf = sourceX + (destPoint.x - destX) * xScale;
+                const sourceYf = sourceY + (destPoint.y - destY) * yScale;
 
                 // Nearest-neighbor sampling
                 const sourcePX = Math.floor(sourceXf);
