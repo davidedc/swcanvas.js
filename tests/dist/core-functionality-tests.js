@@ -1841,6 +1841,54 @@
             assertEquals(ctx.font, '700 14px Arial');
         });
 
+        // Getter returns the *serialized* form per HTML5 spec, not the verbatim
+        // user input. Existing tests above already use canonical-form inputs, so
+        // they still round-trip; the cases below exercise the normalising path.
+
+        test('ctx.font: getter collapses extra whitespace', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = '  16px   Arial  ';
+            assertEquals(ctx.font, '16px Arial');
+        });
+
+        test('ctx.font: getter omits explicit "normal" style/weight defaults', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = 'normal 16px Arial';
+            assertEquals(ctx.font, '16px Arial');
+            ctx.font = 'normal normal 16px Arial';
+            assertEquals(ctx.font, '16px Arial');
+        });
+
+        test('ctx.font: getter auto-quotes multi-word family names', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = '16px Arial Black';
+            assertEquals(ctx.font, '16px "Arial Black"');
+        });
+
+        test('ctx.font: getter normalises single-quoted family to double quotes', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = "16px 'Comic Sans MS'";
+            assertEquals(ctx.font, '16px "Comic Sans MS"');
+        });
+
+        test('ctx.font: getter leaves single-word family unquoted', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = 'bold 14px Helvetica';
+            assertEquals(ctx.font, 'bold 14px Helvetica');
+        });
+
+        test('ctx.font: getter formats float sizes without trailing zeros', () => {
+            const canvas = SWCanvas.createCanvas(50, 50);
+            const ctx = canvas.getContext('2d');
+            ctx.font = '16.5px Arial';
+            assertEquals(ctx.font, '16.5px Arial');
+        });
+
 
         // Test: font, textAlign, textBaseline survive save()/restore()
 
