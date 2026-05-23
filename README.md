@@ -24,7 +24,7 @@ See [index page](https://davidedc.github.io/swcanvas.js/) for link to all browse
 
 SWCanvas focuses on deterministic 2D graphics primitives and does not implement several HTML5 Canvas features:
 
-- **Advanced Typography**: Text rendering (`fillText()`, `measureText()`, `font`, `textAlign`, `textBaseline`, `textPixelDensity`) is supported via the vendored BitmapText.js bitmap-font engine — see `ARCHITECTURE.md` § "Text Rendering System" and run `scripts/download-bitmaptext-assets.sh` once to populate `font-assets/` before any text becomes visible. `strokeText()` throws (BitmapText doesn't stroke glyphs); `fillText(text, x, y, maxWidth)` throws if `maxWidth` is passed (pre-rasterised atlas glyphs can't shrink-to-fit — explicit failure beats silent mis-render). The `font` getter returns the canonical CSS shorthand per HTML5 spec, not the verbatim user input. No complex text layout, no `direction` handling beyond storage.
+- **Advanced Typography**: Basic text rendering (`fillText()`, `measureText()`, `font`, `textAlign`, `textBaseline`, `textPixelDensity`) is supported via the vendored BitmapText.js bitmap-font engine — see § "Text Rendering" below for the API and `ARCHITECTURE.md` § "Text Rendering System" for the internals. `strokeText()` throws (BitmapText doesn't stroke glyphs); `fillText(text, x, y, maxWidth)` throws if `maxWidth` is passed (pre-rasterised atlas glyphs can't shrink-to-fit — explicit failure beats silent mis-render). No complex text layout, no `direction` handling beyond storage.
 - **Image Loading**: No built-in image loading from URLs or files (use ImageLike objects with raw pixel data)
 - **Video/Media**: No video frame rendering or media stream support
 - **Filter Effects**: No CSS-style filters or convolution matrices
@@ -560,6 +560,99 @@ ctx.translate(50, 50);
 ctx.rotate(Math.PI / 4);
 ctx.drawImage(imagelike, 0, 0);
 ```
+
+### Text Rendering
+
+Text rendering is backed by the vendored [BitmapText.js](https://github.com/davidedc/BitmapText.js) engine — pre-rasterised glyph atlases blitted at integer pixel positions. The HTML5 surface is `ctx.font` / `ctx.textAlign` / `ctx.textBaseline` / `ctx.fillText` / `ctx.measureText`, plus one non-standard property `ctx.textPixelDensity` for HiDPI. See `ARCHITECTURE.md` § "Text Rendering System" for the render-path internals.
+
+**One-time setup.** Atlases ship separately from `dist/swcanvas.js`. Run the download script once to populate `font-assets/`:
+
+```bash
+./scripts/download-bitmaptext-assets.sh    # ~157 MB of WebP atlases (browser-side)
+# Optional, only for file:// loading in browsers:
+npm run text:wrap-for-file                 # generate atlas-*-webp.js wrappers
+```
+
+Without assets, `ctx.fillText(...)` runs without crashing but emits no pixels — placeholder rectangles in `textColor` for every glyph.
+
+**Loading fonts.** `SWCanvas.fonts` is shaped like the CSS Font Loading API:
+
+```javascript
+// Load a font (returns a Promise)
+await SWCanvas.fonts.load('Arial', { size: 16 });
+await SWCanvas.fonts.load('Arial', { size: 16, weight: 'bold' });
+await SWCanvas.fonts.load('Courier New', { size: 24, style: 'italic' });
+
+// Check / unload
+SWCanvas.fonts.has('Arial', { size: 16 });      // → boolean
+SWCanvas.fonts.unload('Arial', { size: 16 });
+
+// Or pass a BitmapText idString directly:
+await SWCanvas.fonts.load('density-1-0-Arial-style-normal-weight-normal-size-16-0');
+```
+
+Atlases are addressed by `{ family, size, style?, weight?, pixelDensity? }`. Sizes are in CSS pixels; valid sizes are 9–96 in the published font-assets release (sub-9 sizes render as placeholder rectangles).
+
+**Drawing.**
+
+```javascript
+const canvas = SWCanvas.createCanvas(400, 100);
+const ctx = canvas.getContext('2d');
+
+await SWCanvas.fonts.load('Arial', { size: 16 });
+
+ctx.font = '16px Arial';
+ctx.fillStyle = '#003388';
+ctx.textBaseline = 'middle';
+ctx.fillText('Hello, SWCanvas!', 10, 50);
+
+// measureText returns a TextMetrics-shaped object (or null if no font is set):
+const m = ctx.measureText('Hello');   // { width, actualBoundingBoxLeft, ... }
+```
+
+Behaviour worth knowing up front:
+- `strokeText()` throws — BitmapText doesn't stroke glyphs.
+- `fillText(text, x, y, maxWidth)` throws if `maxWidth` is passed — atlas glyphs can't shrink-to-fit without distortion; explicit failure beats silent mis-render.
+- `ctx.font` getter returns the canonical CSS shorthand (per HTML5 spec), not the user's verbatim input.
+- Gradient or Pattern fillStyle falls back to opaque black with a `console.warn` — BitmapText needs a single CSS color.
+- `textAlign='start'` / `'end'` map to `'left'` / `'right'`; SWCanvas doesn't implement RTL.
+- Missing glyphs (chars outside the font's atlas) and missing atlases render as placeholder rectangles in `textColor` rather than throwing — safe to call `fillText` before atlases finish loading.
+
+**HiDPI text.** `ctx.textPixelDensity` (non-standard, defaults to `window.devicePixelRatio` in browsers, `1` in Node) picks the atlas density used for `fillText`. For crisp HiDPI text, combine three things:
+
+```javascript
+const dpr = window.devicePixelRatio || 1;
+
+// 1. Backing surface at physical resolution
+const canvas = SWCanvas.createCanvas(cssW * dpr, cssH * dpr);
+const ctx = canvas.getContext('2d');
+
+// 2. Scale the CTM so the rest of your drawing stays in CSS pixels
+ctx.scale(dpr, dpr);
+
+// 3. Pick the matching atlas density and pre-load it
+ctx.textPixelDensity = dpr;
+await SWCanvas.fonts.load('Arial', { size: 16, pixelDensity: dpr });
+```
+
+If you keep the SWCanvas at logical size and only set `textPixelDensity = dpr`, text still renders correctly but the higher-resolution intermediate gets downsampled back to logical pixels inside the slow path's `drawImage` — harmless but pointless. Density 1 and density 2 are separate atlas downloads and separate LRU entries.
+
+**Custom asset directory.** The default is `./font-assets/` (relative to the page in browsers, to `process.cwd()` in Node). To use a different path:
+
+```javascript
+SWCanvas.fonts._raw.BitmapText.setFontDirectory('./assets/fonts/');
+```
+
+**`SWCanvas.fonts._raw` — escape hatch for advanced use.** Exposes BitmapText internals for callers that need them (custom loaders, LRU eviction policies, the demo at `examples/text-lru-atlas-demo.html`):
+
+| Member | Use |
+|--------|-----|
+| `BitmapText` | The static engine class — `setFontDirectory`, `setFontLoader`, `drawTextFromAtlas`, `computeInkBoundingBox`, etc. |
+| `FontProperties` | `new FontProperties(density, family, style, weight, size)` / `FontProperties.fromIDString(id)`. |
+| `TextProperties` | Construct `{ textAlign, textBaseline, textColor, isKerningEnabled }` for direct BitmapText calls. |
+| `AtlasDataStore` | Inspect / manipulate the in-memory atlas cache. |
+| `FontManifest` | Enumerate registered font idStrings (`FontManifest.allFontIDs()`). |
+| `AtlasLRU` | The reusable LRU cache class used by the demo. |
 
 ### Image Export
 

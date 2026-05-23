@@ -140,6 +140,25 @@ needed at runtime for Node-side text rendering tests):
   the pre-built fixture from each release tag (see "The font-assets
   release-tag pin" below) and never regenerates locally.
 
+## Wrapping atlases for `file://` loading
+
+```bash
+npm run text:wrap-for-file
+```
+
+Browsers block cross-`file://` Image loads (same-origin treats each local
+file as a separate origin), so `FontLoaderBrowser`'s `file://` path uses
+`<script>`-tag injection to load base64-wrapped atlases instead of raw
+WebPs. The wrappers (`atlas-*-webp.js`) don't ship in the published
+font-assets release — they're generated locally by the vendored
+`vendor/bitmaptext/scripts/image-to-js-converter.js`, which `npm run
+text:wrap-for-file` invokes against `font-assets/` with the `--webp` flag.
+
+About 4550 atlases at ~20 KB each ⇒ `font-assets/` grows from ~70 MB to
+~157 MB after wrapping. Only needed if you want to open
+`examples/text-lru-atlas-demo.html` directly from disk; `http://` /
+`https://` loading works against the raw `.webp` files unchanged.
+
 ## The font-assets release-tag pin
 
 The engine source (this file's main subject) and the published font assets

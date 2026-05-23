@@ -18,7 +18,7 @@ Each document has a **single responsibility** to avoid duplication:
 - **examples/README.md**: Examples documentation and usage instructions
 - **DIRECT-RENDERING-SUMMARY.MD**: Direct rendering system documentation, APIs, conditions, and implementation details
 - **test_naming_convention.md**: Test file naming conventions, facet abbreviations, and naming rules
-- **TEXT-INTEGRATION-HANDOFF.md**: Text rendering integration — vendored BitmapText engine, fast/slow render paths, vendor refresh workflow, LRU demo
+- **vendor/bitmaptext.UPDATE.md**: Vendored BitmapText.js text engine — refresh workflow, two-pin scheme (engine SHA vs font-assets tag), atlas wrapping for file://, vendored vs not-vendored
 - **CLAUDE.md**: Claude-specific development context and workflow tips ONLY
 
 ### What NOT to Include (Anti-Duplication Rules)
@@ -64,7 +64,9 @@ Each document has a **single responsibility** to avoid duplication:
 - **Debug utilities**: debug/README.md only
 - **Direct rendering system**: DIRECT-RENDERING-SUMMARY.MD only
 - **Test naming conventions**: test_naming_convention.md only
-- **Text rendering integration**: TEXT-INTEGRATION-HANDOFF.md only
+- **Text rendering API & usage**: README.md § "Text Rendering" only
+- **Text rendering architecture & invariants**: ARCHITECTURE.md § "Text Rendering System" only
+- **Vendored text engine (refresh, pins, file:// wrap)**: vendor/bitmaptext.UPDATE.md only
 - **Claude guidance**: CLAUDE.md only (no duplication from other docs)
 
 ## Quick Navigation
@@ -81,7 +83,9 @@ Each document has a **single responsibility** to avoid duplication:
 - **Examples and demos** → examples/README.md
 - **Direct rendering system** → DIRECT-RENDERING-SUMMARY.MD
 - **Test naming conventions** → test_naming_convention.md
-- **Text rendering integration** → TEXT-INTEGRATION-HANDOFF.md
+- **Text rendering (using it)** → README.md § "Text Rendering"
+- **Text rendering (how it works)** → ARCHITECTURE.md § "Text Rendering System"
+- **Vendored text engine maintenance** → vendor/bitmaptext.UPDATE.md
 - **Development with Claude** → CLAUDE.md
 
 ## Documentation Maintenance
