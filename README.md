@@ -15,7 +15,7 @@ See [index page](https://davidedc.github.io/swcanvas.js/) for link to all browse
 - **Memory Efficient Clipping**: Stencil-based clipping system with proper intersection support
 - **Sub-pixel Stroke Rendering**: Thin strokes render with proportional opacity, works with all paint sources
 - **Full Porter-Duff Compositing**: Complete `globalCompositeOperation` support with all 10 standard operations working correctly
-- **Comprehensive Test Coverage**: 37 core tests + 144 visual tests + 79 direct rendering tests
+- **Comprehensive Test Coverage**: 44 core tests + 152 visual tests + 79 direct rendering tests
 - **Immutable Value Objects**: Point, Rectangle, Transform2D, Color prevent mutation bugs
 - **Cross-Platform**: Works in Node.js and browsers
 - **No Dependencies**: Pure JavaScript implementation
@@ -59,8 +59,8 @@ This generates:
 - `dist/swcanvas.js` - Complete library for development
 - `dist/swcanvas.min.js` - Minified library for production (84% smaller)
 - `dist/swcanvas.min.js.map` - Source map for debugging
-- `tests/dist/core-functionality-tests.js` from 37 individual test files in `/tests/core/`
-- `tests/dist/visual-rendering-tests.js` from 144 individual test files in `/tests/visual/`
+- `tests/dist/core-functionality-tests.js` from 44 individual test files in `/tests/core/`
+- `tests/dist/visual-rendering-tests.js` from 152 individual test files in `/tests/visual/`
 
 ### Node.js Usage
 
@@ -160,15 +160,15 @@ npm test
 ```
 
 This runs:
-- 37 modular core functionality tests (automatically uses built tests from `/tests/core/`)
-- 144 visual rendering tests generating PNG files in `tests/output/`
+- 44 modular core functionality tests (automatically uses built tests from `/tests/core/`)
+- 152 visual rendering tests generating PNG files in `tests/output/`
 
 ### Browser Tests
 
 Open `tests/browser/index.html` in a web browser for:
 - Side-by-side HTML5 Canvas vs SWCanvas comparisons
 - Interactive visual tests
-- All 144 visual rendering tests comparisons (automatically uses built modular tests)
+- All 152 visual rendering tests comparisons (automatically uses built modular tests)
 - PNG/BMP download functionality
 
 ### Performance Tests
