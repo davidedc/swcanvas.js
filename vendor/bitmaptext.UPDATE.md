@@ -129,16 +129,21 @@ needed at runtime for Node-side text rendering tests):
 
 - `lib/QOIDecode.js` — decodes the QOI-encoded smoke-fixture atlases at
   Node load time. Node has no built-in WebP decoder, so the Node-side
-  smoke set is shipped as QOI rather than WebP. Vendored alongside the
-  rest of the engine on each pin bump.
+  smoke set is QOI rather than WebP. Vendored alongside the rest of the
+  engine on each pin bump.
+- `lib/QOIEncode.js` — the inverse, used at authoring time (NOT runtime) by
+  `scripts/build-smoke-fixture.js` to re-derive the Node smoke fixture's QOI
+  atlases from the published WebP release. Vendored alongside QOIDecode.
 
 **Not** vendored:
 
 - `src/platform/canvas-mock.js` — SWCanvas provides its own canvas factory.
-- `scripts/rebuild-from-minimal.sh`, `scripts/webp-to-qoi-converter.js` —
-  upstream tooling for regenerating the smoke fixture. SWCanvas consumes
-  the pre-built fixture from each release tag (see "The font-assets
-  release-tag pin" below) and never regenerates locally.
+- `scripts/rebuild-from-minimal.sh`, `scripts/webp-to-qoi-converter.js`,
+  `scripts/build-smoke-set.js` — upstream tooling. SWCanvas does not consume a
+  pre-built smoke zip; instead `scripts/build-smoke-fixture.js` re-derives
+  `font-assets/_smoke/` locally from the published WebP release (porting the
+  WebP→QOI + bundle-subset logic, using the vendored `lib/QOIEncode.js`). See
+  "The font-assets release-tag pin" below.
 
 ## Wrapping atlases for `file://` loading
 
@@ -169,12 +174,11 @@ are two independent cadences with two independent pins:
 | `vendor/bitmaptext.pin`           | BitmapText.js source SHA              | New upstream commit you want to vendor              |
 | `vendor/bitmaptext-release.pin`   | Font-assets release tag               | New `font-assets-YYYY-MM-DD` release published      |
 
-`vendor/bitmaptext-release.pin` is read at runtime by both
-`scripts/download-bitmaptext-assets.sh` (the full ~157 MB WebP set) and
-`scripts/download-bitmaptext-smoke-fixture.sh` (the ~40 KB QOI smoke set
-for Node tests). One bump there moves both downloaders in lockstep — there
-is no second copy of the tag anywhere in the tree, so cross-site drift is
-structurally impossible.
+`vendor/bitmaptext-release.pin` is read at runtime by
+`scripts/download-bitmaptext-assets.sh` (the full ~157 MB WebP set). The
+committed Node smoke fixture (`font-assets/_smoke/`, QOI) is regenerated from
+that same WebP set by `scripts/build-smoke-fixture.js`, so this one pin is the
+single source of truth for both browser (WebP) and Node (QOI) text assets.
 
 ### Drift check
 
@@ -191,9 +195,9 @@ the unauthenticated 60-req/hour limit.
 
 ```bash
 # Edit vendor/bitmaptext-release.pin to the new tag, then:
-./scripts/download-bitmaptext-assets.sh --force         # full set (browser)
-./scripts/download-bitmaptext-smoke-fixture.sh --force  # smoke (Node)
-npm run build && npm test                               # confirms Node text tests still pass
+./scripts/download-bitmaptext-assets.sh --force   # full WebP set (browser)
+node scripts/build-smoke-fixture.js               # re-derive _smoke/ QOI from the WebP
+npm run build && npm test                         # confirms Node text tests still pass
 git diff vendor/bitmaptext-release.pin font-assets/_smoke/
 git add vendor/bitmaptext-release.pin font-assets/_smoke/
 git commit -m "bump font-assets release pin to <tag>"

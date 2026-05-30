@@ -4,9 +4,9 @@
 # release published on GitHub.
 #
 # The pin is stored in vendor/bitmaptext-release.pin (single source of truth);
-# both scripts/download-bitmaptext-assets.sh and
-# scripts/download-bitmaptext-smoke-fixture.sh read from that file at runtime,
-# so cross-site drift is structurally impossible. This checker only has to
+# scripts/download-bitmaptext-assets.sh reads from that file at runtime (and the
+# Node smoke fixture is derived from that same WebP set by
+# scripts/build-smoke-fixture.js), so drift is structurally impossible. This checker only has to
 # compare local-pin vs releases/latest.
 #
 # Exit codes:
@@ -110,7 +110,7 @@ echo ""
 echo "  Local:  $LOCAL_TAG"
 echo "  Latest: $LATEST_TAG"
 echo ""
-echo "To bump, edit $PIN_FILE and re-fetch the assets:"
+echo "To bump, edit $PIN_FILE, re-fetch, and regenerate the Node fixture:"
 echo "  ./scripts/download-bitmaptext-assets.sh --force"
-echo "  ./scripts/download-bitmaptext-smoke-fixture.sh --force"
+echo "  node scripts/build-smoke-fixture.js"
 exit 1

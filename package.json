@@ -29,6 +29,7 @@
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
     "text:download-assets": "./scripts/download-bitmaptext-assets.sh",
+    "text:build-smoke-fixture": "node scripts/build-smoke-fixture.js",
     "text:wrap-for-file": "node vendor/bitmaptext/scripts/image-to-js-converter.js font-assets --webp",
     "text:smoke-demo": "node scripts/smoke-text-demo.js --playwright-from ../BitmapText.js/node_modules/playwright",
     "text:check-pin": "./scripts/check-bitmaptext-release-pinned.sh"

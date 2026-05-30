@@ -198,6 +198,13 @@ rsync -a "$SOURCE_ABS/scripts/image-to-js-converter.js" vendor/bitmaptext/script
 # FontLoaderNode is concatenated in the same scope).
 rsync -a "$SOURCE_ABS/lib/QOIDecode.js" vendor/bitmaptext/lib/
 
+# QOIEncode is the inverse — NOT part of the runtime dist (Node only decodes
+# at load time). It is used at authoring time by scripts/build-smoke-fixture.js,
+# which re-derives the Node smoke fixture's QOI atlases from the published WebP
+# release (lossless VP8L → dwebp → QOIEncode), so we vendor it alongside the
+# decoder to keep it pinned.
+rsync -a "$SOURCE_ABS/lib/QOIEncode.js" vendor/bitmaptext/lib/
+
 # ----- Pin rewrite (local-source mode, when allowed) -----
 
 if [ "$MODE" = 'local-source' ] && [ "$UPDATE_PIN" -eq 1 ] && [ "$SOURCE_SHA" != '(no git history)' ]; then

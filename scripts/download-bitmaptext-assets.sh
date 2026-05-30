@@ -24,19 +24,22 @@ REPO_OWNER='davidedc'
 REPO_NAME='BitmapText.js'
 ASSET_NAME='font-assets-min.zip'
 
-# Release tag is pinned in vendor/bitmaptext-release.pin — single source of
-# truth shared with scripts/download-bitmaptext-smoke-fixture.sh (one tag,
-# two assets per sibling agreement). Bump there once and both downloaders
-# follow. Override per-invocation with --tag <name>.
+# Release tag is pinned in vendor/bitmaptext-release.pin — the single source of
+# truth for this WebP set. Bump there and re-run with --force. Override
+# per-invocation with --tag <name>.
 # Verify the pin matches GitHub releases/latest with: npm run text:check-pin
+#
+# The Node text-test fixture (font-assets/_smoke/, committed QOI) is DERIVED
+# from these WebP atlases by scripts/build-smoke-fixture.js — Node can't decode
+# WebP, and the atlas WebP are lossless, so the WebP→QOI transcode is exact.
+# This one release is therefore the source of truth for both browser (WebP) and
+# Node (QOI) text assets.
 #
 # Tag-history notes:
 # - 2026-05-20: first release with v2 wire format (delta-varint metrics +
 #   positioning). Earlier releases (font-assets-2026-13-05,
 #   font-assets-2026-05-05) were cut from pre-v2 source and are incompatible
 #   with the vendored runtime.
-# - 2026-05-22: added font-assets-smoke-set.zip as a second asset (tiny
-#   3-font Node-loadable QOI subset for SWCanvas's text rendering tests).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

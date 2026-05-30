@@ -1,9 +1,9 @@
 {
-  "_comment": "Smoke-set fixture used by embedders (e.g. SWCanvas) for Node-side text-rendering tests. Shipped as font-assets-smoke-set.zip on each font-assets release. Three fonts at density-1 size 16: enough to exercise the full drawTextFromAtlas path including the font-invariant character branch. Source of truth — scripts/build-smoke-set.js reads this to know what to include in the zip.",
+  "_comment": "SWCanvas Node text-test fixture spec. scripts/build-smoke-fixture.js reads this and regenerates the sibling QOI atlases + bundle subsets in this directory from the downloaded WebP font-assets release (npm run text:build-smoke-fixture). Edit this file to change the fixture's fonts/densities, then regenerate and commit. Three fonts at densities 1 and 2, size 16: enough to exercise the full drawTextFromAtlas path including the font-invariant character branch, at both atlas densities.",
   "fontSets": [
     {
       "name": "Smoke set — Arial 16 (normal + bold)",
-      "density": [1],
+      "density": [1, 2],
       "families": ["Arial"],
       "styles": ["normal"],
       "weights": ["normal", "bold"],
@@ -11,7 +11,7 @@
     },
     {
       "name": "Smoke set — BitmapTextInvariant 16",
-      "density": [1],
+      "density": [1, 2],
       "families": ["BitmapTextInvariant"],
       "styles": ["normal"],
       "weights": ["normal"],
