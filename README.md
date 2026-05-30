@@ -15,7 +15,7 @@ See [index page](https://davidedc.github.io/swcanvas.js/) for link to all browse
 - **Memory Efficient Clipping**: Stencil-based clipping system with proper intersection support
 - **Sub-pixel Stroke Rendering**: Thin strokes render with proportional opacity, works with all paint sources
 - **Full Porter-Duff Compositing**: Complete `globalCompositeOperation` support with all 10 standard operations working correctly
-- **Comprehensive Test Coverage**: 45 core tests + 152 visual tests + 79 direct rendering tests
+- **Comprehensive Test Coverage**: 46 core tests + 153 visual tests + 79 direct rendering tests
 - **Immutable Value Objects**: Point, Rectangle, Transform2D, Color prevent mutation bugs
 - **Cross-Platform**: Works in Node.js and browsers
 - **No Dependencies**: Pure JavaScript implementation
@@ -59,8 +59,8 @@ This generates:
 - `dist/swcanvas.js` - Complete library for development
 - `dist/swcanvas.min.js` - Minified library for production (84% smaller)
 - `dist/swcanvas.min.js.map` - Source map for debugging
-- `tests/dist/core-functionality-tests.js` from 45 individual test files in `/tests/core/`
-- `tests/dist/visual-rendering-tests.js` from 152 individual test files in `/tests/visual/`
+- `tests/dist/core-functionality-tests.js` from 46 individual test files in `/tests/core/`
+- `tests/dist/visual-rendering-tests.js` from 153 individual test files in `/tests/visual/`
 
 ### Node.js Usage
 
@@ -160,15 +160,15 @@ npm test
 ```
 
 This runs:
-- 45 modular core functionality tests (automatically uses built tests from `/tests/core/`)
-- 152 visual rendering tests generating PNG files in `tests/output/`
+- 46 modular core functionality tests (automatically uses built tests from `/tests/core/`)
+- 153 visual rendering tests generating PNG files in `tests/output/`
 
 ### Browser Tests
 
 Open `tests/browser/index.html` in a web browser for:
 - Side-by-side HTML5 Canvas vs SWCanvas comparisons
 - Interactive visual tests
-- All 152 visual rendering tests comparisons (automatically uses built modular tests)
+- All 153 visual rendering tests comparisons (automatically uses built modular tests)
 - PNG/BMP download functionality
 
 ### Performance Tests
@@ -635,7 +635,7 @@ ctx.textPixelDensity = dpr;
 await SWCanvas.fonts.load('Arial', { size: 16, pixelDensity: dpr });
 ```
 
-If you keep the SWCanvas at logical size and only set `textPixelDensity = dpr`, text still renders correctly but the higher-resolution intermediate gets downsampled back to logical pixels inside the slow path's `drawImage` — harmless but pointless. Density 1 and density 2 are separate atlas downloads and separate LRU entries.
+Because the CTM scale (step 2) matches the atlas density (step 3), this recipe takes `TextRenderer`'s direct-blit fast path — glyphs go straight to the backing surface with no intermediate buffer (see `ARCHITECTURE.md` § "Text Rendering System"). If instead you keep the SWCanvas at logical size and only set `textPixelDensity = dpr` (no `ctx.scale`), text still renders correctly but takes the slow path: the higher-resolution intermediate is downsampled back to logical pixels inside `drawImage` — harmless but pointless. Density 1 and density 2 are separate atlas downloads and separate LRU entries.
 
 **Custom asset directory.** The default is `./font-assets/` (relative to the page in browsers, to `process.cwd()` in Node). To use a different path:
 

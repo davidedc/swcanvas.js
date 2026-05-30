@@ -25,18 +25,19 @@ if (fs.existsSync(path.join(directRenderingTestsDir, 'direct-rendering-test-util
     directRenderingTestUtils = require('./direct-rendering/direct-rendering-test-utils.js');
 }
 
-// Preload the smoke fixture's 3 fonts so positive-rendering text tests
-// (Arial reg+bold + BitmapTextInvariant at size 16, density-1) can write
-// real glyph pixels. Tests that need to exercise the NO_METRICS path use
-// fonts/sizes deliberately outside this set (see 304-text-fillText-no-atlas-test.js,
-// which uses Courier New 24).
+// Preload the smoke fixture's fonts so positive-rendering text tests
+// (Arial reg+bold + BitmapTextInvariant at size 16, densities 1 and 2) can
+// write real glyph pixels. The density-2 set backs the HiDPI direct-blit
+// fast-path tests (208 visual / 308 core). Tests that need to exercise the
+// NO_METRICS path use fonts/sizes deliberately outside this set (see
+// 304-text-fillText-no-atlas-test.js, which uses Courier New 24).
 async function preloadSmokeFonts() {
     const { BitmapText } = SWCanvas.fonts._raw;
     const smokeDir = path.resolve(__dirname, '..', 'font-assets', '_smoke') + '/';
     if (!fs.existsSync(path.join(smokeDir, 'metrics-bundle.js'))) {
         throw new Error(
-            'Smoke fixture missing at font-assets/_smoke/. ' +
-            'Run: ./scripts/download-bitmaptext-smoke-fixture.sh'
+            'Smoke fixture missing at font-assets/_smoke/ (it is committed to git). ' +
+            'Regenerate with: npm run text:download-assets && node scripts/build-smoke-fixture.js'
         );
     }
     BitmapText.setFontDirectory(smokeDir);
@@ -44,6 +45,9 @@ async function preloadSmokeFonts() {
         BitmapText.loadFont('density-1-0-Arial-style-normal-weight-normal-size-16-0'),
         BitmapText.loadFont('density-1-0-Arial-style-normal-weight-bold-size-16-0'),
         BitmapText.loadFont('density-1-0-BitmapTextInvariant-style-normal-weight-normal-size-16-0'),
+        BitmapText.loadFont('density-2-0-Arial-style-normal-weight-normal-size-16-0'),
+        BitmapText.loadFont('density-2-0-Arial-style-normal-weight-bold-size-16-0'),
+        BitmapText.loadFont('density-2-0-BitmapTextInvariant-style-normal-weight-normal-size-16-0'),
     ]);
 }
 

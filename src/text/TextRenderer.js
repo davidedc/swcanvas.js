@@ -4,17 +4,25 @@
  * Bridge between SWCanvas's Core Context2D and BitmapText.drawTextFromAtlas.
  *
  * Two paths:
- *   - Fast path (identity-like transform): the current transform is just an
- *     integer translation (a=1, b=0, c=0, d=1, integer e/f). We pre-apply the
- *     translation to the user's coordinates and call BitmapText directly
- *     against the main context. BitmapText resets the transform to identity
- *     internally, then blits glyphs at our pre-translated coords — no
- *     intermediate buffer needed.
- *   - Slow path (rotated, scaled, or non-integer-translated transform): ask
- *     BitmapText for the exact ink bounding box via computeInkBoundingBox,
- *     render into an intermediate SWCanvasElement sized to that box, then
+ *   - Fast path (axis-aligned, uniform scale == atlas density): the current
+ *     transform is an axis-aligned uniform scale whose factor equals the
+ *     font's pixelDensity, with an integer device-pixel translation
+ *     (a = d = dpr, b = c = 0, integer e/f). BitmapText resets the transform
+ *     to identity internally and applies pixelDensity itself by scaling
+ *     coordinates and glyphs by dpr — so when the geometric scale already
+ *     equals dpr, that internal scaling reproduces the transform exactly. We
+ *     bake the translation back into the coords (divide by dpr, since
+ *     BitmapText re-multiplies) and blit straight to the main context — no
+ *     intermediate buffer. The original density-1 case (pure integer
+ *     translation) is just dpr = 1.
+ *   - Slow path (rotation, skew, or a scale that differs from the density):
+ *     ask BitmapText for the exact ink bounding box via computeInkBoundingBox,
+ *     render into an intermediate SWCanvasElement sized to box × dpr, then
  *     drawImage the result onto the main context with the current transform
- *     applied.
+ *     applied. This is the only path that can honour rotation/skew (BitmapText
+ *     draws axis-aligned only) or a scale ≠ density (it confines the ×dpr
+ *     sampling to the intermediate, keeping density a sampling detail rather
+ *     than a layout multiplier).
  */
 class TextRenderer {
     /**
@@ -50,13 +58,27 @@ class TextRenderer {
     }
 
     /**
-     * Fast-path eligibility check. The transform must be a pure integer
-     * translation (no rotation, no skew, no scale, only integer offsets).
+     * Fast-path (direct-blit) eligibility. The transform must be an
+     * axis-aligned uniform scale whose factor equals the atlas density, with
+     * an integer device-pixel translation: a = d = dpr, b = c = 0, integer
+     * e/f. Under such a transform BitmapText's own internal ×dpr scaling
+     * reproduces the geometric scale exactly, so we can blit directly to the
+     * main surface and skip the intermediate buffer. The original density-1
+     * fast path (pure integer translation) is the dpr = 1 case.
+     *
+     * Exact comparisons are intentional: a transform that drifts off these
+     * values (e.g. float error after a rotate/unrotate) simply falls back to
+     * the slow path — a safe, conservative miss. The integer e/f gate is kept
+     * for crispness; at dpr > 1 the translate is integer device pixels, and
+     * the e/dpr passed to BitmapText may be a half-integer CSS coordinate that
+     * BitmapText snaps back onto the device grid.
+     *
      * @param {Transform2D} t
+     * @param {number} dpr  fontProperties.pixelDensity
      * @returns {boolean}
      */
-    static _isIdentityLike(t) {
-        return t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1 &&
+    static _isDirectBlitEligible(t, dpr) {
+        return t.b === 0 && t.c === 0 && t.a === dpr && t.d === dpr &&
                Number.isInteger(t.e) && Number.isInteger(t.f);
     }
 
@@ -80,15 +102,17 @@ class TextRenderer {
         );
 
         const t = coreCtx._transform;
-        // Fast path requires density === 1. At density > 1 drawTextFromAtlas
-        // would multiply x/y by N and draw glyphs at N× size against the main
-        // surface — wrong logical coords AND size. The slow path's intermediate
-        // + drawImage downsamples back to CSS pixels, preserving correctness.
-        if (TextRenderer._isIdentityLike(t) && fontProps.pixelDensity === 1) {
-            // Fast path: pre-apply the integer translation and call BitmapText
-            // directly against the main context (which it'll reset to identity).
+        const dpr = fontProps.pixelDensity;
+        // Fast path: axis-aligned, uniform scale == density, integer translate.
+        // BitmapText resets the transform to identity and applies dpr itself by
+        // scaling coords/glyphs by dpr, so a matching geometric scale is
+        // reproduced for free. Bake the (device-pixel) translation back into
+        // the coords — divide by dpr because BitmapText re-multiplies — and
+        // blit straight to the main context. At dpr === 1 this is the original
+        // pure-integer-translation fast path (e/dpr === e).
+        if (TextRenderer._isDirectBlitEligible(t, dpr)) {
             return BitmapText.drawTextFromAtlas(
-                coreCtx, text, x + t.e, y + t.f, fontProps, userTextProps
+                coreCtx, text, x + t.e / dpr, y + t.f / dpr, fontProps, userTextProps
             );
         }
 
@@ -107,7 +131,6 @@ class TextRenderer {
             return { rendered: true, status: { code: 0 } };
         }
 
-        const dpr   = fontProps.pixelDensity;
         const wPhys = Math.max(1, Math.ceil(box.width  * dpr));
         const hPhys = Math.max(1, Math.ceil(box.height * dpr));
         const intermediate = TextRenderer._makeIntermediate(wPhys, hPhys);
