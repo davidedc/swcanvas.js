@@ -272,7 +272,7 @@
     </label>
     <label><input type="checkbox" id="ctrl-transparent"> Transparent bg</label>
     <button id="ctrl-pause">Pause</button>
-    <span class="status" id="status">starting…</span>
+    <span class="status" id="ctrl-status"></span>
   </div>
   <div class="bundle-pills" id="bundle-pills"></div>
   <div class="metrics-row">
@@ -336,7 +336,7 @@
   const stage    = document.getElementById('stage');
   const warnEl   = document.getElementById('warn');
   const statsEl  = document.getElementById('stats');
-  const statusEl = document.getElementById('status');
+  const statusEl = document.getElementById('ctrl-status');
 
   // ---------- Configuration ----------
   const SPAWN_INTERVAL_MS = 80;
@@ -453,6 +453,12 @@
     return Promise.allSettled(ps);
   }
 
+  // Unload helper used by the config-change handler. Only operates on bundles
+  // currently in 'loaded' or 'error' state — never interrupts an in-flight
+  // load (the runtime's unloadPositioningBundle would still work, but the
+  // pending fetch would race with the next config change). If a load is
+  // mid-flight when this is called, leave it; on resolve it will flip to
+  // 'loaded', and the NEXT config change picks it up.
   function unloadPositioningBundles(densities) {
     for (const d of densities) {
       const key = bundleKeyForDensity(d);
@@ -705,7 +711,7 @@
     destroy() {
       this.alive = false;
       dirty.delete(this);
-      if (this.wrapper.parentNode) this.wrapper.parentNode.removeChild(this.wrapper);
+      this.wrapper.remove();
     }
   }
 
@@ -717,6 +723,9 @@
   let spawnTimer = null;
   let dirty      = new Set();
   let totalSpawned = 0;
+  // Wall-clock accumulator for the `Draw µs/text` stat. Per-paint elapsed
+  // is returned by TextBox.paint() and summed here; updateStats() (throttled
+  // to once per second in the rAF tick) divides and resets.
   let drawUsAccum  = 0;
   let drawUsFrames = 0;
 
@@ -774,6 +783,12 @@
   //  Single entry point for the DPR dropdown changing AND matchMedia firing
   //  in 'auto' mode (window dragged to a different-DPR screen).
 
+  // Read from THREE sources because each is a real reason the runtime is
+  // holding state for that density. The bundle-state source catches the
+  // case where a positioning bundle was loaded by a 'both' selection but
+  // had no textboxes spawn against it before the user toggled back; it's
+  // still in `_positioningBundleReadyPromises`, and we want the next
+  // transition to be able to unload it.
   function densitiesInUse() {
     const ds = new Set();
     if (typeof onScreen !== 'undefined') {
@@ -836,6 +851,11 @@
     renderBundlePills();
   }
 
+  // Listen for screen-DPR threshold crossings. We gate on
+  // `DPR_INPUT.value === 'auto'` AT FIRE TIME, not attach time, so the user
+  // can toggle in/out of 'auto' without re-attaching the listener. The query
+  // only fires `change` on threshold crossings (1x ↔ ≥1.5x); a 2x→3x window
+  // move is silent (correct, since both still map to density 2).
   function watchDPRChanges() {
     const mq = window.matchMedia(DPR_THRESHOLD_QUERY);
     mq.addEventListener('change', () => {
@@ -849,7 +869,7 @@
   //  rate — sticks to 80 ms between attempts even if rAF is throttled.
 
   function spawnIfNeeded() {
-    if (paused || !lru || candidates.length === 0) return;
+    if (paused || candidates.length === 0) return;
     const N = parseInt(N_INPUT.value, 10);
     const lifeMaxMs = parseInt(LIFE_INPUT.value, 10) * 1000;
 
@@ -906,7 +926,11 @@
         }
         painted++;
       } else {
-        // Budget exhausted — carry over to next tick + refresh pin window.
+        // Budget exhausted — carry over to next tick. Refresh the pin window for
+        // this textbox's atlases: queue ticks otherwise burn pin time without
+        // any lru.request call to bump it, which at low budget + high N + low K
+        // could expose back-of-queue atlases to eviction before their textbox
+        // gets a chance to paint. "Queued for paint" is treated as a use here.
         lru.beingUsed(tb.idString);
         lru.beingUsed(tb.invariantIdString);
         dirty.add(tb);
@@ -1053,7 +1077,7 @@
       let histIdx = 0;
       let histFilled = 0;
       let lastFrameMs = performance.now();
-      const HIST_MAX_MS = 100;
+      const HIST_MAX_MS = 100;  // y-axis cap; anything ≥100ms tops out the bar
       const histCanvas = document.getElementById('fps-hist');
       const hctx = histCanvas.getContext('2d');
       const fpsText = document.getElementById('fps-text');
@@ -1063,13 +1087,13 @@
         hctx.fillStyle = '#fff';
         hctx.fillRect(0, 0, w, h);
 
-        // Guide line at 16.67ms (60fps).
+        // Guide line at 16.67ms (60fps) so eyeballing fluidity is easy.
         hctx.strokeStyle = '#dcdcdc';
         hctx.lineWidth = 1;
         const y60 = Math.round(h - (16.67 / HIST_MAX_MS) * h) + 0.5;
         hctx.beginPath(); hctx.moveTo(0, y60); hctx.lineTo(w, y60); hctx.stroke();
 
-        // Bars: oldest left, newest right.
+        // Bars: oldest on the left, newest on the right.
         const barW = w / HIST_FRAMES;
         for (let i = 0; i < HIST_FRAMES; i++) {
           const idx = (histIdx + i) % HIST_FRAMES;
@@ -1091,7 +1115,7 @@
         histIdx = (histIdx + 1) % HIST_FRAMES;
         if (histFilled < HIST_FRAMES) histFilled++;
 
-        // Average over the last ~30 frames for a steady readout.
+        // Average over the last ~30 frames for a steady fps readout.
         const sampleN = Math.min(30, histFilled);
         let sum = 0;
         for (let i = 0; i < sampleN; i++) {
