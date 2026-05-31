@@ -96,7 +96,9 @@
       margin-left: auto;     /* push status to the right edge of the row */
     }
 
-    /* Bundle-status pills */
+    /* Bundle-status pills — sits between the dropdown that drives it (DPR mode)
+       and the per-frame metrics row. All four states share the same geometry,
+       so transitions are pure color animations with no reflow. */
     .bundle-pills {
       display: flex;
       flex-wrap: wrap;
@@ -125,7 +127,7 @@
     .bundle-pills .pill.pill-loaded     { background: #e8f5e9; color: #2e7d32; }
     .bundle-pills .pill.pill-error      { background: #fdecea; color: #b71c1c; }
 
-    /* Metrics row */
+    /* Metrics row: prominent FPS histogram on the left, stat pills filling the rest */
     .metrics-row {
       display: flex;
       flex-wrap: wrap;
@@ -259,6 +261,17 @@
         <option value="mixed">Mixed (50% black, 50% random)</option>
       </select>
     </label>
+    <!-- Resize-sweep controls (shared across both demos). Sweep speed
+         oscillates each box's FONT SIZE; Preload ± keeps that many ladder
+         neighbours warm so the size change never flashes a placeholder. -->
+    <label>Sweep speed
+      <input id="ctrl-sweep" type="range" min="0" max="20" value="6">
+      <span id="val-sweep" class="value">6</span>
+    </label>
+    <label>Preload ±
+      <input id="ctrl-preload" type="range" min="0" max="6" value="2">
+      <span id="val-preload" class="value">2</span>
+    </label>
     <!-- SWCanvas-specific exercise paths follow. None of these exist in
          BitmapText.js's demo — they drive SWCanvas's transform + alpha
          pipeline, which is what makes this demo a SWCanvas demo. -->
@@ -330,6 +343,14 @@
           AtlasDataStore, FontManifest } = SWCanvas.fonts._raw;
 
   // ---------- Bootstrap ----------
+  //
+  // BitmapText is a static singleton — these calls configure global state
+  // for the page. setFontDirectory tells the loader where to find
+  // metrics-bundle.js + atlas-*.webp / atlas-*-webp.js. isFileProtocol is
+  // consulted by loadFont: under file:// the loader injects
+  // atlas-*-webp.js <script> tags instead of fetching .webp files directly,
+  // because file:// fetches are blocked by the browser.
+
   BitmapText.setFontDirectory('../font-assets/');
   const isFileProtocol = window.location.protocol === 'file:';
 
@@ -339,10 +360,37 @@
   const statusEl = document.getElementById('ctrl-status');
 
   // ---------- Configuration ----------
-  const SPAWN_INTERVAL_MS = 80;
-  const MIN_LIFETIME_MS   = 1000;
-  const TEXT_CONTENT      = 'Hello, World ☺';
+  //
+  // Tunables that don't have a UI control. Everything else (N, K, max
+  // lifetime, repaint budget, DPR mode, text color) is exposed via sliders
+  // and read at runtime from the DOM.
 
+  // Pin window: a freshly loaded or freshly touched atlas is unevictable
+  // for this long. Lives inside AtlasLRU (vendored into dist/swcanvas.js;
+  // reachable via SWCanvas.fonts._raw). Must exceed the gap between a load
+  // resolving and the requester's next paint (a few microtasks under no
+  // load, up to one rAF tick under budgeted drain) but stay well below
+  // typical textbox lifetimes (≥ 1 s). (PIN_GRACE_MS = 250; defined in
+  // AtlasLRU.js.)
+
+  // Spawn-attempt cadence. Decoupled from rAF so spawn pressure stays
+  // steady even if the browser throttles rAF.
+  const SPAWN_INTERVAL_MS = 80;
+
+  // Floor on randomly-rolled textbox lifetimes (hard-coded; the slider
+  // controls the upper bound only). Keeps every textbox alive long enough
+  // for at least one load+paint cycle to complete.
+  const MIN_LIFETIME_MS = 1000;
+
+  // The string every textbox renders. The smiley ☺ is in
+  // CharacterSets.FONT_INVARIANT_CHARS, so the text engine auto-routes it
+  // through the BitmapTextInvariant atlas — that's why each textbox pulls in
+  // two atlases (primary + invariant).
+  const TEXT_CONTENT = 'Hello, World ☺';
+
+  // Per-textbox TextProperties baseline (color is filled in at spawn from
+  // the Text-color dropdown via pickTextProps). Frozen for the textbox's
+  // lifetime — re-rolling per paint would flicker the canvas.
   const TEXT_PROPERTIES_BASE = {
     isKerningEnabled: true,
     textBaseline: 'middle',
@@ -358,7 +406,9 @@
     // textProps at construction time, so each textbox keeps the same
     // colour for its entire life — re-rolling per paint would flicker.
     if (mode === 'random' || (mode === 'mixed' && Math.random() >= 0.5)) {
-      // HSL with capped luminance for legibility against white.
+      // HSL with capped luminance. L=32% keeps every hue legible against
+      // white — at higher L the yellow band (around hue 60°) washes out
+      // because perceptual luminance of yellow is high even at moderate L.
       textColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 32%)`;
     } else {
       textColor = '#000000';   // 'black', or 'mixed' coin-flip heads
@@ -369,18 +419,31 @@
   // ---------- DPR resolution ----------
   //
   //  Single source of truth for "given the DPR dropdown value, which pixel
-  //  densities does this configuration require?". Used by both
-  //  `pickCandidates` (which font idStrings to spawn) and
-  //  `ensureNeededBundles` (which positioning bundles to fetch).
+  //  densities does this configuration require?". Used by BOTH the candidate-
+  //  font selector (`pickCandidates`) AND the proactive positioning-bundle
+  //  preloader (`ensureNeededBundles`). Keeping the rule in one place is
+  //  what guarantees the demo only fetches the minimum set.
   //
-  //  `autoDensity()` re-reads `window.devicePixelRatio` on every call so a
-  //  monitor switch (matchMedia threshold crossing at 1.5dppx) routes
-  //  through the same config-change path the dropdown uses.
+  //  `autoDensity()` re-reads `window.devicePixelRatio` on every call. The
+  //  OS-published value is mutable: it can change when the window is moved
+  //  between monitors with different physical pixel densities. Caching at
+  //  startup would be wrong. The matchMedia listener in
+  //  `// ---------- Config-change handling ----------` re-runs the demo's
+  //  config-change path when this value crosses the 1.5 boundary.
+  //
+  //  On disk only `positioning-bundle-density-1.js` and -2.js exist; the
+  //  demo never asks for fractional densities (1.5 etc.). The 1.5dppx
+  //  boundary is the only one that matters: <1.5 → density 1, ≥1.5 → density 2.
 
+  // matchMedia query: fires `change` only on threshold crossings (1x ↔ ≥1.5x).
+  // A 2x → 3x window move is silent — correct, since both map to density 2
+  // under the autoDensity rule.
   const DPR_THRESHOLD_QUERY = '(min-resolution: 1.5dppx)';
+
   function autoDensity() {
     return (window.devicePixelRatio >= 1.5) ? 2 : 1;
   }
+
   function neededDensitiesForMode(mode) {
     if (mode === '1')    return [1];
     if (mode === '2')    return [2];
@@ -388,16 +451,55 @@
     return [autoDensity()];   // 'auto'
   }
 
+  // ---------- AtlasLRU ----------
+  //
+  // Bounded-size atlas cache layered on BitmapText's runtime stores. Vendored
+  // verbatim into dist/swcanvas.js and reached here via SWCanvas.fonts._raw
+  // (see the destructuring at the top of this IIFE). See AtlasLRU.js for the
+  // full design discussion (entry shape, eviction policy, diagnostics).
+  //
+  // Diagnostics surfaced to the stats panel:
+  //   pendingCount  number of state==='loading' entries
+  //   reloadCount   how many times a textbox that previously rendered fully
+  //                 had to re-load an evicted atlas (thrash gauge)
+  //   loadStats()   p50 / p95 / max wall-clock load times over the last
+  //                 LOAD_HISTORY_CAP loads
+
   // ---------- Bundle loading ----------
   //
-  //  Minimum-set loader for the metrics + per-density positioning bundles.
-  //  Tiny state machine on top of BitmapText's public ensure/unload
-  //  primitives. Per-bundle state: 'not-loaded' | 'loading' | 'loaded' |
-  //  'error'. All transitions go through `markBundleState`, which also
-  //  re-renders the pills — one write point keeps UI and data in sync.
-  //  'error' is treated like 'not-loaded' by `ensureBundle`, so a
-  //  subsequent config change retries automatically.
+  //  Minimum-set loader for the metrics + per-density positioning bundles on
+  //  top of BitmapText's public ensure/unload primitives. The runtime stores
+  //  themselves are owned by the runtime (MetricsBundleStore /
+  //  PositioningBundleStore); this layer is just a tiny state machine + UI
+  //  binding so the demo can:
+  //
+  //    1. Pre-fetch exactly the positioning bundles the current configuration
+  //       needs at startup (no implicit-on-first-atlas-request load).
+  //    2. Load additional bundles reactively when the configuration changes
+  //       (dropdown toggle OR matchMedia firing in 'auto' mode).
+  //    3. Unload bundles that the new configuration no longer needs — the
+  //       actual <script> tag is detached from document.head, and the
+  //       PositioningBundleStore records for that density are cleared.
+  //    4. Show the live state of each bundle in the pill row, so users can
+  //       observe the minimum set with their own eyes.
+  //
+  //  ── BitmapText.js API used here ────────────────────────────────────
+  //
+  //    BitmapText.ensureMetricsBundleLoaded()
+  //    BitmapText.ensurePositioningBundleLoaded(d)
+  //    BitmapText.unloadMetricsBundle()        // (defined; not used by the demo)
+  //    BitmapText.unloadPositioningBundle(d)   // the linchpin of the unload weave
+  //
+  //  ── State machine ──────────────────────────────────────────────────
+  //
+  //    Per-bundle state: 'not-loaded' | 'loading' | 'loaded' | 'error'.
+  //    All transitions go through `markBundleState`, which also re-renders
+  //    the pills — one write point keeps UI and data in sync. `'error'` is
+  //    treated like `'not-loaded'` by `ensureBundle`, so a subsequent
+  //    config change retries automatically.
 
+  // Keys are stable identifiers used by both the state map and the pill DOM
+  // elements (via `data-key`). Order is the order of pills in the panel.
   const BUNDLE_KEYS   = ['metrics', 'density-1', 'density-2'];
   const BUNDLE_LABELS = {
     'metrics':   'metrics-bundle.js',
@@ -411,8 +513,8 @@
     'error':      'error',
   };
 
-  const bundleState    = new Map();
-  const bundlePromises = new Map();
+  const bundleState    = new Map();   // key → 'not-loaded' | 'loading' | 'loaded' | 'error'
+  const bundlePromises = new Map();   // key → in-flight Promise (only while 'loading')
   for (const k of BUNDLE_KEYS) bundleState.set(k, 'not-loaded');
 
   function bundleKeyForDensity(d) { return `density-${d}`; }
@@ -420,11 +522,28 @@
     return k.startsWith('density-') ? parseInt(k.slice('density-'.length), 10) : null;
   }
 
+  // Single mutator — every state change funnels through here so the UI is
+  // never out of sync with `bundleState`. Calling with the same state is
+  // harmless (a redundant render is cheap).
   function markBundleState(key, state) {
     bundleState.set(key, state);
     renderBundlePills();
   }
 
+  // State-aware idempotent wrapper around the BitmapText load primitives.
+  // `loaderFactory` is a thunk (not a bare promise) so the underlying API
+  // is only invoked after the state check decides this call needs to fire.
+  //
+  // 'loaded'    → resolved promise (no side effect)
+  // 'loading'   → cached in-flight promise (no double fire)
+  // 'not-loaded' or 'error' → mark 'loading', invoke thunk, attach state
+  //                           transitions on resolve/reject, store promise
+  //                           in bundlePromises so concurrent callers
+  //                           observe the same in-flight work.
+  //
+  // The .catch never re-throws — the demo must not crash on a missing
+  // bundle file. The 'error' state is preserved so the pill stays red,
+  // and the next config change will retry.
   function ensureBundle(key, loaderFactory) {
     const state = bundleState.get(key);
     if (state === 'loaded')  return Promise.resolve();
@@ -445,6 +564,11 @@
     return p;
   }
 
+  // Driver: load every positioning bundle the current mode needs.
+  // Uses Promise.allSettled so one failing bundle doesn't mask another's
+  // success (pills reflect each bundle independently). Returned promise is
+  // for tests / debugging — callers (handleConfigChange, startup) fire
+  // and forget.
   function ensureNeededBundles(mode) {
     const densities = neededDensitiesForMode(mode);
     const ps = densities.map(d =>
@@ -470,6 +594,10 @@
     }
   }
 
+  // Create the pill DOM nodes once. Called from Main before any state is
+  // touched, so the initial `renderBundlePills` paints all three pills as
+  // `not loaded` for ~1 frame before `ensureBundle('metrics', …)` flips
+  // metrics to `loading`.
   function buildBundlePanel() {
     const el = document.getElementById('bundle-pills');
     el.innerHTML =
@@ -482,6 +610,8 @@
       ).join('');
   }
 
+  // Sole DOM writer for the pills. Reads state from `bundleState` and
+  // updates className + state text. Idempotent.
   function renderBundlePills() {
     for (const k of BUNDLE_KEYS) {
       const pill = document.querySelector(`#bundle-pills .pill[data-key="${k}"]`);
@@ -526,8 +656,8 @@
       this.lru       = lru;
       this.alive     = true;
       this.expireAt  = performance.now() + lifetimeMs;
-      this.hadAtlasOnce = false;
-      this.textProps = pickTextProps();
+      this.hadAtlasOnce = false;        // diagnostic: did we ever paint with both atlases loaded?
+      this.textProps = pickTextProps(); // frozen for the textbox's lifetime
 
       // Bake SWCanvas-specific per-textbox state at spawn. Sliders affect
       // FUTURE spawns only; existing textboxes keep their baked values.
@@ -540,6 +670,19 @@
       this.tiltRad   = (Math.random() * 2 - 1) * tiltSliderDeg * Math.PI / 180;
       this.scale     = (100 + (Math.random() * 2 - 1) * scaleHalfRange) / 100;
       this.transparentBg = TRANSPARENT_INPUT.checked;
+
+      // Resize-sweep state: the box gently oscillates its FONT SIZE (a different
+      // atlas, not a transform scale) around its spawn size, snapped to the 0.5
+      // ladder. Amplitude/phase are baked per box; the rate is read live from
+      // the Sweep-speed slider. currentSize drives which atlas pair paint() needs.
+      this.baseSize    = this.fontProps.fontSize;
+      this.currentSize = this.baseSize;
+      this.ladder      = buildSizeLadder(this.pixelDensity);
+      this.sweepAmp    = 1 + Math.random() * 1.5;   // ±1.0–2.5px (gentle nudges)
+      this.sweepPhase  = Math.random();             // [0,1) — desync boxes
+      this._winSize    = null;                      // ±n window cache (size built for)
+      this._winN       = -1;                        // ±n window cache (n built for)
+      this._winIds     = [];
 
       // Initial placeholder canvas (40×24 css); _resizeToFit() right after
       // construction sizes it precisely to the rotated+scaled ink bbox via
@@ -565,6 +708,10 @@
       // atlases are warm. The outline-geometry CSS keeps the transition
       // pure color animation, no layout shift.
       this.wrapper.className = 'textbox placeholder';
+      // Transparent-bg mode: drop the wrapper's CSS-default white background
+      // so the stage shows through. Inline style outranks the .textbox class
+      // rule (and the .placeholder tint, as a side effect — the dashed
+      // outline still signals loading state regardless).
       if (this.transparentBg) this.wrapper.style.background = 'transparent';
       this.wrapper.appendChild(this.displayCanvas);
 
@@ -578,6 +725,9 @@
       this.wrapper.style.left = this.x + 'px';
       this.wrapper.style.top  = this.y + 'px';
       stage.appendChild(this.wrapper);
+      // No dirty.add here: the spawn site owns the (onScreen, dirty) registration
+      // pair so a constructor that throws partway can't leave a half-built textbox
+      // pinned in dirty without ever appearing in onScreen.
     }
 
     _resizeToFit() {
@@ -634,6 +784,38 @@
       this.w = physW;  this.h = physH;
     }
 
+    // Rebuild fontProps + the two idStrings for a new font size (family/style/
+    // weight/density are invariant under a size change).
+    #applySize(size) {
+      this.currentSize = size;
+      this.fontProps = new FontProperties(
+        this.pixelDensity, this.fontProps.fontFamily,
+        this.fontProps.fontStyle, this.fontProps.fontWeight, size
+      );
+      this.idString = this.fontProps.idString;
+      this.invariantIdString = new FontProperties(
+        this.pixelDensity, 'BitmapTextInvariant', 'normal', 'normal', size
+      ).idString;
+    }
+
+    // Advance the font-size triangle wave; on a snapped-size change, apply it
+    // and return true so the caller re-fits + re-enqueues the box for repaint.
+    _advanceSweep(speed, dtMs) {
+      // slider units → ~cycles/sec: /40 keeps it a gentle drift (default 6 ≈
+      // one oscillation every ~7 s; max 20 ≈ every ~2 s).
+      this.sweepPhase += (dtMs / 1000) * (speed / 40);
+      const target = snapSize(this.baseSize + this.sweepAmp * triangleWave(this.sweepPhase), this.ladder);
+      if (target === this.currentSize) return false;
+      this.#applySize(target);
+      return true;
+    }
+
+    // Re-fit the surface to the current font size. (SWCanvas: _resizeToFit
+    // already measures at this.fontProps and no-ops on unchanged dimensions.)
+    _resizeForCurrentSize() {
+      this._resizeToFit();
+    }
+
     paint() {
       if (!this.alive) return null;
 
@@ -683,20 +865,39 @@
       // rectangles when atlases are missing, so the fillText above is
       // always safe. Post-paint, decide whether to clear the placeholder
       // outline and whether to schedule another paint when the atlases
-      // land.
-      const warm = BitmapText.hasAtlas(this.idString) && BitmapText.hasAtlas(this.invariantIdString);
+      // land. Use hasAtlas() — not the status code — as the "needs repaint"
+      // signal: status-code branching would infinite-loop microtasks once the
+      // primary loads but the invariant pair is still missing (PARTIAL_ATLAS
+      // resolves immediately on every retry). Both atlases must be ready.
+      // Sub-floor sizes (< the ladder min) have no atlas — the engine paints
+      // placeholders by design, so they're neither warm nor a "flash". `warm`
+      // therefore requires a renderable size with both atlases resident.
+      const renderable = this.currentSize >= this.ladder[0];
+      const warm = renderable
+        && BitmapText.hasAtlas(this.idString)
+        && BitmapText.hasAtlas(this.invariantIdString);
       if (warm) {
         this.wrapper.classList.remove('placeholder');
         this.hadAtlasOnce = true;
+        // No lru.beingUsed() here for *passive* presence — but the sweep DOES
+        // keep the ±n window warm via sweepActiveBoxes (an active "use").
+        // Eviction empties the atlas store, not the canvas, so a painted box
+        // stays correct even if its atlas is later evicted.
         return { warm: true, tElapsed };
       }
 
       this.wrapper.classList.add('placeholder');
-      if (this.hadAtlasOnce) this.lru.reloadCount++;
 
-      this.#requestBoth()
-        .then(() => { if (this.alive) dirty.add(this); })
-        .catch(() => { /* one of the loads failed; textbox stays in placeholder mode */ });
+      // At/above the floor a non-warm paint is a preload-miss "flash" (the KPI)
+      // and a reload if we'd been warm before; kick the loads. Below the floor
+      // there's no atlas to fetch and placeholders are expected — count nothing.
+      if (renderable) {
+        if (this.hadAtlasOnce) this.lru.reloadCount++;
+        flashCount++;
+        this.#requestBoth()
+          .then(() => { if (this.alive) dirty.add(this); })
+          .catch(() => { /* a load failed; textbox stays in placeholder mode */ });
+      }
 
       return { warm: false, tElapsed };
     }
@@ -716,13 +917,32 @@
   }
 
   // ---------- Demo state ----------
+  //
+  // Module-scope mutable state. Mutated only from the rAF tick or the
+  // spawn-timer macrotask; JS is single-threaded so no synchronization is
+  // needed. `lru` is created once the metrics bundle has loaded (see
+  // ---------- Main ----------) so other code must guard `if (lru)` before
+  // touching it during startup.
+
   let lru;
   let candidates = [];
   let onScreen   = new Set();
   let paused     = false;
   let spawnTimer = null;
-  let dirty      = new Set();
+
+  // Per-tick repaint queue. drainDirty() (in the rAF tick) is the *only* caller
+  // of TextBox.paint(); textboxes never invoke paint() on themselves. Snapshot-
+  // and-replace inside the drain means same-tick re-enqueues land in the next
+  // tick's batch, never looping within this one.
+  let dirty = new Set();
+
+  // Shared diagnostic counters.
   let totalSpawned = 0;
+  // Cumulative placeholder-flash count: a render at a loadable size (≥ floor)
+  // whose atlas wasn't resident — the preload-miss KPI. Like reloadCount it's
+  // not reset per second; with the ±n window on it should stop climbing.
+  let flashCount = 0;
+
   // Wall-clock accumulator for the `Draw µs/text` stat. Per-paint elapsed
   // is returned by TextBox.paint() and summed here; updateStats() (throttled
   // to once per second in the rAF tick) divides and resets.
@@ -730,6 +950,15 @@
   let drawUsFrames = 0;
 
   // ---------- Slider wiring ----------
+  //
+  // Every slider's `oninput` updates its companion <span> for live readout.
+  // K's handler also pushes the new capacity into the LRU (which evicts
+  // immediately if K shrunk). DPR's `onchange` recomputes the candidate
+  // pool — existing textboxes keep their original density, new spawns use
+  // the new pool. Pause toggles a flag consulted by spawnIfNeeded; the
+  // rAF tick keeps running so already-loaded atlases still drain into
+  // visible glyphs.
+
   const N_INPUT      = document.getElementById('ctrl-n');
   const N_VAL        = document.getElementById('val-n');
   const LIFE_INPUT   = document.getElementById('ctrl-life');
@@ -740,6 +969,10 @@
   const BUDGET_VAL   = document.getElementById('val-budget');
   const DPR_INPUT    = document.getElementById('ctrl-dpr');
   const COLOR_INPUT  = document.getElementById('ctrl-color');
+  const SWEEP_INPUT   = document.getElementById('ctrl-sweep');
+  const SWEEP_VAL     = document.getElementById('val-sweep');
+  const PRELOAD_INPUT = document.getElementById('ctrl-preload');
+  const PRELOAD_VAL   = document.getElementById('val-preload');
   const TILT_INPUT   = document.getElementById('ctrl-tilt');
   const TILT_VAL     = document.getElementById('val-tilt');
   const SCALE_INPUT  = document.getElementById('ctrl-scale');
@@ -756,6 +989,8 @@
   };
   BUDGET_INPUT.oninput = () => { BUDGET_VAL.textContent = BUDGET_INPUT.value; };
   DPR_INPUT.onchange   = handleConfigChange;
+  SWEEP_INPUT.oninput   = () => { SWEEP_VAL.textContent   = SWEEP_INPUT.value; };
+  PRELOAD_INPUT.oninput = () => { PRELOAD_VAL.textContent = PRELOAD_INPUT.value; refreshWarn(); };
   TILT_INPUT.oninput   = () => { TILT_VAL.textContent   = TILT_INPUT.value; };
   SCALE_INPUT.oninput  = () => { SCALE_VAL.textContent  = SCALE_INPUT.value; };
   PAUSE_BTN.onclick    = () => {
@@ -767,12 +1002,14 @@
   function refreshWarn() {
     const N = parseInt(N_INPUT.value, 10);
     const K = parseInt(K_INPUT.value, 10);
-    // Each textbox holds up to 2 atlases warm (its primary font + the
-    // BitmapTextInvariant pair atlas needed for the smiley). Steady-state
-    // working-set ≈ 2N (with some sharing of the invariant atlas across
-    // textboxes at the same size+density).
-    if (K <= 2 * N) {
-      warnEl.textContent = `Warning: K (${K}) ≤ 2·N (${2 * N}) — each textbox needs up to 2 atlases (primary + BitmapTextInvariant pair). Thrashing expected. The cache invariant still holds.`;
+    const n = parseInt(PRELOAD_INPUT.value, 10);
+    // Each textbox keeps up to 2·(2n+1) atlases warm: its primary + the
+    // BitmapTextInvariant pair, across the ±n preload window. Steady-state
+    // working-set ≈ that × N (less, with invariant + neighbour sharing across
+    // boxes at the same size+density). At n=0 this is the original 2·N.
+    const perBox = 2 * (2 * n + 1);
+    if (K <= perBox * N) {
+      warnEl.textContent = `Warning: K (${K}) ≤ ${perBox}·N (${perBox * N}) — each textbox needs up to ${perBox} atlases (primary + BitmapTextInvariant pair, ±${n} preloaded sizes). Thrashing expected. The cache invariant still holds.`;
     } else {
       warnEl.textContent = '';
     }
@@ -780,8 +1017,29 @@
 
   // ---------- Config-change handling ----------
   //
-  //  Single entry point for the DPR dropdown changing AND matchMedia firing
-  //  in 'auto' mode (window dragged to a different-DPR screen).
+  //  Single entry point for: DPR dropdown change, matchMedia firing in 'auto'
+  //  mode (window dragged to a different-DPR screen), and any other call that
+  //  needs to align the demo with `DPR_INPUT.value`. Owns the unload-on-
+  //  -transition logic that keeps the resident bundle set minimal.
+  //
+  //  Transition algorithm:
+  //    1. Compute the new needed set from the dropdown.
+  //    2. Compute "currently in use" = densities present in {onScreen
+  //       textboxes, LRU entries, loaded bundles}. The third source is
+  //       what catches the "we loaded it under 'both' but never spawned
+  //       anything for it" case — it's still in use as far as the bundle
+  //       footprint is concerned.
+  //    3. retireDensities(oldNeeded − newNeeded): force-destroy textboxes
+  //       of removed densities + drop their loaded LRU/atlas entries.
+  //       This is what closes the in-flight-load race documented on
+  //       FontLoaderBase.unloadPositioningBundle: by the time we call the
+  //       unload, no atlas of that density is loading or about to load.
+  //    4. unloadPositioningBundles(removed): clears records, drops the
+  //       promise cache, detaches the <script> tag from document.head,
+  //       flips the pill to `not loaded`.
+  //    5. ensureNeededBundles(new): fire-and-forget. Newly-needed bundles
+  //       start loading; already-loaded ones coalesce in `ensureBundle`.
+  //    6. Update candidates + status; re-render pills.
 
   // Read from THREE sources because each is a real reason the runtime is
   // holding state for that density. The bundle-state source catches the
@@ -808,6 +1066,13 @@
     return ds;
   }
 
+  // Destroy on-screen textboxes + drop loaded LRU entries for the given
+  // densities. Mirrors AtlasLRU.#evictOne's policy: 'loading' entries
+  // survive (they can't be unloaded mid-flight; LRU will evict them when
+  // they resolve and pressure pushes them out). Skipping them here is
+  // also why `unloadPositioningBundles` only touches 'loaded'/'error'
+  // bundle states — a 'loading' bundle has at least one in-flight
+  // dependent (or will shortly), and unloading would race with it.
   function retireDensities(densitiesSet) {
     if (densitiesSet.size === 0) return;
     if (typeof onScreen !== 'undefined') {
@@ -826,8 +1091,7 @@
           BitmapText.unloadAtlas(id);
           lru.entries.delete(id);
         }
-        // 'loading' entries are left alone (in-flight; LRU will evict
-        // them when they resolve and pressure pushes them out).
+        // 'loading' entries are left alone (see banner comment above).
       }
     }
   }
@@ -846,8 +1110,8 @@
       ? `No candidate fonts at DPR=${mode}. Try a different option.`
       : `DPR=${mode}, ${candidates.length} candidate fonts, total registry ${FontManifest.count()}`;
 
-    unloadPositioningBundles([...toRetire]);
-    ensureNeededBundles(mode);
+    unloadPositioningBundles([...toRetire]);   // flips pills, removes <script>, clears store
+    ensureNeededBundles(mode);                  // fire-and-forget; atlas loads have an internal safety net
     renderBundlePills();
   }
 
@@ -865,8 +1129,11 @@
 
   // ---------- Spawn loop ----------
   //
-  //  setInterval-driven (not rAF) so spawn cadence is decoupled from frame
-  //  rate — sticks to 80 ms between attempts even if rAF is throttled.
+  // setInterval-driven (not rAF) so spawn cadence is decoupled from frame
+  // rate — drops to 80 ms between attempts even if rAF is throttled.
+  // spawnIfNeeded refills onScreen up to N each tick; reapExpired (called
+  // from the rAF tick) destroys textboxes when their lifetime expires.
+  // Together they maintain a steady-state population.
 
   function spawnIfNeeded() {
     if (paused || candidates.length === 0) return;
@@ -881,6 +1148,9 @@
       // atlases — paint() is safe even when atlases aren't resident
       // (BitmapText paints placeholder rectangles).
       tb._resizeToFit();
+      // Order matters: onScreen.add first so reapExpired can find the textbox
+      // even if dirty.add fails for some reason. dirty.add second to schedule
+      // the first paint into the next tick's drain.
       onScreen.add(tb);
       dirty.add(tb);
       totalSpawned++;
@@ -892,6 +1162,101 @@
       if (now >= tb.expireAt) {
         tb.destroy();
         onScreen.delete(tb);
+      }
+    }
+  }
+
+  // ---------- Resize sweep: font-size oscillation + preload window ----------
+  //
+  //  The resize feature changes each box's FONT SIZE (a different atlas), not a
+  //  transform scale, across the 0.5-step ladder the assets register. To avoid
+  //  a placeholder flash when the size crosses into a neighbour, we keep the ±n
+  //  neighbours warm in the LRU. Metrics for every size are already resident
+  //  (one-time metrics bundle), so re-measuring at any size is free — only the
+  //  bitmap atlas lags, which is exactly what the window preloads.
+
+  // Sorted registered atlas sizes for a density (a uniform 0.5-step ladder,
+  // 9.0…96.0 in the shipped assets), derived from the manifest so the rails
+  // aren't hardcoded. Uniform across families → one per density; cached.
+  const _sizeLadderByDensity = new Map();
+  function buildSizeLadder(density) {
+    let ladder = _sizeLadderByDensity.get(density);
+    if (ladder) return ladder;
+    const prefix = `density-${density}-0-`;
+    const set = new Set();
+    for (const id of FontManifest.allFontIDs()) {
+      if (id.startsWith(prefix)) set.add(FontProperties.fromIDString(id).fontSize);
+    }
+    ladder = [...set].sort((a, b) => a - b);
+    _sizeLadderByDensity.set(density, ladder);
+    return ladder;
+  }
+
+  // Triangle wave in [-1, 1], period 1 in `phase`.
+  function triangleWave(phase) {
+    const f = phase - Math.floor(phase);
+    return 1 - 4 * Math.abs(f - 0.5);
+  }
+
+  // Snap a continuous size to the nearest 0.5 step, clamping the TOP to the
+  // ladder max (can't grow past it). Below the ladder min is allowed through —
+  // the floor case, where the engine paints placeholders (no atlas exists).
+  function snapSize(size, ladder) {
+    const max = ladder.length ? ladder[ladder.length - 1] : 96;
+    return Math.min(max, Math.round(size * 2) / 2);
+  }
+
+  // The ±n window of idStrings (primary + BitmapTextInvariant) around `size`,
+  // taken as ±n entries along the registered ladder. Clamps at both rails (a
+  // near-rail box just gets a shorter list); a sub-floor `size` yields the
+  // bottom-of-ladder entries it's approaching, so growing back across the floor
+  // doesn't flash. Every id is a real ladder entry, so loads never 404.
+  function windowIdsFor(density, family, style, weight, size, n) {
+    const ladder = buildSizeLadder(density);
+    if (!ladder.length) return [];
+    let lo = 0;
+    while (lo < ladder.length && ladder[lo] < size) lo++;   // first entry ≥ size
+    const start = Math.max(0, lo - n);
+    const end   = Math.min(ladder.length - 1, lo + n);
+    const ids = [];
+    for (let i = start; i <= end; i++) {
+      const s = ladder[i];
+      ids.push(new FontProperties(density, family, style, weight, s).idString);
+      ids.push(new FontProperties(density, 'BitmapTextInvariant', 'normal', 'normal', s).idString);
+    }
+    return ids;
+  }
+
+  // Called each rAF tick (between reapExpired and drainDirty). For every active
+  // box: advance its font-size wave and, on a 0.5-step change, re-fit + re-enter
+  // `dirty` (so it repaints at the new size — sweeping boxes are NOT a fixed
+  // point, but they re-enqueue only when the snapped size actually changes).
+  // Then keep its ±n window warm: lru.request() loads-if-missing AND bumps the
+  // 250 ms pin on a hit, so the window stays resident as the wave approaches it.
+  // Everything routes through the LRU, so Resident ≤ K still holds. Sweep speed
+  // 0 ⇒ this whole pass is a no-op (boxes stay static, as before the feature).
+  let lastSweepNow = performance.now();
+  function sweepActiveBoxes(now) {
+    const speed = parseFloat(SWEEP_INPUT.value);     // cycles/sec; 0 = off
+    const n     = parseInt(PRELOAD_INPUT.value, 10); // ± ladder steps; 0 = no preload
+    const dtMs  = Math.min(100, now - lastSweepNow); // clamp dt across tab-away gaps
+    lastSweepNow = now;
+    if (!lru || speed <= 0) return;
+    for (const tb of onScreen) {
+      if (tb._advanceSweep(speed, dtMs)) {
+        tb._resizeForCurrentSize();
+        dirty.add(tb);
+      }
+      if (n > 0) {
+        if (tb.currentSize !== tb._winSize || n !== tb._winN) {
+          tb._winIds = windowIdsFor(
+            tb.pixelDensity, tb.fontProps.fontFamily, tb.fontProps.fontStyle,
+            tb.fontProps.fontWeight, tb.currentSize, n
+          );
+          tb._winSize = tb.currentSize;
+          tb._winN = n;
+        }
+        for (const id of tb._winIds) lru.request(id).catch(() => {});
       }
     }
   }
@@ -914,10 +1279,12 @@
     for (const tb of snapshot) {
       if (!tb.alive) continue;
       if (painted < budget) {
-        // Defensive try/catch: a paint() exception shouldn't drop the rest
-        // of the snapshot. The textbox will re-enter dirty via its
-        // outstanding .then if its loads are pending; if not, it stays
-        // painted-or-frozen.
+        // Defensive try/catch: a paint() exception (ctx.fillText, getImageData/
+        // putImageData, hasAtlas, anything thrown from the runtime) shouldn't
+        // drop the rest of the snapshot. The textbox will re-enter dirty via its
+        // outstanding .then if its loads are still pending; if not, it stays
+        // painted-or-frozen, which is the same outcome as a successful paint
+        // that hit hasAtlas-true.
         try {
           const result = tb.paint();
           if (result) { drawUsAccum += result.tElapsed; drawUsFrames++; }
@@ -942,22 +1309,44 @@
   //
   // Each STAT_KEYS entry becomes one inline pill. updateStats runs every
   // rAF tick and pulls live state from lru, AtlasDataStore, and the local
-  // sets. `drawUs` is the wall-clock for the engine draw call
-  // (`ctx.fillText`, which routes through TextRenderer.fillText's slow
-  // path here because every textbox has a transform).
+  // sets. Stats worth knowing about:
+  //
+  //   resident      reads AtlasDataStore.size() directly — the truth
+  //                 source for "atlases physically resident". Goes red if
+  //                 it ever exceeds K, which would indicate a bug.
+  //   lruSize       lru.entries.size — bookkeeping, includes 'loading'
+  //                 entries. Always ≥ resident.
+  //   lruPinned     entries within their pin window right now. Reflects
+  //                 recent activity / load-completion freshness.
+  //   dirty         queue depth at the moment of the read (post-drain).
+  //                 Climbs when budget < demand; should fall to ~0
+  //                 between bursts.
+  //   reloadCount   thrash gauge — only increments when a previously-
+  //                 fully-rendered textbox loses its atlas and has to
+  //                 reload. Stays at zero when K ≥ 2·N.
+  //   loadP95       95th-percentile wall-clock load time (fetch + decode
+  //                 + reconstruction) over the last LOAD_HISTORY_CAP
+  //                 loads. The single number behind per-load FPS spikes.
+  //   drawUs        Average wall-clock for the engine draw call (`ctx.fillText`,
+  //                 which routes through TextRenderer.fillText's slow path here
+  //                 because every textbox has a transform) in the last sampling
+  //                 window. Shows the fast-direct-blit (Black) vs slow-per-glyph-
+  //                 composite (any other colour) ratio when toggling Text color,
+  //                 and the placeholder-rect path under thrashing.
 
   const STAT_KEYS = [
-    ['onScreen',     'On-screen'],
-    ['resident',     'Resident'],
-    ['lruSize',      'LRU'],
-    ['lruLoaded',    'Loaded'],
-    ['lruPending',   'Loading'],
-    ['lruPinned',    'Pinned'],
-    ['dirty',        'Dirty'],
-    ['reloadCount',  'Reloads'],
-    ['totalSpawned', 'Spawned'],
-    ['loadP95',      'Load p95'],
-    ['drawUs',       'Draw µs/text'],
+    ['onScreen',      'On-screen'],
+    ['resident',      'Resident'],
+    ['lruSize',       'LRU'],
+    ['lruLoaded',     'Loaded'],
+    ['lruPending',    'Loading'],
+    ['lruPinned',     'Pinned'],
+    ['dirty',         'Dirty'],
+    ['reloadCount',   'Reloads'],
+    ['flashes',       'Flashes'],
+    ['totalSpawned',  'Spawned'],
+    ['loadP95',       'Load p95'],
+    ['drawUs',        'Draw µs/text'],
   ];
 
   function buildStatsPanel() {
@@ -969,6 +1358,7 @@
   function updateStats() {
     const N = parseInt(N_INPUT.value, 10);
     const K = parseInt(K_INPUT.value, 10);
+    const n = parseInt(PRELOAD_INPUT.value, 10);
     const now = performance.now();
 
     let pinned = 0;
@@ -987,9 +1377,11 @@
     setStat('lruPinned',     `${pinned}`);
     setStat('dirty',         `${dirty.size}`);
     setStat('reloadCount',   `${lru.reloadCount}`);
+    setStat('flashes',       `${flashCount}`, n > 0 && flashCount > 0);
     setStat('totalSpawned',  `${totalSpawned}`);
     const ls = lru.loadStats();
     setStat('loadP95',       ls.n > 0 ? `${ls.p95.toFixed(0)}ms` : '—');
+
     setStat('drawUs',        avgDraw);
 
     // Reset the draw-µs accumulator each second.
@@ -1004,36 +1396,31 @@
     el.querySelector('.num').textContent = value;
   }
 
-  // ---------- Candidates filter ----------
-  //
-  //  FontManifest.allFontIDs() enumerates every idString the loaded
-  //  positioning bundles can describe. We filter by density (matches
-  //  current DPR mode) and by fontSize >= 9 (BitmapText's rasterization
-  //  floor — sub-9 sizes render as placeholders, no value in spawning
-  //  them).
-
-  function pickCandidates(mode) {
-    const prefixes = neededDensitiesForMode(mode).map(d => `density-${d}-0-`);
-    return FontManifest.allFontIDs()
-      .filter(id => prefixes.some(p => id.startsWith(p)))
-      .filter(id => FontProperties.fromIDString(id).fontSize >= 9);
-  }
-
   // ---------- Main ----------
   //
-  //  Order matters:
-  //    1. buildStatsPanel + buildBundlePanel + renderBundlePills: DOM
-  //         scaffolding. Initial render paints all three bundle pills as
-  //         "not loaded".
-  //    2. watchDPRChanges() is attached BEFORE the metrics-bundle load so
-  //         a monitor switch during init still routes through the
-  //         config-change path.
-  //    3. refreshWarn() shows the K≤2N hint immediately.
-  //    4. ensureBundle('metrics', …) flips the metrics pill through
-  //         not-loaded → loading → loaded/error. On resolve, the rest of
-  //         the boot (lru creation, candidate filter, positioning-bundle
-  //         pre-load, spawn loop, rAF tick) runs inside .then.
+  // ensureMetricsBundleLoaded is a singleton: the metrics-bundle.js script
+  // tag is injected once and the resulting promise is shared. After it
+  // resolves, MetricsBundleStore is populated and FontManifest.allFontIDs()
+  // returns the registered idStrings. Until then loadFont and measureText
+  // would fail — so everything that touches them (lru creation, spawn
+  // loop, rAF tick) is hung off the .then below.
 
+  // Order matters here:
+  //   1. buildStatsPanel + buildBundlePanel + renderBundlePills:
+  //        DOM scaffolding for the right-hand stats and the new bundle row.
+  //        Initial render paints all three bundle pills as "not loaded".
+  //   2. watchDPRChanges() is attached BEFORE the metrics-bundle load. The
+  //        user might drag the window between monitors during init; if the
+  //        listener weren't attached yet we'd miss the threshold crossing.
+  //        `handleConfigChange` is null-safe pre-LRU: `densitiesInUse()`
+  //        short-circuits on `typeof lru === 'undefined'`, `retireDensities`
+  //        guards `if (lru)`, and `unloadPositioningBundles` is safe with
+  //        no loaded bundles.
+  //   3. refreshWarn shows the K≤2N hint immediately.
+  //   4. ensureBundle('metrics', …) flips the metrics pill through
+  //        not-loaded → loading → loaded/error like the positioning ones.
+  //        On resolve, the rest of the boot (lru creation, spawn loop, rAF
+  //        tick) runs inside .then.
   buildStatsPanel();
   buildBundlePanel();
   renderBundlePills();
@@ -1041,9 +1428,28 @@
   refreshWarn();
   statusEl.textContent = 'Loading metrics bundle…';
 
+  // Filter candidate idStrings by selected DPR mode. Per the CLAUDE.md "DPR is a
+  // hard partition" rule, an *application* picks one DPR at startup. This demo
+  // deliberately exposes a "Both (mix)" option so curious users can see what
+  // happens — each textbox still has a single fontProperties.pixelDensity, the
+  // runtime renders each correctly, but on screen you'll see a mix of physical
+  // pixel densities. The mode→density rule lives in `neededDensitiesForMode` (see
+  // `// ---------- DPR resolution ----------`); this helper just derives prefixes
+  // from it so candidate selection and bundle pre-loading agree. The fontSize >= 9
+  // filter is BitmapText's rasterization floor — sub-9 sizes render as
+  // placeholders, no value in spawning them.
+  function pickCandidates(mode) {
+    const prefixes = neededDensitiesForMode(mode).map(d => `density-${d}-0-`);
+    return FontManifest.allFontIDs()
+      .filter(id => prefixes.some(p => id.startsWith(p)))
+      .filter(id => FontProperties.fromIDString(id).fontSize >= 9);
+  }
+
   ensureBundle('metrics', () => BitmapText.ensureMetricsBundleLoaded())
     .then(() => {
       if (bundleState.get('metrics') !== 'loaded') {
+        // Metrics load failed — pill is red, can't proceed. ensureBundle's
+        // .catch already logged the underlying error.
         statusEl.textContent = 'Failed to load metrics bundle. See console for details.';
         return;
       }
@@ -1061,11 +1467,11 @@
       statusEl.textContent =
         `DPR=${DPR_INPUT.value}, ${candidates.length} candidate fonts, total registry ${FontManifest.count()}`;
 
-      // Fire-and-forget: load only the positioning bundle(s) the current
-      // mode needs. Concurrent with the rest of boot. If a textbox spawns
+      // Fire-and-forget: load only the positioning bundle(s) the current mode
+      // needs. Concurrent with the rest of the tick boot. If a textbox spawns
       // before this finishes, the implicit positioning-bundle load inside
       // `_loadAtlasFromPackage` awaits the same shared promise from
-      // FontLoaderBase._positioningBundleReadyPromises — no double fetch.
+      // `FontLoaderBase._positioningBundleReadyPromises` — no double fetch.
       ensureNeededBundles(DPR_INPUT.value);
 
       // Spawn loop on a fixed interval; expiry sweep + stats on rAF.
@@ -1125,20 +1531,32 @@
         const avgMs = sum / sampleN;
         const fps = avgMs > 0 ? 1000 / avgMs : 0;
         fpsText.textContent = `${fps.toFixed(0)} fps`;
+
         drawHistogram();
       }
 
-      // The rAF tick. Order matters:
-      //   1. updateFps   — record frame duration (must be first; any
-      //                    later work would inflate the measurement)
-      //   2. reapExpired — destroy expired textboxes BEFORE we paint
-      //   3. drainDirty  — paint up to `budget` textboxes
-      //   4. updateStats — reads post-drain state
+      // The rAF tick — the integration point. Order matters:
+      //   1. updateFps    — record frame duration (must be first; any later
+      //                     work would inflate the measurement)
+      //   2. reapExpired  — destroy expired textboxes BEFORE we paint, so
+      //                     the dirty drain never paints a dying textbox
+      //   2b. sweepActiveBoxes — advance each box's font-size wave (re-enters
+      //                     dirty on a 0.5-step change) and keep its ±n preload
+      //                     window warm via lru.request
+      //   3. drainDirty   — paint up to `budget` textboxes from the queue;
+      //                     leftovers and re-enqueues from .then microtasks
+      //                     between frames carry into next tick
+      //   4. updateStats  — reads post-drain state (incl. dirty.size of
+      //                     leftovers); writing this LAST keeps the panel
+      //                     consistent with what was just rendered.
+      // In a real framework, this is the function whose body you'd merge
+      // into your existing per-frame update loop.
       let statsT0 = performance.now();
       const tick = () => {
         const now = performance.now();
         updateFps(now);
         reapExpired(now);
+        sweepActiveBoxes(now);
         drainDirty();
         // Throttle stats refresh to once per second to keep DOM writes cheap.
         if (now - statsT0 >= 1000) {
@@ -1150,6 +1568,8 @@
       requestAnimationFrame(tick);
     })
     .catch(err => {
+      // ensureBundle swallows metrics-bundle errors (the pill turns red);
+      // this catch only fires if something else in the .then body throws.
       statusEl.textContent = `Demo init failed: ${err && err.message ? err.message : err}`;
       console.error(err);
     });
