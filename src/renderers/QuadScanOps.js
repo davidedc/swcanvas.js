@@ -176,8 +176,18 @@ class QuadScanOps {
                 // Two or more intersections - draw span between min and max
                 const x1i = intersections[0];
                 const x2i = intersections[1];
+                // Half-open right edge, consistent with this filler's
+                // leftX = ceil(min) grid-line convention (a column x is in the
+                // span iff min <= x < max), and with the same fix in
+                // PolygonFiller: the rightmost column is the largest integer
+                // < max, i.e. ceil(max) - 1. The old floor(max) with the
+                // inclusive (rightX - leftX + 1) span over-included the right
+                // column by 1px whenever the right intersection landed on an
+                // integer. Only integer-aligned edges change; for fractional
+                // intersections ceil(max) - 1 === floor(max), so rotated fills
+                // are unaffected.
                 const leftX = Math.max(0, Math.ceil(Math.min(x1i, x2i)));
-                const rightX = Math.min(width - 1, Math.floor(Math.max(x1i, x2i)));
+                const rightX = Math.min(width - 1, Math.ceil(Math.max(x1i, x2i)) - 1);
                 const spanLength = rightX - leftX + 1;
 
                 if (spanLength > 0) {
@@ -260,9 +270,12 @@ class QuadScanOps {
         const maxY = Math.min(height - 1, Math.ceil(centerY + halfSize));
 
         for (let y = minY; y <= maxY; y++) {
-            // Calculate X bounds using ceil/floor for consistency with fillQuad
+            // Half-open right edge (see fillQuad): the rightmost column is the
+            // largest integer < the right edge = ceil(...) - 1, consistent with
+            // leftX = ceil(min). The old floor(...) over-included the right
+            // column by 1px at integer-aligned edges.
             const leftX = Math.max(0, Math.ceil(centerX - halfSize));
-            const rightX = Math.min(width - 1, Math.floor(centerX + halfSize));
+            const rightX = Math.min(width - 1, Math.ceil(centerX + halfSize) - 1);
             const spanLength = rightX - leftX + 1;
 
             if (spanLength <= 0) continue;

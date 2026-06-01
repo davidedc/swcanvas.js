@@ -7343,8 +7343,18 @@ if (__outA > 0) {
                 // Two or more intersections - draw span between min and max
                 const x1i = intersections[0];
                 const x2i = intersections[1];
+                // Half-open right edge, consistent with this filler's
+                // leftX = ceil(min) grid-line convention (a column x is in the
+                // span iff min <= x < max), and with the same fix in
+                // PolygonFiller: the rightmost column is the largest integer
+                // < max, i.e. ceil(max) - 1. The old floor(max) with the
+                // inclusive (rightX - leftX + 1) span over-included the right
+                // column by 1px whenever the right intersection landed on an
+                // integer. Only integer-aligned edges change; for fractional
+                // intersections ceil(max) - 1 === floor(max), so rotated fills
+                // are unaffected.
                 const leftX = Math.max(0, Math.ceil(Math.min(x1i, x2i)));
-                const rightX = Math.min(width - 1, Math.floor(Math.max(x1i, x2i)));
+                const rightX = Math.min(width - 1, Math.ceil(Math.max(x1i, x2i)) - 1);
                 const spanLength = rightX - leftX + 1;
 
                 if (spanLength > 0) {
@@ -7437,9 +7447,12 @@ if (__outA > 0) {
         const maxY = Math.min(height - 1, Math.ceil(centerY + halfSize));
 
         for (let y = minY; y <= maxY; y++) {
-            // Calculate X bounds using ceil/floor for consistency with fillQuad
+            // Half-open right edge (see fillQuad): the rightmost column is the
+            // largest integer < the right edge = ceil(...) - 1, consistent with
+            // leftX = ceil(min). The old floor(...) over-included the right
+            // column by 1px at integer-aligned edges.
             const leftX = Math.max(0, Math.ceil(centerX - halfSize));
-            const rightX = Math.min(width - 1, Math.floor(centerX + halfSize));
+            const rightX = Math.min(width - 1, Math.ceil(centerX + halfSize) - 1);
             const spanLength = rightX - leftX + 1;
 
             if (spanLength <= 0) continue;
@@ -17217,8 +17230,15 @@ class PolygonFiller {
                 }
 
                 if (inside && nextIntersection) {
-                    const startX = Math.max(0, Math.ceil(intersection.x));
-                    const endX = Math.min(width - 1, Math.floor(nextIntersection.x));
+                    // Pixel-center sampling on X (see _fillClipMaskSpans for the
+                    // full rationale): a column x is in span [left, right) iff
+                    // its center x+0.5 is inside it (left <= x+0.5 < right). This
+                    // is the opaque-solid-color fast path; the old
+                    // ceil(left)..floor(right) inclusive endX made a path-filled
+                    // rect 1px wider on the right than fillRect / clip / drawImage
+                    // / HTML5.
+                    const startX = Math.max(0, Math.ceil(intersection.x - 0.5));
+                    const endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
 
                     if (startX <= endX) {
                         // Direct span fill with 32-bit writes
@@ -17464,8 +17484,14 @@ class PolygonFiller {
 
             // Fill span if we're inside
             if (inside && nextIntersection) {
-                const startX = Math.max(0, Math.ceil(intersection.x));
-                const endX = Math.min(surface.width - 1, Math.floor(nextIntersection.x));
+                // Pixel-center sampling on X (see _fillClipMaskSpans). This is
+                // the standard path (patterns, gradients, alpha<255,
+                // non-source-over): the old ceil(left)..floor(right) inclusive
+                // endX made e.g. an unclipped desktop PATTERN fill reach one
+                // column past the clipped morphs drawn over it. A column x is in
+                // [left, right) iff left <= x+0.5 < right.
+                const startX = Math.max(0, Math.ceil(intersection.x - 0.5));
+                const endX = Math.min(surface.width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
 
                 PolygonFiller._fillPixelSpan(
                     surface,
@@ -17870,8 +17896,20 @@ class PolygonFiller {
 
             // Fill span if we're inside
             if (inside && nextIntersection) {
-                const startX = Math.max(0, Math.ceil(intersection.x));
-                const endX = Math.min(width - 1, Math.floor(nextIntersection.x));
+                // Pixel-center sampling on X, to match the scanline's Y
+                // convention: scanlines are sampled at y+0.5 with a half-open
+                // [minY, maxY) edge test, so a column x belongs to the span
+                // [left, right) iff its center x+0.5 lies inside it
+                // (left <= x+0.5 < right). The previous ceil(left)..floor(right)
+                // form with an INCLUSIVE endX over-included the right-edge
+                // column for integer-aligned edges: a clip rect [5,25) exposed
+                // column 25. That made dirty-rectangle clips one pixel too wide
+                // on the right, so vector fills bled into the phantom column
+                // while raster (drawImage/text) blits bounded by their own
+                // extent did not — leaving 1px "streaks" of erased raster
+                // content along the right edge of repainted regions.
+                const startX = Math.max(0, Math.ceil(intersection.x - 0.5));
+                const endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
 
                 for (let x = startX; x <= endX; x++) {
                     clipMask.setPixel(x, y, true); // Set pixel to visible
