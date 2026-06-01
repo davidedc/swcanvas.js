@@ -114,6 +114,52 @@ class SWCanvasElement {
     }
 
     /**
+     * Encode the surface as a PNG data URL — the SWCanvas analogue of
+     * HTMLCanvasElement.toDataURL. Always emits image/png; the type/quality
+     * arguments are accepted but ignored (SWCanvas only produces PNG).
+     *
+     * Uses the bundled stored-DEFLATE PngEncoder, so identical pixels always
+     * yield identical bytes (deterministic snapshots). All PNG machinery stays
+     * inside the SWCanvas bundle — callers just get a string.
+     * @returns {string} "data:image/png;base64,<...>"
+     */
+    toDataURL() {
+        const pngBuffer = PngEncoder.encode(this._surface);
+        const base64 = SWCanvasElement._bytesToBase64(new Uint8Array(pngBuffer));
+        return 'data:image/png;base64,' + base64;
+    }
+
+    /**
+     * Deterministic, dependency-free base64 of a byte array. Avoids btoa
+     * (absent in Node, and awkward over a synthesized binary string for large
+     * buffers) so toDataURL works identically headless and in the browser.
+     * @param {Uint8Array} bytes
+     * @returns {string}
+     * @private
+     */
+    static _bytesToBase64(bytes) {
+        const TABLE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        let out = '';
+        const len = bytes.length;
+        let i = 0;
+        for (; i + 2 < len; i += 3) {
+            const n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+            out += TABLE[(n >>> 18) & 63] + TABLE[(n >>> 12) & 63] +
+                   TABLE[(n >>> 6) & 63] + TABLE[n & 63];
+        }
+        const rem = len - i;
+        if (rem === 1) {
+            const n = bytes[i] << 16;
+            out += TABLE[(n >>> 18) & 63] + TABLE[(n >>> 12) & 63] + '==';
+        } else if (rem === 2) {
+            const n = (bytes[i] << 16) | (bytes[i + 1] << 8);
+            out += TABLE[(n >>> 18) & 63] + TABLE[(n >>> 12) & 63] +
+                   TABLE[(n >>> 6) & 63] + '=';
+        }
+        return out;
+    }
+
+    /**
      * String representation for debugging
      * @returns {string} Canvas description
      */

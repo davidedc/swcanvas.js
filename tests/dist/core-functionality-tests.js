@@ -1795,6 +1795,174 @@
         });
 
 
+        // Test: SWCanvasElement.toDataURL produces a deterministic PNG data URL.
+        // Identical pixels must yield identical bytes (relied on for snapshot tests),
+        // and the output must be a real PNG (signature) reflecting the drawn pixels.
+
+        test('toDataURL returns a data:image/png URL with a valid PNG signature', () => {
+            const canvas = SWCanvas.createCanvas(4, 3);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgb(10, 20, 30)';
+            ctx.fillRect(0, 0, 4, 3);
+
+            const url = canvas.toDataURL();
+            assertEquals(url.indexOf('data:image/png;base64,'), 0, 'must be a PNG data URL');
+
+            const bytes = Buffer.from(url.slice('data:image/png;base64,'.length), 'base64');
+            // PNG signature: 137 80 78 71 13 10 26 10
+            assertEquals(bytes[0], 137, 'PNG sig byte 0');
+            assertEquals(bytes[1], 80, 'PNG sig byte 1');
+            assertEquals(bytes[2], 78, 'PNG sig byte 2');
+            assertEquals(bytes[3], 71, 'PNG sig byte 3');
+        });
+
+        test('toDataURL is deterministic for identical pixels', () => {
+            const a = SWCanvas.createCanvas(8, 8);
+            a.getContext('2d').fillStyle = 'rgba(200, 100, 50, 0.5)';
+            a.getContext('2d').fillRect(1, 1, 5, 5);
+
+            const b = SWCanvas.createCanvas(8, 8);
+            b.getContext('2d').fillStyle = 'rgba(200, 100, 50, 0.5)';
+            b.getContext('2d').fillRect(1, 1, 5, 5);
+
+            assertEquals(a.toDataURL(), b.toDataURL(), 'same pixels => same bytes');
+        });
+
+        test('toDataURL differs when pixels differ', () => {
+            const a = SWCanvas.createCanvas(4, 4);
+            a.getContext('2d').fillStyle = 'rgb(0, 0, 0)';
+            a.getContext('2d').fillRect(0, 0, 4, 4);
+
+            const b = SWCanvas.createCanvas(4, 4);
+            b.getContext('2d').fillStyle = 'rgb(255, 255, 255)';
+            b.getContext('2d').fillRect(0, 0, 4, 4);
+
+            assertEquals(a.toDataURL() === b.toDataURL(), false, 'different pixels => different bytes');
+        });
+
+
+        // Test: getImageData/putImageData round-trips byte-exactly.
+        // SWCanvas stores non-premultiplied RGBA8, so unlike a browser canvas this is
+        // lossless even for partial alpha. Fizzygum relies on this for pixel hit-testing
+        // (Widget.fullImage, BackBufferMixin point-alpha, PreferencesAndSettings probe).
+
+        test('putImageData then getImageData returns identical bytes (incl. partial alpha)', () => {
+            const canvas = SWCanvas.createCanvas(6, 5);
+            const ctx = canvas.getContext('2d');
+
+            const src = ctx.createImageData(6, 5);
+            for (let i = 0; i < src.data.length; i += 4) {
+                src.data[i]     = (i * 7) & 0xff;        // R
+                src.data[i + 1] = (i * 13 + 5) & 0xff;   // G
+                src.data[i + 2] = (i * 31 + 17) & 0xff;  // B
+                src.data[i + 3] = (i % 8 === 0) ? 128 : 255; // A (mix in partial alpha)
+            }
+
+            ctx.putImageData(src, 0, 0);
+            const out = ctx.getImageData(0, 0, 6, 5);
+
+            assertEquals(out.width, 6, 'width');
+            assertEquals(out.height, 5, 'height');
+            let mismatches = 0;
+            for (let i = 0; i < src.data.length; i++) {
+                if (out.data[i] !== src.data[i]) mismatches++;
+            }
+            assertEquals(mismatches, 0, 'every RGBA byte must round-trip exactly');
+        });
+
+
+        // Test: restore() on an empty state stack is a no-op (does not throw).
+        // Fizzygum's resetWorldCanvasContext deliberately over-restores ~2000x to
+        // recover from a half-applied state, so this must never throw.
+
+        test('restore() over-pops on an empty stack without throwing', () => {
+            const canvas = SWCanvas.createCanvas(10, 10);
+            const ctx = canvas.getContext('2d');
+
+            for (let i = 0; i < 5; i++) {
+                ctx.restore(); // no matching save()
+            }
+
+            // Context must still be usable afterwards.
+            ctx.fillStyle = 'rgb(0, 128, 0)';
+            ctx.fillRect(0, 0, 10, 10);
+            const px = ctx.getImageData(5, 5, 1, 1).data;
+            assertEquals(px[0], 0, 'R');
+            assertEquals(px[1], 128, 'G');
+            assertEquals(px[2], 0, 'B');
+        });
+
+
+        // Test: drawImage accepts the source shapes Fizzygum passes — an SWCanvasElement,
+        // a structural ImageLike, and a canvas-like object (getContext) — and routes
+        // element image sources (HTMLImageElement/HTMLVideoElement) through the
+        // scratch-canvas adapter (which throws cleanly when there is no DOM, as in Node).
+
+        test('drawImage(SWCanvasElement) blits the source pixels', () => {
+            const srcCanvas = SWCanvas.createCanvas(2, 2);
+            const sctx = srcCanvas.getContext('2d');
+            sctx.fillStyle = 'rgb(220, 30, 40)';
+            sctx.fillRect(0, 0, 2, 2);
+
+            const dst = SWCanvas.createCanvas(4, 4);
+            const dctx = dst.getContext('2d');
+            dctx.drawImage(srcCanvas, 0, 0);
+
+            const px = dctx.getImageData(0, 0, 1, 1).data;
+            assertEquals(px[0], 220, 'R');
+            assertEquals(px[1], 30, 'G');
+            assertEquals(px[2], 40, 'B');
+        });
+
+        test('drawImage(structural ImageLike) blits the source pixels', () => {
+            const data = new Uint8ClampedArray(2 * 2 * 4);
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = 5; data[i + 1] = 200; data[i + 2] = 90; data[i + 3] = 255;
+            }
+            const imageLike = { width: 2, height: 2, data: data };
+
+            const dst = SWCanvas.createCanvas(3, 3);
+            const dctx = dst.getContext('2d');
+            dctx.drawImage(imageLike, 1, 1);
+
+            const px = dctx.getImageData(1, 1, 1, 1).data;
+            assertEquals(px[0], 5, 'R');
+            assertEquals(px[1], 200, 'G');
+            assertEquals(px[2], 90, 'B');
+        });
+
+        test('drawImage(canvas-like with getContext) is unwrapped via getImageData', () => {
+            // Minimal duck of an HTMLCanvasElement: width/height + getContext('2d')
+            // returning an object exposing getImageData.
+            const fakeData = new Uint8ClampedArray(1 * 1 * 4);
+            fakeData[0] = 17; fakeData[1] = 18; fakeData[2] = 19; fakeData[3] = 255;
+            const fakeCanvas = {
+                width: 1,
+                height: 1,
+                getContext: function () {
+                    return { getImageData: function () { return { width: 1, height: 1, data: fakeData }; } };
+                }
+            };
+
+            const dst = SWCanvas.createCanvas(2, 2);
+            const dctx = dst.getContext('2d');
+            dctx.drawImage(fakeCanvas, 0, 0);
+
+            const px = dctx.getImageData(0, 0, 1, 1).data;
+            assertEquals(px[0], 17, 'R');
+            assertEquals(px[1], 18, 'G');
+            assertEquals(px[2], 19, 'B');
+        });
+
+        test('drawImage(element image source) throws cleanly without a DOM canvas', () => {
+            const dst = SWCanvas.createCanvas(2, 2);
+            const dctx = dst.getContext('2d');
+            // Looks like an HTMLImageElement (has naturalWidth) but no DOM to rasterize.
+            const fakeImg = { naturalWidth: 2, naturalHeight: 2, complete: false };
+            assertThrows(() => dctx.drawImage(fakeImg, 0, 0), 'without a DOM canvas');
+        });
+
+
         // Test: ctx.font setter accepts the supported CSS subset and rejects unsupported
 
         test('ctx.font: basic "16px Arial" parses and round-trips', () => {

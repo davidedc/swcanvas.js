@@ -4871,6 +4871,13 @@ class BitmapText {
    * @private
    */
   static #computeAdvancement_CssPx_Float(fontMetrics, fontProperties, char, nextChar, textProperties, characterMetrics) {
+    // A char with no metrics in this font (e.g. an unsupported symbol like '→',
+    // especially when its atlas is also cold) reaches here with characterMetrics
+    // === undefined. Contribute zero advancement instead of crashing on
+    // characterMetrics.width.
+    if (!characterMetrics) {
+      return 0;
+    }
     let x_CssPx;
     if (char === " ") {
       const spaceOverride = fontMetrics.getSpaceAdvancementOverride();
@@ -24952,6 +24959,11 @@ class Context2D {
  * Provides the standard HTML5 Canvas API with property setters/getters and
  * CSS color support while delegating actual rendering to the Core implementation.
  */
+// Caches decoded pixels (ImageLike) for immutable, decode-complete
+// HTMLImageElements drawn via drawImage/createPattern, keyed by the element.
+// Never used for videos or canvases (their pixels change).
+const _swElementImageLikeCache = new WeakMap();
+
 class CanvasCompatibleContext2D {
     // ===== STATIC PATH-BASED RENDERING TRACKING (for testing) =====
 
@@ -25411,21 +25423,80 @@ class CanvasCompatibleContext2D {
     // ===== IMAGE DRAWING =====
 
     drawImage(image, ...args) {
-        // Handle SWCanvasElement specially
-        if (image && image instanceof SWCanvasElement) {
-            this._core.drawImage(image._imageData, ...args);
-        } else if (image && typeof image === 'object' && image.getContext && typeof image.getContext === 'function') {
-            // Handle HTMLCanvasElement (has getContext method)
-            const ctx = image.getContext('2d');
-            const imageData = ctx.getImageData(0, 0, image.width, image.height);
-            this._core.drawImage(imageData, ...args);
-        } else if (image && typeof image === 'object' && image.width && image.height && image.data) {
-            // Handle ImageLike objects (duck typing)
-            this._core.drawImage(image, ...args);
-        } else {
-            // Fallback to core implementation (includes HTMLImageElement and other types)
-            this._core.drawImage(image, ...args);
+        this._core.drawImage(CanvasCompatibleContext2D._toImageLike(image), ...args);
+    }
+
+    /**
+     * Resolve any supported drawImage/createPattern source to an ImageLike that
+     * the Core understands ({width, height, data: Uint8ClampedArray}).
+     *  - SWCanvasElement → its _imageData (shares the surface buffer, no copy)
+     *  - HTMLCanvasElement (has getContext) → getImageData
+     *  - structural ImageLike → passed through
+     *  - HTMLImageElement / HTMLVideoElement / ImageBitmap → rasterized into a
+     *    scratch DOM canvas; image results are cached (immutable), video/bitmap
+     *    are re-grabbed each call (frames change)
+     *  - anything else → returned as-is so the Core can throw its own error
+     * @private
+     */
+    static _toImageLike(image) {
+        if (!image || typeof image !== 'object') {
+            return image;
         }
+        if (image instanceof SWCanvasElement) {
+            return image._imageData;
+        }
+        if (typeof image.getContext === 'function') {
+            // HTMLCanvasElement (or any canvas-like with a 2d context)
+            const ctx = image.getContext('2d');
+            return ctx.getImageData(0, 0, image.width, image.height);
+        }
+        if (image.data && image.width && image.height) {
+            // structural ImageLike
+            return image;
+        }
+        if (CanvasCompatibleContext2D._isElementImageSource(image)) {
+            return CanvasCompatibleContext2D._elementToImageLike(image);
+        }
+        return image;
+    }
+
+    /** True for HTMLImageElement / HTMLVideoElement / ImageBitmap-like sources. @private */
+    static _isElementImageSource(image) {
+        return ('naturalWidth' in image) || ('videoWidth' in image) ||
+               (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap);
+    }
+
+    /** Rasterize an element image source into a scratch DOM canvas → ImageLike. @private */
+    static _elementToImageLike(image) {
+        const isVideo = ('videoWidth' in image);
+        const isImg = ('naturalWidth' in image);
+        const w = isVideo ? image.videoWidth : (isImg ? image.naturalWidth : image.width);
+        const h = isVideo ? image.videoHeight : (isImg ? image.naturalHeight : image.height);
+
+        // Only immutable, fully-decoded images are cacheable.
+        const cacheable = isImg && image.complete && image.naturalWidth > 0;
+        if (cacheable) {
+            const cached = _swElementImageLikeCache.get(image);
+            if (cached && cached.width === w && cached.height === h) {
+                return cached;
+            }
+        }
+
+        if (typeof document === 'undefined') {
+            throw new Error('SWCanvas: cannot rasterize an element image source without a DOM canvas');
+        }
+        const scratch = document.createElement('canvas');
+        scratch.width = w;
+        scratch.height = h;
+        const sctx = scratch.getContext('2d');
+        sctx.drawImage(image, 0, 0, w, h);
+        const decoded = sctx.getImageData(0, 0, w, h);
+        const imageLike = { width: decoded.width, height: decoded.height, data: decoded.data };
+
+        if (cacheable) {
+            _swElementImageLikeCache.set(image, imageLike);
+        }
+        return imageLike;
     }
 
     // ===== TEXT RENDERING =====
@@ -25803,6 +25874,52 @@ class SWCanvasElement {
      */
     get data() {
         return this._surface.data;
+    }
+
+    /**
+     * Encode the surface as a PNG data URL — the SWCanvas analogue of
+     * HTMLCanvasElement.toDataURL. Always emits image/png; the type/quality
+     * arguments are accepted but ignored (SWCanvas only produces PNG).
+     *
+     * Uses the bundled stored-DEFLATE PngEncoder, so identical pixels always
+     * yield identical bytes (deterministic snapshots). All PNG machinery stays
+     * inside the SWCanvas bundle — callers just get a string.
+     * @returns {string} "data:image/png;base64,<...>"
+     */
+    toDataURL() {
+        const pngBuffer = PngEncoder.encode(this._surface);
+        const base64 = SWCanvasElement._bytesToBase64(new Uint8Array(pngBuffer));
+        return 'data:image/png;base64,' + base64;
+    }
+
+    /**
+     * Deterministic, dependency-free base64 of a byte array. Avoids btoa
+     * (absent in Node, and awkward over a synthesized binary string for large
+     * buffers) so toDataURL works identically headless and in the browser.
+     * @param {Uint8Array} bytes
+     * @returns {string}
+     * @private
+     */
+    static _bytesToBase64(bytes) {
+        const TABLE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        let out = '';
+        const len = bytes.length;
+        let i = 0;
+        for (; i + 2 < len; i += 3) {
+            const n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+            out += TABLE[(n >>> 18) & 63] + TABLE[(n >>> 12) & 63] +
+                   TABLE[(n >>> 6) & 63] + TABLE[n & 63];
+        }
+        const rem = len - i;
+        if (rem === 1) {
+            const n = bytes[i] << 16;
+            out += TABLE[(n >>> 18) & 63] + TABLE[(n >>> 12) & 63] + '==';
+        } else if (rem === 2) {
+            const n = (bytes[i] << 16) | (bytes[i + 1] << 8);
+            out += TABLE[(n >>> 18) & 63] + TABLE[(n >>> 12) & 63] +
+                   TABLE[(n >>> 6) & 63] + '=';
+        }
+        return out;
     }
 
     /**
