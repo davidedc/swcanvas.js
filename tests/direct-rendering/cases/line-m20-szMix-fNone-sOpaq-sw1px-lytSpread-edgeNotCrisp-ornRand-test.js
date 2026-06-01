@@ -48,9 +48,10 @@
  *
  * @param {CanvasRenderingContext2D | CrispSwContext} ctx - The rendering context.
  * @param {number} iterationNumber - The current test iteration.
+ * @param {?number} instances - Unused here; accepted for the standard direct-rendering drawTest(ctx, iterationNumber, instances) signature.
  * @returns {{ logs: string[] }} Log entries for visual test verification.
  */
-function drawTest(ctx, iterationNumber) {
+function drawTest(ctx, iterationNumber, instances) {
     const currentCanvasWidth = ctx.canvas.width;
     const currentCanvasHeight = ctx.canvas.height;
 

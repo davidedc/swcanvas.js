@@ -46,9 +46,10 @@
  *
  * @param {CanvasRenderingContext2D | CrispSwContext} ctx The rendering context.
  * @param {number} iterationNumber The current test iteration (for seeding via RenderTest).
+ * @param {?number} instances Unused here; accepted for the standard direct-rendering drawTest(ctx, iterationNumber, instances) signature.
  * @returns {{logs: string[], checkData: object}} Logs and data for checks.
  */
-function drawTest(ctx, iterationNumber) {
+function drawTest(ctx, iterationNumber, instances) {
     const logs = [];
     let checkData = null;
 
