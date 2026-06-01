@@ -1,9 +1,9 @@
 // SWCanvas Build Information
-// Generated: 2026-06-01T20:30:06.659Z
+// Generated: 2026-06-01T21:23:32.955Z
 window.SWCANVAS_BUILD_INFO = {
-  "timestamp": "2026-06-01T20:30:06.659Z",
-  "commit": "0242980",
-  "commitFull": "0242980870abf23452e0e34dc0d67fb55c525c9e",
+  "timestamp": "2026-06-01T21:23:32.955Z",
+  "commit": "0d3b041",
+  "commitFull": "0d3b04120f7a6ff8820ea594e6f848a8d735a338",
   "branch": "feat/fizzygum-backend-compat",
   "version": "1.0.0",
   "type": "dev"

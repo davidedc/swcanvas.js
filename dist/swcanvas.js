@@ -23101,44 +23101,281 @@ class Context2D {
     }
 
     // Path methods (delegated to internal path)
+    //
+    // Per the HTML5 Canvas spec, the *context's current default path* bakes in
+    // the current transformation matrix at the time each path-building method is
+    // called (unlike a Path2D object, which is transform-independent). Our
+    // downstream rasterizer instead applies a single transform — the one in
+    // effect at fill()/stroke()/clip() time — to the whole path. To reconcile
+    // the two, every command added to the current default path is stamped with
+    // the build-time CTM (_stampPathOp), and _resolvePathForDraw() re-bakes any
+    // command whose build-time CTM differs from the draw-time CTM. This makes
+    // the canonical save()/translate()/scale()/arc()/restore()/stroke() idiom
+    // (e.g. PaintCode-generated icon drawing) place geometry where it was built
+    // while keeping the pen width in draw-time user space.
     beginPath() {
         this._currentPath = new SWPath2D();
     }
 
+    /**
+     * Record path-building operation(s) into the current default path, stamping
+     * every newly-added command with the current transformation matrix.
+     * @param {Function} fn - Callback that pushes commands onto this._currentPath
+     * @private
+     */
+    _stampPathOp(fn) {
+        const cmds = this._currentPath.commands;
+        const startIndex = cmds.length;
+        fn();
+        const t = this._transform;
+        for (let i = startIndex; i < cmds.length; i++) {
+            cmds[i]._buildTransform = t;
+        }
+    }
+
     closePath() {
-        this._currentPath.closePath();
+        this._stampPathOp(() => this._currentPath.closePath());
     }
 
     moveTo(x, y) {
-        this._currentPath.moveTo(x, y);
+        this._stampPathOp(() => this._currentPath.moveTo(x, y));
     }
 
     lineTo(x, y) {
-        this._currentPath.lineTo(x, y);
+        this._stampPathOp(() => this._currentPath.lineTo(x, y));
     }
 
     rect(x, y, w, h) {
-        this._currentPath.rect(x, y, w, h);
+        this._stampPathOp(() => this._currentPath.rect(x, y, w, h));
     }
 
     arc(x, y, radius, startAngle, endAngle, counterclockwise) {
-        this._currentPath.arc(x, y, radius, startAngle, endAngle, counterclockwise);
+        this._stampPathOp(() => this._currentPath.arc(x, y, radius, startAngle, endAngle, counterclockwise));
     }
 
     ellipse(x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise) {
-        this._currentPath.ellipse(x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
+        this._stampPathOp(() =>
+            this._currentPath.ellipse(x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise)
+        );
     }
 
     arcTo(x1, y1, x2, y2, radius) {
-        this._currentPath.arcTo(x1, y1, x2, y2, radius);
+        this._stampPathOp(() => this._currentPath.arcTo(x1, y1, x2, y2, radius));
     }
 
     quadraticCurveTo(cpx, cpy, x, y) {
-        this._currentPath.quadraticCurveTo(cpx, cpy, x, y);
+        this._stampPathOp(() => this._currentPath.quadraticCurveTo(cpx, cpy, x, y));
     }
 
     bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y) {
-        this._currentPath.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
+        this._stampPathOp(() => this._currentPath.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y));
+    }
+
+    /**
+     * Resolve a path for drawing under the current transform.
+     *
+     * The current default path records each command with the CTM that was in
+     * effect when it was added (see _stampPathOp). When the draw-time CTM differs
+     * from a command's build-time CTM — e.g. the path was built under a temporary
+     * translate()/scale() that was restore()d before stroking — that command is
+     * re-expressed in draw-time user space via R = drawT⁻¹·buildT, so the
+     * rasterizer's draw-time CTM (drawT·R == buildT) reproduces the original
+     * build-time placement. The line width stays in draw-time user space, matching
+     * HTML5 Canvas semantics (geometry baked at build time, pen scaled at draw time).
+     *
+     * In the overwhelmingly common case where the transform did not change between
+     * building and drawing the path, every command's build-time CTM equals the
+     * draw-time CTM and the original path is returned unchanged (byte-identical).
+     *
+     * External Path2D objects carry no _buildTransform stamps and are returned
+     * unchanged — they remain transform-independent, transformed at draw time.
+     *
+     * @param {SWPath2D} path - Path to resolve
+     * @returns {SWPath2D} The original path, or a transform-baked copy
+     * @private
+     */
+    _resolvePathForDraw(path) {
+        if (!path || !path.commands || path.commands.length === 0) return path;
+
+        const drawT = this._transform;
+        const cmds = path.commands;
+
+        let needsRemap = false;
+        for (let i = 0; i < cmds.length; i++) {
+            const bt = cmds[i]._buildTransform;
+            if (bt && bt !== drawT && !bt.equals(drawT)) {
+                needsRemap = true;
+                break;
+            }
+        }
+        if (!needsRemap) return path;
+
+        let drawInv;
+        try {
+            drawInv = drawT.invert();
+        } catch (e) {
+            return path; // Non-invertible draw transform: nothing sensible to draw anyway.
+        }
+
+        const out = new SWPath2D();
+        let subStart = { x: 0, y: 0 }; // current subpath start, in build/user space
+        let hasSubpath = false;
+
+        for (let i = 0; i < cmds.length; i++) {
+            const c = cmds[i];
+            const bt = c._buildTransform;
+            const sameT = !bt || bt === drawT || bt.equals(drawT);
+            // Relative transform mapping build-time user space → draw-time user space.
+            const R = sameT ? null : drawInv.multiply(bt);
+
+            switch (c.type) {
+                case 'moveTo':
+                    if (R) {
+                        const p = R.transformPoint(c);
+                        out.moveTo(p.x, p.y);
+                    } else out.commands.push(c);
+                    subStart = { x: c.x, y: c.y };
+                    hasSubpath = true;
+                    break;
+                case 'lineTo':
+                    if (R) {
+                        const p = R.transformPoint(c);
+                        out.lineTo(p.x, p.y);
+                    } else out.commands.push(c);
+                    hasSubpath = true;
+                    break;
+                case 'closePath':
+                    out.commands.push(c);
+                    hasSubpath = false;
+                    break;
+                case 'bezierCurveTo':
+                    if (R) {
+                        const p1 = R.transformPoint({ x: c.cp1x, y: c.cp1y });
+                        const p2 = R.transformPoint({ x: c.cp2x, y: c.cp2y });
+                        const p = R.transformPoint(c);
+                        out.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p.x, p.y);
+                    } else out.commands.push(c);
+                    hasSubpath = true;
+                    break;
+                case 'quadraticCurveTo':
+                    if (R) {
+                        const cp = R.transformPoint({ x: c.cpx, y: c.cpy });
+                        const p = R.transformPoint(c);
+                        out.quadraticCurveTo(cp.x, cp.y, p.x, p.y);
+                    } else out.commands.push(c);
+                    hasSubpath = true;
+                    break;
+                case 'arc':
+                    if (R) this._appendTransformedArc(out, c, R, bt, hasSubpath);
+                    else out.commands.push(c);
+                    hasSubpath = true;
+                    break;
+                case 'ellipse':
+                    if (R) this._appendTransformedEllipse(out, c, R, bt, hasSubpath);
+                    else out.commands.push(c);
+                    hasSubpath = true;
+                    break;
+                case 'arcTo':
+                    if (R) {
+                        // arcTo stays circular only under a similarity transform; a
+                        // non-uniform/sheared R would make it elliptical. arcTo under
+                        // transform juggling does not occur in practice (roundRect
+                        // builds and draws under one transform), so we transform its
+                        // defining points and scale the radius by the relative uniform
+                        // scale — exact for similarity transforms.
+                        const p1 = R.transformPoint({ x: c.x1, y: c.y1 });
+                        const p2 = R.transformPoint({ x: c.x2, y: c.y2 });
+                        out.arcTo(p1.x, p1.y, p2.x, p2.y, c.radius * R.uniformScale);
+                    } else out.commands.push(c);
+                    hasSubpath = true;
+                    break;
+                default:
+                    out.commands.push(c);
+                    break;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Append an arc command, re-expressed under relative transform R, to `out`
+     * as a polyline. The arc is sampled in build/user space and each sample is
+     * mapped by R; the segment count is derived from the on-screen radius (using
+     * the full build-time transform `bt`) so the curve stays smooth after the
+     * draw-time CTM is applied. An arbitrary affine R maps the sampled circle to
+     * the correct circle/ellipse without any angle or axis math.
+     * @private
+     */
+    _appendTransformedArc(out, c, R, bt, hasSubpath) {
+        const radius = c.radius;
+        if (radius <= 0) return;
+
+        // Normalize the sweep, matching PathFlattener._flattenArc.
+        let start = c.startAngle;
+        let end = c.endAngle;
+        if (!c.counterclockwise && end < start) end += TAU;
+        else if (c.counterclockwise && start < end) start += TAU;
+
+        const totalAngle = Math.abs(end - start);
+        const segments = Context2D._arcSegmentCount(radius, bt, totalAngle);
+        const angleStep = (end - start) / segments;
+
+        for (let i = 0; i <= segments; i++) {
+            const a = start + i * angleStep;
+            const p = R.transformPoint({ x: c.x + radius * Math.cos(a), y: c.y + radius * Math.sin(a) });
+            if (i === 0 && !hasSubpath) out.moveTo(p.x, p.y);
+            else out.lineTo(p.x, p.y);
+        }
+    }
+
+    /**
+     * Append an ellipse command, re-expressed under relative transform R, to
+     * `out` as a polyline. See _appendTransformedArc for the approach.
+     * @private
+     */
+    _appendTransformedEllipse(out, c, R, bt, hasSubpath) {
+        const radiusX = c.radiusX;
+        const radiusY = c.radiusY;
+        if (radiusX <= 0 || radiusY <= 0) return;
+
+        let start = c.startAngle;
+        let end = c.endAngle;
+        if (!c.counterclockwise && end < start) end += TAU;
+        else if (c.counterclockwise && start < end) start += TAU;
+
+        const totalAngle = Math.abs(end - start);
+        const segments = Context2D._arcSegmentCount(Math.min(radiusX, radiusY), bt, totalAngle);
+        const angleStep = (end - start) / segments;
+        const cosRot = Math.cos(c.rotation);
+        const sinRot = Math.sin(c.rotation);
+
+        for (let i = 0; i <= segments; i++) {
+            const a = start + i * angleStep;
+            const ex = radiusX * Math.cos(a);
+            const ey = radiusY * Math.sin(a);
+            const p = R.transformPoint({
+                x: c.x + ex * cosRot - ey * sinRot,
+                y: c.y + ex * sinRot + ey * cosRot
+            });
+            if (i === 0 && !hasSubpath) out.moveTo(p.x, p.y);
+            else out.lineTo(p.x, p.y);
+        }
+    }
+
+    /**
+     * Number of line segments to approximate a circular arc of the given user-space
+     * radius, sized for its on-screen radius (radius × build-time scale) so the
+     * flattening stays within PATH_FLATTENING_TOLERANCE after transformation.
+     * @private
+     */
+    static _arcSegmentCount(radius, buildTransform, totalAngle) {
+        const deviceScale = Math.max(buildTransform.scaleX, buildTransform.scaleY, TRANSFORM_EPSILON);
+        const deviceRadius = Math.max(radius * deviceScale, TRANSFORM_EPSILON);
+        let maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / deviceRadius));
+        if (!(maxAngleStep > TRANSFORM_EPSILON)) maxAngleStep = TRANSFORM_EPSILON;
+        let segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
+        if (segments > 4096) segments = 4096; // defensive cap for pathological radii
+        return segments;
     }
 
     // Drawing methods - rectangle operations
@@ -23995,6 +24232,10 @@ class Context2D {
 
         fillRule = fillRule || 'nonzero';
 
+        // Re-bake any commands whose build-time CTM differs from the draw-time CTM
+        // (no-op for single-transform paths and for external Path2D objects).
+        pathToFill = this._resolvePathForDraw(pathToFill);
+
         // Mark path-based rendering for testing (fill() has no direct rendering currently)
         Context2D._markPathBasedRendering();
 
@@ -24016,8 +24257,10 @@ class Context2D {
     }
 
     stroke(path) {
-        // Use specified path or current internal path
-        const pathToStroke = path || this._currentPath;
+        // Use specified path or current internal path; re-bake any commands whose
+        // build-time CTM differs from the draw-time CTM (no-op for single-transform
+        // paths and for external Path2D objects).
+        const pathToStroke = this._resolvePathForDraw(path || this._currentPath);
 
         // All path-based strokes use generic pipeline
         // Direct rendering available via dedicated methods: strokeCircle(), strokeRect(), etc.
@@ -24241,8 +24484,10 @@ class Context2D {
      * @param {string} rule - Fill rule: 'nonzero' (default) or 'evenodd'
      */
     clip(path, rule) {
-        // If no path provided, use current internal path
-        const pathToClip = path || this._currentPath;
+        // If no path provided, use current internal path; re-bake any commands
+        // whose build-time CTM differs from the draw-time CTM (no-op for
+        // single-transform paths and for external Path2D objects).
+        const pathToClip = this._resolvePathForDraw(path || this._currentPath);
         const clipRule = rule || 'nonzero';
 
         // Create temporary clip mask to render this clip path
