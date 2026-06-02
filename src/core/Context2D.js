@@ -77,8 +77,11 @@ class Context2D {
         this.shadowOffsetX = 0; // No horizontal offset
         this.shadowOffsetY = 0; // No vertical offset
 
-        // Internal path and clipping
+        // Internal path and clipping. The current default path holds DEVICE-space
+        // geometry (the CTM is baked at build time); see the path methods below.
         this._currentPath = new SWPath2D();
+        this._devCurrent = null; // current point (device space); null = no open subpath
+        this._devSubStart = null; // current subpath start (device space)
 
         // Stencil-based clipping system (only clipping mechanism)
         this._clipMask = null; // ClipMask instance for 1-bit per pixel clipping
@@ -338,213 +341,156 @@ class Context2D {
         this._updateNoShadowFlag();
     }
 
-    // Path methods (delegated to internal path)
+    // Path methods — the context's *current default path*.
     //
-    // Per the HTML5 Canvas spec, the *context's current default path* bakes in
-    // the current transformation matrix at the time each path-building method is
-    // called (unlike a Path2D object, which is transform-independent). Our
-    // downstream rasterizer instead applies a single transform — the one in
-    // effect at fill()/stroke()/clip() time — to the whole path. To reconcile
-    // the two, every command added to the current default path is stamped with
-    // the build-time CTM (_stampPathOp), and _resolvePathForDraw() re-bakes any
-    // command whose build-time CTM differs from the draw-time CTM. This makes
-    // the canonical save()/translate()/scale()/arc()/restore()/stroke() idiom
-    // (e.g. PaintCode-generated icon drawing) place geometry where it was built
-    // while keeping the pen width in draw-time user space.
+    // Per the HTML5 Canvas spec, the current default path bakes in the current
+    // transformation matrix (CTM) at the moment each path-building method is
+    // called; only a Path2D object is transform-independent. We honor this by
+    // transforming every coordinate by this._transform BEFORE recording it, so
+    // this._currentPath always holds DEVICE-space geometry. A later transform
+    // change (including restore()) never moves already-recorded geometry.
+    //
+    // Circles/arcs are not affine-invariant (an affine maps a circle to an
+    // ellipse), so arc/ellipse/arcTo are flattened to device-space line segments
+    // at build time, sized for their on-screen radius. Béziers are affine-
+    // invariant, so their control points are baked and the curve is flattened at
+    // draw time. Consequences at draw time (see fill/stroke/clip/isPointInPath):
+    //   - fill()/clip() of the current default path run under IDENTITY.
+    //   - stroke() maps the device centerline back by drawT⁻¹, strokes with the
+    //     round pen (lineWidth in draw-time user space), and lets drawT forward
+    //     the outline (anisotropic under a non-uniform/sheared drawT).
+    //   - isPointInPath() tests the query point against device geometry directly.
+    //
+    // INVARIANT: only these methods write to this._currentPath, and they always
+    // bake. Code needing an un-baked, user-space path (e.g. the roundRect
+    // fallbacks) must build its own SWPath2D and pass it as an external Path2D.
     beginPath() {
         this._currentPath = new SWPath2D();
-    }
-
-    /**
-     * Record path-building operation(s) into the current default path, stamping
-     * every newly-added command with the current transformation matrix.
-     * @param {Function} fn - Callback that pushes commands onto this._currentPath
-     * @private
-     */
-    _stampPathOp(fn) {
-        const cmds = this._currentPath.commands;
-        const startIndex = cmds.length;
-        fn();
-        const t = this._transform;
-        for (let i = startIndex; i < cmds.length; i++) {
-            cmds[i]._buildTransform = t;
-        }
+        this._devCurrent = null;
+        this._devSubStart = null;
     }
 
     closePath() {
-        this._stampPathOp(() => this._currentPath.closePath());
+        this._currentPath.closePath();
+        this._devCurrent = this._devSubStart;
     }
 
     moveTo(x, y) {
-        this._stampPathOp(() => this._currentPath.moveTo(x, y));
+        const p = this._transform.transformPoint({ x: x, y: y });
+        this._currentPath.moveTo(p.x, p.y);
+        this._devCurrent = p;
+        this._devSubStart = p;
     }
 
     lineTo(x, y) {
-        this._stampPathOp(() => this._currentPath.lineTo(x, y));
+        const p = this._transform.transformPoint({ x: x, y: y });
+        this._currentPath.lineTo(p.x, p.y);
+        this._devCurrent = p;
     }
 
     rect(x, y, w, h) {
-        this._stampPathOp(() => this._currentPath.rect(x, y, w, h));
+        const t = this._transform;
+        const p0 = t.transformPoint({ x: x, y: y });
+        const p1 = t.transformPoint({ x: x + w, y: y });
+        const p2 = t.transformPoint({ x: x + w, y: y + h });
+        const p3 = t.transformPoint({ x: x, y: y + h });
+        this._currentPath.moveTo(p0.x, p0.y);
+        this._currentPath.lineTo(p1.x, p1.y);
+        this._currentPath.lineTo(p2.x, p2.y);
+        this._currentPath.lineTo(p3.x, p3.y);
+        this._currentPath.closePath();
+        // Per the spec, the current point after rect() is the rectangle's origin.
+        this._devCurrent = p0;
+        this._devSubStart = p0;
     }
 
     arc(x, y, radius, startAngle, endAngle, counterclockwise) {
-        this._stampPathOp(() => this._currentPath.arc(x, y, radius, startAngle, endAngle, counterclockwise));
+        this._bakeArc({
+            x: x,
+            y: y,
+            radius: radius,
+            startAngle: startAngle,
+            endAngle: endAngle,
+            counterclockwise: counterclockwise
+        });
     }
 
     ellipse(x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise) {
-        this._stampPathOp(() =>
-            this._currentPath.ellipse(x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise)
-        );
+        this._bakeEllipse({
+            x: x,
+            y: y,
+            radiusX: radiusX,
+            radiusY: radiusY,
+            rotation: rotation,
+            startAngle: startAngle,
+            endAngle: endAngle,
+            counterclockwise: counterclockwise
+        });
     }
 
     arcTo(x1, y1, x2, y2, radius) {
-        this._stampPathOp(() => this._currentPath.arcTo(x1, y1, x2, y2, radius));
+        this._bakeArcTo(x1, y1, x2, y2, radius);
     }
 
     quadraticCurveTo(cpx, cpy, x, y) {
-        this._stampPathOp(() => this._currentPath.quadraticCurveTo(cpx, cpy, x, y));
+        const t = this._transform;
+        const cp = t.transformPoint({ x: cpx, y: cpy });
+        const p = t.transformPoint({ x: x, y: y });
+        this._currentPath.quadraticCurveTo(cp.x, cp.y, p.x, p.y);
+        this._devCurrent = p;
     }
 
     bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y) {
-        this._stampPathOp(() => this._currentPath.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y));
+        const t = this._transform;
+        const cp1 = t.transformPoint({ x: cp1x, y: cp1y });
+        const cp2 = t.transformPoint({ x: cp2x, y: cp2y });
+        const p = t.transformPoint({ x: x, y: y });
+        this._currentPath.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p.x, p.y);
+        this._devCurrent = p;
     }
 
     /**
-     * Resolve a path for drawing under the current transform.
-     *
-     * The current default path records each command with the CTM that was in
-     * effect when it was added (see _stampPathOp). When the draw-time CTM differs
-     * from a command's build-time CTM — e.g. the path was built under a temporary
-     * translate()/scale() that was restore()d before stroking — that command is
-     * re-expressed in draw-time user space via R = drawT⁻¹·buildT, so the
-     * rasterizer's draw-time CTM (drawT·R == buildT) reproduces the original
-     * build-time placement. The line width stays in draw-time user space, matching
-     * HTML5 Canvas semantics (geometry baked at build time, pen scaled at draw time).
-     *
-     * In the overwhelmingly common case where the transform did not change between
-     * building and drawing the path, every command's build-time CTM equals the
-     * draw-time CTM and the original path is returned unchanged (byte-identical).
-     *
-     * External Path2D objects carry no _buildTransform stamps and are returned
-     * unchanged — they remain transform-independent, transformed at draw time.
-     *
-     * @param {SWPath2D} path - Path to resolve
-     * @returns {SWPath2D} The original path, or a transform-baked copy
+     * Append a baked curve to the current default path as device-space line
+     * segments: sample `segments + 1` points at equal angle steps over the
+     * (already-normalized) sweep [start, end], map each user-space point through
+     * sampleFn and then the current CTM, and emit moveTo for the first point of a
+     * fresh subpath else lineTo. Updates the device current-point / subpath-start
+     * tracking. Shared by _bakeArc, _bakeEllipse, and _bakeArcTo.
+     * @param {number} start - normalized start angle
+     * @param {number} end - normalized end angle
+     * @param {number} segments - segment count (>= 1)
+     * @param {Function} sampleFn - (angle) => {x, y} user-space point on the curve
      * @private
      */
-    _resolvePathForDraw(path) {
-        if (!path || !path.commands || path.commands.length === 0) return path;
-
-        const drawT = this._transform;
-        const cmds = path.commands;
-
-        let needsRemap = false;
-        for (let i = 0; i < cmds.length; i++) {
-            const bt = cmds[i]._buildTransform;
-            if (bt && bt !== drawT && !bt.equals(drawT)) {
-                needsRemap = true;
-                break;
+    _emitBakedArc(start, end, segments, sampleFn) {
+        const M = this._transform;
+        const angleStep = (end - start) / segments;
+        const hasSubpath = this._devCurrent !== null;
+        let last = null;
+        for (let i = 0; i <= segments; i++) {
+            const p = M.transformPoint(sampleFn(start + i * angleStep));
+            if (i === 0 && !hasSubpath) {
+                this._currentPath.moveTo(p.x, p.y);
+                this._devSubStart = p;
+            } else {
+                this._currentPath.lineTo(p.x, p.y);
             }
+            last = p;
         }
-        if (!needsRemap) return path;
-
-        let drawInv;
-        try {
-            drawInv = drawT.invert();
-        } catch (e) {
-            return path; // Non-invertible draw transform: nothing sensible to draw anyway.
-        }
-
-        const out = new SWPath2D();
-        let subStart = { x: 0, y: 0 }; // current subpath start, in build/user space
-        let hasSubpath = false;
-
-        for (let i = 0; i < cmds.length; i++) {
-            const c = cmds[i];
-            const bt = c._buildTransform;
-            const sameT = !bt || bt === drawT || bt.equals(drawT);
-            // Relative transform mapping build-time user space → draw-time user space.
-            const R = sameT ? null : drawInv.multiply(bt);
-
-            switch (c.type) {
-                case 'moveTo':
-                    if (R) {
-                        const p = R.transformPoint(c);
-                        out.moveTo(p.x, p.y);
-                    } else out.commands.push(c);
-                    subStart = { x: c.x, y: c.y };
-                    hasSubpath = true;
-                    break;
-                case 'lineTo':
-                    if (R) {
-                        const p = R.transformPoint(c);
-                        out.lineTo(p.x, p.y);
-                    } else out.commands.push(c);
-                    hasSubpath = true;
-                    break;
-                case 'closePath':
-                    out.commands.push(c);
-                    hasSubpath = false;
-                    break;
-                case 'bezierCurveTo':
-                    if (R) {
-                        const p1 = R.transformPoint({ x: c.cp1x, y: c.cp1y });
-                        const p2 = R.transformPoint({ x: c.cp2x, y: c.cp2y });
-                        const p = R.transformPoint(c);
-                        out.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p.x, p.y);
-                    } else out.commands.push(c);
-                    hasSubpath = true;
-                    break;
-                case 'quadraticCurveTo':
-                    if (R) {
-                        const cp = R.transformPoint({ x: c.cpx, y: c.cpy });
-                        const p = R.transformPoint(c);
-                        out.quadraticCurveTo(cp.x, cp.y, p.x, p.y);
-                    } else out.commands.push(c);
-                    hasSubpath = true;
-                    break;
-                case 'arc':
-                    if (R) this._appendTransformedArc(out, c, R, bt, hasSubpath);
-                    else out.commands.push(c);
-                    hasSubpath = true;
-                    break;
-                case 'ellipse':
-                    if (R) this._appendTransformedEllipse(out, c, R, bt, hasSubpath);
-                    else out.commands.push(c);
-                    hasSubpath = true;
-                    break;
-                case 'arcTo':
-                    if (R) {
-                        // arcTo stays circular only under a similarity transform; a
-                        // non-uniform/sheared R would make it elliptical. arcTo under
-                        // transform juggling does not occur in practice (roundRect
-                        // builds and draws under one transform), so we transform its
-                        // defining points and scale the radius by the relative uniform
-                        // scale — exact for similarity transforms.
-                        const p1 = R.transformPoint({ x: c.x1, y: c.y1 });
-                        const p2 = R.transformPoint({ x: c.x2, y: c.y2 });
-                        out.arcTo(p1.x, p1.y, p2.x, p2.y, c.radius * R.uniformScale);
-                    } else out.commands.push(c);
-                    hasSubpath = true;
-                    break;
-                default:
-                    out.commands.push(c);
-                    break;
-            }
-        }
-        return out;
+        if (last) this._devCurrent = last;
     }
 
     /**
-     * Append an arc command, re-expressed under relative transform R, to `out`
-     * as a polyline. The arc is sampled in build/user space and each sample is
-     * mapped by R; the segment count is derived from the on-screen radius (using
-     * the full build-time transform `bt`) so the curve stays smooth after the
-     * draw-time CTM is applied. An arbitrary affine R maps the sampled circle to
-     * the correct circle/ellipse without any angle or axis math.
+     * Bake an arc into the current default path as device-space line segments. The
+     * arc is sampled in user space and each sample is mapped by the current CTM;
+     * the segment count is sized for the on-screen radius (radius × build scale) so
+     * the curve stays smooth. An affine CTM maps the sampled circle to the correct
+     * circle/ellipse with no angle/axis math. Matches PathFlattener._flattenArc
+     * under an identity CTM.
+     * @param {Object} c - {x, y, radius, startAngle, endAngle, counterclockwise}
      * @private
      */
-    _appendTransformedArc(out, c, R, bt, hasSubpath) {
+    _bakeArc(c) {
         const radius = c.radius;
         if (radius <= 0) return;
 
@@ -554,24 +500,20 @@ class Context2D {
         if (!c.counterclockwise && end < start) end += TAU;
         else if (c.counterclockwise && start < end) start += TAU;
 
-        const totalAngle = Math.abs(end - start);
-        const segments = Context2D._arcSegmentCount(radius, bt, totalAngle);
-        const angleStep = (end - start) / segments;
-
-        for (let i = 0; i <= segments; i++) {
-            const a = start + i * angleStep;
-            const p = R.transformPoint({ x: c.x + radius * Math.cos(a), y: c.y + radius * Math.sin(a) });
-            if (i === 0 && !hasSubpath) out.moveTo(p.x, p.y);
-            else out.lineTo(p.x, p.y);
-        }
+        const segments = Context2D._arcSegmentCount(radius, this._transform, Math.abs(end - start));
+        this._emitBakedArc(start, end, segments, a => ({
+            x: c.x + radius * Math.cos(a),
+            y: c.y + radius * Math.sin(a)
+        }));
     }
 
     /**
-     * Append an ellipse command, re-expressed under relative transform R, to
-     * `out` as a polyline. See _appendTransformedArc for the approach.
+     * Bake an ellipse into the current default path as device-space line segments.
+     * See _bakeArc; matches PathFlattener._flattenEllipse under an identity CTM.
+     * @param {Object} c - {x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise}
      * @private
      */
-    _appendTransformedEllipse(out, c, R, bt, hasSubpath) {
+    _bakeEllipse(c) {
         const radiusX = c.radiusX;
         const radiusY = c.radiusY;
         if (radiusX <= 0 || radiusY <= 0) return;
@@ -581,39 +523,104 @@ class Context2D {
         if (!c.counterclockwise && end < start) end += TAU;
         else if (c.counterclockwise && start < end) start += TAU;
 
-        const totalAngle = Math.abs(end - start);
-        const segments = Context2D._arcSegmentCount(Math.min(radiusX, radiusY), bt, totalAngle);
-        const angleStep = (end - start) / segments;
+        const segments = Context2D._arcSegmentCount(Math.min(radiusX, radiusY), this._transform, Math.abs(end - start));
         const cosRot = Math.cos(c.rotation);
         const sinRot = Math.sin(c.rotation);
-
-        for (let i = 0; i <= segments; i++) {
-            const a = start + i * angleStep;
+        this._emitBakedArc(start, end, segments, a => {
             const ex = radiusX * Math.cos(a);
             const ey = radiusY * Math.sin(a);
-            const p = R.transformPoint({
-                x: c.x + ex * cosRot - ey * sinRot,
-                y: c.y + ex * sinRot + ey * cosRot
-            });
-            if (i === 0 && !hasSubpath) out.moveTo(p.x, p.y);
-            else out.lineTo(p.x, p.y);
+            return { x: c.x + ex * cosRot - ey * sinRot, y: c.y + ex * sinRot + ey * cosRot };
+        });
+    }
+
+    /**
+     * Bake an arcTo into the current default path as device-space line segments.
+     * arcTo's geometry is defined in the current user space and depends on the
+     * current point, so we map the (device-space) current point back by the CTM
+     * inverse, resolve the tangent arc with PathFlattener.resolveArcToGeometry,
+     * then sample it and bake by the CTM — exact for any affine (this closes the
+     * similarity-only approximation the previous implementation used).
+     * @private
+     */
+    _bakeArcTo(x1, y1, x2, y2, radius) {
+        const M = this._transform;
+
+        // No open subpath yet: per the spec arcTo establishes the first point.
+        if (this._devCurrent === null) {
+            const p = M.transformPoint({ x: x1, y: y1 });
+            this._currentPath.moveTo(p.x, p.y);
+            this._devCurrent = p;
+            this._devSubStart = p;
+            return;
         }
+
+        // The current point is stored in device space; arcTo needs it in the
+        // current user space. A singular CTM has no user space — degrade to a line.
+        let userCur;
+        try {
+            userCur = M.invert().transformPoint(this._devCurrent);
+        } catch (e) {
+            const p = M.transformPoint({ x: x1, y: y1 });
+            this._currentPath.lineTo(p.x, p.y);
+            this._devCurrent = p;
+            return;
+        }
+
+        const g = PathFlattener.resolveArcToGeometry(userCur, { x: x1, y: y1 }, { x: x2, y: y2 }, radius);
+        if (g.type === 'line') {
+            const p = M.transformPoint({ x: g.x, y: g.y });
+            this._currentPath.lineTo(p.x, p.y);
+            this._devCurrent = p;
+            return;
+        }
+
+        // Sample the resolved arc in user space and bake by M (device resolution).
+        // _devCurrent is non-null here, so _emitBakedArc emits all lineTo (no moveTo).
+        let start = g.startAngle;
+        let end = g.endAngle;
+        if (!g.counterclockwise && end < start) end += TAU;
+        else if (g.counterclockwise && start < end) start += TAU;
+        const segments = Context2D._arcToSegmentCount(g.radius, M, Math.abs(end - start));
+        this._emitBakedArc(start, end, segments, a => ({
+            x: g.center.x + g.radius * Math.cos(a),
+            y: g.center.y + g.radius * Math.sin(a)
+        }));
     }
 
     /**
      * Number of line segments to approximate a circular arc of the given user-space
      * radius, sized for its on-screen radius (radius × build-time scale) so the
-     * flattening stays within PATH_FLATTENING_TOLERANCE after transformation.
+     * flattening stays within `tolerance` (default PATH_FLATTENING_TOLERANCE) after
+     * the transform is applied.
      * @private
      */
-    static _arcSegmentCount(radius, buildTransform, totalAngle) {
+    static _arcSegmentCount(radius, buildTransform, totalAngle, tolerance) {
+        if (tolerance === undefined) tolerance = PATH_FLATTENING_TOLERANCE;
         const deviceScale = Math.max(buildTransform.scaleX, buildTransform.scaleY, TRANSFORM_EPSILON);
         const deviceRadius = Math.max(radius * deviceScale, TRANSFORM_EPSILON);
-        let maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / deviceRadius));
+        let maxAngleStep = 2 * Math.acos(Math.max(0, 1 - tolerance / deviceRadius));
         if (!(maxAngleStep > TRANSFORM_EPSILON)) maxAngleStep = TRANSFORM_EPSILON;
         let segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
         if (segments > 4096) segments = 4096; // defensive cap for pathological radii
         return segments;
+    }
+
+    /**
+     * Segment count for baking an arcTo: _arcSegmentCount with arcTo's finer
+     * tolerance, plus the same minimum-segments-per-quarter-turn floor as
+     * PathFlattener._flattenArcWithTolerance. (minSegments ≤ 64 for a full turn, so
+     * the result never exceeds _arcSegmentCount's 4096 cap.)
+     * @private
+     */
+    static _arcToSegmentCount(radius, buildTransform, totalAngle) {
+        const toleranceSegments = Context2D._arcSegmentCount(
+            radius,
+            buildTransform,
+            totalAngle,
+            Math.min(0.1, PATH_FLATTENING_TOLERANCE) // matches _handleArcTo
+        );
+        const minSegments = Math.ceil((totalAngle / (Math.PI / 2)) * 16); // 16 per 90°
+        return Math.max(toleranceSegments, minSegments);
     }
 
     // Drawing methods - rectangle operations
@@ -1192,11 +1199,12 @@ class Context2D {
             // Non-uniform scale: fall through to path-based rendering
         }
 
-        // Path-based rendering: use general path system
-        Context2D._markPathBasedRendering();
-        this.beginPath();
-        this._currentPath.roundRect(x, y, width, height, radii);
-        this.stroke();
+        // Path-based rendering: build an un-baked, user-space path and stroke it as
+        // an external Path2D so it draws under the current CTM. (The current default
+        // path bakes the CTM at build time — the wrong coordinate space here.)
+        const fallbackPath = new SWPath2D();
+        fallbackPath.roundRect(x, y, width, height, radii);
+        this.stroke(fallbackPath);
     }
 
     /**
@@ -1316,11 +1324,12 @@ class Context2D {
             // Non-uniform scale: fall through to path-based rendering
         }
 
-        // Path-based rendering: use general path system
-        Context2D._markPathBasedRendering();
-        this.beginPath();
-        this._currentPath.roundRect(x, y, width, height, radii);
-        this.fill();
+        // Path-based rendering: build an un-baked, user-space path and fill it as an
+        // external Path2D so it draws under the current CTM. (The current default
+        // path bakes the CTM at build time — the wrong coordinate space here.)
+        const fallbackPath = new SWPath2D();
+        fallbackPath.roundRect(x, y, width, height, radii);
+        this.fill(fallbackPath);
     }
 
     /**
@@ -1439,6 +1448,56 @@ class Context2D {
     }
 
     // M2: Path drawing methods
+    /**
+     * Return a new SWPath2D with every point of `path` mapped by transform M.
+     * Used to map the device-space current default path back to draw-time user
+     * space for stroking (M = drawT⁻¹). Handles the command types the current
+     * default path can contain — arcs are already flattened to lineTo at build time.
+     * @private
+     */
+    _transformPathPoints(path, M) {
+        // Common case (no draw-time transform): mapping by identity is a no-op, so
+        // return the path as-is and skip cloning every command.
+        if (M.isIdentity) return path;
+        const out = new SWPath2D();
+        const cmds = path.commands;
+        for (let i = 0; i < cmds.length; i++) {
+            const c = cmds[i];
+            switch (c.type) {
+                case 'moveTo': {
+                    const p = M.transformPoint(c);
+                    out.moveTo(p.x, p.y);
+                    break;
+                }
+                case 'lineTo': {
+                    const p = M.transformPoint(c);
+                    out.lineTo(p.x, p.y);
+                    break;
+                }
+                case 'closePath':
+                    out.closePath();
+                    break;
+                case 'bezierCurveTo': {
+                    const cp1 = M.transformPoint({ x: c.cp1x, y: c.cp1y });
+                    const cp2 = M.transformPoint({ x: c.cp2x, y: c.cp2y });
+                    const p = M.transformPoint(c);
+                    out.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p.x, p.y);
+                    break;
+                }
+                case 'quadraticCurveTo': {
+                    const cp = M.transformPoint({ x: c.cpx, y: c.cpy });
+                    const p = M.transformPoint(c);
+                    out.quadraticCurveTo(cp.x, cp.y, p.x, p.y);
+                    break;
+                }
+                default:
+                    out.commands.push(c);
+                    break;
+            }
+        }
+        return out;
+    }
+
     fill(path, rule) {
         let pathToFill, fillRule;
 
@@ -1470,9 +1529,9 @@ class Context2D {
 
         fillRule = fillRule || 'nonzero';
 
-        // Re-bake any commands whose build-time CTM differs from the draw-time CTM
-        // (no-op for single-transform paths and for external Path2D objects).
-        pathToFill = this._resolvePathForDraw(pathToFill);
+        // The current default path already holds device-space geometry → draw under
+        // IDENTITY. An external Path2D is transform-independent → draw under the CTM.
+        const opTransform = pathToFill === this._currentPath ? Transform2D.IDENTITY : this._transform;
 
         // Mark path-based rendering for testing (fill() has no direct rendering currently)
         Context2D._markPathBasedRendering();
@@ -1480,7 +1539,7 @@ class Context2D {
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
-            transform: this._transform,
+            transform: opTransform,
             clipMask: this._clipMask,
             fillStyle: this._fillStyle,
             // Shadow properties
@@ -1495,10 +1554,28 @@ class Context2D {
     }
 
     stroke(path) {
-        // Use specified path or current internal path; re-bake any commands whose
-        // build-time CTM differs from the draw-time CTM (no-op for single-transform
-        // paths and for external Path2D objects).
-        const pathToStroke = this._resolvePathForDraw(path || this._currentPath);
+        let pathToStroke;
+        let opTransform;
+
+        if (!path) {
+            // Current default path: device-space geometry. The round pen lives in
+            // draw-time user space, so map the centerline back by drawT⁻¹, stroke,
+            // and let the op transform forward the outline (anisotropic under a
+            // non-uniform/sheared drawT). A singular drawT → nothing to stroke.
+            const drawT = this._transform;
+            let inv;
+            try {
+                inv = drawT.invert();
+            } catch (e) {
+                return;
+            }
+            pathToStroke = this._transformPathPoints(this._currentPath, inv);
+            opTransform = drawT;
+        } else {
+            // External Path2D: transform-independent → stroke under the current CTM.
+            pathToStroke = path;
+            opTransform = this._transform;
+        }
 
         // All path-based strokes use generic pipeline
         // Direct rendering available via dedicated methods: strokeCircle(), strokeRect(), etc.
@@ -1507,7 +1584,7 @@ class Context2D {
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
-            transform: this._transform,
+            transform: opTransform,
             clipMask: this._clipMask,
             strokeStyle: this._strokeStyle,
             // Shadow properties
@@ -1591,21 +1668,23 @@ class Context2D {
 
         fillRule = fillRule || 'nonzero';
 
-        // Note: isPointInPath uses untransformed coordinates per HTML5 Canvas spec
-        // The point coordinates are in canvas coordinate space, not transform-adjusted space
-
-        // Flatten the path to polygons
+        // Per the HTML5 Canvas spec the query point is in canvas (device) space and
+        // is NOT affected by the current transform.
         const polygons = PathFlattener.flattenPath(path);
 
         if (polygons.length === 0) {
             return false;
         }
 
-        // Transform polygons to match current canvas transform
-        const transformedPolygons = polygons.map(poly => poly.map(point => this._transform.transformPoint(point)));
+        // The current default path already holds device-space geometry → test the
+        // point directly. An external Path2D is in user space → map its polygons by
+        // the current CTM first.
+        const testPolygons =
+            path === this._currentPath
+                ? polygons
+                : polygons.map(poly => poly.map(point => this._transform.transformPoint(point)));
 
-        // Test point against transformed polygons
-        return PolygonFiller.isPointInPolygons(x, y, transformedPolygons, fillRule);
+        return PolygonFiller.isPointInPolygons(x, y, testPolygons, fillRule);
     }
 
     /**
@@ -1650,8 +1729,8 @@ class Context2D {
             return false;
         }
 
-        // Note: isPointInStroke uses untransformed coordinates per HTML5 Canvas spec
-        // The point coordinates are in canvas coordinate space, not transform-adjusted space
+        // Per the HTML5 Canvas spec the query point is in canvas (device) space and
+        // is NOT affected by the current transform.
 
         // Create stroke properties object from current context state
         const strokeProps = {
@@ -1663,21 +1742,37 @@ class Context2D {
             lineDashOffset: this._lineDashOffset
         };
 
-        // Generate stroke polygons using StrokeGenerator
-        const strokePolygons = StrokeGenerator.generateStrokePolygons(path, strokeProps);
-
-        if (strokePolygons.length === 0) {
-            return false;
+        let testPolygons;
+        if (path === this._currentPath) {
+            // Device-space centerline: map back by drawT⁻¹, stroke with the round pen
+            // in draw-time user space, then forward by drawT — mirroring stroke().
+            const drawT = this._transform;
+            let inv;
+            try {
+                inv = drawT.invert();
+            } catch (e) {
+                return false;
+            }
+            const strokePolygons = StrokeGenerator.generateStrokePolygons(
+                this._transformPathPoints(path, inv),
+                strokeProps
+            );
+            if (strokePolygons.length === 0) {
+                return false;
+            }
+            testPolygons = strokePolygons.map(poly => poly.map(point => drawT.transformPoint(point)));
+        } else {
+            // External user-space path: stroke, then map by the current CTM.
+            const strokePolygons = StrokeGenerator.generateStrokePolygons(path, strokeProps);
+            if (strokePolygons.length === 0) {
+                return false;
+            }
+            testPolygons = strokePolygons.map(poly => poly.map(point => this._transform.transformPoint(point)));
         }
 
-        // Transform stroke polygons to match current canvas transform
-        const transformedPolygons = strokePolygons.map(poly =>
-            poly.map(point => this._transform.transformPoint(point))
-        );
-
-        // Test point against transformed stroke polygons using nonzero winding rule
-        // (stroke hit testing doesn't use fill rules like path filling does)
-        return PolygonFiller.isPointInPolygons(x, y, transformedPolygons, 'nonzero');
+        // Test point against the stroke polygons using nonzero winding rule
+        // (stroke hit testing doesn't use fill rules like path filling does).
+        return PolygonFiller.isPointInPolygons(x, y, testPolygons, 'nonzero');
     }
 
     /**
@@ -1722,11 +1817,14 @@ class Context2D {
      * @param {string} rule - Fill rule: 'nonzero' (default) or 'evenodd'
      */
     clip(path, rule) {
-        // If no path provided, use current internal path; re-bake any commands
-        // whose build-time CTM differs from the draw-time CTM (no-op for
-        // single-transform paths and for external Path2D objects).
-        const pathToClip = this._resolvePathForDraw(path || this._currentPath);
+        // If no path provided, use the current default path.
+        const pathToClip = path || this._currentPath;
         const clipRule = rule || 'nonzero';
+
+        // The current default path already holds device-space geometry → flatten
+        // under IDENTITY. An external Path2D is transform-independent → flatten
+        // under the current CTM.
+        const opTransform = pathToClip === this._currentPath ? Transform2D.IDENTITY : this._transform;
 
         // Create temporary clip mask to render this clip path
         const tempClipMask = new ClipMask(this.surface.width, this.surface.height);
@@ -1736,7 +1834,7 @@ class Context2D {
         const polygons = PathFlattener.flattenPath(pathToClip);
 
         // Delegate to PolygonFiller for scanline rendering
-        PolygonFiller.fillPolygonsToClipMask(tempClipMask, polygons, clipRule, this._transform);
+        PolygonFiller.fillPolygonsToClipMask(tempClipMask, polygons, clipRule, opTransform);
 
         // Intersect with existing clip mask (if any)
         if (this._clipMask) {

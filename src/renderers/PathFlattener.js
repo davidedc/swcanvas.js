@@ -533,8 +533,7 @@ class PathFlattener {
     static _handleArcTo(cmd, currentPoly, currentPoint, subpathStart) {
         const { x1, y1, x2, y2, radius } = cmd;
 
-        // Early outs / degenerates
-        // If no current point has been set yet: moveTo(x1, y1) and return
+        // Early out: if no current point has been set yet, moveTo(x1, y1)
         if (currentPoly.length === 0) {
             const targetPoint = new Point(x1, y1);
             currentPoly.push(targetPoint.toObject());
@@ -545,9 +544,12 @@ class PathFlattener {
             };
         }
 
-        // If radius <= 0: degrade to lineTo(x1, y1) and return
-        if (radius <= 0) {
-            const targetPoint = new Point(x1, y1);
+        // Resolve the tangent-arc geometry in the path's coordinate space.
+        const g = PathFlattener.resolveArcToGeometry(currentPoint, { x: x1, y: y1 }, { x: x2, y: y2 }, radius);
+
+        // Degenerate (radius <= 0, zero-length leg, or collinear): lineTo(corner)
+        if (g.type === 'line') {
+            const targetPoint = new Point(g.x, g.y);
             currentPoly.push(targetPoint.toObject());
             return {
                 currentPoint: targetPoint,
@@ -555,90 +557,9 @@ class PathFlattener {
                 subpathStart: null
             };
         }
-
-        const p0 = currentPoint; // Current point
-        const p1 = new Point(x1, y1); // Corner point
-        const p2 = new Point(x2, y2); // End control point
-
-        // Direction vectors from the corner (pointing OUT of the corner)
-        // v1 = normalize(P0 - P1)
-        // v2 = normalize(P2 - P1)
-        const v1 = new Point(p0.x - p1.x, p0.y - p1.y);
-        const v2 = new Point(p2.x - p1.x, p2.y - p1.y);
-
-        // Calculate lengths
-        const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
-        const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-
-        // If any vectors are zero-length (P0==P1, or P1==P2): degrade to lineTo(x1, y1)
-        if (len1 < FLOAT_EPSILON || len2 < FLOAT_EPSILON) {
-            const targetPoint = new Point(x1, y1);
-            currentPoly.push(targetPoint.toObject());
-            return {
-                currentPoint: targetPoint,
-                currentPoly,
-                subpathStart: null
-            };
-        }
-
-        // Normalize vectors
-        const u1 = new Point(v1.x / len1, v1.y / len1);
-        const u2 = new Point(v2.x / len2, v2.y / len2);
-
-        // Turn angle and tangent distance
-        // Compute the turn angle φ between u1 and u2
-        const dot = u1.x * u2.x + u1.y * u2.y;
-        const cross = u1.x * u2.y - u1.y * u2.x;
-
-        // Clamp dot product to avoid NaN from acos
-        const clampedDot = Math.max(-1, Math.min(1, dot));
-        const turnAngle = Math.acos(clampedDot);
-
-        // If the three points are collinear (turn angle is ~0° or ~180°): just lineTo(x1, y1)
-        if (Math.abs(Math.sin(turnAngle)) < FLOAT_EPSILON) {
-            const targetPoint = new Point(x1, y1);
-            currentPoly.push(targetPoint.toObject());
-            return {
-                currentPoint: targetPoint,
-                currentPoly,
-                subpathStart: null
-            };
-        }
-
-        // Compute distance from corner to tangent points along each leg
-        // d = r / tan(φ/2)
-        const halfAngle = turnAngle / 2;
-        const tangentDistance = radius / Math.tan(halfAngle);
-
-        // Tangent points on each leg
-        // T1 = P1 + u1 * d
-        // T2 = P1 + u2 * d
-        const t1 = new Point(p1.x + u1.x * tangentDistance, p1.y + u1.y * tangentDistance);
-        const t2 = new Point(p1.x + u2.x * tangentDistance, p1.y + u2.y * tangentDistance);
-
-        // Arc center
-        // Compute unit left normal for u1 (rotate 90°): n1 = (-u1.y, u1.x)
-        const n1 = new Point(-u1.y, u1.x);
-
-        // Decide which side is "inside" using the sign of the cross product
-        // sign = sgn(u1.x*u2.y - u1.y*u2.x)
-        const sign = Math.sign(cross);
-
-        // The circle's center C is at:
-        // C = T1 + n1 * (sign * r)
-        const center = new Point(t1.x + n1.x * sign * radius, t1.y + n1.y * sign * radius);
-
-        // Start/end angles and sweep
-        // Start angle: a1 = atan2(T1.y - C.y, T1.x - C.x)
-        // End angle: a2 = atan2(T2.y - C.y, T2.x - C.x)
-        const startAngle = Math.atan2(t1.y - center.y, t1.x - center.x);
-        const endAngle = Math.atan2(t2.y - center.y, t2.x - center.x);
-
-        // Anticlockwise flag: anticlockwise = (sign > 0)
-        // Note: Inverted from reference to get correct arc direction
-        const counterclockwise = sign > 0;
 
         // Add line to start of arc if needed
+        const t1 = new Point(g.t1.x, g.t1.y);
         const distance = currentPoint.distanceTo(t1);
         if (distance > 0.01) {
             currentPoly.push(t1.toObject());
@@ -647,12 +568,12 @@ class PathFlattener {
         // Generate arc points with higher precision for smooth curves
         const arcTolerance = Math.min(0.1, PATH_FLATTENING_TOLERANCE); // Use finer tolerance for arcTo
         const arcPoints = PathFlattener._flattenArcWithTolerance(
-            center.x,
-            center.y,
-            radius,
-            startAngle,
-            endAngle,
-            counterclockwise,
+            g.center.x,
+            g.center.y,
+            g.radius,
+            g.startAngle,
+            g.endAngle,
+            g.counterclockwise,
             arcTolerance
         );
 
@@ -661,12 +582,98 @@ class PathFlattener {
 
         // Return end point of arc
         const endPoint =
-            arcPoints.length > 0 ? new Point(arcPoints[arcPoints.length - 1].x, arcPoints[arcPoints.length - 1].y) : t2;
+            arcPoints.length > 0
+                ? new Point(arcPoints[arcPoints.length - 1].x, arcPoints[arcPoints.length - 1].y)
+                : new Point(g.t2.x, g.t2.y);
 
         return {
             currentPoint: endPoint,
             currentPoly,
             subpathStart: null
+        };
+    }
+
+    /**
+     * Resolve an arcTo into its tangent-arc geometry (pure; emits no points).
+     * Given the current point p0 and the two control points p1 (corner) and p2,
+     * returns either a degenerate {type:'line', x, y} (the caller should draw a
+     * line to that point) or
+     * {type:'arc', center, radius, startAngle, endAngle, counterclockwise, t1, t2}.
+     * Shared by _handleArcTo (draw-time flattening of an external Path2D) and
+     * Context2D._bakeArcTo (build-time baking of the current default path), so the
+     * two stay in exact agreement.
+     * @param {{x:number,y:number}} p0 - current point
+     * @param {{x:number,y:number}} p1 - corner point (x1, y1)
+     * @param {{x:number,y:number}} p2 - end control point (x2, y2)
+     * @param {number} radius - arc radius
+     * @returns {Object} geometry descriptor
+     */
+    static resolveArcToGeometry(p0, p1, p2, radius) {
+        // Zero/negative radius: degrade to a line to the corner.
+        if (radius <= 0) {
+            return { type: 'line', x: p1.x, y: p1.y };
+        }
+
+        // Direction vectors from the corner (pointing OUT of the corner)
+        const v1x = p0.x - p1.x;
+        const v1y = p0.y - p1.y;
+        const v2x = p2.x - p1.x;
+        const v2y = p2.y - p1.y;
+
+        const len1 = Math.sqrt(v1x * v1x + v1y * v1y);
+        const len2 = Math.sqrt(v2x * v2x + v2y * v2y);
+
+        // Zero-length leg (P0==P1 or P1==P2): degrade to lineTo(corner)
+        if (len1 < FLOAT_EPSILON || len2 < FLOAT_EPSILON) {
+            return { type: 'line', x: p1.x, y: p1.y };
+        }
+
+        // Normalize
+        const u1x = v1x / len1;
+        const u1y = v1y / len1;
+        const u2x = v2x / len2;
+        const u2y = v2y / len2;
+
+        // Turn angle and turn direction
+        const dot = u1x * u2x + u1y * u2y;
+        const cross = u1x * u2y - u1y * u2x;
+        const clampedDot = Math.max(-1, Math.min(1, dot));
+        const turnAngle = Math.acos(clampedDot);
+
+        // Collinear (~0° or ~180°): lineTo(corner)
+        if (Math.abs(Math.sin(turnAngle)) < FLOAT_EPSILON) {
+            return { type: 'line', x: p1.x, y: p1.y };
+        }
+
+        // Distance from corner to each tangent point along its leg: d = r / tan(φ/2)
+        const halfAngle = turnAngle / 2;
+        const tangentDistance = radius / Math.tan(halfAngle);
+
+        const t1x = p1.x + u1x * tangentDistance;
+        const t1y = p1.y + u1y * tangentDistance;
+        const t2x = p1.x + u2x * tangentDistance;
+        const t2y = p1.y + u2y * tangentDistance;
+
+        // Arc center C = T1 + n1 * (sign * r), where n1 is the left normal of u1.
+        const n1x = -u1y;
+        const n1y = u1x;
+        const sign = Math.sign(cross);
+        const cx = t1x + n1x * sign * radius;
+        const cy = t1y + n1y * sign * radius;
+
+        const startAngle = Math.atan2(t1y - cy, t1x - cx);
+        const endAngle = Math.atan2(t2y - cy, t2x - cx);
+        const counterclockwise = sign > 0;
+
+        return {
+            type: 'arc',
+            center: { x: cx, y: cy },
+            radius: radius,
+            startAngle: startAngle,
+            endAngle: endAngle,
+            counterclockwise: counterclockwise,
+            t1: { x: t1x, y: t1y },
+            t2: { x: t2x, y: t2y }
         };
     }
 }

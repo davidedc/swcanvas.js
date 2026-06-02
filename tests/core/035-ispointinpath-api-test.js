@@ -109,17 +109,23 @@ test('isPointInPath HTML5 Canvas compatibility API', () => {
 });
 
 // Test 035e  
-test('isPointInPath with transforms', () => {
+test('isPointInPath bakes the build-time transform (current default path)', () => {
     const surface = SWCanvas.Core.Surface(200, 200);
     const ctx = new SWCanvas.Core.Context2D(surface);
-    
-    // Create path then transform
+
+    // Per the HTML5 spec the current default path bakes the CTM at build time. The
+    // rect is built under identity, so the later translate() does NOT move it — the
+    // (canvas-space) query point is tested against the rect where it was built.
     ctx.beginPath();
     ctx.rect(0, 0, 50, 50);
     ctx.translate(50, 50);
-    
-    // Point should be tested against transformed path
-    // Original rect (0,0,50,50) transformed by (50,50) = (50,50,100,100)
-    assertEquals(ctx.isPointInPath(75, 75), true); // Should be inside transformed rect
-    assertEquals(ctx.isPointInPath(25, 25), false); // Should be outside transformed rect
+
+    assertEquals(ctx.isPointInPath(25, 25), true); // inside the baked rect (0,0,50,50)
+    assertEquals(ctx.isPointInPath(75, 75), false); // where a translated copy would be — not baked
+
+    // Building UNDER a transform bakes that transform into the geometry.
+    ctx.beginPath();
+    ctx.rect(0, 0, 50, 50); // CTM is translate(50,50) → baked at (50,50)-(100,100)
+    assertEquals(ctx.isPointInPath(75, 75), true); // inside the baked-under-translate rect
+    assertEquals(ctx.isPointInPath(25, 25), false); // origin no longer covered
 });

@@ -4,6 +4,15 @@
  * Records path commands (moveTo, lineTo, arc, bezierCurveTo, etc.) for later
  * execution. Used for defining shapes that can be filled, stroked, or used as
  * clip regions. Compatible with HTML5 Canvas Path2D API.
+ *
+ * SWPath2D is a pure recorder with no knowledge of any transform — the COORDINATE
+ * SPACE of its commands is the responsibility of whoever owns the instance:
+ *   - An external Path2D (user code) stores USER-space coordinates and is
+ *     transform-independent: the rasterizer applies the draw-time CTM to it.
+ *   - Context2D._currentPath (the context's current default path) stores
+ *     DEVICE-space coordinates: Context2D bakes the CTM into every coordinate at
+ *     build time (see Context2D's path methods) and draws it under IDENTITY.
+ * Do not bake or transform coordinates here; that would corrupt external Path2D.
  */
 class SWPath2D {
     constructor() {

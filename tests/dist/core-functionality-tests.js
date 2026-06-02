@@ -1469,19 +1469,25 @@
         });
 
         // Test 035e  
-        test('isPointInPath with transforms', () => {
+        test('isPointInPath bakes the build-time transform (current default path)', () => {
             const surface = SWCanvas.Core.Surface(200, 200);
             const ctx = new SWCanvas.Core.Context2D(surface);
-            
-            // Create path then transform
+
+            // Per the HTML5 spec the current default path bakes the CTM at build time. The
+            // rect is built under identity, so the later translate() does NOT move it — the
+            // (canvas-space) query point is tested against the rect where it was built.
             ctx.beginPath();
             ctx.rect(0, 0, 50, 50);
             ctx.translate(50, 50);
-            
-            // Point should be tested against transformed path
-            // Original rect (0,0,50,50) transformed by (50,50) = (50,50,100,100)
-            assertEquals(ctx.isPointInPath(75, 75), true); // Should be inside transformed rect
-            assertEquals(ctx.isPointInPath(25, 25), false); // Should be outside transformed rect
+
+            assertEquals(ctx.isPointInPath(25, 25), true); // inside the baked rect (0,0,50,50)
+            assertEquals(ctx.isPointInPath(75, 75), false); // where a translated copy would be — not baked
+
+            // Building UNDER a transform bakes that transform into the geometry.
+            ctx.beginPath();
+            ctx.rect(0, 0, 50, 50); // CTM is translate(50,50) → baked at (50,50)-(100,100)
+            assertEquals(ctx.isPointInPath(75, 75), true); // inside the baked-under-translate rect
+            assertEquals(ctx.isPointInPath(25, 25), false); // origin no longer covered
         });
 
         // Test: isPointInStroke API validation
@@ -1677,26 +1683,23 @@
         });
 
         // Test 036g
-        test('isPointInStroke with transforms', () => {
+        test('isPointInStroke bakes the build-time transform (current default path)', () => {
             const surface = SWCanvas.Core.Surface(200, 200);
             const ctx = new SWCanvas.Core.Context2D(surface);
-            
+
             ctx.lineWidth = 10;
-            
-            // Create path then transform
+
+            // Built under identity, then translated: the baked stroke stays at (0,0,50,50)
+            // with a 10px pen (extends 5px either side of each edge). The pen width is
+            // interpreted in draw-time user space; here drawT is a pure translate (scale 1).
             ctx.beginPath();
             ctx.rect(0, 0, 50, 50);
             ctx.translate(50, 50);
-            
-            // Point should be tested against transformed stroke
-            // Original rect (0,0,50,50) transformed by (50,50) = (50,50,100,100)
-            // With lineWidth=10, stroke extends 5px outside the path bounds
-            assertEquals(ctx.isPointInStroke(45, 75), true); // On left edge of transformed stroke
-            assertEquals(ctx.isPointInStroke(105, 75), true); // On right edge of transformed stroke
-            assertEquals(ctx.isPointInStroke(75, 45), true); // On top edge of transformed stroke
-            assertEquals(ctx.isPointInStroke(75, 105), true); // On bottom edge of transformed stroke
-            assertEquals(ctx.isPointInStroke(75, 75), false); // Inside transformed path, not in stroke
-            assertEquals(ctx.isPointInStroke(25, 25), false); // Outside transformed stroke
+
+            assertEquals(ctx.isPointInStroke(0, 25), true); // centered on the baked left edge (x≈0)
+            assertEquals(ctx.isPointInStroke(50, 25), true); // centered on the baked right edge (x≈50)
+            assertEquals(ctx.isPointInStroke(25, 25), false); // interior, 25px from any edge → not in the 10px stroke
+            assertEquals(ctx.isPointInStroke(75, 75), false); // where a translated copy would be — not baked
         });
 
         // Test 036h
@@ -2243,6 +2246,112 @@
 
             assertEquals(isDarkPx(ctx, 55, 55), true, 'Path2D drawn under the draw-time transform (55,55)');
             assertEquals(isDarkPx(ctx, 5, 5), false, 'Path2D NOT baked at build time (5,5) stays clear');
+        });
+
+        test('arcTo bakes the build-time transform under non-uniform scale (elliptical, not circular)', () => {
+            const { ctx } = whiteCanvas(160, 140);
+
+            // User-space quarter arc: current (20,0) → corner (0,0) → (0,20), radius 20 ⇒ a
+            // quarter circle centered (20,20) r20, spanning user x,y ∈ [0,20]. Baked by
+            // translate(40,40)·scale(3,1.5) it covers device x∈[40,100], y∈[40,70] — a 2:1
+            // ellipse. (The old radius×uniformScale approximation would draw a ~circular arc.)
+            ctx.save();
+            ctx.beginPath();
+            ctx.translate(40, 40);
+            ctx.scale(3, 1.5);
+            ctx.moveTo(20, 0);
+            ctx.arcTo(0, 0, 0, 20, 20);
+            ctx.restore();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = 'black';
+            ctx.stroke();
+
+            assertEquals(isDarkPx(ctx, 2, 2), false, 'no stray geometry at the origin (the old draw-time bug)');
+            const bb = darkBBox(ctx, 160, 140);
+            const w = bb.maxX - bb.minX;
+            const h = bb.maxY - bb.minY;
+            assertEquals(Math.abs((bb.minX + bb.maxX) / 2 - 70) <= 6, true, 'arc spans around device x≈[40..100]');
+            assertEquals(w > h + 15, true, 'corner is elliptical: clearly wider than tall (non-uniform scale baked)');
+            assertEquals(Math.abs(w - 60) <= 8, true, 'horizontal extent ≈ 60');
+            assertEquals(Math.abs(h - 30) <= 8, true, 'vertical extent ≈ 30');
+        });
+
+        test('isPointInPath honors the baked transform under the juggle idiom', () => {
+            const { ctx } = whiteCanvas(100, 100);
+
+            // Build a unit circle under translate(20,40)·scale(10,10) → baked disk centered
+            // (30,50) r10; restore before hit-testing. The query point is in canvas space.
+            ctx.save();
+            ctx.beginPath();
+            ctx.translate(20, 40);
+            ctx.scale(10, 10);
+            ctx.arc(1, 1, 1, 0, 2 * Math.PI);
+            ctx.closePath();
+            ctx.restore();
+
+            assertEquals(ctx.isPointInPath(30, 50), true, 'baked center (30,50) is inside');
+            assertEquals(ctx.isPointInPath(30, 41), true, 'inside near the top of the baked disk');
+            assertEquals(ctx.isPointInPath(30, 38), false, 'just outside the baked disk (r10)');
+            assertEquals(ctx.isPointInPath(1, 1), false, 'NOT tested against the un-baked user-space circle (old behavior)');
+        });
+
+        test('isPointInStroke honors the baked transform under the juggle idiom', () => {
+            const { ctx } = whiteCanvas(100, 100);
+
+            ctx.lineWidth = 3.5;
+            ctx.save();
+            ctx.beginPath();
+            ctx.translate(20, 40);
+            ctx.scale(10, 10);
+            ctx.arc(1, 1, 1, 0, 2 * Math.PI);
+            ctx.closePath();
+            ctx.restore();
+
+            // Baked ring centered (30,50) r10 with a 3.5px pen (band r≈8.25..11.75).
+            assertEquals(ctx.isPointInStroke(30, 40), true, 'on the baked ring (top, r10)');
+            assertEquals(ctx.isPointInStroke(20, 50), true, 'on the baked ring (left, r10)');
+            assertEquals(ctx.isPointInStroke(30, 50), false, 'baked center is hollow');
+            assertEquals(ctx.isPointInStroke(1, 1), false, 'no ring at the un-baked user-space location (old behavior)');
+        });
+
+        test('stroke under a reflected (negative-scale) transform lands at the baked location', () => {
+            const { ctx } = whiteCanvas(100, 100);
+
+            // Bake a circle at device (30,50) r10 under identity, then stroke under a
+            // reflection (scale(-1,1) about x=50). Reflection is invertible (|det|=1), so the
+            // back-transform/forward round-trip leaves the geometry at (30,50) and keeps the
+            // round pen round (width unchanged).
+            ctx.beginPath();
+            ctx.arc(30, 50, 10, 0, 2 * Math.PI);
+            ctx.closePath();
+            ctx.save();
+            ctx.translate(100, 0);
+            ctx.scale(-1, 1);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'black';
+            ctx.stroke();
+            ctx.restore();
+
+            assertEquals(isDarkPx(ctx, 30, 40), true, 'ring present at the baked circle top (30,40)');
+            assertEquals(isDarkPx(ctx, 30, 50), false, 'ring hollow at the baked center (30,50)');
+            assertEquals(isDarkPx(ctx, 70, 50), false, 'nothing at the mirror image location (70,50)');
+        });
+
+        test('stroke under a singular transform is a guarded no-op (does not throw)', () => {
+            const { ctx } = whiteCanvas(100, 100);
+
+            ctx.beginPath();
+            ctx.arc(30, 50, 10, 0, 2 * Math.PI);
+            ctx.closePath();
+            ctx.save();
+            ctx.scale(1, 0); // singular CTM: no draw-time user space → nothing to stroke
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'black';
+            ctx.stroke();
+            ctx.restore();
+
+            const bb = darkBBox(ctx, 100, 100);
+            assertEquals(bb.n, 0, 'singular-transform stroke drew nothing (and did not throw)');
         });
 
 

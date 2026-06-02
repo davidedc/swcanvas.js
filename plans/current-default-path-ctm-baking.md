@@ -1,11 +1,22 @@
 # Canonical fix: bake the current default path's CTM at build time
 
-**Status**: Proposed / not started. An **interim fix** is in place (see §2) that
-produces correct pixels for the cases that motivated this work; it ships on
-`feat/fizzygum-backend-compat` (`src/core/Context2D.js`). This document is the
-roadmap for replacing that interim fix with the structurally-canonical one.
+**Status**: **DONE — Approach A (device-space current default path) implemented**
+(2026-06-02), superseding the interim fix described in §2. The current default
+path now bakes the CTM into device-space geometry at build time; `fill`/`clip`
+of it run under `IDENTITY`; `stroke` maps the centerline back by `drawT⁻¹`,
+strokes with the round pen, and forwards by `drawT`; `isPointInPath`/`InStroke`
+test the device-space geometry directly; `arcTo` is exact for any affine (via
+`PathFlattener.resolveArcToGeometry`); and the interim machinery
+(`_stampPathOp`, `_buildTransform`, `_resolvePathForDraw`) is removed. External
+`Path2D` remains user-space and transform-independent. The byte-identical
+constraint was deliberately relaxed (correctness over bit-identity): the only
+visual change is that arcs/ellipses/arcTo under a scale now tessellate at
+on-screen resolution (smoother) — 7 reference PNGs were regenerated and visually
+verified. See the executed plan at
+`~/.claude/plans/study-deeply-the-plan-hidden-bee.md`. The text below is the
+original roadmap, kept for rationale.
 
-**Date**: 2026-06-01
+**Date**: 2026-06-01 (roadmap); implemented 2026-06-02
 
 **Context**: SWCanvas stored the *context's current default path* in raw
 user-space coordinates and applied the current transformation matrix (CTM) at

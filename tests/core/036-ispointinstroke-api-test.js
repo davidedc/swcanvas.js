@@ -191,26 +191,23 @@ test('isPointInStroke HTML5 Canvas compatibility API', () => {
 });
 
 // Test 036g
-test('isPointInStroke with transforms', () => {
+test('isPointInStroke bakes the build-time transform (current default path)', () => {
     const surface = SWCanvas.Core.Surface(200, 200);
     const ctx = new SWCanvas.Core.Context2D(surface);
-    
+
     ctx.lineWidth = 10;
-    
-    // Create path then transform
+
+    // Built under identity, then translated: the baked stroke stays at (0,0,50,50)
+    // with a 10px pen (extends 5px either side of each edge). The pen width is
+    // interpreted in draw-time user space; here drawT is a pure translate (scale 1).
     ctx.beginPath();
     ctx.rect(0, 0, 50, 50);
     ctx.translate(50, 50);
-    
-    // Point should be tested against transformed stroke
-    // Original rect (0,0,50,50) transformed by (50,50) = (50,50,100,100)
-    // With lineWidth=10, stroke extends 5px outside the path bounds
-    assertEquals(ctx.isPointInStroke(45, 75), true); // On left edge of transformed stroke
-    assertEquals(ctx.isPointInStroke(105, 75), true); // On right edge of transformed stroke
-    assertEquals(ctx.isPointInStroke(75, 45), true); // On top edge of transformed stroke
-    assertEquals(ctx.isPointInStroke(75, 105), true); // On bottom edge of transformed stroke
-    assertEquals(ctx.isPointInStroke(75, 75), false); // Inside transformed path, not in stroke
-    assertEquals(ctx.isPointInStroke(25, 25), false); // Outside transformed stroke
+
+    assertEquals(ctx.isPointInStroke(0, 25), true); // centered on the baked left edge (x≈0)
+    assertEquals(ctx.isPointInStroke(50, 25), true); // centered on the baked right edge (x≈50)
+    assertEquals(ctx.isPointInStroke(25, 25), false); // interior, 25px from any edge → not in the 10px stroke
+    assertEquals(ctx.isPointInStroke(75, 75), false); // where a translated copy would be — not baked
 });
 
 // Test 036h
