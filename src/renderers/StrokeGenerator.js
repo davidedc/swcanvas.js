@@ -773,9 +773,17 @@ class StrokeGenerator {
     static _generateArcFan(center, radius, startAngle, endAngle) {
         let angleDiff = endAngle - startAngle;
 
-        // Normalize angle difference
-        while (angleDiff > Math.PI) angleDiff -= TAU;
-        while (angleDiff < -Math.PI) angleDiff += TAU;
+        // Normalize angle difference. The epsilon tolerance is essential for round
+        // CAPS: a cap requests a sweep of exactly +/-PI (a half circle) in a known
+        // direction. Without the tolerance, FP rounding of the caller's angles can
+        // make angleDiff land at -PI-eps (or +PI+eps), which the naive wrap flips to
+        // +PI-eps — reversing the sweep so the half-disc is generated on the WRONG
+        // side (into the line body) and the outward dome silently disappears. Which
+        // rotations trip this is essentially random, so caps drop out at scattered
+        // angles and any size. Tolerating a hair past +/-PI preserves the requested
+        // direction; the extra fraction of a degree of sweep is harmless.
+        while (angleDiff > Math.PI + FLOAT_EPSILON) angleDiff -= TAU;
+        while (angleDiff < -Math.PI - FLOAT_EPSILON) angleDiff += TAU;
 
         const absAngle = Math.abs(angleDiff);
         const segments = Math.max(2, Math.ceil(absAngle / QUARTER_PI));
