@@ -25057,13 +25057,13 @@ class Context2D {
         if (this._canUseDirectRendering(this._fillStyle)) {
             const t = this._transform;
             // Tier-0 rect clip → clamp draw extent + pass clipBuffer=null on the
-            // axis-aligned path. RectOpsRot keeps the bitmask backstop (maskBuf),
-            // which is always live under a clip since clip() still builds the mask.
-            // Within this branch _isSourceOver && _noShadow hold, so _tier0ClipRect()
+            // axis-aligned path. The rotated RectOpsRot branch isn't tier-0-wired,
+            // so it materialises the bitmask on demand (_ensureClipBuffer) — under
+            // the mask-skip, clip() no longer builds a mask for a rect clip. Within
+            // this branch _isSourceOver && _noShadow hold, so _tier0ClipRect()
             // reduces to (_clipIsRect ? _clipRect : null).
             const tier0ClipRect = this._tier0ClipRect();
-            const maskBuf = this._clipMask ? this._clipMask.buffer : null;
-            const clip = tier0ClipRect ? null : maskBuf;
+            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
 
             // Fast access to pre-computed transform values (no getters, no sqrt/atan2)
             const scaledW = width * t.scaleX;
@@ -25099,8 +25099,9 @@ class Context2D {
                 }
             } else if (t.isUniformScale) {
                 // Rotated with uniform scale: use edge-function algorithm.
-                // Not tier-0-wired (Fizzygum never clips a rotated draw); uses the
-                // bitmask backstop directly.
+                // Not tier-0-wired (Fizzygum never clips a rotated draw); materialise
+                // the bitmask on demand for a rect clip.
+                const rotClip = this._ensureClipBuffer();
                 if (isOpaque) {
                     RectOpsRot.fill_Rot_Any(
                         this.surface,
@@ -25111,7 +25112,7 @@ class Context2D {
                         t.rotationAngle,
                         this._fillStyle,
                         1.0,
-                        maskBuf
+                        rotClip
                     );
                     return;
                 } else {
@@ -25124,7 +25125,7 @@ class Context2D {
                         t.rotationAngle,
                         this._fillStyle,
                         this.globalAlpha,
-                        maskBuf
+                        rotClip
                     );
                     return;
                 }
@@ -25139,7 +25140,7 @@ class Context2D {
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: this._transform,
-            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
             clipRect: tier0ClipRect,
             fillStyle: this._fillStyle,
             // Shadow properties
@@ -25158,11 +25159,11 @@ class Context2D {
         if (this._canUseDirectRendering(this._strokeStyle)) {
             const t = this._transform;
             // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
-            // path; RectOpsRot keeps the bitmask backstop (see fillRect for the
-            // rationale). Within this branch _tier0ClipRect() = _clipIsRect ? _clipRect : null.
+            // path; the rotated RectOpsRot branch materialises the bitmask on demand
+            // (see fillRect for the rationale). Within this branch _tier0ClipRect() =
+            // _clipIsRect ? _clipRect : null.
             const tier0ClipRect = this._tier0ClipRect();
-            const maskBuf = this._clipMask ? this._clipMask.buffer : null;
-            const clip = tier0ClipRect ? null : maskBuf;
+            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
 
             // Fast access to pre-computed transform values
             const scaledW = width * t.scaleX;
@@ -25232,7 +25233,7 @@ class Context2D {
                 }
             } else if (t.isUniformScale) {
                 // Rotated with uniform scale: use line-based stroke. Not tier-0-wired;
-                // uses the bitmask backstop directly.
+                // materialises the bitmask on demand for a rect clip.
                 RectOpsRot.stroke_Rot_Any(
                     this.surface,
                     center.x,
@@ -25243,7 +25244,7 @@ class Context2D {
                     scaledLineWidth,
                     this._strokeStyle,
                     this.globalAlpha,
-                    maskBuf
+                    this._ensureClipBuffer()
                 );
                 return;
             }
@@ -25262,7 +25263,7 @@ class Context2D {
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: this._transform,
-            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
             clipRect: tier0ClipRect,
             strokeStyle: this._strokeStyle,
             // Shadow properties
@@ -25307,7 +25308,7 @@ class Context2D {
         // Direct rendering: both fill and stroke are solid colors, source-over, no shadows
         if (this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle)) {
             const t = this._transform;
-            const clip = this._clipMask ? this._clipMask.buffer : null;
+            const clip = this._ensureClipBuffer();
 
             const hasFill = this._fillStyle.a > 0;
             const hasStroke = this._strokeStyle.a > 0 && this._lineWidth > 0;
@@ -25407,6 +25408,10 @@ class Context2D {
         const minY = Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y));
         const maxY = Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y));
 
+        // clearRect honours the clip; under the tier-0 mask-skip a rect clip keeps
+        // no bitmask, so materialise it on demand for the per-pixel test below.
+        const clipMask = this._ensureClipMask();
+
         // Handle simple axis-aligned case (no rotation/skew)
         if (transform.b === 0 && transform.c === 0) {
             // Calculate the actual rectangle bounds in surface coordinates
@@ -25424,7 +25429,7 @@ class Context2D {
             for (let py = startY; py <= endY; py++) {
                 for (let px = startX; px <= endX; px++) {
                     // Check if this pixel should be clipped by current clip mask
-                    if (this._clipMask && this._clipMask.isPixelClipped(px, py)) {
+                    if (clipMask && clipMask.isPixelClipped(px, py)) {
                         continue;
                     }
 
@@ -25443,7 +25448,7 @@ class Context2D {
             for (let py = Math.max(0, minY); py <= Math.min(surface.height - 1, maxY); py++) {
                 for (let px = Math.max(0, minX); px <= Math.min(surface.width - 1, maxX); px++) {
                     // Check if this pixel should be clipped by current clip mask
-                    if (this._clipMask && this._clipMask.isPixelClipped(px, py)) {
+                    if (clipMask && clipMask.isPixelClipped(px, py)) {
                         continue;
                     }
 
@@ -25498,7 +25503,7 @@ class Context2D {
         // Direct rendering: Color stroke with source-over, no shadows
         if (this._canUseDirectRendering(this._strokeStyle)) {
             const t = this._transform;
-            const clip = this._clipMask ? this._clipMask.buffer : null;
+            const clip = this._ensureClipBuffer();
 
             // Rounded rects require uniform scale (non-uniform would make ellipses)
             if (t.isUniformScale) {
@@ -25693,7 +25698,7 @@ class Context2D {
         // Direct rendering: Color fill with source-over, no shadows
         if (this._canUseDirectRendering(this._fillStyle)) {
             const t = this._transform;
-            const clip = this._clipMask ? this._clipMask.buffer : null;
+            const clip = this._ensureClipBuffer();
 
             // Rounded rects require uniform scale (non-uniform would make ellipses)
             if (t.isUniformScale) {
@@ -25818,7 +25823,7 @@ class Context2D {
         // Direct rendering: both fill and stroke are solid colors, source-over, no shadows
         if (this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle)) {
             const t = this._transform;
-            const clip = this._clipMask ? this._clipMask.buffer : null;
+            const clip = this._ensureClipBuffer();
 
             const hasFill = this._fillStyle.a > 0;
             const hasStroke = this._strokeStyle.a > 0 && this._lineWidth > 0;
@@ -25992,7 +25997,7 @@ class Context2D {
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: opTransform,
-            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
             clipRect: tier0ClipRect,
             fillStyle: this._fillStyle,
             // Shadow properties
@@ -26039,7 +26044,7 @@ class Context2D {
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: opTransform,
-            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
             clipRect: tier0ClipRect,
             strokeStyle: this._strokeStyle,
             // Shadow properties
@@ -26286,6 +26291,55 @@ class Context2D {
     }
 
     /**
+     * Build a ClipMask whose visible pixels are EXACTLY the half-open rect
+     * [x0,x1) × [y0,y1). Because `_clipRect` is defined as the exact pixel set
+     * `fillPolygonsToClipMask` would expose for that rect, this reproduces the
+     * bitmask a rect `clip()` would have built — byte-for-byte. Used only to
+     * lazily materialise a tier-0 rect for a draw path that still reads the
+     * bitmask (see `_ensureClipMask`).
+     * @private
+     */
+    static _rectToClipMask(rect, width, height) {
+        const mask = new ClipMask(width, height);
+        mask.clipAll();
+        for (let y = rect.y0; y < rect.y1; y++) {
+            for (let x = rect.x0; x < rect.x1; x++) {
+                mask.setPixel(x, y, true);
+            }
+        }
+        return mask;
+    }
+
+    /**
+     * Return the ClipMask for a draw that CANNOT take the tier-0 rect fast path
+     * (rotated/rounded/circle/arc primitives, canvas-wide composite ops, shadows,
+     * or a bitmask clip), materialising it on demand. Under the tier-0 mask-skip,
+     * a rect `clip()` keeps `_clipRect` but leaves `_clipMask` null; the first
+     * such draw builds the mask from the rect here. Wired tier-0 draws never call
+     * this (they consult `_tier0ClipRect()` and pass `clipBuffer=null`), so the
+     * all-tier-0 Fizzygum workload never allocates a mask. Returns null when
+     * there is no clip at all.
+     * @private
+     */
+    _ensureClipMask() {
+        if (this._clipMask === null && this._clipRect !== null) {
+            this._clipMask = Context2D._rectToClipMask(
+                this._clipRect, this.surface.width, this.surface.height);
+        }
+        return this._clipMask;
+    }
+
+    /**
+     * As `_ensureClipMask`, but returns the raw clip buffer (or null) for the
+     * renderers that take a `Uint8Array` clip argument.
+     * @private
+     */
+    _ensureClipBuffer() {
+        const mask = this._ensureClipMask();
+        return mask ? mask.buffer : null;
+    }
+
+    /**
      * Tier-0 clip detection: does this flattened path collapse to a single
      * axis-aligned rectangle in device space? If so, return the exact set of
      * pixels the bitmask path WOULD expose, as a half-open integer rect
@@ -26396,11 +26450,7 @@ class Context2D {
         // under the current CTM.
         const opTransform = pathToClip === this._currentPath ? Transform2D.IDENTITY : this._transform;
 
-        // Create temporary clip mask to render this clip path
-        const tempClipMask = new ClipMask(this.surface.width, this.surface.height);
-        tempClipMask.clipAll(); // Start with all pixels clipped
-
-        // Flatten path and fill to temporary clip buffer
+        // Flatten path.
         const polygons = PathFlattener.flattenPath(pathToClip);
 
         // Tier-0 detection — evaluated BEFORE we mutate the clip state below, since
@@ -26410,32 +26460,33 @@ class Context2D {
         const priorWasPureRectOrEmpty =
             (this._clipMask === null && this._clipRect === null) || this._clipIsRect;
 
-        // Delegate to PolygonFiller for scanline rendering
-        PolygonFiller.fillPolygonsToClipMask(tempClipMask, polygons, clipRule, opTransform);
-
-        // Intersect with existing clip mask (if any)
-        if (this._clipMask) {
-            // AND operation: existing mask & new mask
-            this._clipMask.intersectWith(tempClipMask);
-        } else {
-            // First clip - use the temporary buffer as the new clip mask
-            this._clipMask = tempClipMask;
-        }
-
-        // Maintain the tier-0 rect state. When the composed clip is exactly an
-        // axis-aligned rect, wired renderers consult _clipRect and pass
-        // clipBuffer=null (byte-identical, since _clipRect exposes exactly the
-        // mask's visible pixels — proven in Stage 1). While consumers are still
-        // being wired the bitmask above stays as a BACKSTOP so any not-yet-wired
-        // renderer still clips correctly; a later phase drops the mask build for
-        // tier-0 to bank the allocation win. The _disableTier0Clip flag forces the
-        // legacy mask path (A/B harness compares the two).
         if (detectedRect && priorWasPureRectOrEmpty && !Context2D._disableTier0Clip) {
+            // TIER-0: the composed clip is exactly an axis-aligned rect. Track it
+            // and SKIP the bitmask build entirely — wired renderers consult
+            // _clipRect and pass clipBuffer=null (byte-identical, since _clipRect
+            // exposes exactly the pixels the mask would). Any draw that still needs
+            // a real bitmask (rotated/rounded/circle/arc primitives, canvas-wide
+            // composite ops, shadows) materialises it on demand via _ensureClipMask().
+            // The prior clip was itself a pure rect (priorWasPureRectOrEmpty),
+            // already captured in _clipRect, so no prior mask region is lost.
             this._clipRect = this._clipRect
                 ? Context2D._intersectRect(this._clipRect, detectedRect)
                 : detectedRect;
             this._clipIsRect = true;
+            this._clipMask = null; // freed / never built — the allocation win
         } else {
+            // BITMASK path. If the PRIOR clip was a tier-0 rect (mask skipped),
+            // materialise it first so the intersection below preserves that region.
+            this._ensureClipMask();
+
+            const tempClipMask = new ClipMask(this.surface.width, this.surface.height);
+            tempClipMask.clipAll(); // Start with all pixels clipped
+            PolygonFiller.fillPolygonsToClipMask(tempClipMask, polygons, clipRule, opTransform);
+            if (this._clipMask) {
+                this._clipMask.intersectWith(tempClipMask); // AND with existing
+            } else {
+                this._clipMask = tempClipMask; // first clip
+            }
             this._clipIsRect = false;
             this._clipRect = null; // bitmask authoritative; no bbox tracked
         }
@@ -26479,7 +26530,7 @@ class Context2D {
             // and null the mask; otherwise the bitmask path is unchanged. (Gated
             // to source-over + no-shadow — see _tier0ClipRect; here _noShadow is
             // still true, shadows are handled by the ShadowPipeline wrapper.)
-            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
             clipRect: tier0ClipRect,
             // Shadow properties
             shadowColor: this.shadowColor,
@@ -26719,7 +26770,7 @@ class Context2D {
 
         if (fillIsColor && strokeIsColor && isSourceOver && (hasFill || hasStroke)) {
             // Use unified method for coordinated fill+stroke rendering (no gaps)
-            const clipBuffer = this._clipMask ? this._clipMask.buffer : null;
+            const clipBuffer = this._ensureClipBuffer();
             CircleOps.fillStroke_Any(
                 this.surface,
                 center.x,
@@ -26766,7 +26817,7 @@ class Context2D {
 
         // Get paint source
         const paintSource = this._fillStyle;
-        const clipBuffer = this._clipMask ? this._clipMask.buffer : null;
+        const clipBuffer = this._ensureClipBuffer();
 
         // Check for direct rendering conditions
         const isColor = paintSource instanceof Color;
@@ -26835,7 +26886,7 @@ class Context2D {
 
         // Get paint source
         const paintSource = this._strokeStyle;
-        const clipBuffer = this._clipMask ? this._clipMask.buffer : null;
+        const clipBuffer = this._ensureClipBuffer();
 
         // Check for direct rendering conditions
         const isColor = paintSource instanceof Color;
@@ -26938,7 +26989,7 @@ class Context2D {
         // Get paint sources
         const fillPaintSource = this._fillStyle;
         const strokePaintSource = this._strokeStyle;
-        const clipBuffer = this._clipMask ? this._clipMask.buffer : null;
+        const clipBuffer = this._ensureClipBuffer();
 
         // Check for unified direct rendering
         const fillIsColor = fillPaintSource instanceof Color;
@@ -27020,7 +27071,7 @@ class Context2D {
      */
     _fillCircleDirect(cx, cy, radius, paintSource) {
         const surface = this.surface;
-        const clipBuffer = this._clipMask ? this._clipMask.buffer : null;
+        const clipBuffer = this._ensureClipBuffer();
 
         // Check for solid color direct rendering
         const isColor = paintSource instanceof Color;
@@ -27057,7 +27108,7 @@ class Context2D {
         const isColor = paintSource instanceof Color;
         const is1pxStroke = Math.abs(lineWidth - 1) < STROKE_1PX_TOLERANCE;
         const isSourceOver = this.globalCompositeOperation === 'source-over';
-        const clipBuffer = this._clipMask ? this._clipMask.buffer : null;
+        const clipBuffer = this._ensureClipBuffer();
 
         // Direct rendering 1: 1px strokes using Bresenham algorithm
         if (isColor && is1pxStroke && isSourceOver) {
@@ -27109,7 +27160,7 @@ class Context2D {
      * @private
      */
     _strokeLineDirect(x1, y1, x2, y2, lineWidth, paintSource) {
-        const clipBuffer = this._clipMask ? this._clipMask.buffer : null;
+        const clipBuffer = this._ensureClipBuffer();
 
         // Direct rendering only supports butt line caps (open shapes need cap handling)
         const isButtCap = this.lineCap === 'butt';
