@@ -39,7 +39,8 @@ class PolygonFiller {
         globalAlpha = 1.0,
         subPixelOpacity = 1.0,
         composite = 'source-over',
-        sourceMask = null
+        sourceMask = null,
+        clipRect = null
     ) {
         if (polygons.length === 0) return;
         if (IS_DEBUG) {
@@ -48,6 +49,9 @@ class PolygonFiller {
             }
         }
 
+        // Tier-0 rect clip (S3): clipMask is null here; clipRect clamps the scanline
+        // range (Y, via bounds) and each span (X) so the existing unclipped branches
+        // draw exactly the mask's visible pixels. Byte-identical (Stage-1 proof).
         // Check if we can use direct rendering (opaque solid color with source-over)
         const canUseDirectRendering =
             paintSource instanceof Color &&
@@ -58,7 +62,7 @@ class PolygonFiller {
             sourceMask === null;
 
         if (canUseDirectRendering) {
-            PolygonFiller._fillPolygonsDirect(surface, polygons, paintSource, fillRule, transform, clipMask);
+            PolygonFiller._fillPolygonsDirect(surface, polygons, paintSource, fillRule, transform, clipMask, clipRect);
         } else {
             PolygonFiller._fillPolygonsStandard(
                 surface,
@@ -70,7 +74,8 @@ class PolygonFiller {
                 globalAlpha,
                 subPixelOpacity,
                 composite,
-                sourceMask
+                sourceMask,
+                clipRect
             );
         }
     }
@@ -80,21 +85,29 @@ class PolygonFiller {
      * Uses 32-bit packed writes and inline clip buffer access for maximum performance
      * @private
      */
-    static _fillPolygonsDirect(surface, polygons, color, fillRule, transform, clipMask) {
+    static _fillPolygonsDirect(surface, polygons, color, fillRule, transform, clipMask, clipRect = null) {
         // Pre-compute packed color outside hot loop
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
         const data32 = surface.data32;
         const width = surface.width;
         const clipBuffer = clipMask ? clipMask.buffer : null;
+        // Tier-0 rect clip: half-open [x0,x1)×[y0,y1); clamp span X and scanline Y.
+        const clipX0 = clipRect ? clipRect.x0 : 0;
+        const clipX1m1 = clipRect ? clipRect.x1 - 1 : (width - 1);
 
         // Transform all polygon vertices
         const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
 
         // Find bounding box
         const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
+        let scanMinY = bounds.minY, scanMaxY = bounds.maxY;
+        if (clipRect) {
+            if (clipRect.y0 > scanMinY) scanMinY = clipRect.y0;
+            if (clipRect.y1 - 1 < scanMaxY) scanMaxY = clipRect.y1 - 1;
+        }
 
         // Process each scanline
-        for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        for (let y = scanMinY; y <= scanMaxY; y++) {
             // Find all intersections with this scanline
             const intersections = [];
             for (const poly of transformedPolygons) {
@@ -128,8 +141,12 @@ class PolygonFiller {
                     // ceil(left)..floor(right) inclusive endX made a path-filled
                     // rect 1px wider on the right than fillRect / clip / drawImage
                     // / HTML5.
-                    const startX = Math.max(0, Math.ceil(intersection.x - 0.5));
-                    const endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                    let startX = Math.max(0, Math.ceil(intersection.x - 0.5));
+                    let endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                    // Tier-0 rect clip: clamp the span to the clip rect's X range;
+                    // clipBuffer is null so the unclipped write branch below runs.
+                    if (startX < clipX0) startX = clipX0;
+                    if (endX > clipX1m1) endX = clipX1m1;
 
                     if (startX <= endX) {
                         // Direct span fill with 32-bit writes
@@ -181,7 +198,8 @@ class PolygonFiller {
         globalAlpha,
         subPixelOpacity,
         composite,
-        sourceMask
+        sourceMask,
+        clipRect = null
     ) {
         // Mark path-based rendering for testing (helps verify direct rendering is used when expected)
         // Check for Context2D existence since PolygonFiller may be used in isolation (e.g., unit tests)
@@ -194,9 +212,14 @@ class PolygonFiller {
 
         // Find bounding box for optimization
         const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
+        let scanMinY = bounds.minY, scanMaxY = bounds.maxY;
+        if (clipRect) { // tier-0: only scanlines inside the clip rect's Y range
+            if (clipRect.y0 > scanMinY) scanMinY = clipRect.y0;
+            if (clipRect.y1 - 1 < scanMaxY) scanMaxY = clipRect.y1 - 1;
+        }
 
         // Process each scanline
-        for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        for (let y = scanMinY; y <= scanMaxY; y++) {
             PolygonFiller._fillScanline(
                 surface,
                 y,
@@ -208,7 +231,8 @@ class PolygonFiller {
                 globalAlpha,
                 subPixelOpacity,
                 composite,
-                sourceMask
+                sourceMask,
+                clipRect
             );
         }
     }
@@ -264,7 +288,8 @@ class PolygonFiller {
         globalAlpha,
         subPixelOpacity = 1.0,
         composite = 'source-over',
-        sourceMask = null
+        sourceMask = null,
+        clipRect = null
     ) {
         const intersections = [];
 
@@ -288,7 +313,8 @@ class PolygonFiller {
             globalAlpha,
             subPixelOpacity,
             composite,
-            sourceMask
+            sourceMask,
+            clipRect
         );
     }
 
@@ -351,9 +377,14 @@ class PolygonFiller {
         globalAlpha,
         subPixelOpacity = 1.0,
         composite = 'source-over',
-        sourceMask = null
+        sourceMask = null,
+        clipRect = null
     ) {
         if (intersections.length === 0) return;
+        // Tier-0 rect clip: clamp each span's X to the clip rect (clipMask is null;
+        // caller has already restricted Y to the rect). Byte-identical (Stage 1).
+        const clipX0 = clipRect ? clipRect.x0 : 0;
+        const clipX1m1 = clipRect ? clipRect.x1 - 1 : (surface.width - 1);
 
         let windingNumber = 0;
         let inside = false;
@@ -381,8 +412,10 @@ class PolygonFiller {
                 // endX made e.g. an unclipped desktop PATTERN fill reach one
                 // column past the clipped morphs drawn over it. A column x is in
                 // [left, right) iff left <= x+0.5 < right.
-                const startX = Math.max(0, Math.ceil(intersection.x - 0.5));
-                const endX = Math.min(surface.width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                let startX = Math.max(0, Math.ceil(intersection.x - 0.5));
+                let endX = Math.min(surface.width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                if (startX < clipX0) startX = clipX0;
+                if (endX > clipX1m1) endX = clipX1m1;
 
                 PolygonFiller._fillPixelSpan(
                     surface,

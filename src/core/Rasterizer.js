@@ -56,6 +56,10 @@ class Rasterizer {
             globalAlpha: params.globalAlpha !== undefined ? params.globalAlpha : 1.0,
             transform: params.transform || Transform2D.IDENTITY,
             clipMask: params.clipMask || null, // Stencil-based clipping
+            // Tier-0 rectangular clip (S3): { x0, y0, x1, y1 } half-open device
+            // ints, or null. When set, clipMask is null and the renderer clamps
+            // its draw extent to this rect instead of per-pixel bit-testing.
+            clipRect: params.clipRect || null,
             fillStyle: params.fillStyle || null,
             strokeStyle: params.strokeStyle || null,
             sourceMask: null, // Will be initialized if needed for canvas-wide compositing
@@ -242,7 +246,9 @@ class Rasterizer {
                 this._currentOp.clipMask,
                 this._currentOp.globalAlpha,
                 1.0,
-                this._currentOp.composite
+                this._currentOp.composite,
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
         }
     }
@@ -428,7 +434,8 @@ class Rasterizer {
                 this._currentOp.globalAlpha,
                 1.0,
                 this._currentOp.composite,
-                this._currentOp.sourceMask
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
 
             // Perform canvas-wide compositing pass
@@ -444,7 +451,9 @@ class Rasterizer {
                 this._currentOp.clipMask,
                 this._currentOp.globalAlpha,
                 1.0,
-                this._currentOp.composite
+                this._currentOp.composite,
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
         }
     }
@@ -501,7 +510,8 @@ class Rasterizer {
                 this._currentOp.globalAlpha,
                 subPixelOpacity,
                 this._currentOp.composite,
-                this._currentOp.sourceMask
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
 
             // Perform canvas-wide compositing pass
@@ -517,7 +527,9 @@ class Rasterizer {
                 this._currentOp.clipMask,
                 this._currentOp.globalAlpha,
                 subPixelOpacity,
-                this._currentOp.composite
+                this._currentOp.composite,
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
         }
     }
@@ -616,16 +628,28 @@ class Rasterizer {
         const bottomRight = transform.transformPoint({ x: destX + destWidth, y: destY + destHeight });
 
         // Find bounding box in device space
-        const minX = Math.max(0, Math.floor(Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
-        const maxX = Math.min(
+        let minX = Math.max(0, Math.floor(Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
+        let maxX = Math.min(
             this._surface.width - 1,
             Math.ceil(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x))
         );
-        const minY = Math.max(0, Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
-        const maxY = Math.min(
+        let minY = Math.max(0, Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
+        let maxY = Math.min(
             this._surface.height - 1,
             Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y))
         );
+
+        // Tier-0 rect clip (S3): clamp the iteration extent to the clip rect and
+        // draw unconditionally (clipMask is null in this case). _clipRect is the
+        // half-open [x0,x1)×[y0,y1) set of visible pixels — byte-identical to the
+        // bitmask, which the inner loop would otherwise reject pixel-by-pixel.
+        const clipRect = this._currentOp.clipRect;
+        if (clipRect) {
+            if (clipRect.x0 > minX) minX = clipRect.x0;
+            if (clipRect.y0 > minY) minY = clipRect.y0;
+            if (clipRect.x1 - 1 < maxX) maxX = clipRect.x1 - 1;
+            if (clipRect.y1 - 1 < maxY) maxY = clipRect.y1 - 1;
+        }
 
         // Get inverse transform for mapping device pixels back to source
         const inverseTransform = transform.invert();

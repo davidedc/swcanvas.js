@@ -18576,7 +18576,8 @@ class PolygonFiller {
         globalAlpha = 1.0,
         subPixelOpacity = 1.0,
         composite = 'source-over',
-        sourceMask = null
+        sourceMask = null,
+        clipRect = null
     ) {
         if (polygons.length === 0) return;
         if (IS_DEBUG) {
@@ -18585,6 +18586,9 @@ class PolygonFiller {
             }
         }
 
+        // Tier-0 rect clip (S3): clipMask is null here; clipRect clamps the scanline
+        // range (Y, via bounds) and each span (X) so the existing unclipped branches
+        // draw exactly the mask's visible pixels. Byte-identical (Stage-1 proof).
         // Check if we can use direct rendering (opaque solid color with source-over)
         const canUseDirectRendering =
             paintSource instanceof Color &&
@@ -18595,7 +18599,7 @@ class PolygonFiller {
             sourceMask === null;
 
         if (canUseDirectRendering) {
-            PolygonFiller._fillPolygonsDirect(surface, polygons, paintSource, fillRule, transform, clipMask);
+            PolygonFiller._fillPolygonsDirect(surface, polygons, paintSource, fillRule, transform, clipMask, clipRect);
         } else {
             PolygonFiller._fillPolygonsStandard(
                 surface,
@@ -18607,7 +18611,8 @@ class PolygonFiller {
                 globalAlpha,
                 subPixelOpacity,
                 composite,
-                sourceMask
+                sourceMask,
+                clipRect
             );
         }
     }
@@ -18617,21 +18622,29 @@ class PolygonFiller {
      * Uses 32-bit packed writes and inline clip buffer access for maximum performance
      * @private
      */
-    static _fillPolygonsDirect(surface, polygons, color, fillRule, transform, clipMask) {
+    static _fillPolygonsDirect(surface, polygons, color, fillRule, transform, clipMask, clipRect = null) {
         // Pre-compute packed color outside hot loop
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
         const data32 = surface.data32;
         const width = surface.width;
         const clipBuffer = clipMask ? clipMask.buffer : null;
+        // Tier-0 rect clip: half-open [x0,x1)×[y0,y1); clamp span X and scanline Y.
+        const clipX0 = clipRect ? clipRect.x0 : 0;
+        const clipX1m1 = clipRect ? clipRect.x1 - 1 : (width - 1);
 
         // Transform all polygon vertices
         const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
 
         // Find bounding box
         const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
+        let scanMinY = bounds.minY, scanMaxY = bounds.maxY;
+        if (clipRect) {
+            if (clipRect.y0 > scanMinY) scanMinY = clipRect.y0;
+            if (clipRect.y1 - 1 < scanMaxY) scanMaxY = clipRect.y1 - 1;
+        }
 
         // Process each scanline
-        for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        for (let y = scanMinY; y <= scanMaxY; y++) {
             // Find all intersections with this scanline
             const intersections = [];
             for (const poly of transformedPolygons) {
@@ -18665,8 +18678,12 @@ class PolygonFiller {
                     // ceil(left)..floor(right) inclusive endX made a path-filled
                     // rect 1px wider on the right than fillRect / clip / drawImage
                     // / HTML5.
-                    const startX = Math.max(0, Math.ceil(intersection.x - 0.5));
-                    const endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                    let startX = Math.max(0, Math.ceil(intersection.x - 0.5));
+                    let endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                    // Tier-0 rect clip: clamp the span to the clip rect's X range;
+                    // clipBuffer is null so the unclipped write branch below runs.
+                    if (startX < clipX0) startX = clipX0;
+                    if (endX > clipX1m1) endX = clipX1m1;
 
                     if (startX <= endX) {
                         // Direct span fill with 32-bit writes
@@ -18718,7 +18735,8 @@ class PolygonFiller {
         globalAlpha,
         subPixelOpacity,
         composite,
-        sourceMask
+        sourceMask,
+        clipRect = null
     ) {
         // Mark path-based rendering for testing (helps verify direct rendering is used when expected)
         // Check for Context2D existence since PolygonFiller may be used in isolation (e.g., unit tests)
@@ -18731,9 +18749,14 @@ class PolygonFiller {
 
         // Find bounding box for optimization
         const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
+        let scanMinY = bounds.minY, scanMaxY = bounds.maxY;
+        if (clipRect) { // tier-0: only scanlines inside the clip rect's Y range
+            if (clipRect.y0 > scanMinY) scanMinY = clipRect.y0;
+            if (clipRect.y1 - 1 < scanMaxY) scanMaxY = clipRect.y1 - 1;
+        }
 
         // Process each scanline
-        for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        for (let y = scanMinY; y <= scanMaxY; y++) {
             PolygonFiller._fillScanline(
                 surface,
                 y,
@@ -18745,7 +18768,8 @@ class PolygonFiller {
                 globalAlpha,
                 subPixelOpacity,
                 composite,
-                sourceMask
+                sourceMask,
+                clipRect
             );
         }
     }
@@ -18801,7 +18825,8 @@ class PolygonFiller {
         globalAlpha,
         subPixelOpacity = 1.0,
         composite = 'source-over',
-        sourceMask = null
+        sourceMask = null,
+        clipRect = null
     ) {
         const intersections = [];
 
@@ -18825,7 +18850,8 @@ class PolygonFiller {
             globalAlpha,
             subPixelOpacity,
             composite,
-            sourceMask
+            sourceMask,
+            clipRect
         );
     }
 
@@ -18888,9 +18914,14 @@ class PolygonFiller {
         globalAlpha,
         subPixelOpacity = 1.0,
         composite = 'source-over',
-        sourceMask = null
+        sourceMask = null,
+        clipRect = null
     ) {
         if (intersections.length === 0) return;
+        // Tier-0 rect clip: clamp each span's X to the clip rect (clipMask is null;
+        // caller has already restricted Y to the rect). Byte-identical (Stage 1).
+        const clipX0 = clipRect ? clipRect.x0 : 0;
+        const clipX1m1 = clipRect ? clipRect.x1 - 1 : (surface.width - 1);
 
         let windingNumber = 0;
         let inside = false;
@@ -18918,8 +18949,10 @@ class PolygonFiller {
                 // endX made e.g. an unclipped desktop PATTERN fill reach one
                 // column past the clipped morphs drawn over it. A column x is in
                 // [left, right) iff left <= x+0.5 < right.
-                const startX = Math.max(0, Math.ceil(intersection.x - 0.5));
-                const endX = Math.min(surface.width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                let startX = Math.max(0, Math.ceil(intersection.x - 0.5));
+                let endX = Math.min(surface.width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                if (startX < clipX0) startX = clipX0;
+                if (endX > clipX1m1) endX = clipX1m1;
 
                 PolygonFiller._fillPixelSpan(
                     surface,
@@ -23583,6 +23616,10 @@ class Rasterizer {
             globalAlpha: params.globalAlpha !== undefined ? params.globalAlpha : 1.0,
             transform: params.transform || Transform2D.IDENTITY,
             clipMask: params.clipMask || null, // Stencil-based clipping
+            // Tier-0 rectangular clip (S3): { x0, y0, x1, y1 } half-open device
+            // ints, or null. When set, clipMask is null and the renderer clamps
+            // its draw extent to this rect instead of per-pixel bit-testing.
+            clipRect: params.clipRect || null,
             fillStyle: params.fillStyle || null,
             strokeStyle: params.strokeStyle || null,
             sourceMask: null, // Will be initialized if needed for canvas-wide compositing
@@ -23769,7 +23806,9 @@ class Rasterizer {
                 this._currentOp.clipMask,
                 this._currentOp.globalAlpha,
                 1.0,
-                this._currentOp.composite
+                this._currentOp.composite,
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
         }
     }
@@ -23955,7 +23994,8 @@ class Rasterizer {
                 this._currentOp.globalAlpha,
                 1.0,
                 this._currentOp.composite,
-                this._currentOp.sourceMask
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
 
             // Perform canvas-wide compositing pass
@@ -23971,7 +24011,9 @@ class Rasterizer {
                 this._currentOp.clipMask,
                 this._currentOp.globalAlpha,
                 1.0,
-                this._currentOp.composite
+                this._currentOp.composite,
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
         }
     }
@@ -24028,7 +24070,8 @@ class Rasterizer {
                 this._currentOp.globalAlpha,
                 subPixelOpacity,
                 this._currentOp.composite,
-                this._currentOp.sourceMask
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
 
             // Perform canvas-wide compositing pass
@@ -24044,7 +24087,9 @@ class Rasterizer {
                 this._currentOp.clipMask,
                 this._currentOp.globalAlpha,
                 subPixelOpacity,
-                this._currentOp.composite
+                this._currentOp.composite,
+                this._currentOp.sourceMask,
+                this._currentOp.clipRect
             );
         }
     }
@@ -24143,16 +24188,28 @@ class Rasterizer {
         const bottomRight = transform.transformPoint({ x: destX + destWidth, y: destY + destHeight });
 
         // Find bounding box in device space
-        const minX = Math.max(0, Math.floor(Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
-        const maxX = Math.min(
+        let minX = Math.max(0, Math.floor(Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
+        let maxX = Math.min(
             this._surface.width - 1,
             Math.ceil(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x))
         );
-        const minY = Math.max(0, Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
-        const maxY = Math.min(
+        let minY = Math.max(0, Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
+        let maxY = Math.min(
             this._surface.height - 1,
             Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y))
         );
+
+        // Tier-0 rect clip (S3): clamp the iteration extent to the clip rect and
+        // draw unconditionally (clipMask is null in this case). _clipRect is the
+        // half-open [x0,x1)×[y0,y1) set of visible pixels — byte-identical to the
+        // bitmask, which the inner loop would otherwise reject pixel-by-pixel.
+        const clipRect = this._currentOp.clipRect;
+        if (clipRect) {
+            if (clipRect.x0 > minX) minX = clipRect.x0;
+            if (clipRect.y0 > minY) minY = clipRect.y0;
+            if (clipRect.x1 - 1 < maxX) maxX = clipRect.x1 - 1;
+            if (clipRect.y1 - 1 < maxY) maxY = clipRect.y1 - 1;
+        }
 
         // Get inverse transform for mapping device pixels back to source
         const inverseTransform = transform.invert();
@@ -24324,6 +24381,12 @@ class Context2D {
     // Reset before each test, check after to verify direct rendering was used
     static _pathBasedRenderingUsed = false;
 
+    // Test-only escape hatch: when true, clip() always builds the legacy bitmask
+    // and never takes the tier-0 rect fast path. Lets a harness render the same
+    // scene both ways and assert the tier-0 path is byte-identical. Never set in
+    // production. (See plans/clipping-optimization.md §9 Stage 2.)
+    static _disableTier0Clip = false;
+
     /**
      * Reset the path-based rendering tracking flag
      * Call before running tests that should use direct rendering
@@ -24387,6 +24450,19 @@ class Context2D {
 
         // Stencil-based clipping system (only clipping mechanism)
         this._clipMask = null; // ClipMask instance for 1-bit per pixel clipping
+
+        // Tier-0 rectangular-clip fast path (see plans/clipping-optimization.md §5).
+        // When the effective clip region is exactly an axis-aligned rectangle we
+        // track it analytically and skip the per-pixel bitmask entirely.
+        //   _clipRect  : { x0, y0, x1, y1 } device-space integer coords, half-open
+        //                [x0, x1) × [y0, y1), clamped to the surface; null = untracked.
+        //   _clipIsRect: true  ⇔ _clipRect describes the ENTIRE clip exactly
+        //                        (the bitmask need not be consulted).
+        //                false ⇔ non-rect clip in effect (bitmask is authoritative).
+        // NOTE (Stage 1): these are bookkeeping only — _clipMask remains the sole
+        // clip mechanism consulted by the renderers until Stage 2 wires them up.
+        this._clipRect = null;
+        this._clipIsRect = false;
 
         // Cached state flags for direct rendering eligibility (performance optimization)
         this._noShadow = true; // Updated when shadow properties change
@@ -24488,6 +24564,12 @@ class Context2D {
             fillStyle: this._fillStyle, // Paint sources are immutable, safe to share
             strokeStyle: this._strokeStyle, // Paint sources are immutable, safe to share
             clipMask: this._clipMask ? this._clipMask.clone() : null, // Deep copy of clip mask
+            // Tier-0 rect state. _clipRect objects are immutable (replaced
+            // wholesale, never mutated in place), so the reference is safe to
+            // share across snapshots — no clone needed (Stage 3 will drop the
+            // clipMask clone above for the tier-0 case).
+            clipRect: this._clipRect,
+            clipIsRect: this._clipIsRect,
             lineWidth: this._lineWidth,
             lineJoin: this.lineJoin,
             lineCap: this.lineCap,
@@ -24531,6 +24613,11 @@ class Context2D {
 
         // Restore clipMask (may be null)
         this._clipMask = snapshot.clipMask;
+
+        // Restore tier-0 rect state (older snapshots predating this field restore
+        // to the no-tier-0 default).
+        this._clipRect = snapshot.clipRect !== undefined ? snapshot.clipRect : null;
+        this._clipIsRect = snapshot.clipIsRect !== undefined ? snapshot.clipIsRect : false;
 
         this._lineWidth = snapshot.lineWidth;
         this.lineJoin = snapshot.lineJoin;
@@ -24998,11 +25085,13 @@ class Context2D {
 
         // Path-based rendering: gradients, patterns, non-source-over, shadows, clipping
         Context2D._markPathBasedRendering();
+        const tier0ClipRect = this._tier0ClipRect();
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: this._transform,
-            clipMask: this._clipMask,
+            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipRect: tier0ClipRect,
             fillStyle: this._fillStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
@@ -25110,11 +25199,13 @@ class Context2D {
         rectPath.closePath();
 
         // Stroke the path using existing stroke infrastructure
+        const tier0ClipRect = this._tier0ClipRect();
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: this._transform,
-            clipMask: this._clipMask,
+            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipRect: tier0ClipRect,
             strokeStyle: this._strokeStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
@@ -25838,11 +25929,13 @@ class Context2D {
         // Mark path-based rendering for testing (fill() has no direct rendering currently)
         Context2D._markPathBasedRendering();
 
+        const tier0ClipRect = this._tier0ClipRect();
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: opTransform,
-            clipMask: this._clipMask,
+            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipRect: tier0ClipRect,
             fillStyle: this._fillStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
@@ -25883,11 +25976,13 @@ class Context2D {
         // Direct rendering available via dedicated methods: strokeCircle(), strokeRect(), etc.
         Context2D._markPathBasedRendering();
 
+        const tier0ClipRect = this._tier0ClipRect();
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: opTransform,
-            clipMask: this._clipMask,
+            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipRect: tier0ClipRect,
             strokeStyle: this._strokeStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
@@ -26109,6 +26204,121 @@ class Context2D {
     }
 
     /**
+     * The tier-0 clip rect to hand a renderer for the CURRENT draw, or null if
+     * the draw must use the bitmask (_clipMask) instead.
+     *
+     * Tier-0 (clamp draw extent to the rect + pass clipBuffer=null) is byte-
+     * identical to the bitmask ONLY when the clip's sole effect is to restrict
+     * which pixels are written. That holds for source-over (and the other
+     * per-pixel Porter-Duff ops that touch only source-covered pixels) with no
+     * shadow. It does NOT hold for:
+     *   - canvas-wide composite ops (copy / destination-atop / source-in /
+     *     source-out / destination-in): these also CLEAR pixels the source
+     *     doesn't cover, so the clip must confine that erase — a real mask.
+     *   - shadows: the blurred shadow spreads beyond the shape and must be
+     *     clipped too; the mask handles that uniformly.
+     * We gate on the cached _isSourceOver (⊂ non-canvas-wide) + _noShadow, which
+     * is conservative, correct, and covers 100% of Fizzygum's clipped traffic.
+     * Evaluated per-draw because composite/shadow can change after clip().
+     * @private
+     */
+    _tier0ClipRect() {
+        return (this._clipIsRect && this._isSourceOver && this._noShadow)
+            ? this._clipRect : null;
+    }
+
+    /**
+     * Tier-0 clip detection: does this flattened path collapse to a single
+     * axis-aligned rectangle in device space? If so, return the exact set of
+     * pixels the bitmask path WOULD expose, as a half-open integer rect
+     * { x0, y0, x1, y1 } clamped to the surface. Otherwise return null.
+     *
+     * BYTE-IDENTICAL CONTRACT — the returned rect must expose EXACTLY the pixels
+     * that PolygonFiller.fillPolygonsToClipMask would set for this path, so a
+     * downstream tier-0 draw is pixel-identical to a bitmask-clipped draw:
+     *   - X (per _fillClipMaskSpans): a span [left, right) sets columns
+     *     [ceil(left − 0.5), ceil(right − 0.5)).
+     *   - Y (per _findPolygonIntersections' half-open `y >= minY && y < maxY`
+     *     edge test sampled at y+0.5): rows [ceil(top − 0.5), ceil(bottom − 0.5)).
+     * Both axes therefore round with ceil(v − 0.5). (This supersedes the
+     * `ceil(min)/floor(max)+1` sketch in the plan's §5.2, which encoded the older
+     * inclusive-endX mask that over-exposed the right/bottom edge column.)
+     *
+     * Corners are transformed with the SAME transform.transformPoint call that
+     * fillPolygonsToClipMask uses, so floating-point rounding is identical.
+     *
+     * @param {Array<Array<{x,y}>>} polygons - flattened path polygons (untransformed)
+     * @param {Transform2D} transform - the transform the mask would be built under
+     * @param {number} width - surface width (for clamping)
+     * @param {number} height - surface height (for clamping)
+     * @returns {{x0:number,y0:number,x1:number,y1:number}|null}
+     * @private
+     */
+    static _detectAxisAlignedRect(polygons, transform, width, height) {
+        if (polygons.length !== 1) return null;
+        const src = polygons[0];
+        if (src.length < 4) return null; // fewer than 4 points can't be a rect
+
+        // Transform vertices exactly as fillPolygonsToClipMask does, collapsing
+        // consecutive duplicates and a closing vertex equal to the first (a
+        // rect() path flattens to 5 pts: the 4 corners + a repeated start; a
+        // moveTo+4×lineTo+closePath likewise carries a closing duplicate).
+        const v = [];
+        for (let i = 0; i < src.length; i++) {
+            const p = transform.transformPoint(src[i]);
+            const last = v.length ? v[v.length - 1] : null;
+            if (last && last.x === p.x && last.y === p.y) continue; // consecutive dup
+            v.push(p);
+        }
+        if (v.length > 1) {
+            const first = v[0], last = v[v.length - 1];
+            if (first.x === last.x && first.y === last.y) v.pop(); // closing dup
+        }
+        if (v.length !== 4) return null; // exactly 4 distinct corners for a rect
+
+        // Every edge (incl. the wrap-around) must be axis-aligned: exactly one of
+        // dx/dy is zero. A diagonal edge means a rotated rect, a triangle, or a
+        // bowtie — all conservatively rejected to the bitmask path (their fill
+        // region is not their bounding box, so tier-0 would not be byte-identical).
+        for (let i = 0; i < 4; i++) {
+            const a = v[i], b = v[(i + 1) % 4];
+            const horiz = (a.y === b.y);
+            const vert = (a.x === b.x);
+            if (horiz === vert) return null; // both (degenerate) or neither (diagonal)
+        }
+
+        const xMin = Math.min(v[0].x, v[1].x, v[2].x, v[3].x);
+        const xMax = Math.max(v[0].x, v[1].x, v[2].x, v[3].x);
+        const yMin = Math.min(v[0].y, v[1].y, v[2].y, v[3].y);
+        const yMax = Math.max(v[0].y, v[1].y, v[2].y, v[3].y);
+        // (xMin<xMax and yMin<yMax are implied: 4 distinct corners joined by
+        //  axis-aligned edges span both axes.)
+
+        // Rasterize to the same half-open pixel rect the mask would expose, then
+        // clamp to the surface (mask spans clamp to [0, width-1] / [0, height-1]).
+        let x0 = Math.max(0, Math.ceil(xMin - 0.5));
+        let y0 = Math.max(0, Math.ceil(yMin - 0.5));
+        let x1 = Math.min(width, Math.ceil(xMax - 0.5));
+        let y1 = Math.min(height, Math.ceil(yMax - 0.5));
+        if (x1 < x0) x1 = x0;
+        if (y1 < y0) y1 = y0;
+        return { x0, y0, x1, y1 };
+    }
+
+    /**
+     * Intersect two half-open integer rects. A degenerate (empty) result keeps
+     * x0/y0 as the lower bound with x1<=x0 / y1<=y0 so consumers trivial-reject.
+     * @private
+     */
+    static _intersectRect(a, b) {
+        const x0 = Math.max(a.x0, b.x0);
+        const y0 = Math.max(a.y0, b.y0);
+        const x1 = Math.min(a.x1, b.x1);
+        const y1 = Math.min(a.y1, b.y1);
+        return { x0, y0, x1: (x1 < x0 ? x0 : x1), y1: (y1 < y0 ? y0 : y1) };
+    }
+
+    /**
      * Enhanced clipping support with stencil buffer intersection
      *
      * Implements HTML5 Canvas-compatible clipping with proper intersection semantics.
@@ -26135,6 +26345,13 @@ class Context2D {
         // Flatten path and fill to temporary clip buffer
         const polygons = PathFlattener.flattenPath(pathToClip);
 
+        // Tier-0 detection — evaluated BEFORE we mutate the clip state below, since
+        // it depends on whether the PRIOR clip was itself a pure rect.
+        const detectedRect = Context2D._detectAxisAlignedRect(
+            polygons, opTransform, this.surface.width, this.surface.height);
+        const priorWasPureRectOrEmpty =
+            (this._clipMask === null && this._clipRect === null) || this._clipIsRect;
+
         // Delegate to PolygonFiller for scanline rendering
         PolygonFiller.fillPolygonsToClipMask(tempClipMask, polygons, clipRule, opTransform);
 
@@ -26145,6 +26362,24 @@ class Context2D {
         } else {
             // First clip - use the temporary buffer as the new clip mask
             this._clipMask = tempClipMask;
+        }
+
+        // Maintain the tier-0 rect state. When the composed clip is exactly an
+        // axis-aligned rect, wired renderers consult _clipRect and pass
+        // clipBuffer=null (byte-identical, since _clipRect exposes exactly the
+        // mask's visible pixels — proven in Stage 1). While consumers are still
+        // being wired the bitmask above stays as a BACKSTOP so any not-yet-wired
+        // renderer still clips correctly; a later phase drops the mask build for
+        // tier-0 to bank the allocation win. The _disableTier0Clip flag forces the
+        // legacy mask path (A/B harness compares the two).
+        if (detectedRect && priorWasPureRectOrEmpty && !Context2D._disableTier0Clip) {
+            this._clipRect = this._clipRect
+                ? Context2D._intersectRect(this._clipRect, detectedRect)
+                : detectedRect;
+            this._clipIsRect = true;
+        } else {
+            this._clipIsRect = false;
+            this._clipRect = null; // bitmask authoritative; no bbox tracked
         }
 
         // clip() does not auto-stroke the path (per HTML5 Canvas spec)
@@ -26168,6 +26403,8 @@ class Context2D {
         // Mark path-based rendering for testing (drawImage() has no direct rendering currently)
         Context2D._markPathBasedRendering();
 
+        const tier0ClipRect = this._tier0ClipRect();
+
         // Set up rasterizer operation
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
@@ -26180,7 +26417,12 @@ class Context2D {
                 this._transform.e,
                 this._transform.f
             ]),
-            clipMask: this._clipMask,
+            // Tier-0 rect clip: hand the renderer the rect (it clamps its extent)
+            // and null the mask; otherwise the bitmask path is unchanged. (Gated
+            // to source-over + no-shadow — see _tier0ClipRect; here _noShadow is
+            // still true, shadows are handled by the ShadowPipeline wrapper.)
+            clipMask: tier0ClipRect ? null : this._clipMask,
+            clipRect: tier0ClipRect,
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
