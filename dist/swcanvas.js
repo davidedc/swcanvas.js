@@ -18966,6 +18966,15 @@ class PolygonFiller {
         composite = 'source-over',
         sourceMask = null
     ) {
+        // For a solid Color the paint evaluation is independent of pixel position,
+        // so evaluate it ONCE per span rather than once per pixel (this loop is one
+        // of the hottest paths). Gradients/patterns still evaluate per pixel below.
+        // (x,y are ignored by _evaluatePaintSource's Color branch; startX is passed
+        // only as a valid coordinate.)
+        const solidColor = (paintSource instanceof Color)
+            ? PolygonFiller._evaluatePaintSource(paintSource, startX, y, transform, globalAlpha, subPixelOpacity)
+            : null;
+
         for (let x = startX; x <= endX; x++) {
             // Check stencil buffer clipping
             if (clipMask && clipMask.isPixelClipped(x, y)) {
@@ -18979,15 +18988,17 @@ class PolygonFiller {
                 continue;
             }
 
-            // Evaluate paint source at pixel position
-            const pixelColor = PolygonFiller._evaluatePaintSource(
-                paintSource,
-                x,
-                y,
-                transform,
-                globalAlpha,
-                subPixelOpacity
-            );
+            // Evaluate paint source at pixel position (hoisted for solid colors)
+            const pixelColor = solidColor !== null
+                ? solidColor
+                : PolygonFiller._evaluatePaintSource(
+                    paintSource,
+                    x,
+                    y,
+                    transform,
+                    globalAlpha,
+                    subPixelOpacity
+                );
 
             const offset = y * surface.stride + x * 4;
             PolygonFiller._blendPixel(surface, offset, pixelColor, composite);
@@ -23476,6 +23487,11 @@ class BootstrapText {
  * Converted to ES6 class following Joshua Bloch's effective OO principles.
  * Encapsulates rendering state and provides clear separation of concerns.
  */
+// Composite operations that affect pixels outside the source region and so need
+// a canvas-wide pass. Hoisted to a module-const Set (was a fresh array + .includes
+// allocated on every draw op via _requiresCanvasWideCompositing).
+const CANVAS_WIDE_COMPOSITE_OPS = new Set(['destination-atop', 'destination-in', 'source-in', 'source-out', 'copy']);
+
 class Rasterizer {
     /**
      * Create a Rasterizer
@@ -23585,8 +23601,7 @@ class Rasterizer {
      * @private
      */
     _requiresCanvasWideCompositing(operation) {
-        const globalOps = ['destination-atop', 'destination-in', 'source-in', 'source-out', 'copy'];
-        return globalOps.includes(operation);
+        return CANVAS_WIDE_COMPOSITE_OPS.has(operation);
     }
 
     /**
@@ -26048,18 +26063,6 @@ class Context2D {
 
     // Image rendering
     drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh) {
-        // Debug logging for browser troubleshooting
-        if (typeof console !== 'undefined' && console.log) {
-            console.log('Core drawImage called with:', {
-                imageType: image ? image.constructor.name : 'null',
-                hasWidth: image ? typeof image.width : 'N/A',
-                hasHeight: image ? typeof image.height : 'N/A',
-                hasData: image ? !!image.data : 'N/A',
-                dataType: image && image.data ? image.data.constructor.name : 'N/A',
-                dataInstanceCheck: image && image.data ? image.data instanceof Uint8ClampedArray : 'N/A'
-            });
-        }
-
         // Validate ImageLike object at API level
         if (!image || typeof image !== 'object') {
             throw new Error('First argument must be an ImageLike object');

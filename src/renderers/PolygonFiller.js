@@ -429,6 +429,15 @@ class PolygonFiller {
         composite = 'source-over',
         sourceMask = null
     ) {
+        // For a solid Color the paint evaluation is independent of pixel position,
+        // so evaluate it ONCE per span rather than once per pixel (this loop is one
+        // of the hottest paths). Gradients/patterns still evaluate per pixel below.
+        // (x,y are ignored by _evaluatePaintSource's Color branch; startX is passed
+        // only as a valid coordinate.)
+        const solidColor = (paintSource instanceof Color)
+            ? PolygonFiller._evaluatePaintSource(paintSource, startX, y, transform, globalAlpha, subPixelOpacity)
+            : null;
+
         for (let x = startX; x <= endX; x++) {
             // Check stencil buffer clipping
             if (clipMask && clipMask.isPixelClipped(x, y)) {
@@ -442,15 +451,17 @@ class PolygonFiller {
                 continue;
             }
 
-            // Evaluate paint source at pixel position
-            const pixelColor = PolygonFiller._evaluatePaintSource(
-                paintSource,
-                x,
-                y,
-                transform,
-                globalAlpha,
-                subPixelOpacity
-            );
+            // Evaluate paint source at pixel position (hoisted for solid colors)
+            const pixelColor = solidColor !== null
+                ? solidColor
+                : PolygonFiller._evaluatePaintSource(
+                    paintSource,
+                    x,
+                    y,
+                    transform,
+                    globalAlpha,
+                    subPixelOpacity
+                );
 
             const offset = y * surface.stride + x * 4;
             PolygonFiller._blendPixel(surface, offset, pixelColor, composite);

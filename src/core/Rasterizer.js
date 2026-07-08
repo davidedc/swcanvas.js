@@ -5,6 +5,11 @@
  * Converted to ES6 class following Joshua Bloch's effective OO principles.
  * Encapsulates rendering state and provides clear separation of concerns.
  */
+// Composite operations that affect pixels outside the source region and so need
+// a canvas-wide pass. Hoisted to a module-const Set (was a fresh array + .includes
+// allocated on every draw op via _requiresCanvasWideCompositing).
+const CANVAS_WIDE_COMPOSITE_OPS = new Set(['destination-atop', 'destination-in', 'source-in', 'source-out', 'copy']);
+
 class Rasterizer {
     /**
      * Create a Rasterizer
@@ -114,8 +119,7 @@ class Rasterizer {
      * @private
      */
     _requiresCanvasWideCompositing(operation) {
-        const globalOps = ['destination-atop', 'destination-in', 'source-in', 'source-out', 'copy'];
-        return globalOps.includes(operation);
+        return CANVAS_WIDE_COMPOSITE_OPS.has(operation);
     }
 
     /**

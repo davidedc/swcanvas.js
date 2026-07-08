@@ -1850,18 +1850,6 @@ class Context2D {
 
     // Image rendering
     drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh) {
-        // Debug logging for browser troubleshooting
-        if (typeof console !== 'undefined' && console.log) {
-            console.log('Core drawImage called with:', {
-                imageType: image ? image.constructor.name : 'null',
-                hasWidth: image ? typeof image.width : 'N/A',
-                hasHeight: image ? typeof image.height : 'N/A',
-                hasData: image ? !!image.data : 'N/A',
-                dataType: image && image.data ? image.data.constructor.name : 'N/A',
-                dataInstanceCheck: image && image.data ? image.data instanceof Uint8ClampedArray : 'N/A'
-            });
-        }
-
         // Validate ImageLike object at API level
         if (!image || typeof image !== 'object') {
             throw new Error('First argument must be an ImageLike object');
