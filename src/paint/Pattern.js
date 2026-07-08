@@ -84,6 +84,22 @@ class Pattern {
      * @private
      */
     _samplePattern(x, y) {
+        const offset = this._sampleOffset(x, y);
+        if (offset < 0) return Color.transparent;
+        const data = this._imageData.data;
+        return new Color(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
+    }
+
+    /**
+     * Byte offset into `_imageData.data` for pattern-space coordinate (x, y),
+     * applying the repetition + nearest-neighbour + clamp logic. Returns -1 when
+     * the sample is transparent (a non-repeat axis out of bounds). This is the
+     * shared core of `_samplePattern` and the hoisted-inverse fast path
+     * (`sampleOffsetWithInverse`) — keeping ONE copy of the sampling arithmetic
+     * so the fast path is byte-identical to the per-pixel path.
+     * @private
+     */
+    _sampleOffset(x, y) {
         const width = this._imageData.width;
         const height = this._imageData.height;
 
@@ -99,28 +115,19 @@ class Pattern {
             case 'repeat-x':
                 sampleX = this._repeatCoordinate(x, width);
                 sampleY = y;
-                // Check if Y is out of bounds
-                if (y < 0 || y >= height) {
-                    return Color.transparent; // Transparent
-                }
+                if (y < 0 || y >= height) return -1; // Transparent
                 break;
 
             case 'repeat-y':
                 sampleX = x;
                 sampleY = this._repeatCoordinate(y, height);
-                // Check if X is out of bounds
-                if (x < 0 || x >= width) {
-                    return Color.transparent; // Transparent
-                }
+                if (x < 0 || x >= width) return -1; // Transparent
                 break;
 
             case 'no-repeat':
                 sampleX = x;
                 sampleY = y;
-                // Check if coordinates are out of bounds
-                if (x < 0 || x >= width || y < 0 || y >= height) {
-                    return Color.transparent; // Transparent
-                }
+                if (x < 0 || x >= width || y < 0 || y >= height) return -1; // Transparent
                 break;
         }
 
@@ -132,14 +139,42 @@ class Pattern {
         const clampedX = Math.max(0, Math.min(width - 1, pixelX));
         const clampedY = Math.max(0, Math.min(height - 1, pixelY));
 
-        // Sample pixel from image data
-        const offset = (clampedY * width + clampedX) * 4;
-        const r = this._imageData.data[offset];
-        const g = this._imageData.data[offset + 1];
-        const b = this._imageData.data[offset + 2];
-        const a = this._imageData.data[offset + 3];
+        return (clampedY * width + clampedX) * 4;
+    }
 
-        return new Color(r, g, b, a);
+    /**
+     * Precompute the CONSTANT device→pattern inverse transform for a fill, so the
+     * per-pixel sampler doesn't recompute a matrix multiply + inversion for every
+     * pixel (they are invariant across a fill). Returns null when the combined
+     * transform is non-invertible — matching `getColorForPixel`'s catch, which
+     * yields a fully transparent fill. Hoist this out of the pixel loop.
+     * @param {Transform2D} canvasTransform
+     * @returns {Transform2D|null}
+     */
+    inverseForDevice(canvasTransform) {
+        try {
+            return canvasTransform.multiply(this._patternTransform).invert();
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
+     * Byte offset into `_imageData.data` for DEVICE pixel (x, y), using a
+     * precomputed inverse from `inverseForDevice`. Returns -1 for a transparent
+     * sample (null inverse, or a non-repeat axis out of bounds). Byte-identical to
+     * `getColorForPixel` → `_samplePattern`, minus the per-pixel transform work.
+     * @param {Transform2D|null} inverse
+     * @param {number} x
+     * @param {number} y
+     * @returns {number}
+     */
+    sampleOffsetWithInverse(inverse, x, y) {
+        if (inverse === null) return -1;
+        // Inline transformPoint (a*x + c*y + e, b*x + d*y + f) — no Point alloc.
+        const px = inverse.a * x + inverse.c * y + inverse.e;
+        const py = inverse.b * x + inverse.d * y + inverse.f;
+        return this._sampleOffset(px, py);
     }
 
     /**

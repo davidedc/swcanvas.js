@@ -515,6 +515,53 @@ class PolygonFiller {
             return;
         }
 
+        // Pattern fast path (analogous to the S4 solid path). getColorForPixel
+        // recomputes a matrix MULTIPLY + INVERSION and allocates a Color/Point PER
+        // PIXEL, even though the device→pattern inverse is invariant across the fill
+        // — the dominant cost of a patterned wallpaper. Hoist the inverse once,
+        // sample by byte offset, and blend source-over in place with no per-pixel
+        // allocation. Byte-identical to the general path below: same sample offset
+        // (same hoisted inverse), same withGlobalAlpha alpha, and the same
+        // source-over arithmetic as CompositeOperations.blendPixel.
+        if (paintSource instanceof Pattern && composite === 'source-over' && !sourceMask) {
+            const inv = paintSource.inverseForDevice(transform);
+            const pdata = paintSource._imageData.data;
+            for (let x = startX; x <= endX; x++) {
+                if (clipMask && clipMask.isPixelClipped(x, y)) continue;
+                const so = paintSource.sampleOffsetWithInverse(inv, x, y);
+                if (so < 0) continue; // transparent sample → dest unchanged
+                // withGlobalAlpha (+ sub-pixel opacity for thin strokes), matching
+                // _evaluatePaintSource: alpha only, source channels untouched.
+                let sa = Math.round(pdata[so + 3] * globalAlpha);
+                if (subPixelOpacity < 1.0) sa = Math.round(sa * subPixelOpacity);
+                if (sa === 0) continue;
+                const sr = pdata[so], sg = pdata[so + 1], sb = pdata[so + 2];
+                const offset = y * stride + x * 4;
+                if (sa === 255) {
+                    data[offset] = sr;
+                    data[offset + 1] = sg;
+                    data[offset + 2] = sb;
+                    data[offset + 3] = 255;
+                } else {
+                    const dstA = data[offset + 3];
+                    if (dstA === 0) {
+                        data[offset] = sr;
+                        data[offset + 1] = sg;
+                        data[offset + 2] = sb;
+                        data[offset + 3] = sa;
+                    } else {
+                        const srcAlpha = sa / 255;
+                        const invSrcAlpha = 1 - srcAlpha;
+                        data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
+                        data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
+                        data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                        data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                    }
+                }
+            }
+            return;
+        }
+
         // General path: gradients/patterns, non-source-over, or canvas-wide (sourceMask) ops.
         for (let x = startX; x <= endX; x++) {
             // Check stencil buffer clipping
