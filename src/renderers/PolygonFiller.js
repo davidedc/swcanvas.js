@@ -526,6 +526,61 @@ class PolygonFiller {
         if (paintSource instanceof Pattern && composite === 'source-over' && !sourceMask) {
             const inv = paintSource.inverseForDevice(transform);
             const pdata = paintSource._imageData.data;
+
+            // W2 — axis-aligned 1:1 integer 'repeat' mapping (the desktop wallpaper:
+            // a device-space fill of a 'repeat' pattern under an integer translate).
+            // The tile ROW is constant across the scanline and the tile COLUMN is an
+            // integer that increments and wraps, so the per-pixel transform + modulo +
+            // floor + clamp all disappear. Byte-identical to the general branch below:
+            // for integer in-range coords _sampleOffset's floor/clamp are no-ops and
+            // _repeatCoordinate(v,size) === ((v % size)+size)%size, which is exactly
+            // the incrementing/wrapping column index here.
+            if (inv !== null && inv.b === 0 && inv.c === 0 && inv.a === 1 && inv.d === 1 &&
+                Number.isInteger(inv.e) && Number.isInteger(inv.f) &&
+                paintSource._repetition === 'repeat') {
+                const tw = paintSource._imageData.width;
+                const th = paintSource._imageData.height;
+                let ry = (y + inv.f) % th; if (ry < 0) ry += th;
+                const rowBase = ry * tw * 4;
+                let cx = (startX + inv.e) % tw; if (cx < 0) cx += tw;
+                for (let x = startX; x <= endX; x++) {
+                    if (!(clipMask && clipMask.isPixelClipped(x, y))) {
+                        const so = rowBase + cx * 4;
+                        let sa = Math.round(pdata[so + 3] * globalAlpha);
+                        if (subPixelOpacity < 1.0) sa = Math.round(sa * subPixelOpacity);
+                        if (sa !== 0) {
+                            const sr = pdata[so], sg = pdata[so + 1], sb = pdata[so + 2];
+                            const offset = y * stride + x * 4;
+                            if (sa === 255) {
+                                data[offset] = sr;
+                                data[offset + 1] = sg;
+                                data[offset + 2] = sb;
+                                data[offset + 3] = 255;
+                            } else {
+                                const dstA = data[offset + 3];
+                                if (dstA === 0) {
+                                    data[offset] = sr;
+                                    data[offset + 1] = sg;
+                                    data[offset + 2] = sb;
+                                    data[offset + 3] = sa;
+                                } else {
+                                    const srcAlpha = sa / 255;
+                                    const invSrcAlpha = 1 - srcAlpha;
+                                    data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
+                                    data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
+                                    data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                                    data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                                }
+                            }
+                        }
+                    }
+                    if (++cx === tw) cx = 0; // advance the tile column, tracking device x
+                }
+                return;
+            }
+
+            // W1 — general hoisted-inverse pattern fill (rotated / scaled / fractional
+            // translate / non-'repeat'): still one inversion per span, sampled by offset.
             for (let x = startX; x <= endX; x++) {
                 if (clipMask && clipMask.isPixelClipped(x, y)) continue;
                 const so = paintSource.sampleOffsetWithInverse(inv, x, y);
