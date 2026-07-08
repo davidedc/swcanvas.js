@@ -438,6 +438,51 @@ class PolygonFiller {
             ? PolygonFiller._evaluatePaintSource(paintSource, startX, y, transform, globalAlpha, subPixelOpacity)
             : null;
 
+        const data = surface.data;
+        const stride = surface.stride;
+
+        // S4 fast path: a solid Color under source-over (Fizzygum's ~entire fill
+        // traffic). Blend in place with the source channels + alpha hoisted out of
+        // the loop — no per-pixel {r,g,b,a} object and no string switch. This is
+        // byte-identical to CompositeOperations.blendPixel's source-over path:
+        //   srcA===0   -> dest unchanged (so a transparent span is a whole no-op)
+        //   srcA===255 -> write source
+        //   dstA===0   -> write source
+        //   else       -> Math.round(src*a + dst*(1-a)) per channel, a = srcA/255
+        // sourceMask is only ever set for canvas-wide (non-source-over) ops, so the
+        // !sourceMask guard is belt-and-suspenders (source-over => sourceMask null).
+        if (solidColor !== null && composite === 'source-over' && !sourceMask) {
+            const sr = solidColor.r, sg = solidColor.g, sb = solidColor.b, sa = solidColor.a;
+            if (sa === 0) return;
+            const srcAlpha = sa / 255;
+            const invSrcAlpha = 1 - srcAlpha;
+            for (let x = startX; x <= endX; x++) {
+                if (clipMask && clipMask.isPixelClipped(x, y)) continue;
+                const offset = y * stride + x * 4;
+                if (sa === 255) {
+                    data[offset] = sr;
+                    data[offset + 1] = sg;
+                    data[offset + 2] = sb;
+                    data[offset + 3] = 255;
+                } else {
+                    const dstA = data[offset + 3];
+                    if (dstA === 0) {
+                        data[offset] = sr;
+                        data[offset + 1] = sg;
+                        data[offset + 2] = sb;
+                        data[offset + 3] = sa;
+                    } else {
+                        data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
+                        data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
+                        data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                        data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                    }
+                }
+            }
+            return;
+        }
+
+        // General path: gradients/patterns, non-source-over, or canvas-wide (sourceMask) ops.
         for (let x = startX; x <= endX; x++) {
             // Check stencil buffer clipping
             if (clipMask && clipMask.isPixelClipped(x, y)) {
@@ -463,7 +508,7 @@ class PolygonFiller {
                     subPixelOpacity
                 );
 
-            const offset = y * surface.stride + x * 4;
+            const offset = y * stride + x * 4;
             PolygonFiller._blendPixel(surface, offset, pixelColor, composite);
         }
     }

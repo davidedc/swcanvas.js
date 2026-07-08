@@ -629,8 +629,28 @@ class Rasterizer {
 
         // Get inverse transform for mapping device pixels back to source
         const inverseTransform = transform.invert();
+        // Hoist the inverse-transform coefficients and apply them as scalars inside
+        // the loop (destPoint = inv * (deviceX, deviceY)) so no {x,y} object is
+        // allocated per pixel. Byte-identical to inverseTransform.transformPoint,
+        // which computes a*x + c*y + e / b*x + d*y + f in exactly this order.
+        const invA = inverseTransform.a, invB = inverseTransform.b, invC = inverseTransform.c;
+        const invD = inverseTransform.d, invE = inverseTransform.e, invF = inverseTransform.f;
 
         const globalAlpha = this._currentOp.globalAlpha;
+        const composite = this._currentOp.composite;
+        const clipMask = this._currentOp.clipMask;
+        // Resolve the composite op once. Fizzygum's blit traffic is 100% source-over,
+        // so specialise it inline below (write-in-place, no per-pixel result object
+        // and no string switch); every other op falls back to the general
+        // CompositeOperations.blendPixel path, unchanged.
+        const isSourceOver = (composite === 'source-over');
+        const surfaceData = this._surface.data;
+        const surfaceStride = this._surface.stride;
+        const imgData = imageData.data;
+        const imgWidth = imageData.width;
+        const imgHeight = imageData.height;
+        const destXMax = destX + destWidth;
+        const destYMax = destY + destHeight;
 
         // Precompute source-to-dest scale factors. When destWidth === sourceWidth
         // (the same-size 1:1 blit, e.g., the per-glyph + scratch-to-main
@@ -652,19 +672,21 @@ class Rasterizer {
         for (let deviceY = minY; deviceY <= maxY; deviceY++) {
             for (let deviceX = minX; deviceX <= maxX; deviceX++) {
                 // Check stencil clipping
-                if (this._currentOp.clipMask && this._isPixelClipped(deviceX, deviceY)) {
+                if (clipMask && this._isPixelClipped(deviceX, deviceY)) {
                     continue;
                 }
 
-                // Transform device pixel back to destination space
-                const destPoint = inverseTransform.transformPoint({ x: deviceX, y: deviceY });
+                // Transform device pixel back to destination space (scalar form of
+                // inverseTransform.transformPoint — same a*x+c*y+e / b*x+d*y+f order)
+                const destPointX = invA * deviceX + invC * deviceY + invE;
+                const destPointY = invB * deviceX + invD * deviceY + invF;
 
                 // Check if we're inside the destination rectangle
                 if (
-                    destPoint.x < destX ||
-                    destPoint.x >= destX + destWidth ||
-                    destPoint.y < destY ||
-                    destPoint.y >= destY + destHeight
+                    destPointX < destX ||
+                    destPointX >= destXMax ||
+                    destPointY < destY ||
+                    destPointY >= destYMax
                 ) {
                     continue;
                 }
@@ -672,24 +694,24 @@ class Rasterizer {
                 // Map destination coordinates to source coordinates.
                 // See the xScale/yScale comment above for why this form is
                 // FP-stable in the same-size case.
-                const sourceXf = sourceX + (destPoint.x - destX) * xScale;
-                const sourceYf = sourceY + (destPoint.y - destY) * yScale;
+                const sourceXf = sourceX + (destPointX - destX) * xScale;
+                const sourceYf = sourceY + (destPointY - destY) * yScale;
 
                 // Nearest-neighbor sampling
                 const sourcePX = Math.floor(sourceXf);
                 const sourcePY = Math.floor(sourceYf);
 
                 // Bounds check for source coordinates
-                if (sourcePX < 0 || sourcePY < 0 || sourcePX >= imageData.width || sourcePY >= imageData.height) {
+                if (sourcePX < 0 || sourcePY < 0 || sourcePX >= imgWidth || sourcePY >= imgHeight) {
                     continue;
                 }
 
                 // Sample source pixel
-                const sourceOffset = (sourcePY * imageData.width + sourcePX) * 4;
-                const srcR = imageData.data[sourceOffset];
-                const srcG = imageData.data[sourceOffset + 1];
-                const srcB = imageData.data[sourceOffset + 2];
-                const srcA = imageData.data[sourceOffset + 3];
+                const sourceOffset = (sourcePY * imgWidth + sourcePX) * 4;
+                const srcR = imgData[sourceOffset];
+                const srcG = imgData[sourceOffset + 1];
+                const srcB = imgData[sourceOffset + 2];
+                const srcA = imgData[sourceOffset + 3];
 
                 // Apply global alpha
                 const effectiveAlpha = (srcA / 255) * globalAlpha;
@@ -698,32 +720,54 @@ class Rasterizer {
                 // Skip transparent pixels
                 if (finalSrcA === 0) continue;
 
-                // Get destination pixel for blending
-                const destOffset = deviceY * this._surface.stride + deviceX * 4;
+                const destOffset = deviceY * surfaceStride + deviceX * 4;
 
-                // Get destination pixel for blending
-                const dstR = this._surface.data[destOffset];
-                const dstG = this._surface.data[destOffset + 1];
-                const dstB = this._surface.data[destOffset + 2];
-                const dstA = this._surface.data[destOffset + 3];
-
-                // Use CompositeOperations for consistent blending
-                const result = CompositeOperations.blendPixel(
-                    this._currentOp.composite,
-                    srcR,
-                    srcG,
-                    srcB,
-                    finalSrcA, // source
-                    dstR,
-                    dstG,
-                    dstB,
-                    dstA // destination
-                );
-
-                this._surface.data[destOffset] = result.r;
-                this._surface.data[destOffset + 1] = result.g;
-                this._surface.data[destOffset + 2] = result.b;
-                this._surface.data[destOffset + 3] = result.a;
+                if (isSourceOver) {
+                    // Inline source-over, write in place — byte-identical to
+                    // CompositeOperations._sourceOver (finalSrcA is already !== 0 here).
+                    if (finalSrcA === 255) {
+                        surfaceData[destOffset] = srcR;
+                        surfaceData[destOffset + 1] = srcG;
+                        surfaceData[destOffset + 2] = srcB;
+                        surfaceData[destOffset + 3] = 255;
+                    } else {
+                        const dstA = surfaceData[destOffset + 3];
+                        if (dstA === 0) {
+                            surfaceData[destOffset] = srcR;
+                            surfaceData[destOffset + 1] = srcG;
+                            surfaceData[destOffset + 2] = srcB;
+                            surfaceData[destOffset + 3] = finalSrcA;
+                        } else {
+                            const srcAlpha = finalSrcA / 255;
+                            const invSrcAlpha = 1 - srcAlpha;
+                            surfaceData[destOffset] = Math.round(srcR * srcAlpha + surfaceData[destOffset] * invSrcAlpha);
+                            surfaceData[destOffset + 1] = Math.round(srcG * srcAlpha + surfaceData[destOffset + 1] * invSrcAlpha);
+                            surfaceData[destOffset + 2] = Math.round(srcB * srcAlpha + surfaceData[destOffset + 2] * invSrcAlpha);
+                            surfaceData[destOffset + 3] = Math.round(finalSrcA + dstA * invSrcAlpha);
+                        }
+                    }
+                } else {
+                    // Non-source-over: general path (unchanged)
+                    const dstR = surfaceData[destOffset];
+                    const dstG = surfaceData[destOffset + 1];
+                    const dstB = surfaceData[destOffset + 2];
+                    const dstA = surfaceData[destOffset + 3];
+                    const result = CompositeOperations.blendPixel(
+                        composite,
+                        srcR,
+                        srcG,
+                        srcB,
+                        finalSrcA, // source
+                        dstR,
+                        dstG,
+                        dstB,
+                        dstA // destination
+                    );
+                    surfaceData[destOffset] = result.r;
+                    surfaceData[destOffset + 1] = result.g;
+                    surfaceData[destOffset + 2] = result.b;
+                    surfaceData[destOffset + 3] = result.a;
+                }
             }
         }
     }
