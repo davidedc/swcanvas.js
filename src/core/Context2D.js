@@ -658,7 +658,14 @@ class Context2D {
         // Direct rendering: Color fill with source-over, no shadows (clipping supported)
         if (this._canUseDirectRendering(this._fillStyle)) {
             const t = this._transform;
-            const clip = this._clipMask ? this._clipMask.buffer : null;
+            // Tier-0 rect clip → clamp draw extent + pass clipBuffer=null on the
+            // axis-aligned path. RectOpsRot keeps the bitmask backstop (maskBuf),
+            // which is always live under a clip since clip() still builds the mask.
+            // Within this branch _isSourceOver && _noShadow hold, so _tier0ClipRect()
+            // reduces to (_clipIsRect ? _clipRect : null).
+            const tier0ClipRect = this._tier0ClipRect();
+            const maskBuf = this._clipMask ? this._clipMask.buffer : null;
+            const clip = tier0ClipRect ? null : maskBuf;
 
             // Fast access to pre-computed transform values (no getters, no sqrt/atan2)
             const scaledW = width * t.scaleX;
@@ -676,7 +683,7 @@ class Context2D {
                 const tlY = center.y - finalH / 2;
 
                 if (isOpaque) {
-                    RectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, clip);
+                    RectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, clip, tier0ClipRect);
                     return;
                 } else {
                     RectOpsAA.fill_AA_Alpha(
@@ -687,12 +694,15 @@ class Context2D {
                         finalH,
                         this._fillStyle,
                         this.globalAlpha,
-                        clip
+                        clip,
+                        tier0ClipRect
                     );
                     return;
                 }
             } else if (t.isUniformScale) {
-                // Rotated with uniform scale: use edge-function algorithm
+                // Rotated with uniform scale: use edge-function algorithm.
+                // Not tier-0-wired (Fizzygum never clips a rotated draw); uses the
+                // bitmask backstop directly.
                 if (isOpaque) {
                     RectOpsRot.fill_Rot_Any(
                         this.surface,
@@ -703,7 +713,7 @@ class Context2D {
                         t.rotationAngle,
                         this._fillStyle,
                         1.0,
-                        clip
+                        maskBuf
                     );
                     return;
                 } else {
@@ -716,7 +726,7 @@ class Context2D {
                         t.rotationAngle,
                         this._fillStyle,
                         this.globalAlpha,
-                        clip
+                        maskBuf
                     );
                     return;
                 }
@@ -749,7 +759,12 @@ class Context2D {
         // Direct rendering: Color stroke with source-over, no shadows (clipping supported)
         if (this._canUseDirectRendering(this._strokeStyle)) {
             const t = this._transform;
-            const clip = this._clipMask ? this._clipMask.buffer : null;
+            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
+            // path; RectOpsRot keeps the bitmask backstop (see fillRect for the
+            // rationale). Within this branch _tier0ClipRect() = _clipIsRect ? _clipRect : null.
+            const tier0ClipRect = this._tier0ClipRect();
+            const maskBuf = this._clipMask ? this._clipMask.buffer : null;
+            const clip = tier0ClipRect ? null : maskBuf;
 
             // Fast access to pre-computed transform values
             const scaledW = width * t.scaleX;
@@ -771,7 +786,7 @@ class Context2D {
 
                 if (is1pxStroke) {
                     if (isOpaque) {
-                        RectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, clip);
+                        RectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, clip, tier0ClipRect);
                         return;
                     } else {
                         RectOpsAA.stroke1px_AA_Alpha(
@@ -782,7 +797,8 @@ class Context2D {
                             finalH,
                             this._strokeStyle,
                             this.globalAlpha,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                         return;
                     }
@@ -796,7 +812,8 @@ class Context2D {
                             finalH,
                             scaledLineWidth,
                             this._strokeStyle,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                         return;
                     } else {
@@ -809,13 +826,15 @@ class Context2D {
                             scaledLineWidth,
                             this._strokeStyle,
                             this.globalAlpha,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                         return;
                     }
                 }
             } else if (t.isUniformScale) {
-                // Rotated with uniform scale: use line-based stroke
+                // Rotated with uniform scale: use line-based stroke. Not tier-0-wired;
+                // uses the bitmask backstop directly.
                 RectOpsRot.stroke_Rot_Any(
                     this.surface,
                     center.x,
@@ -826,7 +845,7 @@ class Context2D {
                     scaledLineWidth,
                     this._strokeStyle,
                     this.globalAlpha,
-                    clip
+                    maskBuf
                 );
                 return;
             }

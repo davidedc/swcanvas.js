@@ -9528,12 +9528,19 @@ class RectOpsAA {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static stroke1px_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null) {
+    static stroke1px_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip: clamp each edge's write extent + row/column guard to the
+        // clip rect (already within surface bounds), skip the per-pixel bit test.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Calculate rectangle pixel bounds
         // For strokeRect(132.5, 126.5, 135, 47):
@@ -9545,8 +9552,8 @@ class RectOpsAA {
         const bottom = Math.floor(y + height);
 
         // Draw top edge (horizontal): pixels from left to right (inclusive)
-        if (top >= 0 && top < surfaceHeight) {
-            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+        if (top >= cy0 && top < cy1) {
+            for (let px = Math.max(cx0, left); px <= Math.min(right, cx1 - 1); px++) {
                 const pos = top * surfaceWidth + px;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -9555,8 +9562,8 @@ class RectOpsAA {
         }
 
         // Draw bottom edge (horizontal): pixels from left to right (inclusive)
-        if (bottom >= 0 && bottom < surfaceHeight) {
-            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+        if (bottom >= cy0 && bottom < cy1) {
+            for (let px = Math.max(cx0, left); px <= Math.min(right, cx1 - 1); px++) {
                 const pos = bottom * surfaceWidth + px;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -9565,8 +9572,8 @@ class RectOpsAA {
         }
 
         // Draw left edge (vertical): skip corners (already drawn)
-        if (left >= 0 && left < surfaceWidth) {
-            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+        if (left >= cx0 && left < cx1) {
+            for (let py = Math.max(cy0, top + 1); py < Math.min(bottom, cy1); py++) {
                 const pos = py * surfaceWidth + left;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -9575,8 +9582,8 @@ class RectOpsAA {
         }
 
         // Draw right edge (vertical): skip corners (already drawn)
-        if (right >= 0 && right < surfaceWidth) {
-            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+        if (right >= cx0 && right < cx1) {
+            for (let py = Math.max(cy0, top + 1); py < Math.min(bottom, cy1); py++) {
                 const pos = py * surfaceWidth + right;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -9597,7 +9604,7 @@ class RectOpsAA {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null) {
+    static stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -9610,6 +9617,12 @@ class RectOpsAA {
             g = color.g,
             b = color.b;
 
+        // Tier-0 rect clip: clamp each edge's write extent + row/column guard.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
+
         // Calculate rectangle pixel bounds
         const left = Math.floor(x);
         const top = Math.floor(y);
@@ -9617,8 +9630,8 @@ class RectOpsAA {
         const bottom = Math.floor(y + height);
 
         // Draw top edge (horizontal): pixels from left to right (inclusive)
-        if (top >= 0 && top < surfaceHeight) {
-            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+        if (top >= cy0 && top < cy1) {
+            for (let px = Math.max(cx0, left); px <= Math.min(right, cx1 - 1); px++) {
                 const pos = top * surfaceWidth + px;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
@@ -9637,8 +9650,8 @@ if (__outA > 0) {
         }
 
         // Draw bottom edge (horizontal): pixels from left to right (inclusive)
-        if (bottom >= 0 && bottom < surfaceHeight) {
-            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+        if (bottom >= cy0 && bottom < cy1) {
+            for (let px = Math.max(cx0, left); px <= Math.min(right, cx1 - 1); px++) {
                 const pos = bottom * surfaceWidth + px;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
@@ -9657,8 +9670,8 @@ if (__outA > 0) {
         }
 
         // Draw left edge (vertical): skip corners (already drawn)
-        if (left >= 0 && left < surfaceWidth) {
-            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+        if (left >= cx0 && left < cx1) {
+            for (let py = Math.max(cy0, top + 1); py < Math.min(bottom, cy1); py++) {
                 const pos = py * surfaceWidth + left;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
@@ -9677,8 +9690,8 @@ if (__outA > 0) {
         }
 
         // Draw right edge (vertical): skip corners (already drawn)
-        if (right >= 0 && right < surfaceWidth) {
-            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+        if (right >= cx0 && right < cx1) {
+            for (let py = Math.max(cy0, top + 1); py < Math.min(bottom, cy1); py++) {
                 const pos = py * surfaceWidth + right;
                 if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
@@ -9708,11 +9721,17 @@ if (__outA > 0) {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer = null) {
+    static strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip: clamp per-pixel guards to the clip rect, skip the bit test.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         const halfStroke = lineWidth / 2;
 
@@ -9726,11 +9745,11 @@ if (__outA > 0) {
 
         // Draw horizontal strokes (top and bottom edges with full thickness)
         for (let px = Math.floor(left - halfStroke); px < right + halfStroke; px++) {
-            if (px < 0 || px >= surfaceWidth) continue;
+            if (px < cx0 || px >= cx1) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Top edge
                 const pyTop = Math.floor(top + t);
-                if (pyTop >= 0 && pyTop < surfaceHeight) {
+                if (pyTop >= cy0 && pyTop < cy1) {
                     const pos = pyTop * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -9738,7 +9757,7 @@ if (__outA > 0) {
                 }
                 // Bottom edge
                 const pyBottom = Math.floor(bottom + t);
-                if (pyBottom >= 0 && pyBottom < surfaceHeight) {
+                if (pyBottom >= cy0 && pyBottom < cy1) {
                     const pos = pyBottom * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -9749,11 +9768,11 @@ if (__outA > 0) {
 
         // Draw vertical strokes (left and right edges, excluding corners already drawn)
         for (let py = Math.floor(top + halfStroke); py < bottom - halfStroke; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Left edge
                 const pxLeft = Math.floor(left + t);
-                if (pxLeft >= 0 && pxLeft < surfaceWidth) {
+                if (pxLeft >= cx0 && pxLeft < cx1) {
                     const pos = py * surfaceWidth + pxLeft;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -9761,7 +9780,7 @@ if (__outA > 0) {
                 }
                 // Right edge
                 const pxRight = Math.floor(right + t);
-                if (pxRight >= 0 && pxRight < surfaceWidth) {
+                if (pxRight >= cx0 && pxRight < cx1) {
                     const pos = py * surfaceWidth + pxRight;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -9783,7 +9802,7 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, color, globalAlpha, clipBuffer = null) {
+    static strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -9795,6 +9814,12 @@ if (__outA > 0) {
         const r = color.r,
             g = color.g,
             b = color.b;
+
+        // Tier-0 rect clip: clamp per-pixel guards to the clip rect, skip the bit test.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         const halfStroke = lineWidth / 2;
 
@@ -9808,11 +9833,11 @@ if (__outA > 0) {
 
         // Draw horizontal strokes (top and bottom edges with full thickness)
         for (let px = Math.floor(left - halfStroke); px < right + halfStroke; px++) {
-            if (px < 0 || px >= surfaceWidth) continue;
+            if (px < cx0 || px >= cx1) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Top edge
                 const pyTop = Math.floor(top + t);
-                if (pyTop >= 0 && pyTop < surfaceHeight) {
+                if (pyTop >= cy0 && pyTop < cy1) {
                     const pos = pyTop * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
@@ -9830,7 +9855,7 @@ if (__outA > 0) {
                 }
                 // Bottom edge
                 const pyBottom = Math.floor(bottom + t);
-                if (pyBottom >= 0 && pyBottom < surfaceHeight) {
+                if (pyBottom >= cy0 && pyBottom < cy1) {
                     const pos = pyBottom * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
@@ -9859,10 +9884,10 @@ if (__outA > 0) {
         // Draw vertical strokes (left and right edges, excluding corners)
         // Use px-based iteration to match horizontal stroke X coverage
         for (let py = topStrokeMaxY + 1; py < bottomStrokeMinY; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
             // Left edge
             for (let px = Math.floor(left - halfStroke); px < left + halfStroke; px++) {
-                if (px >= 0 && px < surfaceWidth) {
+                if (px >= cx0 && px < cx1) {
                     const pos = py * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
@@ -9881,7 +9906,7 @@ if (__outA > 0) {
             }
             // Right edge
             for (let px = Math.floor(right - halfStroke); px < right + halfStroke; px++) {
-                if (px >= 0 && px < surfaceWidth) {
+                if (px >= cx0 && px < cx1) {
                     const pos = py * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     const __off = pos * 4;
@@ -9944,19 +9969,27 @@ if (__outA > 0) {
      * @param {Color} color - Fill color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null) {
+    static fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip: clamp the write extent to the clip rect (already within
+        // surface bounds) and skip the per-pixel bit test — the rect exposes exactly
+        // the mask's set pixels, so this is byte-identical. clipBuffer is null then.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         const left = Math.floor(x);
         const top = Math.floor(y);
         const right = Math.ceil(x + width);
         const bottom = Math.ceil(y + height);
 
-        for (let py = Math.max(0, top); py < Math.min(bottom, surfaceHeight); py++) {
-            for (let px = Math.max(0, left); px < Math.min(right, surfaceWidth); px++) {
+        for (let py = Math.max(cy0, top); py < Math.min(bottom, cy1); py++) {
+            for (let px = Math.max(cx0, left); px < Math.min(right, cx1); px++) {
                 const pixelIndex = py * surfaceWidth + px;
 
                 if (clipBuffer) {
@@ -9981,7 +10014,7 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null) {
+    static fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -9993,13 +10026,19 @@ if (__outA > 0) {
             g = color.g,
             b = color.b;
 
+        // Tier-0 rect clip: clamp the write extent to the clip rect, skip the bit test.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
+
         const left = Math.floor(x);
         const top = Math.floor(y);
         const right = Math.ceil(x + width);
         const bottom = Math.ceil(y + height);
 
-        for (let py = Math.max(0, top); py < Math.min(bottom, surfaceHeight); py++) {
-            for (let px = Math.max(0, left); px < Math.min(right, surfaceWidth); px++) {
+        for (let py = Math.max(cy0, top); py < Math.min(bottom, cy1); py++) {
+            for (let px = Math.max(cx0, left); px < Math.min(right, cx1); px++) {
                 const pixelIndex = py * surfaceWidth + px;
 
                 if (clipBuffer) {
@@ -25017,7 +25056,14 @@ class Context2D {
         // Direct rendering: Color fill with source-over, no shadows (clipping supported)
         if (this._canUseDirectRendering(this._fillStyle)) {
             const t = this._transform;
-            const clip = this._clipMask ? this._clipMask.buffer : null;
+            // Tier-0 rect clip → clamp draw extent + pass clipBuffer=null on the
+            // axis-aligned path. RectOpsRot keeps the bitmask backstop (maskBuf),
+            // which is always live under a clip since clip() still builds the mask.
+            // Within this branch _isSourceOver && _noShadow hold, so _tier0ClipRect()
+            // reduces to (_clipIsRect ? _clipRect : null).
+            const tier0ClipRect = this._tier0ClipRect();
+            const maskBuf = this._clipMask ? this._clipMask.buffer : null;
+            const clip = tier0ClipRect ? null : maskBuf;
 
             // Fast access to pre-computed transform values (no getters, no sqrt/atan2)
             const scaledW = width * t.scaleX;
@@ -25035,7 +25081,7 @@ class Context2D {
                 const tlY = center.y - finalH / 2;
 
                 if (isOpaque) {
-                    RectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, clip);
+                    RectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, clip, tier0ClipRect);
                     return;
                 } else {
                     RectOpsAA.fill_AA_Alpha(
@@ -25046,12 +25092,15 @@ class Context2D {
                         finalH,
                         this._fillStyle,
                         this.globalAlpha,
-                        clip
+                        clip,
+                        tier0ClipRect
                     );
                     return;
                 }
             } else if (t.isUniformScale) {
-                // Rotated with uniform scale: use edge-function algorithm
+                // Rotated with uniform scale: use edge-function algorithm.
+                // Not tier-0-wired (Fizzygum never clips a rotated draw); uses the
+                // bitmask backstop directly.
                 if (isOpaque) {
                     RectOpsRot.fill_Rot_Any(
                         this.surface,
@@ -25062,7 +25111,7 @@ class Context2D {
                         t.rotationAngle,
                         this._fillStyle,
                         1.0,
-                        clip
+                        maskBuf
                     );
                     return;
                 } else {
@@ -25075,7 +25124,7 @@ class Context2D {
                         t.rotationAngle,
                         this._fillStyle,
                         this.globalAlpha,
-                        clip
+                        maskBuf
                     );
                     return;
                 }
@@ -25108,7 +25157,12 @@ class Context2D {
         // Direct rendering: Color stroke with source-over, no shadows (clipping supported)
         if (this._canUseDirectRendering(this._strokeStyle)) {
             const t = this._transform;
-            const clip = this._clipMask ? this._clipMask.buffer : null;
+            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
+            // path; RectOpsRot keeps the bitmask backstop (see fillRect for the
+            // rationale). Within this branch _tier0ClipRect() = _clipIsRect ? _clipRect : null.
+            const tier0ClipRect = this._tier0ClipRect();
+            const maskBuf = this._clipMask ? this._clipMask.buffer : null;
+            const clip = tier0ClipRect ? null : maskBuf;
 
             // Fast access to pre-computed transform values
             const scaledW = width * t.scaleX;
@@ -25130,7 +25184,7 @@ class Context2D {
 
                 if (is1pxStroke) {
                     if (isOpaque) {
-                        RectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, clip);
+                        RectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, clip, tier0ClipRect);
                         return;
                     } else {
                         RectOpsAA.stroke1px_AA_Alpha(
@@ -25141,7 +25195,8 @@ class Context2D {
                             finalH,
                             this._strokeStyle,
                             this.globalAlpha,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                         return;
                     }
@@ -25155,7 +25210,8 @@ class Context2D {
                             finalH,
                             scaledLineWidth,
                             this._strokeStyle,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                         return;
                     } else {
@@ -25168,13 +25224,15 @@ class Context2D {
                             scaledLineWidth,
                             this._strokeStyle,
                             this.globalAlpha,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                         return;
                     }
                 }
             } else if (t.isUniformScale) {
-                // Rotated with uniform scale: use line-based stroke
+                // Rotated with uniform scale: use line-based stroke. Not tier-0-wired;
+                // uses the bitmask backstop directly.
                 RectOpsRot.stroke_Rot_Any(
                     this.surface,
                     center.x,
@@ -25185,7 +25243,7 @@ class Context2D {
                     scaledLineWidth,
                     this._strokeStyle,
                     this.globalAlpha,
-                    clip
+                    maskBuf
                 );
                 return;
             }

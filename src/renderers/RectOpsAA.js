@@ -39,12 +39,19 @@ class RectOpsAA {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static stroke1px_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null) {
+    static stroke1px_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip: clamp each edge's write extent + row/column guard to the
+        // clip rect (already within surface bounds), skip the per-pixel bit test.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Calculate rectangle pixel bounds
         // For strokeRect(132.5, 126.5, 135, 47):
@@ -56,32 +63,32 @@ class RectOpsAA {
         const bottom = Math.floor(y + height);
 
         // Draw top edge (horizontal): pixels from left to right (inclusive)
-        if (top >= 0 && top < surfaceHeight) {
-            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+        if (top >= cy0 && top < cy1) {
+            for (let px = Math.max(cx0, left); px <= Math.min(right, cx1 - 1); px++) {
                 const pos = top * surfaceWidth + px;
                 /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
             }
         }
 
         // Draw bottom edge (horizontal): pixels from left to right (inclusive)
-        if (bottom >= 0 && bottom < surfaceHeight) {
-            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+        if (bottom >= cy0 && bottom < cy1) {
+            for (let px = Math.max(cx0, left); px <= Math.min(right, cx1 - 1); px++) {
                 const pos = bottom * surfaceWidth + px;
                 /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
             }
         }
 
         // Draw left edge (vertical): skip corners (already drawn)
-        if (left >= 0 && left < surfaceWidth) {
-            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+        if (left >= cx0 && left < cx1) {
+            for (let py = Math.max(cy0, top + 1); py < Math.min(bottom, cy1); py++) {
                 const pos = py * surfaceWidth + left;
                 /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
             }
         }
 
         // Draw right edge (vertical): skip corners (already drawn)
-        if (right >= 0 && right < surfaceWidth) {
-            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+        if (right >= cx0 && right < cx1) {
+            for (let py = Math.max(cy0, top + 1); py < Math.min(bottom, cy1); py++) {
                 const pos = py * surfaceWidth + right;
                 /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
             }
@@ -100,7 +107,7 @@ class RectOpsAA {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null) {
+    static stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -113,6 +120,12 @@ class RectOpsAA {
             g = color.g,
             b = color.b;
 
+        // Tier-0 rect clip: clamp each edge's write extent + row/column guard.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
+
         // Calculate rectangle pixel bounds
         const left = Math.floor(x);
         const top = Math.floor(y);
@@ -120,32 +133,32 @@ class RectOpsAA {
         const bottom = Math.floor(y + height);
 
         // Draw top edge (horizontal): pixels from left to right (inclusive)
-        if (top >= 0 && top < surfaceHeight) {
-            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+        if (top >= cy0 && top < cy1) {
+            for (let px = Math.max(cx0, left); px <= Math.min(right, cx1 - 1); px++) {
                 const pos = top * surfaceWidth + px;
                 /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
             }
         }
 
         // Draw bottom edge (horizontal): pixels from left to right (inclusive)
-        if (bottom >= 0 && bottom < surfaceHeight) {
-            for (let px = Math.max(0, left); px <= Math.min(right, surfaceWidth - 1); px++) {
+        if (bottom >= cy0 && bottom < cy1) {
+            for (let px = Math.max(cx0, left); px <= Math.min(right, cx1 - 1); px++) {
                 const pos = bottom * surfaceWidth + px;
                 /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
             }
         }
 
         // Draw left edge (vertical): skip corners (already drawn)
-        if (left >= 0 && left < surfaceWidth) {
-            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+        if (left >= cx0 && left < cx1) {
+            for (let py = Math.max(cy0, top + 1); py < Math.min(bottom, cy1); py++) {
                 const pos = py * surfaceWidth + left;
                 /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
             }
         }
 
         // Draw right edge (vertical): skip corners (already drawn)
-        if (right >= 0 && right < surfaceWidth) {
-            for (let py = Math.max(0, top + 1); py < Math.min(bottom, surfaceHeight); py++) {
+        if (right >= cx0 && right < cx1) {
+            for (let py = Math.max(cy0, top + 1); py < Math.min(bottom, cy1); py++) {
                 const pos = py * surfaceWidth + right;
                 /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
             }
@@ -163,11 +176,17 @@ class RectOpsAA {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer = null) {
+    static strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip: clamp per-pixel guards to the clip rect, skip the bit test.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         const halfStroke = lineWidth / 2;
 
@@ -181,17 +200,17 @@ class RectOpsAA {
 
         // Draw horizontal strokes (top and bottom edges with full thickness)
         for (let px = Math.floor(left - halfStroke); px < right + halfStroke; px++) {
-            if (px < 0 || px >= surfaceWidth) continue;
+            if (px < cx0 || px >= cx1) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Top edge
                 const pyTop = Math.floor(top + t);
-                if (pyTop >= 0 && pyTop < surfaceHeight) {
+                if (pyTop >= cy0 && pyTop < cy1) {
                     const pos = pyTop * surfaceWidth + px;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
                 }
                 // Bottom edge
                 const pyBottom = Math.floor(bottom + t);
-                if (pyBottom >= 0 && pyBottom < surfaceHeight) {
+                if (pyBottom >= cy0 && pyBottom < cy1) {
                     const pos = pyBottom * surfaceWidth + px;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
                 }
@@ -200,17 +219,17 @@ class RectOpsAA {
 
         // Draw vertical strokes (left and right edges, excluding corners already drawn)
         for (let py = Math.floor(top + halfStroke); py < bottom - halfStroke; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Left edge
                 const pxLeft = Math.floor(left + t);
-                if (pxLeft >= 0 && pxLeft < surfaceWidth) {
+                if (pxLeft >= cx0 && pxLeft < cx1) {
                     const pos = py * surfaceWidth + pxLeft;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
                 }
                 // Right edge
                 const pxRight = Math.floor(right + t);
-                if (pxRight >= 0 && pxRight < surfaceWidth) {
+                if (pxRight >= cx0 && pxRight < cx1) {
                     const pos = py * surfaceWidth + pxRight;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
                 }
@@ -230,7 +249,7 @@ class RectOpsAA {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
      */
-    static strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, color, globalAlpha, clipBuffer = null) {
+    static strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -242,6 +261,12 @@ class RectOpsAA {
         const r = color.r,
             g = color.g,
             b = color.b;
+
+        // Tier-0 rect clip: clamp per-pixel guards to the clip rect, skip the bit test.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         const halfStroke = lineWidth / 2;
 
@@ -255,17 +280,17 @@ class RectOpsAA {
 
         // Draw horizontal strokes (top and bottom edges with full thickness)
         for (let px = Math.floor(left - halfStroke); px < right + halfStroke; px++) {
-            if (px < 0 || px >= surfaceWidth) continue;
+            if (px < cx0 || px >= cx1) continue;
             for (let t = -halfStroke; t < halfStroke; t++) {
                 // Top edge
                 const pyTop = Math.floor(top + t);
-                if (pyTop >= 0 && pyTop < surfaceHeight) {
+                if (pyTop >= cy0 && pyTop < cy1) {
                     const pos = pyTop * surfaceWidth + px;
                     /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
                 }
                 // Bottom edge
                 const pyBottom = Math.floor(bottom + t);
-                if (pyBottom >= 0 && pyBottom < surfaceHeight) {
+                if (pyBottom >= cy0 && pyBottom < cy1) {
                     const pos = pyBottom * surfaceWidth + px;
                     /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
                 }
@@ -282,17 +307,17 @@ class RectOpsAA {
         // Draw vertical strokes (left and right edges, excluding corners)
         // Use px-based iteration to match horizontal stroke X coverage
         for (let py = topStrokeMaxY + 1; py < bottomStrokeMinY; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
             // Left edge
             for (let px = Math.floor(left - halfStroke); px < left + halfStroke; px++) {
-                if (px >= 0 && px < surfaceWidth) {
+                if (px >= cx0 && px < cx1) {
                     const pos = py * surfaceWidth + px;
                     /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
                 }
             }
             // Right edge
             for (let px = Math.floor(right - halfStroke); px < right + halfStroke; px++) {
-                if (px >= 0 && px < surfaceWidth) {
+                if (px >= cx0 && px < cx1) {
                     const pos = py * surfaceWidth + px;
                     /*@inline:BLEND_ALPHA_CLIPPED(data, pos, r, g, b, effectiveAlpha, invAlpha, clipBuffer)*/
                 }
@@ -343,19 +368,27 @@ class RectOpsAA {
      * @param {Color} color - Fill color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null) {
+    static fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip: clamp the write extent to the clip rect (already within
+        // surface bounds) and skip the per-pixel bit test — the rect exposes exactly
+        // the mask's set pixels, so this is byte-identical. clipBuffer is null then.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         const left = Math.floor(x);
         const top = Math.floor(y);
         const right = Math.ceil(x + width);
         const bottom = Math.ceil(y + height);
 
-        for (let py = Math.max(0, top); py < Math.min(bottom, surfaceHeight); py++) {
-            for (let px = Math.max(0, left); px < Math.min(right, surfaceWidth); px++) {
+        for (let py = Math.max(cy0, top); py < Math.min(bottom, cy1); py++) {
+            for (let px = Math.max(cx0, left); px < Math.min(right, cx1); px++) {
                 const pixelIndex = py * surfaceWidth + px;
 
                 if (clipBuffer) {
@@ -380,7 +413,7 @@ class RectOpsAA {
      * @param {number} globalAlpha - Context global alpha (0-1)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
      */
-    static fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null) {
+    static fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -392,13 +425,19 @@ class RectOpsAA {
             g = color.g,
             b = color.b;
 
+        // Tier-0 rect clip: clamp the write extent to the clip rect, skip the bit test.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
+
         const left = Math.floor(x);
         const top = Math.floor(y);
         const right = Math.ceil(x + width);
         const bottom = Math.ceil(y + height);
 
-        for (let py = Math.max(0, top); py < Math.min(bottom, surfaceHeight); py++) {
-            for (let px = Math.max(0, left); px < Math.min(right, surfaceWidth); px++) {
+        for (let py = Math.max(cy0, top); py < Math.min(bottom, cy1); py++) {
+            for (let px = Math.max(cx0, left); px < Math.min(right, cx1); px++) {
                 const pixelIndex = py * surfaceWidth + px;
 
                 if (clipBuffer) {
