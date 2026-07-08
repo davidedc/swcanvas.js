@@ -3002,6 +3002,614 @@
         });
 
 
+        // Test: DepthBuffer creation validation, clear() and clearRect()
+        // This file will be concatenated into the main test suite
+
+        test('DepthBuffer creation, clear and clearRect', () => {
+            assertThrows(() => new SWCanvas.Core.DepthBuffer(0, 10), 'width');
+            assertThrows(() => new SWCanvas.Core.DepthBuffer(10, -5), 'height');
+            assertThrows(() => new SWCanvas.Core.DepthBuffer(10.5, 10), 'width');
+
+            const db = new SWCanvas.Core.DepthBuffer(16, 8);
+            assertEquals(db.width, 16);
+            assertEquals(db.height, 8);
+            assertEquals(db.data.length, 128);
+
+            // clear() resets every pixel to 0 (infinitely far)
+            db.data.fill(0.5);
+            db.clear();
+            let nonZero = 0;
+            for (let i = 0; i < db.data.length; i++) {
+                if (db.data[i] !== 0) nonZero++;
+            }
+            assertEquals(nonZero, 0, 'clear() must reset all depths to 0');
+
+            // clearRect() resets only the region (clamped), leaves the rest
+            db.data.fill(0.5);
+            db.clearRect(4, 2, 8, 4);
+            assertEquals(db.getInvDepth(4, 2), 0, 'inside region top-left');
+            assertEquals(db.getInvDepth(11, 5), 0, 'inside region bottom-right');
+            assertEquals(db.getInvDepth(3, 2), 0.5, 'left of region untouched');
+            assertEquals(db.getInvDepth(4, 1), 0.5, 'above region untouched');
+            assertEquals(db.getInvDepth(12, 3), 0.5, 'right of region untouched');
+            assertEquals(db.getInvDepth(11, 6), 0.5, 'below region untouched');
+        });
+
+
+        // Test: Texture3D power-of-two validation and packed word order
+        // This file will be concatenated into the main test suite
+
+        test('Texture3D creation validation and packing', () => {
+            const mk = (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) });
+
+            assertThrows(() => new SWCanvas.Core.Texture3D(mk(100, 64)), 'power of two');
+            assertThrows(() => new SWCanvas.Core.Texture3D(mk(64, 48)), 'power of two');
+            assertThrows(() => new SWCanvas.Core.Texture3D({ width: 4, height: 4, data: new Uint8ClampedArray(3) }), 'RGBA');
+
+            // Addressing constants
+            const img = mk(4, 2);
+            // texel (u=2, v=1) = RGB(10, 20, 30)
+            img.data.set([10, 20, 30, 255], (1 * 4 + 2) * 4);
+            const tex = new SWCanvas.Core.Texture3D(img);
+            assertEquals(tex.uMask, 3);
+            assertEquals(tex.vMask, 1);
+            assertEquals(tex.shift, 2);
+            assertEquals(tex.data32.length, 8);
+
+            // Packed word must match the Surface pixel word order exactly, so a
+            // textured span can copy texels with a single 32-bit store
+            const surf = SWCanvas.Core.Surface(1, 1);
+            surf.setPixelOpaque(0, 10, 20, 30);
+            assertEquals(tex.data32[((1 & tex.vMask) << tex.shift) | (2 & tex.uMask)], surf.data32[0],
+                'texel packing must match surface word order');
+        });
+
+
+        // Test: Triangle3DOps depth-test semantics - near wins, strict-> ties,
+        // and correct per-pixel interpenetration of crossing depth planes
+        // This file will be concatenated into the main test suite
+
+        test('Triangle3DOps depth test: near wins, ties keep first, interpenetration', () => {
+            const T = SWCanvas.Core.Triangle3DOps;
+            const W = 100, H = 100;
+            const surf = SWCanvas.Core.Surface(W, H);
+            const depth = new SWCanvas.Core.DepthBuffer(W, H);
+
+            const probe = SWCanvas.Core.Surface(1, 1);
+            probe.setPixelOpaque(0, 255, 0, 0);
+            const RED = probe.data32[0];
+            probe.setPixelOpaque(0, 0, 0, 255);
+            const BLUE = probe.data32[0];
+
+            const quadZ = (color, iz00, iz10, iz11, iz01) => {
+                T.fillTriangleZ(surf, depth, 0, 0, iz00, W, 0, iz10, W, H, iz11, color, null);
+                T.fillTriangleZ(surf, depth, 0, 0, iz00, W, H, iz11, 0, H, iz01, color, null);
+            };
+
+            // 1. Near wins
+            surf.data32.fill(0);
+            depth.clear();
+            quadZ(RED, 0.2, 0.2, 0.2, 0.2);
+            quadZ(BLUE, 0.4, 0.4, 0.4, 0.4);
+            assertEquals(surf.data32[50 * W + 50], BLUE, 'nearer draw must win');
+
+            // 2. Strict > : equal depth keeps the first-drawn pixel
+            quadZ(RED, 0.4, 0.4, 0.4, 0.4);
+            assertEquals(surf.data32[50 * W + 50], BLUE, 'tie must keep first-drawn pixel');
+
+            // 3. Interpenetration: constant plane (0.3) vs x-gradient plane
+            //    (0.2 at x=0 to 0.4 at x=100) -> crossover at x=50
+            surf.data32.fill(0);
+            depth.clear();
+            quadZ(RED, 0.3, 0.3, 0.3, 0.3);
+            quadZ(BLUE, 0.2, 0.4, 0.4, 0.2);
+            assertEquals(surf.data32[50 * W + 25], RED, 'left of intersection: constant plane in front');
+            assertEquals(surf.data32[50 * W + 75], BLUE, 'right of intersection: gradient plane in front');
+            assertEquals(surf.data32[50 * W + 49], RED, 'one pixel left of crossover');
+            assertEquals(surf.data32[50 * W + 51], BLUE, 'one pixel right of crossover');
+        });
+
+
+        // Test: Triangle3DOps fill rule is watertight - a quad split along its
+        // diagonal produces no double-written pixels and no gaps, at any rotation
+        // This file will be concatenated into the main test suite
+
+        test('Triangle3DOps watertight shared edges (no overlap, no gaps)', () => {
+            const T = SWCanvas.Core.Triangle3DOps;
+            const W = 160, H = 160;
+
+            const probe = SWCanvas.Core.Surface(1, 1);
+            probe.setPixelOpaque(0, 255, 0, 0);
+            const RED = probe.data32[0];
+            probe.setPixelOpaque(0, 0, 0, 255);
+            const BLUE = probe.data32[0];
+
+            let totalOverlap = 0;
+            let totalGapRows = 0;
+
+            for (let k = 0; k < 8; k++) {
+                const a = (k / 8) * Math.PI * 2 + 0.13;
+                const cos = Math.cos(a), sin = Math.sin(a);
+                const pts = [[-50.3, -34.7], [45.9, -27.3], [38.1, 42.6], [-30.7, 36.2]].map((p) => [
+                    80 + p[0] * cos - p[1] * sin,
+                    80 + p[0] * sin + p[1] * cos
+                ]);
+
+                // Each triangle alone -> coverage sets
+                const covA = {};
+                const covB = {};
+                for (let pass = 0; pass < 2; pass++) {
+                    const s = SWCanvas.Core.Surface(W, H);
+                    const d = new SWCanvas.Core.DepthBuffer(W, H);
+                    s.data32.fill(0);
+                    if (pass === 0) {
+                        T.fillTriangleZ(s, d, pts[0][0], pts[0][1], 0.5, pts[1][0], pts[1][1], 0.5, pts[2][0], pts[2][1], 0.5, RED, null);
+                    } else {
+                        T.fillTriangleZ(s, d, pts[0][0], pts[0][1], 0.5, pts[2][0], pts[2][1], 0.5, pts[3][0], pts[3][1], 0.5, BLUE, null);
+                    }
+                    const cov = pass === 0 ? covA : covB;
+                    for (let i = 0; i < W * H; i++) {
+                        if (s.data32[i] !== 0) cov[i] = true;
+                    }
+                }
+                for (const i in covA) {
+                    if (covB[i]) totalOverlap++;
+                }
+
+                // Union: per row, covered pixels of a convex quad must be contiguous
+                const u = SWCanvas.Core.Surface(W, H);
+                const ud = new SWCanvas.Core.DepthBuffer(W, H);
+                u.data32.fill(0);
+                T.fillTriangleZ(u, ud, pts[0][0], pts[0][1], 0.5, pts[1][0], pts[1][1], 0.5, pts[2][0], pts[2][1], 0.5, RED, null);
+                T.fillTriangleZ(u, ud, pts[0][0], pts[0][1], 0.5, pts[2][0], pts[2][1], 0.5, pts[3][0], pts[3][1], 0.5, BLUE, null);
+                for (let y = 0; y < H; y++) {
+                    let first = -1, last = -1;
+                    for (let x = 0; x < W; x++) {
+                        if (u.data32[y * W + x] !== 0) {
+                            if (first < 0) first = x;
+                            last = x;
+                        }
+                    }
+                    if (first < 0) continue;
+                    for (let x = first; x <= last; x++) {
+                        if (u.data32[y * W + x] === 0) {
+                            totalGapRows++;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            assertEquals(totalOverlap, 0, 'shared edge must not be written by both triangles');
+            assertEquals(totalGapRows, 0, 'shared edge must not leave gap pixels');
+        });
+
+
+        // Test: Triangle3DOps clipBuffer gates BOTH color and depth writes, and the
+        // byte fast paths agree exactly with a per-pixel reference
+        // This file will be concatenated into the main test suite
+
+        test('Triangle3DOps clip mask gates color and depth writes', () => {
+            const T = SWCanvas.Core.Triangle3DOps;
+            const W = 120, H = 120;
+            const R2 = 40 * 40;
+            const inside = (x, y) => {
+                const dx = x - 60, dy = y - 60;
+                return dx * dx + dy * dy <= R2;
+            };
+
+            const probe = SWCanvas.Core.Surface(1, 1);
+            probe.setPixelOpaque(0, 255, 0, 0);
+            const RED = probe.data32[0];
+
+            // Circular clip (partial bytes at the boundary exercise all three
+            // clip code paths: 0x00 skip, 0xFF run, per-pixel)
+            const mask = new SWCanvas.Core.ClipMask(W, H);
+            for (let y = 0; y < H; y++) {
+                for (let x = 0; x < W; x++) {
+                    if (!inside(x, y)) mask.setPixel(x, y, false);
+                }
+            }
+
+            const s = SWCanvas.Core.Surface(W, H);
+            const d = new SWCanvas.Core.DepthBuffer(W, H);
+            s.data32.fill(0);
+            T.fillTriangleZ(s, d, 5, 5, 0.5, 115, 5, 0.5, 60, 115, 0.5, RED, mask.buffer);
+
+            // Reference: same triangle unclipped
+            const rs = SWCanvas.Core.Surface(W, H);
+            const rd = new SWCanvas.Core.DepthBuffer(W, H);
+            rs.data32.fill(0);
+            T.fillTriangleZ(rs, rd, 5, 5, 0.5, 115, 5, 0.5, 60, 115, 0.5, RED, null);
+
+            let colorLeak = 0, depthLeak = 0, missingDepth = 0, clippedCount = 0, refCount = 0;
+            for (let y = 0; y < H; y++) {
+                for (let x = 0; x < W; x++) {
+                    const i = y * W + x;
+                    if (!inside(x, y)) {
+                        if (s.data32[i] !== 0) colorLeak++;
+                        if (d.data[i] !== 0) depthLeak++;
+                    } else {
+                        if (s.data32[i] === RED) {
+                            clippedCount++;
+                            if (d.data[i] === 0) missingDepth++;
+                        }
+                        if (rs.data32[i] === RED) refCount++;
+                    }
+                }
+            }
+
+            assertEquals(colorLeak, 0, 'no color writes outside the clip');
+            assertEquals(depthLeak, 0, 'no depth writes outside the clip (would create invisible occluders)');
+            assertEquals(missingDepth, 0, 'every drawn pixel must also write depth');
+            assertEquals(clippedCount, refCount, 'clipped coverage must equal unclipped coverage intersected with the mask');
+        });
+
+
+        // Test: textured triangle is texel-exact under identity UV mapping and
+        // wrap-around addressing repeats the texture exactly
+        // This file will be concatenated into the main test suite
+
+        test('Triangle3DOps textured identity mapping and wrap addressing', () => {
+            const T = SWCanvas.Core.Triangle3DOps;
+            const S = 64;
+            const td = new Uint8ClampedArray(S * S * 4);
+            for (let v = 0; v < S; v++) {
+                for (let u = 0; u < S; u++) {
+                    const i = (v * S + u) * 4;
+                    td[i] = u * 4;
+                    td[i + 1] = v * 4;
+                    td[i + 2] = 128;
+                    td[i + 3] = 255;
+                }
+            }
+            const tex = new SWCanvas.Core.Texture3D({ width: S, height: S, data: td });
+
+            const W = 128, H = 128;
+            const surf = SWCanvas.Core.Surface(W, H);
+            const depth = new SWCanvas.Core.DepthBuffer(W, H);
+
+            // Identity mapping: right triangle at (10,10), UV = (x-10, y-10)
+            surf.data32.fill(0);
+            depth.clear();
+            T.fillTriangleTextured(surf, depth, 10, 10, 0.5, 0, 0, 74, 10, 0.5, 64, 0, 10, 74, 0.5, 0, 64, tex, null);
+            let mismatches = 0, checked = 0;
+            for (let y = 0; y < H; y++) {
+                for (let x = 0; x < W; x++) {
+                    const p = surf.data32[y * W + x];
+                    if (p === 0) continue;
+                    checked++;
+                    const expected = tex.data32[(((y - 10) & tex.vMask) << tex.shift) | ((x - 10) & tex.uMask)];
+                    if (p !== expected) mismatches++;
+                }
+            }
+            assertEquals(mismatches, 0, 'identity-mapped triangle must be texel-exact');
+            assertEquals(checked > 1000, true, 'sanity: triangle must actually cover pixels');
+            const reference = [];
+            for (let i = 0; i < W * H; i++) reference.push(surf.data32[i]);
+
+            // Wrap: same triangle with UVs offset by 4 full texture periods
+            surf.data32.fill(0);
+            depth.clear();
+            T.fillTriangleTextured(surf, depth, 10, 10, 0.5, 256, 256, 74, 10, 0.5, 320, 256, 10, 74, 0.5, 256, 320, tex, null);
+            let wrapDiff = 0;
+            for (let i = 0; i < W * H; i++) {
+                if (reference[i] !== surf.data32[i]) wrapDiff++;
+            }
+            assertEquals(wrapDiff, 0, 'UVs offset by full periods must render identically (wrap)');
+        });
+
+
+        // Test: perspective-correct texturing stays within 1 texel of the exact
+        // per-pixel divide on strong-perspective geometry (where affine is off by
+        // tens of texels)
+        // This file will be concatenated into the main test suite
+
+        test('Triangle3DOps perspective correction error bound', () => {
+            const T = SWCanvas.Core.Triangle3DOps;
+
+            // Decode texture: r = u, g = v
+            const S = 256;
+            const td = new Uint8ClampedArray(S * S * 4);
+            for (let v = 0; v < S; v++) {
+                for (let u = 0; u < S; u++) {
+                    const i = (v * S + u) * 4;
+                    td[i] = u;
+                    td[i + 1] = v;
+                    td[i + 2] = 0;
+                    td[i + 3] = 255;
+                }
+            }
+            const tex = new SWCanvas.Core.Texture3D({ width: S, height: S, data: td });
+
+            const W = 640, H = 480;
+            // Floor-like triangle, z from 2 (bottom) to 12 (top): 6:1 depth ratio
+            const V = [
+                { x: 20, y: 460, z: 2, u: 0, v: 255 },
+                { x: 620, y: 460, z: 2, u: 255, v: 255 },
+                { x: 320, y: 40, z: 12, u: 128, v: 0 }
+            ];
+            const iz = [1 / V[0].z, 1 / V[1].z, 1 / V[2].z];
+
+            // Independent exact reference: plane gradients of 1/z, u/z, v/z
+            const bxe = V[1].x - V[0].x, bye = V[1].y - V[0].y;
+            const cxe = V[2].x - V[0].x, cye = V[2].y - V[0].y;
+            const A2 = bxe * cye - cxe * bye;
+            const grad = (a0, a1, a2) => ({
+                gx: ((a1 - a0) * cye - (a2 - a0) * bye) / A2,
+                gy: (bxe * (a2 - a0) - cxe * (a1 - a0)) / A2,
+                a0: a0
+            });
+            const gIZ = grad(iz[0], iz[1], iz[2]);
+            const gUZ = grad(V[0].u * iz[0], V[1].u * iz[1], V[2].u * iz[2]);
+            const gVZ = grad(V[0].v * iz[0], V[1].v * iz[1], V[2].v * iz[2]);
+
+            const measure = (usePersp) => {
+                const surf = SWCanvas.Core.Surface(W, H);
+                const depth = new SWCanvas.Core.DepthBuffer(W, H);
+                surf.data32.fill(0);
+                if (usePersp) {
+                    T.fillTriangleTexturedPersp(surf, depth,
+                        V[0].x, V[0].y, iz[0], V[0].u, V[0].v,
+                        V[1].x, V[1].y, iz[1], V[1].u, V[1].v,
+                        V[2].x, V[2].y, iz[2], V[2].u, V[2].v,
+                        tex, 256, null);
+                } else {
+                    T.fillTriangleTextured(surf, depth,
+                        V[0].x, V[0].y, iz[0], V[0].u, V[0].v,
+                        V[1].x, V[1].y, iz[1], V[1].u, V[1].v,
+                        V[2].x, V[2].y, iz[2], V[2].u, V[2].v,
+                        tex, null);
+                }
+                let maxE = 0;
+                for (let y = 40; y < 461; y++) {
+                    for (let x = 20; x < 621; x++) {
+                        const p = surf.data32[y * W + x];
+                        if (p === 0) continue;
+                        const dx = x - V[0].x, dy = y - V[0].y;
+                        const zi = gIZ.a0 + dx * gIZ.gx + dy * gIZ.gy;
+                        const ue = (gUZ.a0 + dx * gUZ.gx + dy * gUZ.gy) / zi;
+                        const ve = (gVZ.a0 + dx * gVZ.gx + dy * gVZ.gy) / zi;
+                        const e = Math.max(Math.abs((p & 0xff) - Math.floor(ue)), Math.abs(((p >> 8) & 0xff) - Math.floor(ve)));
+                        if (e > maxE) maxE = e;
+                    }
+                }
+                return maxE;
+            };
+
+            const perspErr = measure(true);
+            const affineErr = measure(false);
+            log(`persp max UV error: ${perspErr} texels; affine on same geometry: ${affineErr}`);
+            assertEquals(perspErr <= 1, true, `perspective-correct error must be <= 1 texel, got ${perspErr}`);
+            assertEquals(affineErr > 10, true, 'sanity: geometry must be perspective-hard (affine visibly wrong)');
+        });
+
+
+        // Test: textured intensity modulation is bit-exact - 256 is identity,
+        // other values are exactly (channel * intensity) >> 8, alpha forced to 255
+        // This file will be concatenated into the main test suite
+
+        test('Triangle3DOps intensity modulation exactness', () => {
+            const T = SWCanvas.Core.Triangle3DOps;
+            const S = 64;
+            const td = new Uint8ClampedArray(S * S * 4);
+            for (let v = 0; v < S; v++) {
+                for (let u = 0; u < S; u++) {
+                    const i = (v * S + u) * 4;
+                    td[i] = u * 4 + 3;
+                    td[i + 1] = v * 4 + 1;
+                    td[i + 2] = 200;
+                    td[i + 3] = 255;
+                }
+            }
+            const tex = new SWCanvas.Core.Texture3D({ width: S, height: S, data: td });
+
+            const W = 64, H = 64;
+            const render = (intensity) => {
+                const surf = SWCanvas.Core.Surface(W, H);
+                const depth = new SWCanvas.Core.DepthBuffer(W, H);
+                surf.data32.fill(0);
+                // Identity-ish mapping over a right triangle at the origin
+                T.fillTriangleTexturedPersp(surf, depth, 0, 0, 0.5, 0, 0, 63, 0, 0.5, 63, 0, 0, 63, 0.5, 0, 63, tex, intensity, null);
+                return surf;
+            };
+
+            const checkAll = (surf, intensity) => {
+                let bad = 0, n = 0;
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const p = surf.data32[y * W + x];
+                        if (p === 0) continue;
+                        n++;
+                        const texel = tex.data32[((y & tex.vMask) << tex.shift) | (x & tex.uMask)];
+                        const expR = ((texel & 0xff) * intensity) >> 8;
+                        const expG = (((texel >> 8) & 0xff) * intensity) >> 8;
+                        const expB = (((texel >> 16) & 0xff) * intensity) >> 8;
+                        if ((p & 0xff) !== expR || ((p >> 8) & 0xff) !== expG || ((p >> 16) & 0xff) !== expB) bad++;
+                        if (((p >>> 24) & 0xff) !== 255) bad++;
+                    }
+                }
+                assertEquals(n > 1000, true, 'sanity: coverage');
+                assertEquals(bad, 0, `intensity=${intensity} must be bit-exact per channel with alpha 255`);
+                return n;
+            };
+
+            checkAll(render(256), 256); // identity: (c * 256) >> 8 === c
+            checkAll(render(128), 128);
+            checkAll(render(37), 37);
+
+            // intensity 0 -> black (but still opaque and depth-written)
+            const black = render(0);
+            let nonBlack = 0, covered = 0;
+            for (let i = 0; i < W * H; i++) {
+                const p = black.data32[i];
+                if (p === 0) continue;
+                covered++;
+                if ((p & 0xffffff) !== 0) nonBlack++;
+            }
+            assertEquals(nonBlack, 0, 'intensity=0 must render black');
+            assertEquals(covered > 1000, true, 'sanity: coverage at intensity 0');
+        });
+
+
+        // Test: Texture3D.litVariant - identity at full brightness, exact
+        // pre-modulation at quantized levels, caching, and rendering equivalence
+        // through the copy-only fast path of the perspective span
+        // This file will be concatenated into the main test suite
+
+        test('Texture3D litVariant quantization, caching and render equivalence', () => {
+            const S = 32;
+            const td = new Uint8ClampedArray(S * S * 4);
+            for (let v = 0; v < S; v++) {
+                for (let u = 0; u < S; u++) {
+                    const i = (v * S + u) * 4;
+                    td[i] = u * 8 + 1;
+                    td[i + 1] = v * 8 + 2;
+                    td[i + 2] = 77;
+                    td[i + 3] = 255;
+                }
+            }
+            const tex = new SWCanvas.Core.Texture3D({ width: S, height: S, data: td });
+
+            // Full brightness (and anything quantizing to 256) is identity: same object
+            assertEquals(tex.litVariant(256) === tex, true, '256 must return the texture itself');
+            assertEquals(tex.litVariant(253) === tex, true, '253 quantizes to 256 -> identity');
+
+            // Quantized level: 128 is a multiple of 8, so modulation must be exact
+            const half = tex.litVariant(128);
+            assertEquals(half === tex, false);
+            assertEquals(half.width, S);
+            assertEquals(half.uMask, tex.uMask);
+            let bad = 0;
+            for (let i = 0; i < tex.data32.length; i++) {
+                const t = tex.data32[i];
+                const expected =
+                    ((t & 0xff000000) |
+                        ((((((t >> 16) & 0xff) * 128) >> 8) & 0xff) << 16) |
+                        ((((((t >> 8) & 0xff) * 128) >> 8) & 0xff) << 8) |
+                        (((t & 0xff) * 128) >> 8)) >>>
+                    0;
+                if (half.data32[i] !== expected) bad++;
+            }
+            assertEquals(bad, 0, 'level-128 variant must be exactly (c*128)>>8 per channel');
+
+            // Caching: same level returns the same object; 130 quantizes to 128 too
+            assertEquals(tex.litVariant(128) === half, true, 'variant must be cached');
+            assertEquals(tex.litVariant(130) === half, true, '130 quantizes to the same level as 128');
+
+            // Render equivalence: persp fill with (litVariant, 256) must equal
+            // persp fill with (texture, quantizedIntensity) pixel-for-pixel
+            const T = SWCanvas.Core.Triangle3DOps;
+            const W = 96, H = 96;
+            const render = (texture, intensity) => {
+                const surf = SWCanvas.Core.Surface(W, H);
+                const depth = new SWCanvas.Core.DepthBuffer(W, H);
+                surf.data32.fill(0);
+                T.fillTriangleTexturedPersp(surf, depth, 5, 5, 0.5, 0, 0, 90, 10, 0.25, 64, 0, 10, 90, 0.4, 0, 64, texture, intensity, null);
+                return surf;
+            };
+            const direct = render(tex, 104); // 104 is a multiple of 8 -> no quantization error
+            const cached = render(tex.litVariant(104), 256);
+            let diff = 0;
+            for (let i = 0; i < W * H; i++) {
+                if (direct.data32[i] !== cached.data32[i]) diff++;
+            }
+            assertEquals(diff, 0, 'litVariant + fast path must render identically to direct modulation');
+        });
+
+
+        // Test: Texture3D.buildMips - chain shape, box-filter exactness, lit-variant
+        // propagation, and minified rendering sampling from the selected level
+        // This file will be concatenated into the main test suite
+
+        test('Texture3D mip chain build, filtering, litVariant propagation, render', () => {
+            // 4x4 texture with known values: r channel = 16*u + 4*v (distinct per texel)
+            const mk = () => {
+                const data = new Uint8ClampedArray(4 * 4 * 4);
+                for (let v = 0; v < 4; v++) {
+                    for (let u = 0; u < 4; u++) {
+                        const i = (v * 4 + u) * 4;
+                        data[i] = 16 * u + 4 * v;
+                        data[i + 1] = 100;
+                        data[i + 2] = 200;
+                        data[i + 3] = 255;
+                    }
+                }
+                return new SWCanvas.Core.Texture3D({ width: 4, height: 4, data: data });
+            };
+
+            const tex = mk().buildMips();
+            assertEquals(tex.mips.length, 3, '4x4 -> 2x2 -> 1x1 = 3 levels');
+            assertEquals(tex.mips[0].data32 === tex.data32, true, 'level 0 shares base texels');
+            assertEquals(tex.mips[1].width, 2);
+            assertEquals(tex.mips[1].uMask, 1);
+            assertEquals(tex.mips[1].shift, 1);
+            assertEquals(tex.mips[2].width, 1);
+
+            // Box filter exactness: level-1 texel (0,0) = rounded average of the
+            // 2x2 block r values {0, 16, 4, 20} -> (40+2)>>2 = 10
+            assertEquals(tex.mips[1].data32[0] & 0xff, 10, 'level-1 (0,0) red must be rounded 2x2 average');
+            // g and b are uniform, so averages must be exact
+            assertEquals((tex.mips[1].data32[0] >> 8) & 0xff, 100);
+            assertEquals((tex.mips[1].data32[0] >> 16) & 0xff, 200);
+            assertEquals((tex.mips[1].data32[0] >>> 24) & 0xff, 255, 'alpha preserved through the filter');
+
+            // buildMips is idempotent
+            const chain = tex.mips;
+            tex.buildMips();
+            assertEquals(tex.mips === chain, true, 'second buildMips must be a no-op');
+
+            // litVariant propagates the chain with exact per-level modulation
+            const half = tex.litVariant(128);
+            assertEquals(!!half.mips, true, 'lit variant must carry mips');
+            assertEquals(half.mips.length, 3);
+            assertEquals(half.mips[0].data32 === half.data32, true, 'lit level 0 shares variant texels');
+            assertEquals(half.mips[1].data32[0] & 0xff, (10 * 128) >> 8, 'lit mip texel must be (c*q)>>8 of the mip texel');
+
+            // Minified render: 32x32 base, du/dx = 5 -> level 2 expected.
+            // (5, not 4: selection floors the float step, so a step sitting exactly
+            // on a power-of-two boundary can legitimately resolve one level lower
+            // when 1/segmentLength rounding nudges it below the boundary. 5 is
+            // robustly inside the level-2 bracket [4, 8).)
+            // Replicate the span's selection + sampling and compare pixel-for-pixel.
+            const S = 32;
+            const td = new Uint8ClampedArray(S * S * 4);
+            for (let v = 0; v < S; v++) {
+                for (let u = 0; u < S; u++) {
+                    const i = (v * S + u) * 4;
+                    td[i] = u * 8;
+                    td[i + 1] = v * 8;
+                    td[i + 2] = 33;
+                    td[i + 3] = 255;
+                }
+            }
+            const big = new SWCanvas.Core.Texture3D({ width: S, height: S, data: td }).buildMips();
+
+            const T = SWCanvas.Core.Triangle3DOps;
+            const W = 64, H = 64;
+            const surf = SWCanvas.Core.Surface(W, H);
+            const depth = new SWCanvas.Core.DepthBuffer(W, H);
+            surf.data32.fill(0);
+            // Right triangle at origin, u = 5x (minification x5), v = 5y, constant z
+            T.fillTriangleTexturedPersp(surf, depth, 0, 0, 0.5, 0, 0, 48, 0, 0.5, 240, 0, 0, 48, 0.5, 0, 240, big, 256, null);
+
+            const L = big.mips[2]; // step 5 -> level 2 (bracket [4, 8))
+            let covered = 0, wrong = 0;
+            for (let y = 0; y < H; y++) {
+                for (let x = 0; x < W; x++) {
+                    const p = surf.data32[y * W + x];
+                    if (p === 0) continue;
+                    covered++;
+                    const u = 5 * x, v = 5 * y; // exact plane values at pixel (x, y)
+                    const expected = L.data32[(((v >> 2) & L.vMask) << L.shift) | ((u >> 2) & L.uMask)];
+                    if (p !== expected) wrong++;
+                }
+            }
+            assertEquals(covered > 800, true, 'sanity: coverage');
+            assertEquals(wrong, 0, 'minified pixels must sample the level-2 mip exactly');
+        });
+
+
         return testResults;
     }
     

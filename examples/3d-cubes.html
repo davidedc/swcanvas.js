@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SWCanvas 3D — interpenetrating cubes</title>
+<style>
+    body { margin: 0; background: #111; overflow: hidden; }
+    canvas { display: block; }
+    #hud {
+        position: fixed; top: 8px; left: 8px; color: #eee;
+        font: 13px/1.5 monospace; background: rgba(0,0,0,.55);
+        padding: 6px 10px; border-radius: 4px;
+    }
+    label { user-select: none; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="hud">
+    <span id="stats">starting…</span><br>
+    <label><input type="checkbox" id="clip"> circular clip mask</label>
+</div>
+<canvas id="view"></canvas>
+<script src="../dist/swcanvas.js"></script>
+<script src="3d-cubes-scene.js"></script>
+<script>
+(function () {
+    'use strict';
+    // Two flat-shaded cubes rotating through each other, rendered entirely in
+    // software by SWCanvas Triangle3DOps + DepthBuffer (per-pixel depth test:
+    // the interpenetration is exact, no polygon sorting). The browser canvas
+    // is only used to blit the finished frame via putImageData.
+    var canvas = document.getElementById('view');
+    var ctx = canvas.getContext('2d');
+    var clipToggle = document.getElementById('clip');
+    var stats = document.getElementById('stats');
+    var surface, depth, scene, imageData, maskBuffer;
+
+    function rebuild() {
+        var w = Math.max(64, window.innerWidth);
+        var h = Math.max(64, window.innerHeight);
+        canvas.width = w;
+        canvas.height = h;
+        surface = SWCanvas.Core.Surface(w, h);
+        depth = new SWCanvas.Core.DepthBuffer(w, h);
+        scene = CubesScene.makeCubesScene(SWCanvas, w, h);
+        imageData = new ImageData(surface.data, w, h);
+
+        // Circular clip mask (toggle in the HUD) — exercises the clipBuffer
+        // path of Triangle3DOps, like a 3D viewport inside a round widget
+        var mask = new SWCanvas.Core.ClipMask(w, h);
+        var r = Math.min(w, h) * 0.42, cx = w / 2, cy = h / 2;
+        for (var y = 0; y < h; y++) {
+            for (var x = 0; x < w; x++) {
+                var dx = x - cx, dy = y - cy;
+                if (dx * dx + dy * dy > r * r) mask.setPixel(x, y, false);
+            }
+        }
+        maskBuffer = mask.buffer;
+    }
+    window.addEventListener('resize', rebuild);
+    rebuild();
+
+    var frames = 0, acc = 0, lastStats = performance.now();
+    function tick(now) {
+        var s0 = performance.now();
+        scene.render(surface, depth, now / 1000, clipToggle.checked ? maskBuffer : null);
+        acc += performance.now() - s0;
+        frames++;
+        ctx.putImageData(imageData, 0, 0);
+        if (now - lastStats > 500 && frames > 0) {
+            stats.textContent = canvas.width + '×' + canvas.height + ' — ' +
+                (acc / frames).toFixed(2) + ' ms software render/frame';
+            frames = 0; acc = 0; lastStats = now;
+        }
+        requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

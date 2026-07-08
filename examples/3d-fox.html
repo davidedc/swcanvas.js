@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SW3D — fox scene (Electric Gryphon port)</title>
+<style>
+    body { margin: 0; background: #111; overflow: hidden; }
+    canvas { display: block; }
+    #hud {
+        position: fixed; top: 8px; left: 8px; color: #eee;
+        font: 13px/1.6 monospace; background: rgba(0,0,0,.55);
+        padding: 6px 10px; border-radius: 4px;
+    }
+    select { font: inherit; background: #222; color: #eee; border: 1px solid #555; }
+</style>
+</head>
+<body>
+<div id="hud">
+    <span id="stats">starting…</span><br>
+    resolution: <select id="res">
+        <option value="1">100%</option>
+        <option value="0.75">75%</option>
+        <option value="0.5">50%</option>
+        <option value="auto">auto (12 ms budget)</option>
+    </select>
+</div>
+<canvas id="view"></canvas>
+<script src="../dist/swcanvas.js"></script>
+<script src="sw3d.js"></script>
+<script src="gryphon-models.js"></script>
+<script src="3d-fox-scene.js"></script>
+<script>
+(function () {
+    'use strict';
+    // Fox scene: SW3D engine (userland) over SWCanvas Core 3D primitives.
+    // Model data ported from Electric Gryphon's PICO-8 3D library demo.
+    //
+    // Present path: putImageData (a near-memcpy, measured ~0.2 ms at ~2 Mpx
+    // on Chrome and Safari - an ImageBitmap-based alternative was tried and
+    // measured ~10x slower, since createImageBitmap must snapshot/convert
+    // eagerly and allocate per frame). At reduced resolution the frame goes
+    // through a hidden buffer canvas so drawImage can upscale (putImageData
+    // cannot scale).
+    //
+    // Resolution: render internally at a scale factor and upscale to the
+    // window. "auto" holds a frame budget by stepping the scale up/down.
+    var canvas = document.getElementById('view');
+    var ctx = canvas.getContext('2d');
+    var stats = document.getElementById('stats');
+    var resSel = document.getElementById('res');
+
+    var surface, depth, scene, imageData, bufferCanvas, bufferCtx;
+    var scale = 1;
+    var autoScale = 1;
+
+    function currentScale() {
+        return resSel.value === 'auto' ? autoScale : parseFloat(resSel.value);
+    }
+
+    function rebuild() {
+        canvas.width = Math.max(64, window.innerWidth);
+        canvas.height = Math.max(64, window.innerHeight);
+        scale = currentScale();
+        var w = Math.max(64, Math.round(canvas.width * scale / 2) * 2);
+        var h = Math.max(64, Math.round(canvas.height * scale / 2) * 2);
+        surface = SWCanvas.Core.Surface(w, h);
+        depth = new SWCanvas.Core.DepthBuffer(w, h);
+        scene = FoxScene.makeFoxScene(SWCanvas, SW3D, GryphonModels, w, h);
+        imageData = new ImageData(surface.data, w, h);
+        bufferCanvas = document.createElement('canvas');
+        bufferCanvas.width = w;
+        bufferCanvas.height = h;
+        bufferCtx = bufferCanvas.getContext('2d');
+    }
+    window.addEventListener('resize', rebuild);
+    resSel.addEventListener('change', rebuild);
+    rebuild();
+
+    function present() {
+        if (surface.width === canvas.width && surface.height === canvas.height) {
+            ctx.putImageData(imageData, 0, 0);
+        } else {
+            bufferCtx.putImageData(imageData, 0, 0);
+            ctx.drawImage(bufferCanvas, 0, 0, canvas.width, canvas.height);
+        }
+    }
+
+    // Auto-resolution controller: exponential moving average of the frame
+    // cost, stepped with hysteresis so it does not oscillate
+    var ema = 0;
+    var framesSinceAdjust = 0;
+    function autoAdjust(frameMs) {
+        ema = ema === 0 ? frameMs : ema * 0.9 + frameMs * 0.1;
+        framesSinceAdjust++;
+        if (resSel.value !== 'auto' || framesSinceAdjust < 30) return;
+        if (ema > 12 && autoScale > 0.4) {
+            autoScale = Math.max(0.4, autoScale - 0.125);
+            framesSinceAdjust = 0;
+            rebuild();
+        } else if (ema < 7 && autoScale < 1) {
+            autoScale = Math.min(1, autoScale + 0.125);
+            framesSinceAdjust = 0;
+            rebuild();
+        }
+    }
+
+    var frames = 0, accRender = 0, accPresent = 0, tris = 0, lastStats = performance.now();
+    function tick(now) {
+        var t0 = performance.now();
+        tris = scene.render(surface, depth, now / 1000);
+        var t1 = performance.now();
+        present();
+        var t2 = performance.now();
+
+        accRender += t1 - t0;
+        accPresent += t2 - t1;
+        frames++;
+        autoAdjust(t2 - t0);
+
+        if (now - lastStats > 500 && frames > 0) {
+            stats.textContent =
+                surface.width + '×' + surface.height +
+                (scale !== 1 ? ' (' + Math.round(scale * 100) + '%)' : '') +
+                ' — render ' + (accRender / frames).toFixed(2) +
+                ' ms · present ' + (accPresent / frames).toFixed(2) +
+                ' ms — ' + tris + ' tris';
+            frames = 0; accRender = 0; accPresent = 0; lastStats = now;
+        }
+        requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

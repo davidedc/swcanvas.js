@@ -82,6 +82,10 @@ cat src/core/SWPath2D.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/core/Surface.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
+cat src/core/DepthBuffer.js >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
+cat src/core/Texture3D.js >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
 
 # Phase 1.7: Vendored BitmapText.js (text rendering engine).
 # Order mirrors BitmapText.js/scripts/build-runtime-bundle.sh — see
@@ -186,6 +190,8 @@ echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/SpanOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/QuadScanOps.js)" >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
+cat src/renderers/Triangle3DOps.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/RectOpsRot.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
@@ -372,6 +378,9 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             RoundedRectOpsAA: RoundedRectOpsAA,
+            DepthBuffer: DepthBuffer,
+            Texture3D: Texture3D,
+            Triangle3DOps: Triangle3DOps,
             Validators: Validators,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,
@@ -422,6 +431,9 @@ if (typeof window !== 'undefined') {
             ConicGradient: ConicGradient,
             Pattern: Pattern,
             RoundedRectOpsAA: RoundedRectOpsAA,
+            DepthBuffer: DepthBuffer,
+            Texture3D: Texture3D,
+            Triangle3DOps: Triangle3DOps,
             Validators: Validators,
             IS_DEBUG: IS_DEBUG,
             assertDebug: assertDebug,

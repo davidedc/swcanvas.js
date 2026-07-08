@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SWCanvas 3D + native HTML5 Canvas composition</title>
+<style>
+    body { margin: 0; background: #20242c; overflow: hidden; }
+    canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<script src="../dist/swcanvas.js"></script>
+<script src="3d-cubes-scene.js"></script>
+<script>
+(function () {
+    'use strict';
+    // =====================================================================
+    // SWCanvas 3D rendered THROUGH a native HTML5 canvas pipeline:
+    //
+    //   Triangle3DOps -> native ImageData pixels (zero-copy Uint32 view)
+    //     -> putImageData onto a hidden buffer canvas
+    //     -> drawImage onto the display canvas under native clip()
+    //     -> ordinary canvas 2D primitives drawn on top
+    //
+    // What this demonstrates:
+    //  1. The 3D rasterizer only needs {width, height, data32}: here it
+    //     writes directly into a native ImageData's buffer. No SWCanvas
+    //     Surface object is involved anywhere on this page.
+    //  2. putImageData ignores clipping/transforms/compositing by spec, so
+    //     the 3D frame is presented to a buffer canvas first; drawImage of
+    //     that canvas then participates fully in native clip(), transforms
+    //     and alpha compositing.
+    //  3. The 3D background is cleared to alpha 0, so the cubes composite
+    //     over natively-drawn content (gradient + grid) like any image.
+    //  4. One 3D buffer feeds two native clipped viewports: a rounded-rect
+    //     "widget" (1:1) and a circular "mirror" (scaled by drawImage).
+    // =====================================================================
+
+    var VW = 640, VH = 440; // 3D buffer size (independent of window size)
+
+    var display = document.getElementById('view');
+    var ctx = display.getContext('2d');
+
+    // Hidden buffer canvas: the present target for the raw 3D pixels
+    var buffer = document.createElement('canvas');
+    buffer.width = VW;
+    buffer.height = VH;
+    var bctx = buffer.getContext('2d');
+
+    // The "facade shim": a 3D render target duck-typed directly over the
+    // native ImageData's own memory (same bytes, no copies)
+    var imageData = bctx.createImageData(VW, VH);
+    var target = { width: VW, height: VH, data32: new Uint32Array(imageData.data.buffer) };
+    var depth = new SWCanvas.Core.DepthBuffer(VW, VH);
+    var scene = CubesScene.makeCubesScene(SWCanvas, VW, VH, 0x00000000); // transparent bg
+
+    function resize() {
+        display.width = Math.max(720, window.innerWidth);
+        display.height = Math.max(560, window.innerHeight);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function drawBackground(w, h) {
+        // Native content the 3D floats over: gradient + grid
+        var g = ctx.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, '#2b3242');
+        g.addColorStop(1, '#171a22');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (var x = 0.5; x < w; x += 40) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+        for (var y = 0.5; y < h; y += 40) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+        ctx.stroke();
+    }
+
+    var accRaster = 0, accCompose = 0, frames = 0, statsLine = 'measuring…';
+
+    function tick(now) {
+        var t = now / 1000;
+        var w = display.width, h = display.height;
+
+        // ---- software 3D: rasterize into the native ImageData ----
+        var t0 = performance.now();
+        scene.render(target, depth, t);
+        var t1 = performance.now();
+
+        // Present raw pixels to the buffer canvas (clip-free by design)
+        bctx.putImageData(imageData, 0, 0);
+
+        // ---- native 2D composition ----
+        drawBackground(w, h);
+
+        // Main viewport: native shadowed panel + rounded-rect clip
+        var vx = Math.round((w - VW) / 2), vy = Math.round((h - VH) / 2) - 24;
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 30;
+        ctx.shadowOffsetY = 10;
+        ctx.fillStyle = 'rgba(10, 12, 17, 0.55)';
+        ctx.beginPath();
+        ctx.roundRect(vx, vy, VW, VH, 18);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(vx, vy, VW, VH, 18);
+        ctx.clip();
+        ctx.drawImage(buffer, vx, vy); // 3D frame, clipped by the native path
+        ctx.restore();
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(vx + 0.75, vy + 0.75, VW - 1.5, VH - 1.5, 17);
+        ctx.stroke();
+
+        // Native vector overlay ON TOP of the 3D pixels
+        ctx.save();
+        ctx.strokeStyle = 'rgba(120,220,160,0.8)';
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(vx + VW / 2 - 40, vy + VH / 2);
+        ctx.lineTo(vx + VW / 2 + 40, vy + VH / 2);
+        ctx.moveTo(vx + VW / 2, vy + VH / 2 - 40);
+        ctx.lineTo(vx + VW / 2, vy + VH / 2 + 40);
+        ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = 'rgba(120,220,160,0.9)';
+        ctx.font = '12px monospace';
+        ctx.fillText('native crosshair over software 3D', vx + VW / 2 + 48, vy + VH / 2 + 4);
+
+        ctx.fillStyle = '#e8e8ee';
+        ctx.font = 'bold 14px system-ui, sans-serif';
+        ctx.fillText('SWCanvas 3D (depth-buffered) inside a native rounded-rect clip', vx, vy - 12);
+
+        // Circular "mirror": SAME 3D buffer, scaled by drawImage, circle clip
+        var mr = 90, mx = w - mr - 44, my = h - mr - 44;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(mx, my, mr, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.fillStyle = '#0c0e12';
+        ctx.fillRect(mx - mr, my - mr, 2 * mr, 2 * mr);
+        var dw = mr * 2.4, dh = dw * (VH / VW);
+        ctx.drawImage(buffer, mx - dw / 2, my - dh / 2, dw, dh);
+        ctx.restore();
+
+        // Animated native dashed ring around the mirror
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 8]);
+        ctx.lineDashOffset = -now / 20;
+        ctx.beginPath();
+        ctx.arc(mx, my, mr + 4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = '#c8c8d0';
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('same buffer, circle clip', mx, my + mr + 26);
+        ctx.textAlign = 'start';
+
+        // HUD (native text)
+        var t2 = performance.now();
+        accRaster += t1 - t0;
+        accCompose += t2 - t1;
+        frames++;
+        if (frames >= 30) {
+            statsLine =
+                VW + '×' + VH + ' 3D buffer — software raster ' + (accRaster / frames).toFixed(2) +
+                ' ms · present + native compose ' + (accCompose / frames).toFixed(2) + ' ms';
+            accRaster = accCompose = frames = 0;
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.beginPath();
+        ctx.roundRect(12, 12, 560, 30, 6);
+        ctx.fill();
+        ctx.fillStyle = '#9fe8bc';
+        ctx.font = '12px monospace';
+        ctx.fillText(statsLine, 22, 31);
+
+        requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

@@ -90,6 +90,9 @@ module.exports = {
         RoundedRectOpsAA: 'readonly',
         RoundedRectOpsRot: 'readonly',
         RoundedRectUtils: 'readonly',
+        DepthBuffer: 'readonly',
+        Texture3D: 'readonly',
+        Triangle3DOps: 'readonly',
         PolygonFiller: 'readonly',
         PathFlattener: 'readonly',
         StrokeGenerator: 'readonly',
@@ -181,7 +184,7 @@ module.exports = {
         'no-unused-vars': ['error', {
             args: 'none',
             ignoreRestSiblings: true,
-            varsIgnorePattern: '^(_|Context2D|Surface|Transform2D|SWPath2D|Color|ClipMask|SourceMask|StateStack|Rasterizer|Point|Rectangle|BitBuffer|BoundsTracker|CompositeOperations|ImageProcessor|Validators|SpanOps|QuadScanOps|RectOpsAA|RectOpsRot|CircleOps|ArcOps|LineOps|RoundedRectOpsAA|RoundedRectOpsRot|RoundedRectUtils|PolygonFiller|PathFlattener|StrokeGenerator|Gradient|LinearGradient|RadialGradient|ConicGradient|Pattern|ColorParser|ShadowBuffer|BoxBlur|ShadowPipeline|BitmapEncoder|BitmapEncodingOptions|PngEncoder|PngEncodingOptions|CanvasCompatibleContext2D|SWCanvasElement|SWCanvasConstants|IS_DEBUG|assertDebug|debugLog|debugWarn|FLOAT_EPSILON|TRANSFORM_EPSILON|TAU|HALF_PI|THREE_HALF_PI|QUARTER_PI|DEG_TO_RAD|FILL_EPSILON|STROKE_1PX_TOLERANCE|ANGLE_TOLERANCE|ARC_FULLCIRCLE_TOLERANCE|MIN_EDGE_LENGTH|MIN_EDGE_LENGTH_SQUARED|PATH_FLATTENING_TOLERANCE|THIN_LINE_THRESHOLD|DEFAULT_MITER_LIMIT)$'
+            varsIgnorePattern: '^(_|Context2D|Surface|Transform2D|SWPath2D|Color|ClipMask|SourceMask|StateStack|Rasterizer|Point|Rectangle|BitBuffer|BoundsTracker|CompositeOperations|ImageProcessor|Validators|SpanOps|QuadScanOps|Triangle3DOps|DepthBuffer|Texture3D|RectOpsAA|RectOpsRot|CircleOps|ArcOps|LineOps|RoundedRectOpsAA|RoundedRectOpsRot|RoundedRectUtils|PolygonFiller|PathFlattener|StrokeGenerator|Gradient|LinearGradient|RadialGradient|ConicGradient|Pattern|ColorParser|ShadowBuffer|BoxBlur|ShadowPipeline|BitmapEncoder|BitmapEncodingOptions|PngEncoder|PngEncodingOptions|CanvasCompatibleContext2D|SWCanvasElement|SWCanvasConstants|IS_DEBUG|assertDebug|debugLog|debugWarn|FLOAT_EPSILON|TRANSFORM_EPSILON|TAU|HALF_PI|THREE_HALF_PI|QUARTER_PI|DEG_TO_RAD|FILL_EPSILON|STROKE_1PX_TOLERANCE|ANGLE_TOLERANCE|ARC_FULLCIRCLE_TOLERANCE|MIN_EDGE_LENGTH|MIN_EDGE_LENGTH_SQUARED|PATH_FLATTENING_TOLERANCE|THIN_LINE_THRESHOLD|DEFAULT_MITER_LIMIT)$'
         }],
 
         // === STYLE (match existing) ===
@@ -241,7 +244,7 @@ module.exports = {
                     ignoreRestSiblings: true,
                     // Ignore variables commonly used in preprocessor markers
                     // Includes: data buffers, pixel coordinates, colors, clipping, arc parameters, octant points
-                    varsIgnorePattern: '^(_|data|data32|pixelIndex|packedColor|pos|r|g|b|alpha|invAlpha|effectiveAlpha|clipBuffer|startCos|startSin|endCos|endSin|isLargeArc|px|py|screenX|screenY|width|height|dx|dy|bx|by|adjCX|adjCY|pAx|pAy|pBx|pBy|pCx|pCy|pDx|pDy|pEx|pEy|pFx|pFy|pGx|pGy|pHx|pHy|strokeInvAlpha|strokePacked|strokeEffectiveAlpha|SpanOps|QuadScanOps|RectOpsAA|RectOpsRot|CircleOps|ArcOps|LineOps|RoundedRectOpsAA|RoundedRectOpsRot|RoundedRectUtils|PolygonFiller|PathFlattener|StrokeGenerator)$'
+                    varsIgnorePattern: '^(_|data|data32|pixelIndex|packedColor|pos|r|g|b|alpha|invAlpha|effectiveAlpha|clipBuffer|startCos|startSin|endCos|endSin|isLargeArc|px|py|screenX|screenY|width|height|dx|dy|bx|by|adjCX|adjCY|pAx|pAy|pBx|pBy|pCx|pCy|pDx|pDy|pEx|pEy|pFx|pFy|pGx|pGy|pHx|pHy|strokeInvAlpha|strokePacked|strokeEffectiveAlpha|SpanOps|QuadScanOps|Triangle3DOps|DepthBuffer|Texture3D|RectOpsAA|RectOpsRot|CircleOps|ArcOps|LineOps|RoundedRectOpsAA|RoundedRectOpsRot|RoundedRectUtils|PolygonFiller|PathFlattener|StrokeGenerator)$'
                 }],
                 // PolygonFiller uses intentional while(true) loops for scanline processing
                 'no-constant-condition': 'off',
