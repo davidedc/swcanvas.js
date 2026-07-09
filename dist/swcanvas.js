@@ -23798,18 +23798,16 @@ class Rasterizer {
             clipRect: params.clipRect || null,
             fillStyle: params.fillStyle || null,
             strokeStyle: params.strokeStyle || null,
-            sourceMask: null, // Will be initialized if needed for canvas-wide compositing
+            // Lazily built on the first coverage write of a canvas-wide op (see
+            // _ensureSourceMask). The full-cover fillRect fast path in
+            // _fillRectInternal never needs it, so it pays no allocation.
+            sourceMask: null,
             // Shadow properties
             shadowColor: params.shadowColor || Color.transparent,
             shadowBlur: params.shadowBlur || 0,
             shadowOffsetX: params.shadowOffsetX || 0,
             shadowOffsetY: params.shadowOffsetY || 0
         };
-
-        // Initialize source mask for global-effect operations
-        if (this._requiresCanvasWideCompositing(this._currentOp.composite)) {
-            this._currentOp.sourceMask = new SourceMask(this._surface.width, this._surface.height);
-        }
     }
 
     /**
@@ -23914,6 +23912,25 @@ class Rasterizer {
     _fillRectInternal(x, y, width, height, color) {
         // If there's stencil clipping or canvas-wide compositing, convert the rectangle to a path and use path filling
         if (this._currentOp.clipMask || this._requiresCanvasWideCompositing(this._currentOp.composite)) {
+            // ── Full-cover canvas-wide fast path (byte-identical single pass) ──
+            // A fillRect under a canvas-wide composite op (source-in/out,
+            // destination-in/atop, copy) that covers the ENTIRE surface makes the
+            // two-pass SourceMask machinery pure waste: full coverage ⇒ every pixel's
+            // Sa===1 ⇒ the result equals ONE blendPixel(composite, evalPaint, dst) pass
+            // (exactly the Sa>0 arm of _performCanvasWideCompositing, with no mask build
+            // and no second iteration). This is the colored-glyph tint — BitmapText
+            // stamps text colour with `source-in` fillRect(0,0,fullScratch), ~128×/frame
+            // on a busy desktop. Scope to the safe dominant case only: no clip, an
+            // axis-aligned transform, and a device rect ⊇ [0,W]×[0,H]. Everything else
+            // (any clip, rotation, or partial cover) keeps the two-pass path below.
+            if (this._currentOp.clipMask === null && this._currentOp.clipRect === null &&
+                this._requiresCanvasWideCompositing(this._currentOp.composite) &&
+                this._currentOp.transform.b === 0 && this._currentOp.transform.c === 0 &&
+                this._axisAlignedRectCoversSurface(x, y, width, height, this._currentOp.transform)) {
+                this._fillFullCoverCanvasWide(color);
+                return;
+            }
+
             // Create a path for the rectangle
             const rectPath = new SWPath2D();
             rectPath.rect(x, y, width, height);
@@ -24051,6 +24068,87 @@ class Rasterizer {
     }
 
     /**
+     * Lazily allocate the source-coverage mask for canvas-wide compositing.
+     * Called on the first coverage write of a canvas-wide op (the two-pass path);
+     * the full-cover fillRect fast path never calls it, so it allocates nothing.
+     * @returns {SourceMask} The current op's source mask
+     * @private
+     */
+    _ensureSourceMask() {
+        if (this._currentOp.sourceMask === null) {
+            this._currentOp.sourceMask = new SourceMask(this._surface.width, this._surface.height);
+        }
+        return this._currentOp.sourceMask;
+    }
+
+    /**
+     * Does the axis-aligned device bbox of this rect cover the whole surface?
+     * When true (and the transform is axis-aligned), every surface pixel's span
+     * membership in the mask the two-pass path would build is guaranteed true, so a
+     * single composite pass is exact. dx0<=0 ⇒ startX clamps to 0, dx1>=W ⇒ endX
+     * clamps to W-1 for every scanline, and dy0<=0 / dy1>=H make every scanline
+     * (sampled at y+0.5) intersect the rect — i.e. the mask is all-covered.
+     * @private
+     */
+    _axisAlignedRectCoversSurface(x, y, width, height, transform) {
+        const topLeft = transform.transformPoint({ x: x, y: y });
+        const topRight = transform.transformPoint({ x: x + width, y: y });
+        const bottomLeft = transform.transformPoint({ x: x, y: y + height });
+        const bottomRight = transform.transformPoint({ x: x + width, y: y + height });
+        const dx0 = Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x);
+        const dx1 = Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x);
+        const dy0 = Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y);
+        const dy1 = Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y);
+        return dx0 <= 0 && dy0 <= 0 && dx1 >= this._surface.width && dy1 >= this._surface.height;
+    }
+
+    /**
+     * Single-pass full-cover canvas-wide fill (byte-identical to the two-pass path
+     * when the source covers every pixel — see _fillRectInternal). Iterates the whole
+     * surface in the same [0..H-1]×[0..W-1] order as _performCanvasWideCompositing,
+     * evaluating the paint and blending each pixel, but with no SourceMask build and
+     * no per-pixel getPixel/Sa branch (Sa is 1 everywhere by construction).
+     * @param {Color|Array} color - Fill color param from fillRect (array overrides fillStyle)
+     * @private
+     */
+    _fillFullCoverCanvasWide(color) {
+        const op = this._currentOp;
+        const surface = this._surface;
+        const composite = op.composite;
+        const transform = op.transform;
+        const globalAlpha = op.globalAlpha;
+        // Resolve the paint source exactly as the two-pass path does: an array color
+        // (e.g. from clearRect) overrides fillStyle; otherwise the op's fillStyle (or
+        // opaque black). color is normally Context2D._fillStyle (a Color), so the array
+        // branch is not taken — same resolution as _fillRectInternal + _fillInternal.
+        const paintSource = Array.isArray(color)
+            ? new Color(color[0], color[1], color[2], color[3])
+            : (op.fillStyle || new Color(0, 0, 0, 255));
+        const width = surface.width;
+        const height = surface.height;
+        const data = surface.data;
+        const stride = surface.stride;
+
+        for (let py = 0; py < height; py++) {
+            for (let px = 0; px < width; px++) {
+                const src = PolygonFiller._evaluatePaintSource(
+                    paintSource, px, py, transform, globalAlpha, 1.0
+                );
+                const offset = py * stride + px * 4;
+                const result = CompositeOperations.blendPixel(
+                    composite,
+                    src.r, src.g, src.b, src.a,
+                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3]
+                );
+                data[offset] = result.r;
+                data[offset + 1] = result.g;
+                data[offset + 2] = result.b;
+                data[offset + 3] = result.a;
+            }
+        }
+    }
+
+    /**
      * Perform canvas-wide compositing for operations that affect pixels outside the source area
      * @param {Color|Gradient|Pattern} paintSource - Paint source for source pixels
      * @param {number} globalAlpha - Global alpha value (0-1)
@@ -24170,7 +24268,7 @@ class Rasterizer {
                 this._currentOp.globalAlpha,
                 1.0,
                 this._currentOp.composite,
-                this._currentOp.sourceMask,
+                this._ensureSourceMask(),
                 this._currentOp.clipRect
             );
 
@@ -24246,7 +24344,7 @@ class Rasterizer {
                 this._currentOp.globalAlpha,
                 subPixelOpacity,
                 this._currentOp.composite,
-                this._currentOp.sourceMask,
+                this._ensureSourceMask(),
                 this._currentOp.clipRect
             );
 
