@@ -173,10 +173,11 @@ class PolygonFiller {
                                 pixelIndex++;
                             }
                         } else {
-                            // No clipping - optimized path with direct 32-bit writes
-                            for (; pixelIndex < endIndex; pixelIndex++) {
-                                data32[pixelIndex] = packedColor;
-                            }
+                            // No clipping - contiguous run of one packed color, so a native
+                            // TypedArray.fill beats the per-pixel loop (O1,
+                            // docs/runtime-performance-optimization-plan.md §5B). Byte-identical:
+                            // same value, same [pixelIndex, endIndex) indices.
+                            data32.fill(packedColor, pixelIndex, endIndex);
                         }
                     }
                 }

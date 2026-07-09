@@ -91,10 +91,11 @@ class SpanOps {
                 pixelIndex++;
             }
         } else {
-            // No clipping - optimized path
-            for (; pixelIndex < endIndex; pixelIndex++) {
-                data32[pixelIndex] = packedColor;
-            }
+            // No clipping - optimized path. The span is a contiguous run of one packed color,
+            // so a single native TypedArray.fill beats a per-pixel JS loop for the hundreds-of-px
+            // spans of window/panel fills (O1, docs/runtime-performance-optimization-plan.md §5B).
+            // Byte-identical: same value written to the same [pixelIndex, endIndex) indices.
+            data32.fill(packedColor, pixelIndex, endIndex);
         }
     }
 

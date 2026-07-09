@@ -7410,10 +7410,11 @@ class SpanOps {
                 pixelIndex++;
             }
         } else {
-            // No clipping - optimized path
-            for (; pixelIndex < endIndex; pixelIndex++) {
-                data32[pixelIndex] = packedColor;
-            }
+            // No clipping - optimized path. The span is a contiguous run of one packed color,
+            // so a single native TypedArray.fill beats a per-pixel JS loop for the hundreds-of-px
+            // spans of window/panel fills (O1, docs/runtime-performance-optimization-plan.md §5B).
+            // Byte-identical: same value written to the same [pixelIndex, endIndex) indices.
+            data32.fill(packedColor, pixelIndex, endIndex);
         }
     }
 
@@ -9988,17 +9989,31 @@ if (__outA > 0) {
         const right = Math.ceil(x + width);
         const bottom = Math.ceil(y + height);
 
-        for (let py = Math.max(cy0, top); py < Math.min(bottom, cy1); py++) {
-            for (let px = Math.max(cx0, left); px < Math.min(right, cx1); px++) {
-                const pixelIndex = py * surfaceWidth + px;
+        // Column span is invariant across rows -> hoist it.
+        const rowLeft = Math.max(cx0, left);
+        const rowRight = Math.min(right, cx1);
+        const yStart = Math.max(cy0, top);
+        const yEnd = Math.min(bottom, cy1);
 
-                if (clipBuffer) {
+        if (clipBuffer) {
+            for (let py = yStart; py < yEnd; py++) {
+                const base = py * surfaceWidth;
+                for (let px = rowLeft; px < rowRight; px++) {
+                    const pixelIndex = base + px;
                     const byteIndex = pixelIndex >> 3;
                     const bitIndex = pixelIndex & 7;
                     if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
+                    data32[pixelIndex] = packedColor;
                 }
-
-                data32[pixelIndex] = packedColor;
+            }
+        } else {
+            // No clip mask: each row is a contiguous run of one packed color, so a native
+            // TypedArray.fill beats the per-pixel loop (O1, docs/runtime-performance-optimization-plan.md
+            // §5B). Byte-identical: same value, same [rowStart, rowStart+len) indices. Empty rows
+            // (rowRight <= rowLeft) make fill a no-op.
+            for (let py = yStart; py < yEnd; py++) {
+                const rowStart = py * surfaceWidth + rowLeft;
+                data32.fill(packedColor, rowStart, py * surfaceWidth + rowRight);
             }
         }
     }
@@ -18749,10 +18764,11 @@ class PolygonFiller {
                                 pixelIndex++;
                             }
                         } else {
-                            // No clipping - optimized path with direct 32-bit writes
-                            for (; pixelIndex < endIndex; pixelIndex++) {
-                                data32[pixelIndex] = packedColor;
-                            }
+                            // No clipping - contiguous run of one packed color, so a native
+                            // TypedArray.fill beats the per-pixel loop (O1,
+                            // docs/runtime-performance-optimization-plan.md §5B). Byte-identical:
+                            // same value, same [pixelIndex, endIndex) indices.
+                            data32.fill(packedColor, pixelIndex, endIndex);
                         }
                     }
                 }
