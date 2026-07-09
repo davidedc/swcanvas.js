@@ -1,10 +1,16 @@
 # Clipping Optimisation Plan
 
-**Status**: Deferred. Awaiting integration of SWCanvas into the consumer system
-that motivates this work. Only instrumentation should be done now (see §8); the
-optimisation itself waits for real workload data.
+**Status**: VALIDATED — GO (2026-07-07). The consumer system (Fizzygum) has long been
+integrated, and a full profiling campaign of its 190-test SystemTest suite delivered the
+§8 workload data: **every §8.3 trigger threshold is exceeded at the maximum possible
+value** (100.000% of clips are axis-aligned integer rects — see §8.5). The design in
+§5–6 stands as written; execute §9 Stages 1–3. One sequencing note: the same campaign
+found two even larger SWCanvas costs to land FIRST — the per-call debug `console.log` in
+`Context2D.drawImage` (src/core/Context2D.js:1855; measured ≈33% of the consumer's busy
+CPU) and a drawImage fast path — see the consumer-side ranked plan at
+`Fizzygum/docs/runtime-performance-optimization-plan.md` (items S1–S3).
 
-**Date**: 2026-05-23
+**Date**: 2026-05-23 (workload validation added 2026-07-07)
 
 **Context**: The anticipated consumer workload is dominated by axis-aligned
 integer rectangular clipping (drawImage + fillRect against clipped regions,
@@ -517,6 +523,54 @@ Useful trigger thresholds for committing to the full plan:
 
 Just observation, no behavioural change.
 
+### 8.5 MEASURED WORKLOAD DATA (2026-07-07) — §8 fulfilled
+
+The observation was implemented **externally** — no SWCanvas code changes were needed:
+the consumer's profiling harness (`Fizzygum/docs/profiling/`, see its README) wraps the
+compat context prototype page-side and classifies every `clip()`/`save()`/draw call.
+Workload: Fizzygum's full 190-test SystemTest suite, headless Chrome, 1100×800, both
+dpr 1 and dpr 2, all runs passing 190/190.
+
+Counter results (dpr1; dpr2 in parens where different):
+
+| §8.1 counter | Measured |
+|---|---|
+| `clipCallCount` | 76,675 (62,344 @dpr2) |
+| `clipDetectedAsRect` | **76,675 = 100.000%** (all INTEGER-coordinate rects) |
+| `clipFellThroughToBitmask` | 0 |
+| `clipUnderRotatedCTM` | 0 |
+| nested clips (intersections) | 0 |
+| `drawCallsByClipKind[wouldBeTier0]` | 227,200 (stroke 124,543 · fill 54,163 · fillText 23,507 · strokeRect 19,907 · fillRect 5,080) |
+| `drawCallsByClipKind[bitmask]` | **0** |
+| clipBBox / surface area | 71% of clips ≤1%, 82% ≤5%, mean 3.4% |
+| `save()` with live clip (= mask deep-clone today) | 12,494 of 382,794 saves |
+
+Derived cost of the current bitmask path on this workload, per suite run: ≈2.27 **billion**
+`setPixel` calls building masks (Σ clip-bbox pixels), 76,675 full-surface ClipMask
+allocations, 12,494 full-surface clones (110 KB @dpr1 / 440 KB @dpr2 each).
+
+CPU-profile share attributable to clipping (V8 sampling, unminified bundle):
+mask build (`fillPolygonsToClipMask`/`_fillClipMaskSpans`/`BitBuffer`) 2.6% of busy CPU
+@dpr1 / 2.8% @dpr2; mask reads (`_getBit`) 6.4% / 10.3%; plus the structural detours
+(clipped `fillRect` rerouted through path filling per `Rasterizer._fillRectInternal`;
+per-pixel bit tests inside span fills). Total addressable ≈10–18% of the consumer's
+busy CPU — comfortably above the §10 "clipping < 5%" abandon line.
+
+**Verdicts against §8.3:** `clipDetectedAsRect/clipCallCount` = 100% (needs >80%) — MET.
+`wouldBeTier0/total draws-under-clip` = 100% (needs >50%) — MET. `bitmask > 5%` — moot
+(zero). The §5 design and §6 per-primitive treatment stand unchanged. The §7 skip-list is
+confirmed by measurement (zero non-rect clips ⇒ recover-to-rect promotion, per-row span
+extents, banded regions all stay skipped). Detection rounding MUST follow
+`_fillClipMaskSpans`'s pixel-center sampling semantics (see the comment at
+`PolygonFiller.js:767+`) so tier-0 stays byte-identical with the mask path — the consumer's
+reference tests hash raw pixels, so any deviation fails its suite loudly.
+
+Consumer-side facts that simplify implementation: all clips originate from just two code
+shapes (an integer-rect `clipToRectangle` helper: moveTo+4×lineTo+closePath; and
+`beginPath/rect/clip` around strokeRect), always inside a save/restore pair, never nested,
+never under rotation. The `save/clipRect/draw/restore` cycle count (12,494 clones/run)
+independently justifies Stage 3.
+
 ---
 
 ## 9. Post-integration work (sequenced)
@@ -574,10 +628,12 @@ If profiling shows 1px strokes are hot, implement endpoint clipping in
 
 ### When to start (post-integration)
 
-- Integration of SWCanvas into the consumer project is complete and stable.
-- Instrumentation data from a representative workload is in hand.
-- At least one of the trigger thresholds in §8.3 is met.
-- No higher-priority correctness issue is open against the renderer.
+- Integration of SWCanvas into the consumer project is complete and stable. ✅ (2026-07-07)
+- Instrumentation data from a representative workload is in hand. ✅ (§8.5)
+- At least one of the trigger thresholds in §8.3 is met. ✅ (all of them, at 100%)
+- No higher-priority correctness issue is open against the renderer. — verify at start;
+  also sequence AFTER the two bigger measured wins (drawImage debug-log removal + drawImage
+  fast path, items S1/S2 in `Fizzygum/docs/runtime-performance-optimization-plan.md`).
 
 ### When to abandon this plan
 
@@ -718,3 +774,7 @@ surface for Stage 2.
   internals and discussing the consumer-project integration plan. Captures
   research + design + sequenced plan; implementation deferred until after
   integration provides workload data.
+- 2026-07-07 — Workload data measured on Fizzygum's full 190-test SystemTest suite
+  (external page-side instrumentation; §8.5 added). All §8.3 triggers exceeded at 100%;
+  status flipped to VALIDATED — GO, with sequencing deferred behind the consumer plan's
+  S1/S2 drawImage items. Design unmodified.
