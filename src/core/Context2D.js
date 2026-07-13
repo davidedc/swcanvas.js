@@ -1587,9 +1587,28 @@ class Context2D {
 
         fillRule = fillRule || 'nonzero';
 
-        // The current default path already holds device-space geometry → draw under
-        // IDENTITY. An external Path2D is transform-independent → draw under the CTM.
-        const opTransform = pathToFill === this._currentPath ? Transform2D.IDENTITY : this._transform;
+        // The current default path holds device-space geometry. Filling it under
+        // IDENTITY would starve a gradient/pattern fillStyle of the CTM: a paint
+        // source is specified in draw-time user space and must be mapped to device
+        // space by the CTM, exactly like the path. So map the centerline back to
+        // user space (drawT⁻¹) and fill under the CTM, so the path AND the paint
+        // source share one transform — mirroring stroke() and matching HTML5
+        // semantics. A singular drawT → zero area → nothing to fill. An external
+        // Path2D is transform-independent → fill under the CTM.
+        let opTransform;
+        if (pathToFill === this._currentPath) {
+            const drawT = this._transform;
+            let inv;
+            try {
+                inv = drawT.invert();
+            } catch (e) {
+                return;
+            }
+            pathToFill = this._transformPathPoints(this._currentPath, inv);
+            opTransform = drawT;
+        } else {
+            opTransform = this._transform;
+        }
 
         // Mark path-based rendering for testing (fill() has no direct rendering currently)
         Context2D._markPathBasedRendering();
