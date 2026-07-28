@@ -474,3 +474,11 @@ echo "Build complete: dist/swcanvas.js"
 
 # Generate build info metadata
 node build-scripts/generate-build-info.js dev dist/swcanvas.build-info.js
+
+# Step 2: the subtractive 3D-core target (dist/swcanvas-3d-core.js + .min.js and
+# dist/sw3d.min.js) — the minimal closure the software-3D path needs, for hosts
+# that paint their 2D through the platform canvas. Deliberately built AFTER the
+# full dist and by its own script: it must not pass through the BitmapText
+# vendor gate above. Its Node witness runs as the script's last step, so a
+# dependency leaking out of the core closure fails this build.
+./build-scripts/build-3d-core.sh

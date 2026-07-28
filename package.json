@@ -13,6 +13,7 @@
   "main": "dist/swcanvas.js",
   "scripts": {
     "build": "./build.sh",
+    "build:3d-core": "./build-scripts/build-3d-core.sh",
     "minify": "./minify.sh",
     "build:prod": "npm run build && npm run minify",
     "test": "node tests/run-tests.js",
