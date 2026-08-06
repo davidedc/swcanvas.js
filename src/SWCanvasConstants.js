@@ -55,6 +55,15 @@ class SWCanvasConstants {
     /** Tolerance for detecting effective 1px strokes */
     static STROKE_1PX_TOLERANCE = 0.001;
 
+    /**
+     * Snap threshold for Math.cos/Math.sin noise at quadrant boundaries.
+     * The true value at 90°-multiples is exactly 0, but Math.cos(1.5*Math.PI) etc.
+     * return ~±2e-16; when an arc plotter's center sits on integer coordinates that
+     * noise lands exactly on a Math.floor() boundary and shifts the quadrant-endpoint
+     * pixel one unit, tearing the junction where an arc meets a straight edge.
+     */
+    static QUADRANT_TRIG_EPSILON = 1e-12;
+
     /** Tolerance for axis-aligned rotation detection */
     static ANGLE_TOLERANCE = 0.001;
 
@@ -91,6 +100,7 @@ const QUARTER_PI = SWCanvasConstants.QUARTER_PI;
 const DEG_TO_RAD = SWCanvasConstants.DEG_TO_RAD;
 const FILL_EPSILON = SWCanvasConstants.FILL_EPSILON;
 const STROKE_1PX_TOLERANCE = SWCanvasConstants.STROKE_1PX_TOLERANCE;
+const QUADRANT_TRIG_EPSILON = SWCanvasConstants.QUADRANT_TRIG_EPSILON;
 const ANGLE_TOLERANCE = SWCanvasConstants.ANGLE_TOLERANCE;
 const ARC_FULLCIRCLE_TOLERANCE = SWCanvasConstants.ARC_FULLCIRCLE_TOLERANCE;
 const MIN_EDGE_LENGTH = SWCanvasConstants.MIN_EDGE_LENGTH;

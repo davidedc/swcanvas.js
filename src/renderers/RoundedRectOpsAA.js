@@ -114,21 +114,23 @@ class RoundedRectOpsAA {
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
 
-        // For 1px stroke, calculate the stroke geometry
-        // The stroke is centered on the path, so for integer coordinates
-        // we need to handle both grid-centered and pixel-centered cases
-        const posX = x;
-        const posY = y;
-        const posW = width;
-        const posH = height;
+        // Snap the stroke onto one device-pixel frame up front, and derive BOTH the
+        // edge runs and the corner centers from it. Edges and corners must share one
+        // frame: deriving the corners from the raw (possibly fractional) rect instead
+        // lets the pixel-centered crisp spelling (x/y at *.5 — the standard HTML5
+        // 1px-stroke idiom) land its corner arcs one pixel inside the snapped edge
+        // lines, doubling pixels at the junctions. For integer input every frame value
+        // equals the raw arithmetic it replaces, so that rendering is unchanged.
+        const leftX = Math.floor(x);
+        const topY = Math.floor(y);
+        const rightX = Math.floor(x + width - 0.5);
+        const bottomY = Math.floor(y + height - 0.5);
 
         // Draw horizontal edges (top and bottom, excluding corners)
-        const topY = Math.floor(posY);
-        const bottomY = Math.floor(posY + posH - 0.5);
 
         // Top edge
         if (topY >= 0 && topY < surfaceHeight) {
-            for (let xx = Math.floor(posX + radius); xx < posX + posW - radius; xx++) {
+            for (let xx = leftX + radius; xx < rightX + 1 - radius; xx++) {
                 if (xx >= 0 && xx < surfaceWidth) {
                     const pos = topY * surfaceWidth + xx;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
@@ -137,7 +139,7 @@ class RoundedRectOpsAA {
         }
         // Bottom edge
         if (bottomY >= 0 && bottomY < surfaceHeight) {
-            for (let xx = Math.floor(posX + radius); xx < posX + posW - radius; xx++) {
+            for (let xx = leftX + radius; xx < rightX + 1 - radius; xx++) {
                 if (xx >= 0 && xx < surfaceWidth) {
                     const pos = bottomY * surfaceWidth + xx;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
@@ -146,12 +148,10 @@ class RoundedRectOpsAA {
         }
 
         // Draw vertical edges (left and right, excluding corners)
-        const leftX = Math.floor(posX);
-        const rightX = Math.floor(posX + posW - 0.5);
 
         // Left edge
         if (leftX >= 0 && leftX < surfaceWidth) {
-            for (let yy = Math.floor(posY + radius); yy < posY + posH - radius; yy++) {
+            for (let yy = topY + radius; yy < bottomY + 1 - radius; yy++) {
                 if (yy >= 0 && yy < surfaceHeight) {
                     const pos = yy * surfaceWidth + leftX;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
@@ -160,7 +160,7 @@ class RoundedRectOpsAA {
         }
         // Right edge
         if (rightX >= 0 && rightX < surfaceWidth) {
-            for (let yy = Math.floor(posY + radius); yy < posY + posH - radius; yy++) {
+            for (let yy = topY + radius; yy < bottomY + 1 - radius; yy++) {
                 if (yy >= 0 && yy < surfaceHeight) {
                     const pos = yy * surfaceWidth + rightX;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
@@ -169,14 +169,24 @@ class RoundedRectOpsAA {
         }
 
         // Draw corner arcs using angle iteration (Bresenham-style)
-        // For a 1px stroke, we draw at radius - 0.5 to get proper pixel placement
-        const drawCorner = (cx, cy, startAngle, endAngle) => {
+        // For a 1px stroke, we draw at radius - 0.5 to get proper pixel placement.
+        // Each corner sweeps exactly one quadrant from startAngle, in a fixed 91-step
+        // 1° iteration: a `angle <= endAngle` accumulation loop can skip the final
+        // step to fp drift, and the quadrant endpoints are exactly the junction
+        // pixels the edge runs above rely on. Math.cos/sin carry ~1e-16 noise at the
+        // 90°-multiples (true value 0); with the integer frame-derived centers that
+        // noise sits exactly on a floor() boundary and would shift the junction pixel
+        // one unit — snap it to zero.
+        const drawCorner = (cx, cy, startAngle) => {
             const sr = radius - 0.5;
-            // Use 1 degree steps for smooth corners
-            const angleStep = DEG_TO_RAD;
-            for (let angle = startAngle; angle <= endAngle; angle += angleStep) {
-                const px = Math.floor(cx + sr * Math.cos(angle));
-                const py = Math.floor(cy + sr * Math.sin(angle));
+            for (let i = 0; i <= 90; i++) {
+                const angle = startAngle + i * DEG_TO_RAD;
+                let c = Math.cos(angle);
+                let s = Math.sin(angle);
+                if (Math.abs(c) < QUADRANT_TRIG_EPSILON) c = 0;
+                if (Math.abs(s) < QUADRANT_TRIG_EPSILON) s = 0;
+                const px = Math.floor(cx + sr * c);
+                const py = Math.floor(cy + sr * s);
                 if (px >= 0 && px < surfaceWidth && py >= 0 && py < surfaceHeight) {
                     const pos = py * surfaceWidth + px;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
@@ -185,13 +195,13 @@ class RoundedRectOpsAA {
         };
 
         // Top-left corner (180° to 270°)
-        drawCorner(posX + radius, posY + radius, Math.PI, THREE_HALF_PI);
+        drawCorner(leftX + radius, topY + radius, Math.PI);
         // Top-right corner (270° to 360°)
-        drawCorner(posX + posW - radius, posY + radius, THREE_HALF_PI, TAU);
+        drawCorner(rightX + 1 - radius, topY + radius, THREE_HALF_PI);
         // Bottom-right corner (0° to 90°)
-        drawCorner(posX + posW - radius, posY + posH - radius, 0, HALF_PI);
+        drawCorner(rightX + 1 - radius, bottomY + 1 - radius, 0);
         // Bottom-left corner (90° to 180°)
-        drawCorner(posX + radius, posY + posH - radius, HALF_PI, Math.PI);
+        drawCorner(leftX + radius, bottomY + 1 - radius, HALF_PI);
     }
 
     /**
@@ -229,10 +239,16 @@ class RoundedRectOpsAA {
             g = color.g,
             b = color.b;
 
-        const posX = x;
-        const posY = y;
-        const posW = width;
-        const posH = height;
+        // Snap the stroke onto one device-pixel frame up front, and derive the edge
+        // runs AND the corner centers from it (same contract as stroke1px_AA_Opaq —
+        // see the comment there). Sharing the frame matters even more here: the
+        // shortened edges rely on the corners covering the junction pixels exactly,
+        // so a corner center derived from a fractional raw rect does not just double
+        // pixels — it leaves the junction pixels unpainted (visible gaps).
+        const leftX = Math.floor(x);
+        const topY = Math.floor(y);
+        const rightX = Math.floor(x + width - 0.5);
+        const bottomY = Math.floor(y + height - 0.5);
 
         // Edge shortening strategy: shorten edges by 1 pixel at each end to avoid
         // junction overlap with corners. Corners naturally cover junction pixels.
@@ -251,10 +267,8 @@ class RoundedRectOpsAA {
         };
 
         // Draw horizontal edges (shortened by 1 pixel at each end to avoid junction overlap)
-        const topY = Math.floor(posY);
-        const bottomY = Math.floor(posY + posH - 0.5);
-        const horzStart = Math.floor(posX + radius) + 1; // Skip left junction pixel
-        const horzEnd = Math.floor(posX + posW - radius); // Stop before right junction pixel
+        const horzStart = leftX + radius + 1; // Skip left junction pixel
+        const horzEnd = rightX + 1 - radius; // Stop before right junction pixel
 
         for (let xx = horzStart; xx < horzEnd; xx++) {
             blendPixel(xx, topY);
@@ -262,10 +276,8 @@ class RoundedRectOpsAA {
         }
 
         // Draw vertical edges (shortened by 1 pixel at each end to avoid junction overlap)
-        const leftX = Math.floor(posX);
-        const rightX = Math.floor(posX + posW - 0.5);
-        const vertStart = Math.floor(posY + radius) + 1; // Skip top junction pixel
-        const vertEnd = Math.floor(posY + posH - radius); // Stop before bottom junction pixel
+        const vertStart = topY + radius + 1; // Skip top junction pixel
+        const vertEnd = bottomY + 1 - radius; // Stop before bottom junction pixel
 
         for (let yy = vertStart; yy < vertEnd; yy++) {
             blendPixel(leftX, yy);
@@ -275,13 +287,20 @@ class RoundedRectOpsAA {
         // Draw corner arcs with consecutive-duplicate tracking
         // Angle iteration can map multiple angles to the same pixel for small radii.
         // Since duplicates are always consecutive, tracking lastPos is sufficient.
-        const drawCorner = (cx, cy, startAngle, endAngle) => {
+        // Fixed 91-step quadrant sweep + quadrant-trig snap: see stroke1px_AA_Opaq —
+        // here a missed quadrant endpoint is not overdraw slack but a junction GAP,
+        // because the edges above deliberately stop one pixel short.
+        const drawCorner = (cx, cy, startAngle) => {
             const sr = radius - 0.5;
-            const angleStep = DEG_TO_RAD;
             let lastPos = -1;
-            for (let angle = startAngle; angle <= endAngle; angle += angleStep) {
-                const px = Math.floor(cx + sr * Math.cos(angle));
-                const py = Math.floor(cy + sr * Math.sin(angle));
+            for (let i = 0; i <= 90; i++) {
+                const angle = startAngle + i * DEG_TO_RAD;
+                let c = Math.cos(angle);
+                let s = Math.sin(angle);
+                if (Math.abs(c) < QUADRANT_TRIG_EPSILON) c = 0;
+                if (Math.abs(s) < QUADRANT_TRIG_EPSILON) s = 0;
+                const px = Math.floor(cx + sr * c);
+                const py = Math.floor(cy + sr * s);
                 if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) continue;
                 const pos = py * surfaceWidth + px;
                 if (pos === lastPos) continue; // Skip consecutive duplicate
@@ -296,13 +315,13 @@ class RoundedRectOpsAA {
         };
 
         // Top-left corner (180° to 270°)
-        drawCorner(posX + radius, posY + radius, Math.PI, THREE_HALF_PI);
+        drawCorner(leftX + radius, topY + radius, Math.PI);
         // Top-right corner (270° to 360°)
-        drawCorner(posX + posW - radius, posY + radius, THREE_HALF_PI, TAU);
+        drawCorner(rightX + 1 - radius, topY + radius, THREE_HALF_PI);
         // Bottom-right corner (0° to 90°)
-        drawCorner(posX + posW - radius, posY + posH - radius, 0, HALF_PI);
+        drawCorner(rightX + 1 - radius, bottomY + 1 - radius, 0);
         // Bottom-left corner (90° to 180°)
-        drawCorner(posX + radius, posY + posH - radius, HALF_PI, Math.PI);
+        drawCorner(leftX + radius, bottomY + 1 - radius, HALF_PI);
     }
 
     /**

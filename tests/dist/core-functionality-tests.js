@@ -2636,6 +2636,275 @@
         });
 
 
+        // Test: strokeRoundRect 1px crisp rendering - half-integer (pixel-centered) frame contract
+        // This file will be concatenated into the main test suite
+        //
+        // The standard HTML5 crisp-1px-stroke idiom places the stroke path on *.5
+        // coordinates. The 1px rounded-rect fast path snaps the stroke onto one
+        // device-pixel frame (leftX/topY/rightX/bottomY) and derives BOTH the edge runs
+        // and the corner centers from it, so the corners join the edges exactly like
+        // they do for integer input. This test pins that contract:
+        //   1. exact enclosing bounds (the snapped frame, no stray pixels),
+        //   2. exactly 2 colors on the surface (background + stroke - crisp, no fringe),
+        //   3. closed single ring (every stroke pixel has >= 2 of 8 neighbors),
+        //   4. mirror symmetry in both axes (corners not lopsided),
+        //   5. frame equivalence: the half-integer spelling renders byte-identically
+        //      to the integer spelling that covers the same snapped frame.
+
+        test('RoundRect stroke1px crisp - half-integer frame contract', () => {
+            const W = 90;
+            const H = 60;
+
+            function renderStroke(x, y, w, h, r) {
+                const surface = SWCanvas.Core.Surface(W, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, W, H);
+                ctx.setStrokeStyle(255, 0, 0, 255);
+                ctx.lineWidth = 1;
+                ctx.strokeRoundRect(x, y, w, h, r);
+                return surface;
+            }
+
+            function strokePixelSet(surface) {
+                const set = new Set();
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const o = y * surface.stride + x * 4;
+                        if (surface.data[o] === 255 && surface.data[o + 1] === 0) {
+                            set.add(y * W + x);
+                        }
+                    }
+                }
+                return set;
+            }
+
+            for (const r of [1, 2, 3, 5, 8, 10]) {
+                // Half-integer spelling: path on *.5, frame = cols 10..38, rows 8..30
+                const surface = renderStroke(10.5, 8.5, 28, 22, r);
+                const stroke = strokePixelSet(surface);
+
+                // 1. Exact enclosing bounds - the snapped frame, nothing outside, all
+                //    four frame lines reached (crisp alignment, no faint strays possible
+                //    on this non-antialiased engine).
+                let minX = W, maxX = -1, minY = H, maxY = -1;
+                for (const p of stroke) {
+                    const px = p % W;
+                    const py = (p - px) / W;
+                    if (px < minX) minX = px;
+                    if (px > maxX) maxX = px;
+                    if (py < minY) minY = py;
+                    if (py > maxY) maxY = py;
+                }
+                if (minX !== 10 || maxX !== 38 || minY !== 8 || maxY !== 30) {
+                    throw new Error(
+                        `r=${r}: bounds (${minX}..${maxX}, ${minY}..${maxY}) != expected (10..38, 8..30)`
+                    );
+                }
+
+                // 2. Exactly 2 colors on the whole surface: white + pure stroke red.
+                const colors = new Set();
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const o = y * surface.stride + x * 4;
+                        colors.add(
+                            (surface.data[o] << 16) | (surface.data[o + 1] << 8) | surface.data[o + 2]
+                        );
+                    }
+                }
+                if (colors.size !== 2) {
+                    throw new Error(`r=${r}: expected exactly 2 colors, found ${colors.size}`);
+                }
+
+                // 3. Closed ring: every stroke pixel has at least 2 stroke neighbors
+                //    (8-connectivity). A single missing junction pixel leaves two pixels
+                //    with only 1 neighbor, so this catches edge/corner tearing exactly.
+                for (const p of stroke) {
+                    const px = p % W;
+                    const py = (p - px) / W;
+                    let neighbors = 0;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            if (stroke.has((py + dy) * W + (px + dx))) neighbors++;
+                        }
+                    }
+                    if (neighbors < 2) {
+                        throw new Error(
+                            `r=${r}: stroke pixel (${px},${py}) has ${neighbors} neighbor(s) - ring is torn`
+                        );
+                    }
+                }
+
+                // 4. Mirror symmetry about the frame center (cols 10+38, rows 8+30):
+                //    a corner arc snapped against a different line than its mirror twin
+                //    shows up here immediately.
+                for (const p of stroke) {
+                    const px = p % W;
+                    const py = (p - px) / W;
+                    if (!stroke.has(py * W + (48 - px))) {
+                        throw new Error(`r=${r}: (${px},${py}) breaks horizontal mirror symmetry`);
+                    }
+                    if (!stroke.has((38 - py) * W + px)) {
+                        throw new Error(`r=${r}: (${px},${py}) breaks vertical mirror symmetry`);
+                    }
+                }
+
+                // 5. Frame equivalence: integer spelling covering the same snapped frame
+                //    (leftX 10, topY 8, rightX floor(10+29-0.5)=38, bottomY 30) must
+                //    produce byte-identical output.
+                const intSurface = renderStroke(10, 8, 29, 23, r);
+                for (let i = 0; i < surface.data.length; i++) {
+                    if (surface.data[i] !== intSurface.data[i]) {
+                        const pixel = Math.floor(i / 4);
+                        throw new Error(
+                            `r=${r}: half-integer and same-frame integer spellings differ at ` +
+                                `(${pixel % W},${Math.floor(pixel / W)})`
+                        );
+                    }
+                }
+
+                log(`  r=${r}: bounds exact, 2 colors, closed ring, symmetric, frame-equivalent`);
+            }
+
+            const showcase = renderStroke(10.5, 8.5, 28, 22, 5);
+            savePNG(showcase, 'roundrect-stroke1px-halfinteger-crisp.basic.png', 'half-integer crisp 1px rounded-rect stroke', SWCanvas);
+        });
+
+
+        // Test: strokeRoundRect 1px semi-transparent - junction exactness (no gaps, no double blends)
+        // This file will be concatenated into the main test suite
+        //
+        // The semi-transparent 1px rounded-rect fast path shortens each edge run by one
+        // pixel and relies on the corner arcs covering the junction pixels exactly once.
+        // Two failure modes are therefore invisible to bounds/color-count checks but
+        // fatal to crispness, and both are pinned here:
+        //   - a junction GAP (the corner's quadrant-endpoint pixel misses the edge line;
+        //     historically caused by ~1e-16 Math.cos/sin noise at the 90-degree
+        //     multiples flooring the endpoint one unit off - see QUADRANT_TRIG_EPSILON),
+        //   - a junction DOUBLE BLEND (edge and corner both painting the same pixel,
+        //     which darkens it and breaks the stroke's uniform color).
+        // Checked for the grid-centered (integer) and pixel-centered (half-integer)
+        // crisp spellings alike.
+
+        test('RoundRect stroke1px semi-transparent - junction gaps and single-blend uniformity', () => {
+            const W = 90;
+            const H = 60;
+
+            function check(label, x, y, w, h, r) {
+                const surface = SWCanvas.Core.Surface(W, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, W, H);
+                ctx.setStrokeStyle(255, 0, 0, 128);
+                ctx.lineWidth = 1;
+                ctx.strokeRoundRect(x, y, w, h, r);
+
+                // Collect every non-background pixel with its color.
+                const stroke = new Set();
+                const strokeColors = new Set();
+                for (let py = 0; py < H; py++) {
+                    for (let px = 0; px < W; px++) {
+                        const o = py * surface.stride + px * 4;
+                        const rr = surface.data[o];
+                        const gg = surface.data[o + 1];
+                        const bb = surface.data[o + 2];
+                        if (rr === 255 && gg === 255 && bb === 255) continue;
+                        stroke.add(py * W + px);
+                        strokeColors.add((rr << 16) | (gg << 8) | bb);
+                    }
+                }
+                if (stroke.size === 0) {
+                    throw new Error(`${label}: nothing drawn`);
+                }
+
+                // Single-blend uniformity: every stroke pixel carries the one 50%-red-
+                // over-white blend value. A pixel blended twice is darker and adds a
+                // second color.
+                if (strokeColors.size !== 1) {
+                    throw new Error(
+                        `${label}: expected one uniform stroke color, found ${strokeColors.size} - ` +
+                            `some pixels were blended more than once`
+                    );
+                }
+
+                // Closed ring: every stroke pixel has at least 2 stroke neighbors
+                // (8-connectivity); a junction gap leaves its two flanking pixels with
+                // only one neighbor each.
+                for (const p of stroke) {
+                    const px = p % W;
+                    const py = (p - px) / W;
+                    let neighbors = 0;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            if (stroke.has((py + dy) * W + (px + dx))) neighbors++;
+                        }
+                    }
+                    if (neighbors < 2) {
+                        throw new Error(
+                            `${label}: stroke pixel (${px},${py}) has ${neighbors} neighbor(s) - junction gap`
+                        );
+                    }
+                }
+
+                log(`  ${label}: closed ring, uniform single-blend color`);
+            }
+
+            for (const r of [1, 2, 3, 5, 8, 10]) {
+                check(`integer r=${r}`, 10, 8, 28, 22, r);
+                check(`half-integer r=${r}`, 10.5, 8.5, 28, 22, r);
+            }
+        });
+
+
+        // Test: strokeRoundRect 1px - arbitrary fractional coordinates snap to one coherent frame
+        // This file will be concatenated into the main test suite
+        //
+        // Every 1px rounded-rect stroke derives ALL of its geometry (edge runs and
+        // corner centers) from one snapped device-pixel frame. Consequently any
+        // fractional spelling must render byte-identically to the integer spelling of
+        // the same frame - there is no coordinate at which edges and corners can snap
+        // to different lines. Fractions below .5 share the integer call's frame;
+        // fractions at .5 grow the frame by one (rightX/bottomY floor differently),
+        // which test 046 covers.
+
+        test('RoundRect stroke1px - fractional coordinates snap to the integer frame', () => {
+            const W = 90;
+            const H = 60;
+
+            function renderStroke(x, y, w, h, r, alpha) {
+                const surface = SWCanvas.Core.Surface(W, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, W, H);
+                ctx.setStrokeStyle(255, 0, 0, alpha);
+                ctx.lineWidth = 1;
+                ctx.strokeRoundRect(x, y, w, h, r);
+                return surface;
+            }
+
+            for (const alpha of [255, 128]) {
+                for (const r of [1, 3, 5, 10]) {
+                    // 10.25/8.25: leftX=10, topY=8, rightX=floor(37.75)=37, bottomY=29 -
+                    // exactly the frame of the plain integer call.
+                    const frac = renderStroke(10.25, 8.25, 28, 22, r, alpha);
+                    const int_ = renderStroke(10, 8, 28, 22, r, alpha);
+                    for (let i = 0; i < frac.data.length; i++) {
+                        if (frac.data[i] !== int_.data[i]) {
+                            const pixel = Math.floor(i / 4);
+                            throw new Error(
+                                `alpha=${alpha} r=${r}: fractional (.25) and integer spellings differ at ` +
+                                    `(${pixel % W},${Math.floor(pixel / W)})`
+                            );
+                        }
+                    }
+                    log(`  alpha=${alpha} r=${r}: .25-fractional spelling === integer frame`);
+                }
+            }
+        });
+
+
         // Test: ctx.font setter accepts the supported CSS subset and rejects unsupported
 
         test('ctx.font: basic "16px Arial" parses and round-trips', () => {

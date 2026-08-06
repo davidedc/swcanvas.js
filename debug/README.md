@@ -50,6 +50,15 @@ Debug utilities help developers:
 - `debug-xor-coverage.js` - Circle coverage area calculation
 - `debug-overlap-analysis.js` - Shape intersection verification
 
+### Rounded-Rect 1px Stroke Junction Analysis
+
+**Purpose**: ASCII-dump and hash-compare the 1px rounded-rect stroke fast path's edge↔corner junctions across crisp spellings (integer, `*.5`, arbitrary-fractional coordinates). Built while fixing the shared-pixel-frame + quadrant-trig-snap contract (see DIRECT-RENDERING-SUMMARY.MD §6.5.2; pinned by `tests/core/046-048`).
+
+- `probe-halfinteger-roundrect-corner.js` - Top-left corner close-up, integer vs half-integer input
+- `probe-halfinteger-roundrect-full.js` - Full-shape dump: fast path (both spellings) vs generic 4-arc path
+- `probe-halfinteger-alpha-gap.js` - Semi-transparent variant junction gaps (shortened-edge hand-off)
+- `sweep-stroke1px-roundrect-hashes.js` - Parameter-grid render hasher for byte-level A/B of rasterizer changes (run at baseline and after a change, diff the JSONs)
+
 ### Visual Comparison Tools
 
 **Purpose**: Generate side-by-side comparisons and reference implementations.

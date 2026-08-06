@@ -419,20 +419,32 @@ if (bx !== by) {
 
 **Result**: Zero allocations, O(1) checks per Bresenham step.
 
-#### 6.5.2 Edge Shortening (RoundedRectOpsAA)
+#### 6.5.2 Edge Shortening + Shared Pixel Frame (RoundedRectOpsAA)
 
-Used by: `RoundedRectOpsAA.stroke1px_AA_Alpha()`
+Used by: `RoundedRectOpsAA.stroke1px_AA_Alpha()` (frame sharing also by `stroke1px_AA_Opaq()`)
 
 Axis-aligned rounded rectangles have edge-corner junctions where Bresenham edges meet quarter-arc corners. Rather than track which pixels belong to edges vs corners:
 
 **Strategy**: Shorten edges to exclude junction pixels; corners "own" them.
 ```javascript
+// One snapped device-pixel frame drives edges AND corner centers
+const leftX = Math.floor(x);
+const topY = Math.floor(y);
 // Edges start 1 pixel after corner end
-const horzStart = Math.floor(posX + radius) + 1;
-const vertStart = Math.floor(posY + radius) + 1;
+const horzStart = leftX + radius + 1;
+const vertStart = topY + radius + 1;
+// Corner centers derive from the same frame, e.g. top-left:
+drawCorner(leftX + radius, topY + radius, Math.PI);
 ```
 
 Combined with `lastPos` tracking within each corner arc to prevent consecutive duplicates from the arc's own Bresenham iteration.
+
+Two exactness requirements make this junction hand-off correct for every crisp spelling (grid-centered integer AND pixel-centered `*.5` coordinates):
+
+1. **Shared pixel frame**: edge runs and corner centers are both derived from the snapped `leftX/topY/rightX/bottomY` frame, never from the raw (possibly fractional) rect — otherwise a `*.5` spelling lands its corners one pixel inside the snapped edge lines (doubled pixels in the opaque variant, unpainted junction gaps in the shortened-edge alpha variant).
+2. **Quadrant-trig snap**: each corner runs a fixed 91-step 1° sweep whose `Math.cos`/`Math.sin` values within `QUADRANT_TRIG_EPSILON` of zero are snapped to exactly zero. At the 90°-multiples the true value is 0 but the floats carry ~1e-16 noise; with integer frame-derived centers that noise sits exactly on a `Math.floor()` boundary and would shift the quadrant-endpoint (junction) pixel one unit. (The rotated variant reaches the same guarantee differently — `ArcOps.stroke1px_Opaq_Exact()`'s exact start/end angles — and arbitrary rotation keeps its junctions off the exact-quadrant ties.)
+
+Contract tests: `tests/core/046-048` pin exact bounds, closed-ring continuity, mirror symmetry, single-blend uniformity, and byte-equivalence between fractional spellings and their snapped integer frame.
 
 #### 6.5.3 Global lastPos Tracking (RoundedRectOpsRot)
 

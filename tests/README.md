@@ -1,17 +1,17 @@
 # SWCanvas.js Test Suite
 
-This directory contains the comprehensive **modular test infrastructure** for SWCanvas, with 62 core tests + 153 visual tests + 79 direct rendering tests and cross-platform compatibility.
+This directory contains the comprehensive **modular test infrastructure** for SWCanvas, with 68 core tests + 154 visual tests + 79 direct rendering tests and cross-platform compatibility.
 
 ## Modular Test Architecture
 
 ```
 tests/
-├── core/                          # 62 individual core test files (001-037)
+├── core/                          # 68 individual core test files (001-037)
 │   ├── 001-surface-creation-valid.js
 │   ├── 015-alpha-blending-test.js  
 │   ├── 031-transform-matrix-order-dependency.js
 │   └── ... (33 more files)
-├── visual/                        # 153 individual visual test files (001-140)
+├── visual/                        # 154 individual visual test files (001-140)
 │   ├── 001-simple-rectangle-test.js
 │   ├── 027-fill-rule-complex-test.js
 │   ├── 056-stroke-pixel-analysis-test.js
@@ -61,8 +61,8 @@ npm run test:direct-rendering  # Runs 79 direct rendering path verification test
 
 ### Browser Tests
 1. Open `tests/browser/index.html` in a web browser (automatically runs all tests on page load)
-2. Automatically runs 62 modular core functionality tests from `/tests/core/` 
-3. Automatically runs all 153 visual rendering tests with side-by-side HTML5 Canvas vs SWCanvas comparison
+2. Automatically runs 68 modular core functionality tests from `/tests/core/` 
+3. Automatically runs all 154 visual rendering tests with side-by-side HTML5 Canvas vs SWCanvas comparison
 4. Use interactive visual comparison tools for real-time testing
 5. Minimal example: Open `tests/browser/minimal-example.html` to see a minimal usage example
 
@@ -338,8 +338,8 @@ Add interactive tests to `tests/browser/index.html` for features requiring DOM i
 For architectural details about clipping systems and color handling, see ARCHITECTURE.md.
 
 ### Comprehensive Modular Test Coverage
-- **62 modular core tests** covering all API functionality with individual files
-- **153 modular visual tests** covering all major Canvas2D features
+- **68 modular core tests** covering all API functionality with individual files
+- **154 modular visual tests** covering all major Canvas2D features
 - **79 direct rendering tests** verifying optimized rendering path invocation
 - **Build-time concatenation** for optimal performance
 - **Smart test runner** with automatic fallback system
