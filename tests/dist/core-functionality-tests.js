@@ -3029,6 +3029,480 @@
         });
 
 
+        // Test: fillCircle/strokeCircle direct rendering - crisp placement contract
+        // This file will be concatenated into the main test suite
+        //
+        // Pins the coordinate contract of the direct circle renderers (probed by
+        // debug/probe-circle-crisp.js while wiring the tier-0 clip path):
+        //   1. Crisp inscribed FILL idiom: fillCircle(x + s/2, y + s/2, s/2) at integer
+        //      x/y and even integer s covers EXACTLY the s-by-s pixel box [x, x+s) -
+        //      the spelling Fizzygum-style chrome uses to fill a circle into a widget
+        //      box. Symmetric in both axes, two colors only.
+        //   2. 1px STROKE center convention: the Bresenham stroke FLOORS the center, so
+        //      every fractional center spelling renders byte-identically to the integer
+        //      one, and the ring spans exactly (2r+1) pixels - one wider than the fill
+        //      (which floors cx - 0.5). This fill-vs-1px-stroke asymmetry is deliberate
+        //      and pinned here so a "harmonization" cannot slip in silently and churn
+        //      every existing consumer's pixels.
+        //   3. Ring quality: closed (every stroke pixel has >= 2 of 8 neighbors),
+        //      mirror-symmetric in both axes; semi-transparent rings blend every pixel
+        //      exactly once (single blended level - no overdraw, no gap-fills).
+        //   4. Thick STROKE shares the fill's center convention: at an integer center
+        //      with integral r + lw/2 the annulus covers exactly the 2*(r + lw/2) box.
+        //   5. Transform pre-multiplication is exact: a scaled user-space call is
+        //      byte-identical to the equivalent device-space call (the property that
+        //      makes the direct paths safe under translate+uniform-scale contexts).
+
+        test('Circle direct rendering - crisp placement contract', () => {
+            const W = 60;
+            const H = 60;
+
+            function newCtx() {
+                const surface = SWCanvas.Core.Surface(W, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, W, H);
+                return { surface, ctx };
+            }
+
+            function shapePixelSet(surface) {
+                // Any non-white pixel counts as shape coverage.
+                const set = new Set();
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const o = y * surface.stride + x * 4;
+                        if (surface.data[o] !== 255 || surface.data[o + 1] !== 255 || surface.data[o + 2] !== 255) {
+                            set.add(y * W + x);
+                        }
+                    }
+                }
+                return set;
+            }
+
+            function bboxOf(set) {
+                let x0 = Infinity,
+                    y0 = Infinity,
+                    x1 = -Infinity,
+                    y1 = -Infinity;
+                for (const p of set) {
+                    const px = p % W;
+                    const py = (p - px) / W;
+                    if (px < x0) x0 = px;
+                    if (px > x1) x1 = px;
+                    if (py < y0) y0 = py;
+                    if (py > y1) y1 = py;
+                }
+                return { x0, y0, x1, y1 };
+            }
+
+            function assertSymmetric(label, set, b) {
+                for (const p of set) {
+                    const px = p % W;
+                    const py = (p - px) / W;
+                    if (!set.has(py * W + (b.x0 + b.x1 - px))) {
+                        throw new Error(`${label}: (${px},${py}) breaks horizontal mirror symmetry`);
+                    }
+                    if (!set.has((b.y0 + b.y1 - py) * W + px)) {
+                        throw new Error(`${label}: (${px},${py}) breaks vertical mirror symmetry`);
+                    }
+                }
+            }
+
+            function assertBytesEqual(label, sa, sb) {
+                for (let i = 0; i < sa.data.length; i++) {
+                    if (sa.data[i] !== sb.data[i]) {
+                        const pixel = Math.floor(i / 4);
+                        throw new Error(`${label}: renders differ at (${pixel % W},${Math.floor(pixel / W)})`);
+                    }
+                }
+            }
+
+            // 1. Crisp inscribed-fill idiom: box (16,16) size 20 -> exactly [16..35]^2.
+            for (const s of [4, 10, 20]) {
+                const { surface, ctx } = newCtx();
+                ctx.setFillStyle(255, 0, 0, 255);
+                ctx.fillCircle(16 + s / 2, 16 + s / 2, s / 2);
+                const set = shapePixelSet(surface);
+                const b = bboxOf(set);
+                if (b.x0 !== 16 || b.y0 !== 16 || b.x1 !== 16 + s - 1 || b.y1 !== 16 + s - 1) {
+                    throw new Error(
+                        `fill s=${s}: bbox [${b.x0}..${b.x1}]x[${b.y0}..${b.y1}], expected exactly [16..${16 + s - 1}]^2`
+                    );
+                }
+                assertSymmetric(`fill s=${s}`, set, b);
+                log(`  fill s=${s}: covers exactly the ${s}x${s} box, symmetric`);
+            }
+
+            // 2+3. 1px stroke: floor convention, (2r+1) span, closed symmetric ring,
+            //      fractional center spellings byte-identical to the integer one.
+            for (const r of [3, 8, 12]) {
+                const { surface, ctx } = newCtx();
+                ctx.setStrokeStyle(255, 0, 0, 255);
+                ctx.lineWidth = 1;
+                ctx.strokeCircle(30, 30, r);
+                const set = shapePixelSet(surface);
+                const b = bboxOf(set);
+                if (b.x0 !== 30 - r || b.y0 !== 30 - r || b.x1 !== 30 + r || b.y1 !== 30 + r) {
+                    throw new Error(
+                        `stroke1px r=${r}: bbox [${b.x0}..${b.x1}]x[${b.y0}..${b.y1}], ` +
+                            `expected exactly [${30 - r}..${30 + r}]^2 (2r+1 span)`
+                    );
+                }
+                for (const p of set) {
+                    const px = p % W;
+                    const py = (p - px) / W;
+                    let n = 0;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (!dx && !dy) continue;
+                            if (set.has((py + dy) * W + (px + dx))) n++;
+                        }
+                    }
+                    if (n < 2) {
+                        throw new Error(`stroke1px r=${r}: ring pixel (${px},${py}) has ${n} neighbors - open ring`);
+                    }
+                }
+                assertSymmetric(`stroke1px r=${r}`, set, b);
+
+                for (const [cx, cy] of [
+                    [30.5, 30.5],
+                    [30.25, 30.75]
+                ]) {
+                    const alt = newCtx();
+                    alt.ctx.setStrokeStyle(255, 0, 0, 255);
+                    alt.ctx.lineWidth = 1;
+                    alt.ctx.strokeCircle(cx, cy, r);
+                    assertBytesEqual(`stroke1px r=${r} center (${cx},${cy}) vs integer`, surface, alt.surface);
+                }
+                log(`  stroke1px r=${r}: exact (2r+1) box, closed symmetric ring, center-spelling invariant`);
+            }
+
+            // 3b. Semi-transparent 1px ring blends every pixel exactly once.
+            {
+                const { surface, ctx } = newCtx();
+                ctx.setStrokeStyle(255, 0, 0, 128);
+                ctx.lineWidth = 1;
+                ctx.strokeCircle(30, 30, 8);
+                const levels = new Set();
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const o = y * surface.stride + x * 4;
+                        if (surface.data[o + 1] !== 255) levels.add(surface.data[o + 1]);
+                    }
+                }
+                if (levels.size !== 1) {
+                    throw new Error(
+                        `stroke1px alpha: expected one blended level, got {${[...levels].sort((a, b) => a - b)}} - ` +
+                            'overdraw or gap-fill detected'
+                    );
+                }
+                log('  stroke1px alpha: uniform single-blend coverage (no overdraw)');
+            }
+
+            // 4. Thick stroke: integer center + integral r+lw/2 -> exact 2*(r+lw/2) box.
+            {
+                const r = 14,
+                    lw = 4,
+                    reach = r + lw / 2; // 16
+                const { surface, ctx } = newCtx();
+                ctx.setStrokeStyle(255, 0, 0, 255);
+                ctx.lineWidth = lw;
+                ctx.strokeCircle(30, 30, r);
+                const set = shapePixelSet(surface);
+                const b = bboxOf(set);
+                if (b.x0 !== 30 - reach || b.y0 !== 30 - reach || b.x1 !== 30 + reach - 1 || b.y1 !== 30 + reach - 1) {
+                    throw new Error(
+                        `strokeThick r=${r} lw=${lw}: bbox [${b.x0}..${b.x1}]x[${b.y0}..${b.y1}], ` +
+                            `expected exactly [${30 - reach}..${30 + reach - 1}]^2`
+                    );
+                }
+                assertSymmetric('strokeThick', set, b);
+                log(`  strokeThick r=${r} lw=${lw}: exact ${2 * reach}x${2 * reach} annulus box, symmetric`);
+            }
+
+            // 5. Transform pre-multiplication is exact (fill and thick stroke).
+            {
+                const scaled = newCtx();
+                scaled.ctx.save();
+                scaled.ctx.scale(2, 2);
+                scaled.ctx.setFillStyle(255, 0, 0, 255);
+                scaled.ctx.fillCircle(15, 15, 5);
+                scaled.ctx.restore();
+                const device = newCtx();
+                device.ctx.setFillStyle(255, 0, 0, 255);
+                device.ctx.fillCircle(30, 30, 10);
+                assertBytesEqual('fill scale(2) vs device', scaled.surface, device.surface);
+
+                const scaledStroke = newCtx();
+                scaledStroke.ctx.save();
+                scaledStroke.ctx.translate(3, 2);
+                scaledStroke.ctx.scale(2, 2);
+                scaledStroke.ctx.setStrokeStyle(255, 0, 0, 255);
+                scaledStroke.ctx.lineWidth = 2;
+                scaledStroke.ctx.strokeCircle(12, 13, 7);
+                scaledStroke.ctx.restore();
+                const deviceStroke = newCtx();
+                deviceStroke.ctx.setStrokeStyle(255, 0, 0, 255);
+                deviceStroke.ctx.lineWidth = 4;
+                deviceStroke.ctx.strokeCircle(27, 28, 14);
+                assertBytesEqual('stroke translate+scale vs device', scaledStroke.surface, deviceStroke.surface);
+                log('  transform pre-multiplication exact for fill and thick stroke');
+            }
+
+            const showcase = newCtx();
+            showcase.ctx.setFillStyle(0, 0, 255, 255);
+            showcase.ctx.fillCircle(20, 30, 10);
+            showcase.ctx.setStrokeStyle(255, 0, 0, 255);
+            showcase.ctx.lineWidth = 4;
+            showcase.ctx.strokeCircle(42, 30, 12);
+            savePNG(showcase.surface, 'circle-direct-crisp-contract.basic.png', 'crisp inscribed fill + thick annulus', SWCanvas);
+        });
+
+
+        // Test: fillCircle/strokeCircle/fillStrokeCircle under a rect clip - tier-0 equals bitmask, no leaks
+        // This file will be concatenated into the main test suite
+        //
+        // The direct circle entry points take the tier-0 rectangular-clip route (clamp
+        // extents, no bitmask) when the active clip collapses to one axis-aligned rect
+        // - the same wiring fillRoundRect/strokeRoundRect got in 6b20dcc, pinned there
+        // by test 049. Contract pinned here, for fill, 1px stroke, thick stroke and
+        // the fused fillStroke path, opaque and semi-transparent, at identity and
+        // scaled transforms:
+        //   1. tier-0 output is byte-identical to the same draw under a forced BITMASK
+        //      clip of the same region (a path of two identical rects defeats the
+        //      rect-detector but exposes the same pixels),
+        //   2. nothing is ever painted outside the clip rect.
+
+        test('Circle direct rendering under rect clip - tier-0/bitmask equivalence', () => {
+            const W = 90;
+            const H = 60;
+            const CLIP = { x: 14, y: 10, w: 30, h: 18 };
+
+            function render(clipMode, drawFn) {
+                const surface = SWCanvas.Core.Surface(W, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, W, H);
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(CLIP.x, CLIP.y, CLIP.w, CLIP.h);
+                if (clipMode === 'mask') {
+                    // Second identical rect: same exposed pixels, but no longer a single
+                    // axis-aligned rect path, so the clip goes through the bitmask.
+                    ctx.rect(CLIP.x, CLIP.y, CLIP.w, CLIP.h);
+                }
+                ctx.clip();
+                drawFn(ctx);
+                ctx.restore();
+                return surface;
+            }
+
+            function firstPixelOutsideClip(surface) {
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const o = y * surface.stride + x * 4;
+                        if (
+                            surface.data[o] === 255 &&
+                            surface.data[o + 1] === 255 &&
+                            surface.data[o + 2] === 255
+                        ) {
+                            continue;
+                        }
+                        if (x < CLIP.x || x >= CLIP.x + CLIP.w || y < CLIP.y || y >= CLIP.y + CLIP.h) {
+                            return `(${x},${y})`;
+                        }
+                    }
+                }
+                return null;
+            }
+
+            function assertCase(label, drawFn) {
+                const tier0 = render('tier0', drawFn);
+                const mask = render('mask', drawFn);
+                for (let i = 0; i < tier0.data.length; i++) {
+                    if (tier0.data[i] !== mask.data[i]) {
+                        const pixel = Math.floor(i / 4);
+                        throw new Error(
+                            `${label}: tier-0 and bitmask clips differ at (${pixel % W},${Math.floor(pixel / W)})`
+                        );
+                    }
+                }
+                const leak = firstPixelOutsideClip(tier0);
+                if (leak) {
+                    throw new Error(`${label}: painted outside the clip rect at ${leak}`);
+                }
+                log(`  ${label}: tier-0 === bitmask, no clip leak`);
+            }
+
+            for (const scaled of [false, true]) {
+                // The circle crosses all four clip edges, so every span/plot is clamped.
+                // Under scale(2,2) the same device-space geometry; the 1px logical
+                // stroke becomes the thick-stroke path, covering both stroke
+                // rasterizers from the same call site.
+                const g = scaled ? ' @scale2' : '';
+                const [cx, cy, r] = scaled ? [15, 10, 7] : [30, 20, 14];
+                const pre = (ctx) => {
+                    if (scaled) ctx.scale(2, 2);
+                };
+                assertCase(`fill opaque${g}`, (ctx) => {
+                    pre(ctx);
+                    ctx.setFillStyle(0, 0, 255, 255);
+                    ctx.fillCircle(cx, cy, r);
+                });
+                assertCase(`fill semi${g}`, (ctx) => {
+                    pre(ctx);
+                    ctx.setFillStyle(0, 0, 255, 128);
+                    ctx.fillCircle(cx, cy, r);
+                });
+                assertCase(`stroke 1px opaque${g}`, (ctx) => {
+                    pre(ctx);
+                    ctx.setStrokeStyle(255, 0, 0, 255);
+                    ctx.lineWidth = 1;
+                    ctx.strokeCircle(cx, cy, r);
+                });
+                assertCase(`stroke 1px semi${g}`, (ctx) => {
+                    pre(ctx);
+                    ctx.setStrokeStyle(255, 0, 0, 128);
+                    ctx.lineWidth = 1;
+                    ctx.strokeCircle(cx, cy, r);
+                });
+                assertCase(`stroke thick opaque${g}`, (ctx) => {
+                    pre(ctx);
+                    ctx.setStrokeStyle(255, 0, 0, 255);
+                    ctx.lineWidth = 4;
+                    ctx.strokeCircle(cx, cy, r);
+                });
+                assertCase(`stroke thick semi${g}`, (ctx) => {
+                    pre(ctx);
+                    ctx.setStrokeStyle(255, 0, 0, 128);
+                    ctx.lineWidth = 4;
+                    ctx.strokeCircle(cx, cy, r);
+                });
+                assertCase(`fillStroke opaque${g}`, (ctx) => {
+                    pre(ctx);
+                    ctx.setFillStyle(0, 0, 255, 255);
+                    ctx.setStrokeStyle(255, 0, 0, 255);
+                    ctx.lineWidth = 4;
+                    ctx.fillStrokeCircle(cx, cy, r);
+                });
+                assertCase(`fillStroke semi mix${g}`, (ctx) => {
+                    pre(ctx);
+                    ctx.setFillStyle(0, 0, 255, 128);
+                    ctx.setStrokeStyle(255, 0, 0, 255);
+                    ctx.lineWidth = 4;
+                    ctx.fillStrokeCircle(cx, cy, r);
+                });
+            }
+        });
+
+
+        // Test: fillStrokeCircle partially off-surface - span containment (no wrapped writes)
+        // This file will be concatenated into the main test suite
+        //
+        // CircleOps.fillStroke_Any used to hand SpanOps UNCLAMPED inner-circle span
+        // boundaries (its strokeThick_* siblings clamp theirs into the outer span).
+        // SpanOps does not clamp - callers must - so a circle partially off the left
+        // edge produced a NEGATIVE span start whose pixel index wrapped into the
+        // previous row: real memory corruption, silently painting stroke pixels into
+        // surface regions the circle never touches (132 corrupted pixels in the
+        // original repro). Contract pinned here:
+        //   1. CONTAINMENT: for a partially off-surface fillStrokeCircle, every
+        //      painted pixel lies within the circle's outer radius (+1px tolerance)
+        //      of its center - nothing anywhere else on the surface.
+        //   2. POSITION INVARIANCE: the on-surface part of an off-surface render is
+        //      byte-identical to the same window of the same circle rendered fully
+        //      on a wider surface (the renderer's arithmetic is translation-exact for
+        //      integer shifts, so clamping must only ever REMOVE pixels, never move
+        //      or add them).
+
+        test('Circle fillStroke off-surface - span containment and position invariance', () => {
+            const W = 40;
+            const H = 40;
+            const R = 12;
+            const LW = 4;
+
+            function renderAt(width, cx, cy, semi) {
+                const surface = SWCanvas.Core.Surface(width, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, width, H);
+                ctx.setFillStyle(0, 0, 255, semi ? 128 : 255);
+                ctx.setStrokeStyle(255, 0, 0, semi ? 128 : 255);
+                ctx.lineWidth = LW;
+                ctx.fillStrokeCircle(cx, cy, R);
+                return surface;
+            }
+
+            const cases = [
+                ['off-left', -10, 20],
+                ['off-right', 45, 20],
+                ['off-top', 20, -8],
+                ['off-bottom', 20, 47]
+            ];
+
+            for (const semi of [false, true]) {
+                const a = semi ? ' semi' : ' opaque';
+                for (const [label, cx, cy] of cases) {
+                    const surface = renderAt(W, cx, cy, semi);
+
+                    // 1. Containment: painted pixels only within the outer radius.
+                    const maxDist = R + LW / 2 + 1.5;
+                    for (let y = 0; y < H; y++) {
+                        for (let x = 0; x < W; x++) {
+                            const o = y * surface.stride + x * 4;
+                            if (
+                                surface.data[o] === 255 &&
+                                surface.data[o + 1] === 255 &&
+                                surface.data[o + 2] === 255
+                            ) {
+                                continue;
+                            }
+                            const dx = x - (cx - 0.5);
+                            const dy = y - (cy - 0.5);
+                            if (Math.sqrt(dx * dx + dy * dy) > maxDist) {
+                                throw new Error(
+                                    `${label}${a}: painted pixel (${x},${y}) is outside the circle - wrapped span write`
+                                );
+                            }
+                        }
+                    }
+
+                    // 2. Position invariance for the horizontally-shifted cases: render
+                    //    the same circle fully on a 3x-wide surface, shifted +W, and
+                    //    byte-compare the corresponding window. (Vertical cases reuse
+                    //    the same span math per row, so the horizontal pair covers the
+                    //    clamped axis; the containment check above covers all four.)
+                    if (cy === 20) {
+                        const wide = renderAt(3 * W, cx + W, cy, semi);
+                        for (let y = 0; y < H; y++) {
+                            for (let x = 0; x < W; x++) {
+                                const so = y * surface.stride + x * 4;
+                                const wo = y * wide.stride + (x + W) * 4;
+                                for (let c = 0; c < 4; c++) {
+                                    if (surface.data[so + c] !== wide.data[wo + c]) {
+                                        throw new Error(
+                                            `${label}${a}: visible pixels differ from the fully-on-surface render at (${x},${y})`
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    log(`  ${label}${a}: contained, position-invariant`);
+                }
+            }
+
+            const showcase = renderAt(W, -10, 20, false);
+            savePNG(
+                showcase,
+                'circle-fillstroke-offsurface-containment.basic.png',
+                'partially off-surface fillStrokeCircle - no wrapped spans',
+                SWCanvas
+            );
+        });
+
+
         // Test: ctx.font setter accepts the supported CSS subset and rejects unsupported
 
         test('ctx.font: basic "16px Arial" parses and round-trips', () => {

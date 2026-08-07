@@ -89,13 +89,22 @@ class CircleOps {
      * @param {number} radius - Circle radius
      * @param {Color} color - Fill color (must be opaque, alpha=255)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
+     * @param {{x0,y0,x1,y1}|null} clipRect - Tier-0 rect clip (half-open, pre-clamped to surface)
      */
-    static fill_Opaq(surface, cx, cy, radius, color, clipBuffer = null) {
+    static fill_Opaq(surface, cx, cy, radius, color, clipBuffer = null, clipRect = null) {
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip bounds: with no clipRect the defaults are the surface
+        // bounds, so unclipped rendering below is byte-identical by construction
+        // (clipBuffer is null on the tier-0 path — see Context2D._tier0ClipRect).
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : width;
+        const cy1 = clipRect ? clipRect.y1 : height;
 
         // Generate extents with Bresenham algorithm
         const extentData = CircleOps.generateExtents(radius);
@@ -116,16 +125,16 @@ class CircleOps {
             const abs_y_bottom = adjCenterY + rel_y;
             const abs_y_top = adjCenterY - rel_y - yOffset + 1;
 
-            // Clamp X coordinates to canvas bounds to prevent memory wrap-around
-            const clampedStartX = Math.max(0, abs_x_min);
-            const clampedEndX = Math.min(width - 1, abs_x_max);
+            // Clamp X coordinates to canvas/clip bounds to prevent memory wrap-around
+            const clampedStartX = Math.max(cx0, abs_x_min);
+            const clampedEndX = Math.min(cx1 - 1, abs_x_max);
             const spanWidth = clampedEndX - clampedStartX + 1;
 
             // Skip if span is entirely off-screen
             if (spanWidth <= 0) continue;
 
             // Draw bottom scanline
-            if (abs_y_bottom >= 0 && abs_y_bottom < height) {
+            if (abs_y_bottom >= cy0 && abs_y_bottom < cy1) {
                 SpanOps.fill_Opaq(
                     data32,
                     width,
@@ -140,7 +149,7 @@ class CircleOps {
 
             // Draw top scanline (skip overdraw conditions)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
-            if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
+            if (drawTop && abs_y_top >= cy0 && abs_y_top < cy1) {
                 SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_top, spanWidth, packedColor, clipBuffer);
             }
         }
@@ -156,8 +165,9 @@ class CircleOps {
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
+     * @param {{x0,y0,x1,y1}|null} clipRect - Tier-0 rect clip (half-open, pre-clamped to surface)
      */
-    static fill_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer = null) {
+    static fill_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -170,6 +180,12 @@ class CircleOps {
         const r = color.r;
         const g = color.g;
         const b = color.b;
+
+        // Tier-0 rect clip bounds — see fill_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : width;
+        const cy1 = clipRect ? clipRect.y1 : height;
 
         // Generate extents with Bresenham algorithm
         const extentData = CircleOps.generateExtents(radius);
@@ -190,16 +206,16 @@ class CircleOps {
             const abs_y_bottom = adjCenterY + rel_y;
             const abs_y_top = adjCenterY - rel_y - yOffset + 1;
 
-            // Clamp X coordinates to canvas bounds to prevent memory wrap-around
-            const clampedStartX = Math.max(0, abs_x_min);
-            const clampedEndX = Math.min(width - 1, abs_x_max);
+            // Clamp X coordinates to canvas/clip bounds to prevent memory wrap-around
+            const clampedStartX = Math.max(cx0, abs_x_min);
+            const clampedEndX = Math.min(cx1 - 1, abs_x_max);
             const spanWidth = clampedEndX - clampedStartX + 1;
 
             // Skip if span is entirely off-screen
             if (spanWidth <= 0) continue;
 
             // Draw bottom scanline
-            if (abs_y_bottom >= 0 && abs_y_bottom < height) {
+            if (abs_y_bottom >= cy0 && abs_y_bottom < cy1) {
                 SpanOps.fill_Alpha(
                     data,
                     width,
@@ -218,7 +234,7 @@ class CircleOps {
 
             // Draw top scanline (skip overdraw conditions)
             const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
-            if (drawTop && abs_y_top >= 0 && abs_y_top < height) {
+            if (drawTop && abs_y_top >= cy0 && abs_y_top < cy1) {
                 SpanOps.fill_Alpha(
                     data,
                     width,
@@ -245,13 +261,21 @@ class CircleOps {
      * @param {number} radius - Circle radius
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
+     * @param {{x0,y0,x1,y1}|null} clipRect - Tier-0 rect clip (half-open, pre-clamped to surface)
      */
-    static stroke1px_Opaq(surface, cx, cy, radius, color, clipBuffer = null) {
+    static stroke1px_Opaq(surface, cx, cy, radius, color, clipBuffer = null, clipRect = null) {
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip bounds — see fill_Opaq. The per-pixel plots below
+        // bounds-check against these instead of the raw surface bounds.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : width;
+        const cy1 = clipRect ? clipRect.y1 : height;
 
         // Center calculation for stroke (standard Bresenham approach)
         const cX = Math.floor(cx);
@@ -265,7 +289,7 @@ class CircleOps {
             if (radius >= 0) {
                 const px = Math.round(cx);
                 const py = Math.round(cy);
-                if (px >= 0 && px < width && py >= 0 && py < height) {
+                if (px >= cx0 && px < cx1 && py >= cy0 && py < cy1) {
                     const pos = py * width + px;
                     if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         data32[pos] = packedColor;
@@ -310,49 +334,49 @@ class CircleOps {
                 p8y = cY + y; // bottom-left (math: Q2)
 
             // Plot points with bounds checking
-            if (p1x >= 0 && p1x < width && p1y >= 0 && p1y < height) {
+            if (p1x >= cx0 && p1x < cx1 && p1y >= cy0 && p1y < cy1) {
                 const pos = p1y * width + p1x;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
-            if (x !== y && p2x >= 0 && p2x < width && p2y >= 0 && p2y < height) {
+            if (x !== y && p2x >= cx0 && p2x < cx1 && p2y >= cy0 && p2y < cy1) {
                 const pos = p2y * width + p2x;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
-            if (p3x >= 0 && p3x < width && p3y >= 0 && p3y < height) {
+            if (p3x >= cx0 && p3x < cx1 && p3y >= cy0 && p3y < cy1) {
                 const pos = p3y * width + p3x;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
-            if (p4x >= 0 && p4x < width && p4y >= 0 && p4y < height) {
+            if (p4x >= cx0 && p4x < cx1 && p4y >= cy0 && p4y < cy1) {
                 const pos = p4y * width + p4x;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
-            if (p5x >= 0 && p5x < width && p5y >= 0 && p5y < height) {
+            if (p5x >= cx0 && p5x < cx1 && p5y >= cy0 && p5y < cy1) {
                 const pos = p5y * width + p5x;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
-            if (x !== y && p6x >= 0 && p6x < width && p6y >= 0 && p6y < height) {
+            if (x !== y && p6x >= cx0 && p6x < cx1 && p6y >= cy0 && p6y < cy1) {
                 const pos = p6y * width + p6x;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
-            if (p7x >= 0 && p7x < width && p7y >= 0 && p7y < height) {
+            if (p7x >= cx0 && p7x < cx1 && p7y >= cy0 && p7y < cy1) {
                 const pos = p7y * width + p7x;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
                 }
             }
-            if (p8x >= 0 && p8x < width && p8y >= 0 && p8y < height) {
+            if (p8x >= cx0 && p8x < cx1 && p8y >= cy0 && p8y < cy1) {
                 const pos = p8y * width + p8x;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     data32[pos] = packedColor;
@@ -380,8 +404,9 @@ class CircleOps {
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: checked inline per-pixel)
+     * @param {{x0,y0,x1,y1}|null} clipRect - Tier-0 rect clip (half-open, pre-clamped to surface)
      */
-    static stroke1px_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer = null) {
+    static stroke1px_Alpha(surface, cx, cy, radius, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -393,6 +418,12 @@ class CircleOps {
         const r = color.r,
             g = color.g,
             b = color.b;
+
+        // Tier-0 rect clip bounds — see fill_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : width;
+        const cy1 = clipRect ? clipRect.y1 : height;
 
         // Center calculation for stroke (standard Bresenham approach)
         const cX = Math.floor(cx);
@@ -406,7 +437,7 @@ class CircleOps {
             if (radius >= 0) {
                 const px = Math.round(cx);
                 const py = Math.round(cy);
-                if (px >= 0 && px < width && py >= 0 && py < height) {
+                if (px >= cx0 && px < cx1 && py >= cy0 && py < cy1) {
                     const pos = py * width + px;
                     if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
@@ -455,25 +486,25 @@ class CircleOps {
                 pHy = cY + y; // duplicates G when x == y, also A when x == 0 && xOffset == 0
 
             // Draw primary points (always)
-            if (pAx >= 0 && pAx < width && pAy >= 0 && pAy < height) {
+            if (pAx >= cx0 && pAx < cx1 && pAy >= cy0 && pAy < cy1) {
                 const pos = pAy * width + pAx;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                 }
             }
-            if (pCx >= 0 && pCx < width && pCy >= 0 && pCy < height) {
+            if (pCx >= cx0 && pCx < cx1 && pCy >= cy0 && pCy < cy1) {
                 const pos = pCy * width + pCx;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                 }
             }
-            if (pEx >= 0 && pEx < width && pEy >= 0 && pEy < height) {
+            if (pEx >= cx0 && pEx < cx1 && pEy >= cy0 && pEy < cy1) {
                 const pos = pEy * width + pEx;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                 }
             }
-            if (pGx >= 0 && pGx < width && pGy >= 0 && pGy < height) {
+            if (pGx >= cx0 && pGx < cx1 && pGy >= cy0 && pGy < cy1) {
                 const pos = pGy * width + pGx;
                 if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                     /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
@@ -484,28 +515,28 @@ class CircleOps {
             // Additional cardinal point checks: at x == 0, swapped points may duplicate primaries
             if (x !== y) {
                 // B duplicates C at right cardinal when x == 0 && yOffset == 0
-                if ((x !== 0 || yOffset !== 0) && pBx >= 0 && pBx < width && pBy >= 0 && pBy < height) {
+                if ((x !== 0 || yOffset !== 0) && pBx >= cx0 && pBx < cx1 && pBy >= cy0 && pBy < cy1) {
                     const pos = pBy * width + pBx;
                     if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
                 // D duplicates E at top cardinal when x == 0 && xOffset == 0
-                if ((x !== 0 || xOffset !== 0) && pDx >= 0 && pDx < width && pDy >= 0 && pDy < height) {
+                if ((x !== 0 || xOffset !== 0) && pDx >= cx0 && pDx < cx1 && pDy >= cy0 && pDy < cy1) {
                     const pos = pDy * width + pDx;
                     if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
                 // F duplicates G at left cardinal when x == 0 && yOffset == 0
-                if ((x !== 0 || yOffset !== 0) && pFx >= 0 && pFx < width && pFy >= 0 && pFy < height) {
+                if ((x !== 0 || yOffset !== 0) && pFx >= cx0 && pFx < cx1 && pFy >= cy0 && pFy < cy1) {
                     const pos = pFy * width + pFx;
                     if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
                     }
                 }
                 // H duplicates A at bottom cardinal when x == 0 && xOffset == 0
-                if ((x !== 0 || xOffset !== 0) && pHx >= 0 && pHx < width && pHy >= 0 && pHy < height) {
+                if ((x !== 0 || xOffset !== 0) && pHx >= cx0 && pHx < cx1 && pHy >= cy0 && pHy < cy1) {
                     const pos = pHy * width + pHx;
                     if (!clipBuffer || clipBuffer[pos >> 3] & (1 << (pos & 7))) {
                         /*@inline:BLEND_ALPHA(data, pos, r, g, b, effectiveAlpha, invAlpha)*/
@@ -544,8 +575,20 @@ class CircleOps {
      * @param {Color} strokeColor - Stroke color
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
+     * @param {{x0,y0,x1,y1}|null} clipRect - Tier-0 rect clip (half-open, pre-clamped to surface)
      */
-    static fillStroke_Any(surface, cx, cy, radius, lineWidth, fillColor, strokeColor, globalAlpha, clipBuffer = null) {
+    static fillStroke_Any(
+        surface,
+        cx,
+        cy,
+        radius,
+        lineWidth,
+        fillColor,
+        strokeColor,
+        globalAlpha,
+        clipBuffer = null,
+        clipRect = null
+    ) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -556,6 +599,12 @@ class CircleOps {
         const hasStroke = strokeColor && strokeColor.a > 0;
 
         if (!hasFill && !hasStroke) return;
+
+        // Tier-0 rect clip bounds — see fill_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : width;
+        const cy1 = clipRect ? clipRect.y1 : height;
 
         // Single floating-point center for both fill and stroke
         const cX = cx - 0.5;
@@ -570,11 +619,11 @@ class CircleOps {
         const outerRadius = radius + lineWidth / 2;
         const fillRadius = radius; // Path radius is the fill boundary
 
-        // Calculate bounds
-        const minY = Math.max(0, Math.floor(cY - outerRadius - 1));
-        const maxY = Math.min(height - 1, Math.ceil(cY + outerRadius + 1));
-        const minX = Math.max(0, Math.floor(cX - outerRadius - 1));
-        const maxX = Math.min(width - 1, Math.ceil(cX + outerRadius + 1));
+        // Calculate bounds (clamped to the surface/clip rect)
+        const minY = Math.max(cy0, Math.floor(cY - outerRadius - 1));
+        const maxY = Math.min(cy1 - 1, Math.ceil(cY + outerRadius + 1));
+        const minX = Math.max(cx0, Math.floor(cX - outerRadius - 1));
+        const maxX = Math.min(cx1 - 1, Math.ceil(cX + outerRadius + 1));
 
         // Skip if completely outside canvas
         if (minY > maxY || minX > maxX) return;
@@ -621,13 +670,17 @@ class CircleOps {
                 rightFillX = Math.min(maxX, Math.floor(cX + fillXDist - FILL_EPSILON));
             }
 
-            // Calculate inner circle boundaries (stroke inner boundary)
+            // Calculate inner circle boundaries (stroke inner boundary).
+            // Clamp into [outerLeftX, outerRightX] like strokeThick_Opaq does:
+            // unclamped, a partially off-surface (or clipped) circle hands SpanOps
+            // a span start/end outside the surface — SpanOps does NOT clamp, so a
+            // negative start wraps into the previous row (memory corruption).
             let innerLeftX = outerRightX + 1; // Default: no inner circle intersection
             let innerRightX = outerLeftX - 1;
             if (innerRadius > 0 && dySquared <= innerRadiusSquared) {
                 const innerXDist = Math.sqrt(innerRadiusSquared - dySquared);
-                innerLeftX = Math.floor(cX - innerXDist);
-                innerRightX = Math.ceil(cX + innerXDist);
+                innerLeftX = Math.min(outerRightX, Math.floor(cX - innerXDist));
+                innerRightX = Math.max(outerLeftX, Math.ceil(cX + innerXDist));
             }
 
             // STEP 1: Render fill first (if this row intersects the fill circle) via SpanOps
@@ -700,13 +753,20 @@ class CircleOps {
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
+     * @param {{x0,y0,x1,y1}|null} clipRect - Tier-0 rect clip (half-open, pre-clamped to surface)
      */
-    static strokeThick_Opaq(surface, cx, cy, radius, lineWidth, color, clipBuffer = null) {
+    static strokeThick_Opaq(surface, cx, cy, radius, lineWidth, color, clipBuffer = null, clipRect = null) {
         const width = surface.width;
         const height = surface.height;
         const data32 = surface.data32;
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip bounds — see fill_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : width;
+        const cy1 = clipRect ? clipRect.y1 : height;
 
         // Calculate inner and outer radii for the stroke annulus
         const innerRadius = radius - lineWidth / 2;
@@ -716,11 +776,11 @@ class CircleOps {
         const cX = cx - 0.5;
         const cY = cy - 0.5;
 
-        // Calculate bounds with safety margin
-        const minY = Math.max(0, Math.floor(cY - outerRadius - 1));
-        const maxY = Math.min(height - 1, Math.ceil(cY + outerRadius + 1));
-        const minX = Math.max(0, Math.floor(cX - outerRadius - 1));
-        const maxX = Math.min(width - 1, Math.ceil(cX + outerRadius + 1));
+        // Calculate bounds with safety margin (clamped to the surface/clip rect)
+        const minY = Math.max(cy0, Math.floor(cY - outerRadius - 1));
+        const maxY = Math.min(cy1 - 1, Math.ceil(cY + outerRadius + 1));
+        const minX = Math.max(cx0, Math.floor(cX - outerRadius - 1));
+        const maxX = Math.min(cx1 - 1, Math.ceil(cX + outerRadius + 1));
 
         const outerRadiusSquared = outerRadius * outerRadius;
         const innerRadiusSquared = innerRadius > 0 ? innerRadius * innerRadius : 0;
@@ -741,7 +801,9 @@ class CircleOps {
             // Case: No inner circle intersection (draw full span)
             if (innerRadius <= 0 || dySquared > innerRadiusSquared) {
                 const spanLength = outerRightX - outerLeftX + 1;
-                SpanOps.fill_Opaq(data32, width, height, outerLeftX, y, spanLength, packedColor, clipBuffer);
+                if (spanLength > 0) {
+                    SpanOps.fill_Opaq(data32, width, height, outerLeftX, y, spanLength, packedColor, clipBuffer);
+                }
             } else {
                 // Case: Intersects both circles - draw left and right segments
                 const innerXDist = Math.sqrt(innerRadiusSquared - dySquared);
@@ -773,8 +835,19 @@ class CircleOps {
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
+     * @param {{x0,y0,x1,y1}|null} clipRect - Tier-0 rect clip (half-open, pre-clamped to surface)
      */
-    static strokeThick_Alpha(surface, cx, cy, radius, lineWidth, color, globalAlpha, clipBuffer = null) {
+    static strokeThick_Alpha(
+        surface,
+        cx,
+        cy,
+        radius,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer = null,
+        clipRect = null
+    ) {
         const width = surface.width;
         const height = surface.height;
         const data = surface.data;
@@ -786,15 +859,21 @@ class CircleOps {
             g = color.g,
             b = color.b;
 
+        // Tier-0 rect clip bounds — see fill_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : width;
+        const cy1 = clipRect ? clipRect.y1 : height;
+
         const innerRadius = radius - lineWidth / 2;
         const outerRadius = radius + lineWidth / 2;
         const cX = cx - 0.5;
         const cY = cy - 0.5;
 
-        const minY = Math.max(0, Math.floor(cY - outerRadius - 1));
-        const maxY = Math.min(height - 1, Math.ceil(cY + outerRadius + 1));
-        const minX = Math.max(0, Math.floor(cX - outerRadius - 1));
-        const maxX = Math.min(width - 1, Math.ceil(cX + outerRadius + 1));
+        const minY = Math.max(cy0, Math.floor(cY - outerRadius - 1));
+        const maxY = Math.min(cy1 - 1, Math.ceil(cY + outerRadius + 1));
+        const minX = Math.max(cx0, Math.floor(cX - outerRadius - 1));
+        const maxX = Math.min(cx1 - 1, Math.ceil(cX + outerRadius + 1));
 
         const outerRadiusSquared = outerRadius * outerRadius;
         const innerRadiusSquared = innerRadius > 0 ? innerRadius * innerRadius : 0;
@@ -812,20 +891,22 @@ class CircleOps {
             if (innerRadius <= 0 || dySquared > innerRadiusSquared) {
                 // No inner circle intersection - draw full span via SpanOps
                 const spanLength = outerRightX - outerLeftX + 1;
-                SpanOps.fill_Alpha(
-                    data,
-                    width,
-                    height,
-                    outerLeftX,
-                    y,
-                    spanLength,
-                    r,
-                    g,
-                    b,
-                    effectiveAlpha,
-                    invAlpha,
-                    clipBuffer
-                );
+                if (spanLength > 0) {
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        outerLeftX,
+                        y,
+                        spanLength,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
+                }
             } else {
                 const innerXDist = Math.sqrt(innerRadiusSquared - dySquared);
                 const innerLeftX = Math.min(outerRightX, Math.floor(cX - innerXDist));

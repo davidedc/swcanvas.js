@@ -156,7 +156,10 @@ Note: Arc uses Bresenham + angle filtering for stroke rendering.
 |             | Non-uniform scale + rotation → path-based rendering (produces parallelogram)         |
 | RoundedRect | Transform: isIdentity for axis-aligned; rotated uses TRANSFORM_EPSILON (0.0001) |
 |             | threshold matching Transform2D.isAxisAligned for consistent detection          |
-| Circle      | Transform: noTransform = this._transform.isIdentity                       |
+| Circle      | Transform: NONE — the entry points transform the center and scale the radius by uniformScale unconditionally, |
+|             | so the direct path runs under translate/rotate/uniform-scale (pre-multiplication is byte-exact; test 050).    |
+|             | ⚠ Under NON-uniform scale it still draws a CIRCLE (radius × geometric-mean scale) where an ellipse belongs — |
+|             | callers needing ellipses must use the path pipeline (arc() + fill/stroke).                                    |
 | Line        | lineCap === 'butt' (required for direct rendering)                               |
 | Arc         | lineCap === 'butt' (required for direct rendering)                               |
 |             | Angle normalization for clockwise/anticlockwise                           |
@@ -259,15 +262,17 @@ QuadScanOps.fillQuad() ───────────► SpanOps.fill_Opaq / 
 
 ## 5. Clipping TO Support (Respects Active Clip Mask)
 
-| Shape                   | Clipping TO Support | Method                    |
-|-------------------------|---------------------|---------------------------|
-| Rectangle (fill/stroke) | YES                 | clipBuffer per pixel      |
-| RoundedRect (all)       | YES                 | clipBuffer per pixel      |
-| Circle (all)            | YES                 | clipBuffer per pixel      |
-| Line (all)              | YES                 | clipBuffer per pixel/span |
-| Arc (all)               | YES                 | clipBuffer per pixel      |
+| Shape                   | Clipping TO Support | Bitmask Method            | Tier-0 rect clip (no bitmask) |
+|-------------------------|---------------------|---------------------------|-------------------------------|
+| Rectangle (fill/stroke) | YES                 | clipBuffer per pixel      | YES                           |
+| RoundedRect             | YES                 | clipBuffer per pixel      | YES for fill/stroke; fillStrokeRoundRect deliberately not (comment at its `_ensureClipBuffer()` call) |
+| Circle (all)            | YES                 | clipBuffer per pixel      | YES (fill, 1px + thick stroke, fused fillStroke) |
+| Line (all)              | YES                 | clipBuffer per pixel/span | NO — stroke_Any dispatches thin/thick internally and its thick diagonal branch delegates to QuadScanOps, which has no clipRect concept (comment at `_strokeLineDirect`) |
+| Arc (all)               | YES                 | clipBuffer per pixel      | NO — the 1px writers bounds-check inside shared inline preprocessor templates, so a clipRect is a codegen change, not a clamp (comment at `fillArc`) |
 
-All shapes use clipBuffer parameter passed from Context2D to their respective *Ops methods.
+All shapes take a `clipBuffer` parameter passed from Context2D to their respective *Ops methods.
+
+**Tier-0 rect clip**: when the active clip collapses to a single axis-aligned rect, wired entry points skip the bitmask entirely — they consult `Context2D._tier0ClipRect()` and pass the rect down as a `clipRect` parameter; the renderer clamps its row/span/pixel extents to it (defaults = surface bounds, so unclipped output is byte-identical by construction). The byte-identical contract lives at `Context2D._tier0ClipRect`'s doc comment; equivalence is pinned by `tests/core/049` (RoundedRect) and `tests/core/051` (Circle). ⚠ `SpanOps` does NOT clamp — callers must keep spans inside the surface AND the clip rect (`tests/core/052` pins the off-surface containment contract for the fused circle path).
 
 ---
 

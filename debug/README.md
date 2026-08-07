@@ -59,6 +59,13 @@ Debug utilities help developers:
 - `probe-halfinteger-alpha-gap.js` - Semi-transparent variant junction gaps (shortened-edge hand-off)
 - `sweep-stroke1px-roundrect-hashes.js` - Parameter-grid render hasher for byte-level A/B of rasterizer changes (run at baseline and after a change, diff the JSONs)
 
+### Circle Direct-Path Crisp Contract & Tier-0 Analysis
+
+**Purpose**: ASCII-dump and hash-compare the direct circle paths (`fillCircle`/`strokeCircle`/`fillStrokeCircle`) across the coordinate-spelling grid, A/B'd against the generic `arc()` pipeline and across transforms. Built while wiring the tier-0 rect clip into CircleOps (pinned by `tests/core/050-052`).
+
+- `probe-circle-crisp.js` - Full spelling grid: fill/1px/thick at integer vs fractional centers and radii, crisp-box idiom discovery, alpha overdraw check, transform pre-multiplication exactness, cardinal-extreme (trig-noise class) check
+- `sweep-circle-hashes.js` - Parameter-grid render hasher over all three circle entry points incl. partially off-surface geometry (`SWCANVAS_DIST=<path>` runs it against a saved dist for baseline/after diffs)
+
 ### Visual Comparison Tools
 
 **Purpose**: Generate side-by-side comparisons and reference implementations.

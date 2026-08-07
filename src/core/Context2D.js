@@ -2439,8 +2439,10 @@ class Context2D {
         const hasStroke = strokeIsColor && strokePaintSource.a > 0;
 
         if (fillIsColor && strokeIsColor && isSourceOver && (hasFill || hasStroke)) {
-            // Use unified method for coordinated fill+stroke rendering (no gaps)
-            const clipBuffer = this._ensureClipBuffer();
+            // Use unified method for coordinated fill+stroke rendering (no gaps).
+            // Tier-0 rect clip → clamp extent + clipBuffer=null (see fillRect).
+            const tier0ClipRect = this._tier0ClipRect();
+            const clipBuffer = tier0ClipRect ? null : this._ensureClipBuffer();
             CircleOps.fillStroke_Any(
                 this.surface,
                 center.x,
@@ -2450,7 +2452,8 @@ class Context2D {
                 hasFill ? fillPaintSource : null,
                 hasStroke ? strokePaintSource : null,
                 this.globalAlpha,
-                clipBuffer
+                clipBuffer,
+                tier0ClipRect
             );
         } else {
             // Fallback to sequential rendering for gradients, patterns, or non-source-over
@@ -2487,6 +2490,14 @@ class Context2D {
 
         // Get paint source
         const paintSource = this._fillStyle;
+        // Deliberately NOT tier-0-wired (unlike fillCircle/strokeCircle): ArcOps'
+        // 1px-stroke writers bounds-check inside shared inline preprocessor
+        // templates (SET_OPAQUE_ARC_FAST_CLIPPED / BLEND_ALPHA_ARC_FAST_CLIPPED)
+        // and stroke1px_Opaq_Exact hoists its bounds check out of the loop, so a
+        // clipRect there means changing codegen, not a mechanical clamp — and no
+        // Fizzygum call site draws arcs directly today. A rect clip materialises
+        // the bitmask here. Wire the whole ArcOps family together when a hot
+        // clipped caller appears.
         const clipBuffer = this._ensureClipBuffer();
 
         // Check for direct rendering conditions
@@ -2556,6 +2567,7 @@ class Context2D {
 
         // Get paint source
         const paintSource = this._strokeStyle;
+        // Deliberately NOT tier-0-wired — see fillArc for the ArcOps-family reason.
         const clipBuffer = this._ensureClipBuffer();
 
         // Check for direct rendering conditions
@@ -2659,6 +2671,7 @@ class Context2D {
         // Get paint sources
         const fillPaintSource = this._fillStyle;
         const strokePaintSource = this._strokeStyle;
+        // Deliberately NOT tier-0-wired — see fillArc for the ArcOps-family reason.
         const clipBuffer = this._ensureClipBuffer();
 
         // Check for unified direct rendering
@@ -2741,7 +2754,6 @@ class Context2D {
      */
     _fillCircleDirect(cx, cy, radius, paintSource) {
         const surface = this.surface;
-        const clipBuffer = this._ensureClipBuffer();
 
         // Check for solid color direct rendering
         const isColor = paintSource instanceof Color;
@@ -2751,12 +2763,19 @@ class Context2D {
 
         const isSemiTransparentColor = isColor && paintSource.a < 255 && isSourceOver;
 
-        if (isOpaqueColor) {
-            // Direct rendering 1: 32-bit packed writes for opaque colors
-            CircleOps.fill_Opaq(surface, cx, cy, radius, paintSource, clipBuffer);
-        } else if (isSemiTransparentColor) {
-            // Direct rendering 2: Bresenham scanlines with per-pixel alpha blending
-            CircleOps.fill_Alpha(this.surface, cx, cy, radius, paintSource, this.globalAlpha, clipBuffer);
+        if (isOpaqueColor || isSemiTransparentColor) {
+            // Tier-0 rect clip → clamp extent + clipBuffer=null (mirrors
+            // fillRoundRect); the path fallback below consults the context's
+            // own clip state, so nothing to forward there.
+            const tier0ClipRect = this._tier0ClipRect();
+            const clipBuffer = tier0ClipRect ? null : this._ensureClipBuffer();
+            if (isOpaqueColor) {
+                // Direct rendering 1: 32-bit packed writes for opaque colors
+                CircleOps.fill_Opaq(surface, cx, cy, radius, paintSource, clipBuffer, tier0ClipRect);
+            } else {
+                // Direct rendering 2: Bresenham scanlines with per-pixel alpha blending
+                CircleOps.fill_Alpha(surface, cx, cy, radius, paintSource, this.globalAlpha, clipBuffer, tier0ClipRect);
+            }
         } else {
             // Path-based rendering: use path system for gradients/patterns/non-source-over compositing
             Context2D._markPathBasedRendering(); // Mark path-based rendering for testing
@@ -2778,16 +2797,29 @@ class Context2D {
         const isColor = paintSource instanceof Color;
         const is1pxStroke = Math.abs(lineWidth - 1) < STROKE_1PX_TOLERANCE;
         const isSourceOver = this.globalCompositeOperation === 'source-over';
-        const clipBuffer = this._ensureClipBuffer();
+        // Tier-0 rect clip → clamp extent + clipBuffer=null on the direct paths
+        // (mirrors strokeRoundRect); the path fallback consults the context's
+        // own clip state directly, so the pair below is simply unused there.
+        const tier0ClipRect = this._tier0ClipRect();
+        const clipBuffer = tier0ClipRect ? null : this._ensureClipBuffer();
 
         // Direct rendering 1: 1px strokes using Bresenham algorithm
         if (isColor && is1pxStroke && isSourceOver) {
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
             if (isOpaque) {
-                CircleOps.stroke1px_Opaq(this.surface, cx, cy, radius, paintSource, clipBuffer);
+                CircleOps.stroke1px_Opaq(this.surface, cx, cy, radius, paintSource, clipBuffer, tier0ClipRect);
                 return;
             } else if (paintSource.a > 0) {
-                CircleOps.stroke1px_Alpha(this.surface, cx, cy, radius, paintSource, this.globalAlpha, clipBuffer);
+                CircleOps.stroke1px_Alpha(
+                    this.surface,
+                    cx,
+                    cy,
+                    radius,
+                    paintSource,
+                    this.globalAlpha,
+                    clipBuffer,
+                    tier0ClipRect
+                );
                 return;
             }
         }
@@ -2796,7 +2828,16 @@ class Context2D {
         if (isColor && isSourceOver && lineWidth > 1 && paintSource.a > 0) {
             const isOpaqueThick = paintSource.a === 255 && this.globalAlpha >= 1.0;
             if (isOpaqueThick) {
-                CircleOps.strokeThick_Opaq(this.surface, cx, cy, radius, lineWidth, paintSource, clipBuffer);
+                CircleOps.strokeThick_Opaq(
+                    this.surface,
+                    cx,
+                    cy,
+                    radius,
+                    lineWidth,
+                    paintSource,
+                    clipBuffer,
+                    tier0ClipRect
+                );
             } else {
                 CircleOps.strokeThick_Alpha(
                     this.surface,
@@ -2806,7 +2847,8 @@ class Context2D {
                     lineWidth,
                     paintSource,
                     this.globalAlpha,
-                    clipBuffer
+                    clipBuffer,
+                    tier0ClipRect
                 );
             }
             return;
@@ -2830,6 +2872,13 @@ class Context2D {
      * @private
      */
     _strokeLineDirect(x1, y1, x2, y2, lineWidth, paintSource) {
+        // Deliberately NOT tier-0-wired (unlike fillCircle/strokeCircle):
+        // LineOps.stroke_Any decides thin-vs-thick INSIDE the dispatcher, and its
+        // thick non-axis-aligned branch delegates to QuadScanOps, which has no
+        // clipRect concept — a partial wiring would silently drop the clip on
+        // that branch (the exact bug class 6b20dcc fixed in the roundRect
+        // fallbacks). A rect clip materialises the bitmask here. Wire LineOps +
+        // QuadScanOps together when a hot clipped caller appears.
         const clipBuffer = this._ensureClipBuffer();
 
         // Direct rendering only supports butt line caps (open shapes need cap handling)
