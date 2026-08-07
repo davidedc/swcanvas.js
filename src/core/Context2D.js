@@ -683,7 +683,16 @@ class Context2D {
                 const tlY = center.y - finalH / 2;
 
                 if (isOpaque) {
-                    RectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, clip, tier0ClipRect);
+                    RectOpsAA.fill_AA_Opaq(
+                        this.surface,
+                        tlX,
+                        tlY,
+                        finalW,
+                        finalH,
+                        this._fillStyle,
+                        clip,
+                        tier0ClipRect
+                    );
                     return;
                 } else {
                     RectOpsAA.fill_AA_Alpha(
@@ -787,7 +796,16 @@ class Context2D {
 
                 if (is1pxStroke) {
                     if (isOpaque) {
-                        RectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, clip, tier0ClipRect);
+                        RectOpsAA.stroke1px_AA_Opaq(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            this._strokeStyle,
+                            clip,
+                            tier0ClipRect
+                        );
                         return;
                     } else {
                         RectOpsAA.stroke1px_AA_Alpha(
@@ -1105,7 +1123,11 @@ class Context2D {
         // Direct rendering: Color stroke with source-over, no shadows
         if (this._canUseDirectRendering(this._strokeStyle)) {
             const t = this._transform;
-            const clip = this._ensureClipBuffer();
+            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
+            // paths; the rotated branch materialises the bitmask on demand (see
+            // fillRect for the rationale).
+            const tier0ClipRect = this._tier0ClipRect();
+            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
 
             // Rounded rects require uniform scale (non-uniform would make ellipses)
             if (t.isUniformScale) {
@@ -1129,7 +1151,8 @@ class Context2D {
                                 height,
                                 radii,
                                 this._strokeStyle,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         } else {
                             RoundedRectOpsAA.stroke1px_AA_Alpha(
@@ -1141,7 +1164,8 @@ class Context2D {
                                 radii,
                                 this._strokeStyle,
                                 this.globalAlpha,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         }
                     } else {
@@ -1155,7 +1179,8 @@ class Context2D {
                                 radii,
                                 this._lineWidth,
                                 this._strokeStyle,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         } else {
                             RoundedRectOpsAA.strokeThick_AA_Alpha(
@@ -1168,7 +1193,8 @@ class Context2D {
                                 this._lineWidth,
                                 this._strokeStyle,
                                 this.globalAlpha,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         }
                     }
@@ -1192,7 +1218,8 @@ class Context2D {
                                 finalH,
                                 scaledRadius,
                                 this._strokeStyle,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         } else {
                             RoundedRectOpsAA.stroke1px_AA_Alpha(
@@ -1204,7 +1231,8 @@ class Context2D {
                                 scaledRadius,
                                 this._strokeStyle,
                                 this.globalAlpha,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         }
                     } else {
@@ -1218,7 +1246,8 @@ class Context2D {
                                 scaledRadius,
                                 scaledLineWidth,
                                 this._strokeStyle,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         } else {
                             RoundedRectOpsAA.strokeThick_AA_Alpha(
@@ -1231,7 +1260,8 @@ class Context2D {
                                 scaledLineWidth,
                                 this._strokeStyle,
                                 this.globalAlpha,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         }
                     }
@@ -1249,7 +1279,7 @@ class Context2D {
                         scaledLineWidth,
                         this._strokeStyle,
                         this.globalAlpha,
-                        clip
+                        this._ensureClipBuffer()
                     );
                     return;
                 }
@@ -1300,7 +1330,11 @@ class Context2D {
         // Direct rendering: Color fill with source-over, no shadows
         if (this._canUseDirectRendering(this._fillStyle)) {
             const t = this._transform;
-            const clip = this._ensureClipBuffer();
+            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
+            // paths; the rotated branch materialises the bitmask on demand (see
+            // fillRect for the rationale).
+            const tier0ClipRect = this._tier0ClipRect();
+            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
 
             // Rounded rects require uniform scale (non-uniform would make ellipses)
             if (t.isUniformScale) {
@@ -1313,7 +1347,17 @@ class Context2D {
                 if (t.isIdentity) {
                     // No transform: use axis-aligned methods with original coordinates
                     if (isOpaque) {
-                        RoundedRectOpsAA.fill_AA_Opaq(this.surface, x, y, width, height, radii, this._fillStyle, clip);
+                        RoundedRectOpsAA.fill_AA_Opaq(
+                            this.surface,
+                            x,
+                            y,
+                            width,
+                            height,
+                            radii,
+                            this._fillStyle,
+                            clip,
+                            tier0ClipRect
+                        );
                     } else {
                         RoundedRectOpsAA.fill_AA_Alpha(
                             this.surface,
@@ -1324,7 +1368,8 @@ class Context2D {
                             radii,
                             this._fillStyle,
                             this.globalAlpha,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                     }
                     return;
@@ -1346,7 +1391,8 @@ class Context2D {
                             finalH,
                             scaledRadius,
                             this._fillStyle,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                     } else {
                         RoundedRectOpsAA.fill_AA_Alpha(
@@ -1358,7 +1404,8 @@ class Context2D {
                             scaledRadius,
                             this._fillStyle,
                             this.globalAlpha,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                     }
                     return;
@@ -1374,7 +1421,7 @@ class Context2D {
                         t.rotationAngle,
                         this._fillStyle,
                         this.globalAlpha,
-                        clip
+                        this._ensureClipBuffer()
                     );
                     return;
                 }
@@ -1425,6 +1472,10 @@ class Context2D {
         // Direct rendering: both fill and stroke are solid colors, source-over, no shadows
         if (this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle)) {
             const t = this._transform;
+            // Deliberately NOT tier-0-wired (unlike fillRoundRect/strokeRoundRect):
+            // fillStroke_AA_Any's interleaved fill/stroke spans don't take a clipRect
+            // yet, so a rect clip materialises the bitmask here. Wire it when the
+            // fused path grows a hot clipped caller.
             const clip = this._ensureClipBuffer();
 
             const hasFill = this._fillStyle.a > 0;
@@ -1907,8 +1958,7 @@ class Context2D {
      * @private
      */
     _tier0ClipRect() {
-        return (this._clipIsRect && this._isSourceOver && this._noShadow)
-            ? this._clipRect : null;
+        return this._clipIsRect && this._isSourceOver && this._noShadow ? this._clipRect : null;
     }
 
     /**
@@ -1944,8 +1994,7 @@ class Context2D {
      */
     _ensureClipMask() {
         if (this._clipMask === null && this._clipRect !== null) {
-            this._clipMask = Context2D._rectToClipMask(
-                this._clipRect, this.surface.width, this.surface.height);
+            this._clipMask = Context2D._rectToClipMask(this._clipRect, this.surface.width, this.surface.height);
         }
         return this._clipMask;
     }
@@ -2004,7 +2053,8 @@ class Context2D {
             v.push(p);
         }
         if (v.length > 1) {
-            const first = v[0], last = v[v.length - 1];
+            const first = v[0],
+                last = v[v.length - 1];
             if (first.x === last.x && first.y === last.y) v.pop(); // closing dup
         }
         if (v.length !== 4) return null; // exactly 4 distinct corners for a rect
@@ -2014,9 +2064,10 @@ class Context2D {
         // bowtie — all conservatively rejected to the bitmask path (their fill
         // region is not their bounding box, so tier-0 would not be byte-identical).
         for (let i = 0; i < 4; i++) {
-            const a = v[i], b = v[(i + 1) % 4];
-            const horiz = (a.y === b.y);
-            const vert = (a.x === b.x);
+            const a = v[i],
+                b = v[(i + 1) % 4];
+            const horiz = a.y === b.y;
+            const vert = a.x === b.x;
             if (horiz === vert) return null; // both (degenerate) or neither (diagonal)
         }
 
@@ -2048,7 +2099,7 @@ class Context2D {
         const y0 = Math.max(a.y0, b.y0);
         const x1 = Math.min(a.x1, b.x1);
         const y1 = Math.min(a.y1, b.y1);
-        return { x0, y0, x1: (x1 < x0 ? x0 : x1), y1: (y1 < y0 ? y0 : y1) };
+        return { x0, y0, x1: x1 < x0 ? x0 : x1, y1: y1 < y0 ? y0 : y1 };
     }
 
     /**
@@ -2077,9 +2128,12 @@ class Context2D {
         // Tier-0 detection — evaluated BEFORE we mutate the clip state below, since
         // it depends on whether the PRIOR clip was itself a pure rect.
         const detectedRect = Context2D._detectAxisAlignedRect(
-            polygons, opTransform, this.surface.width, this.surface.height);
-        const priorWasPureRectOrEmpty =
-            (this._clipMask === null && this._clipRect === null) || this._clipIsRect;
+            polygons,
+            opTransform,
+            this.surface.width,
+            this.surface.height
+        );
+        const priorWasPureRectOrEmpty = (this._clipMask === null && this._clipRect === null) || this._clipIsRect;
 
         if (detectedRect && priorWasPureRectOrEmpty && !Context2D._disableTier0Clip) {
             // TIER-0: the composed clip is exactly an axis-aligned rect. Track it
@@ -2090,9 +2144,7 @@ class Context2D {
             // composite ops, shadows) materialises it on demand via _ensureClipMask().
             // The prior clip was itself a pure rect (priorWasPureRectOrEmpty),
             // already captured in _clipRect, so no prior mask region is lost.
-            this._clipRect = this._clipRect
-                ? Context2D._intersectRect(this._clipRect, detectedRect)
-                : detectedRect;
+            this._clipRect = this._clipRect ? Context2D._intersectRect(this._clipRect, detectedRect) : detectedRect;
             this._clipIsRect = true;
             this._clipMask = null; // freed / never built — the allocation win
         } else {
@@ -2179,8 +2231,8 @@ class Context2D {
         // throw — explicit failure beats silent no-op, mirroring strokeText.
         if (maxWidth !== undefined) {
             throw new Error(
-                'fillText: maxWidth is not supported by SWCanvas\'s BitmapText backend. ' +
-                'Drop the argument or pre-measure with measureText and adjust your layout.'
+                "fillText: maxWidth is not supported by SWCanvas's BitmapText backend. " +
+                    'Drop the argument or pre-measure with measureText and adjust your layout.'
             );
         }
         return TextRenderer.fillText(this, text, x, y);
@@ -2191,10 +2243,7 @@ class Context2D {
     }
 
     strokeText() {
-        throw new Error(
-            'strokeText is not supported by SWCanvas\'s BitmapText backend. ' +
-            'Use fillText instead.'
-        );
+        throw new Error("strokeText is not supported by SWCanvas's BitmapText backend. " + 'Use fillText instead.');
     }
 
     // Line dash methods

@@ -15728,7 +15728,7 @@ class RoundedRectOpsAA {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static stroke1px_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null) {
+    static stroke1px_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
@@ -15738,11 +15738,17 @@ class RoundedRectOpsAA {
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsAA.stroke1px_AA_Opaq(surface, x, y, width, height, color);
+            RectOpsAA.stroke1px_AA_Opaq(surface, x, y, width, height, color, clipBuffer, clipRect);
             return;
         }
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Snap the stroke onto one device-pixel frame up front, and derive BOTH the
         // edge runs and the corner centers from it. Edges and corners must share one
@@ -15759,9 +15765,9 @@ class RoundedRectOpsAA {
         // Draw horizontal edges (top and bottom, excluding corners)
 
         // Top edge
-        if (topY >= 0 && topY < surfaceHeight) {
+        if (topY >= cy0 && topY < cy1) {
             for (let xx = leftX + radius; xx < rightX + 1 - radius; xx++) {
-                if (xx >= 0 && xx < surfaceWidth) {
+                if (xx >= cx0 && xx < cx1) {
                     const pos = topY * surfaceWidth + xx;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -15770,9 +15776,9 @@ class RoundedRectOpsAA {
             }
         }
         // Bottom edge
-        if (bottomY >= 0 && bottomY < surfaceHeight) {
+        if (bottomY >= cy0 && bottomY < cy1) {
             for (let xx = leftX + radius; xx < rightX + 1 - radius; xx++) {
-                if (xx >= 0 && xx < surfaceWidth) {
+                if (xx >= cx0 && xx < cx1) {
                     const pos = bottomY * surfaceWidth + xx;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -15784,9 +15790,9 @@ class RoundedRectOpsAA {
         // Draw vertical edges (left and right, excluding corners)
 
         // Left edge
-        if (leftX >= 0 && leftX < surfaceWidth) {
+        if (leftX >= cx0 && leftX < cx1) {
             for (let yy = topY + radius; yy < bottomY + 1 - radius; yy++) {
-                if (yy >= 0 && yy < surfaceHeight) {
+                if (yy >= cy0 && yy < cy1) {
                     const pos = yy * surfaceWidth + leftX;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -15795,9 +15801,9 @@ class RoundedRectOpsAA {
             }
         }
         // Right edge
-        if (rightX >= 0 && rightX < surfaceWidth) {
+        if (rightX >= cx0 && rightX < cx1) {
             for (let yy = topY + radius; yy < bottomY + 1 - radius; yy++) {
-                if (yy >= 0 && yy < surfaceHeight) {
+                if (yy >= cy0 && yy < cy1) {
                     const pos = yy * surfaceWidth + rightX;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -15825,7 +15831,7 @@ class RoundedRectOpsAA {
                 if (Math.abs(s) < QUADRANT_TRIG_EPSILON) s = 0;
                 const px = Math.floor(cx + sr * c);
                 const py = Math.floor(cy + sr * s);
-                if (px >= 0 && px < surfaceWidth && py >= 0 && py < surfaceHeight) {
+                if (px >= cx0 && px < cx1 && py >= cy0 && py < cy1) {
                     const pos = py * surfaceWidth + px;
                     if (!clipBuffer || (clipBuffer[pos >> 3] & (1 << (pos & 7)))) {
     data32[pos] = packedColor;
@@ -15858,7 +15864,18 @@ class RoundedRectOpsAA {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static stroke1px_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null) {
+    static stroke1px_AA_Alpha(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        radii,
+        color,
+        globalAlpha,
+        clipBuffer = null,
+        clipRect = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -15868,7 +15885,7 @@ class RoundedRectOpsAA {
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsAA.stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha);
+            RectOpsAA.stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer, clipRect);
             return;
         }
 
@@ -15878,6 +15895,12 @@ class RoundedRectOpsAA {
         const r = color.r,
             g = color.g,
             b = color.b;
+
+        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Snap the stroke onto one device-pixel frame up front, and derive the edge
         // runs AND the corner centers from it (same contract as stroke1px_AA_Opaq —
@@ -15896,7 +15919,7 @@ class RoundedRectOpsAA {
 
         // Helper to blend a pixel directly
         const blendPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
+            if (px < cx0 || px >= cx1 || py < cy0 || py >= cy1) return;
             const pixelIndex = py * surfaceWidth + px;
             if (clipBuffer) {
                 const byteIndex = pixelIndex >> 3;
@@ -15951,7 +15974,7 @@ if (__outA > 0) {
                 if (Math.abs(s) < QUADRANT_TRIG_EPSILON) s = 0;
                 const px = Math.floor(cx + sr * c);
                 const py = Math.floor(cy + sr * s);
-                if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) continue;
+                if (px < cx0 || px >= cx1 || py < cy0 || py >= cy1) continue;
                 const pos = py * surfaceWidth + px;
                 if (pos === lastPos) continue; // Skip consecutive duplicate
                 lastPos = pos;
@@ -15997,7 +16020,7 @@ if (__outA > 0) {
      * @param {Color} color - Fill color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static fill_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null) {
+    static fill_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
@@ -16007,11 +16030,20 @@ if (__outA > 0) {
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
-            RectOpsAA.fill_AA_Opaq(surface, x, y, width, height, color);
+            RectOpsAA.fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer, clipRect);
             return;
         }
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip: clamp rows/spans to the clip rect (already clamped to the
+        // surface) and skip the per-pixel bit test — byte-identical to the bitmask
+        // path (see RectOpsAA). clipBuffer is null then. With no clipRect the bounds
+        // default to the surface, preserving the plain surface clamps.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Calculate integer bounds
         const rectX = Math.floor(x);
@@ -16021,7 +16053,7 @@ if (__outA > 0) {
 
         // For each scanline
         for (let py = rectY; py < rectY + rectH; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
 
             let leftX = rectX;
             let rightX = rectX + rectW - 1;
@@ -16057,9 +16089,9 @@ if (__outA > 0) {
                 }
             }
 
-            // Clamp to surface bounds
-            leftX = Math.max(0, leftX);
-            rightX = Math.min(surfaceWidth - 1, rightX);
+            // Clamp to the clip frame (surface bounds when unclipped)
+            leftX = Math.max(cx0, leftX);
+            rightX = Math.min(cx1 - 1, rightX);
 
             if (leftX > rightX) continue;
 
@@ -16083,7 +16115,7 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static fill_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null) {
+    static fill_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -16093,7 +16125,7 @@ if (__outA > 0) {
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
-            RectOpsAA.fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha);
+            RectOpsAA.fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer, clipRect);
             return;
         }
 
@@ -16104,6 +16136,12 @@ if (__outA > 0) {
             g = color.g,
             b = color.b;
 
+        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
+
         // Calculate integer bounds
         const rectX = Math.floor(x);
         const rectY = Math.floor(y);
@@ -16112,7 +16150,7 @@ if (__outA > 0) {
 
         // For each scanline
         for (let py = rectY; py < rectY + rectH; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
 
             let leftX = rectX;
             let rightX = rectX + rectW - 1;
@@ -16146,9 +16184,9 @@ if (__outA > 0) {
                 }
             }
 
-            // Clamp to surface bounds
-            leftX = Math.max(0, leftX);
-            rightX = Math.min(surfaceWidth - 1, rightX);
+            // Clamp to the clip frame (surface bounds when unclipped)
+            leftX = Math.max(cx0, leftX);
+            rightX = Math.min(cx1 - 1, rightX);
 
             if (leftX > rightX) continue;
 
@@ -16185,7 +16223,18 @@ if (__outA > 0) {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static strokeThick_AA_Opaq(surface, x, y, width, height, radii, lineWidth, color, clipBuffer = null) {
+    static strokeThick_AA_Opaq(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        radii,
+        lineWidth,
+        color,
+        clipBuffer = null,
+        clipRect = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
@@ -16195,13 +16244,21 @@ if (__outA > 0) {
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsAA.strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer);
+            RectOpsAA.strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer, clipRect);
             return;
         }
 
         const halfStroke = lineWidth / 2;
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip bounds — see fill_AA_Opaq. The inner (hole) extents get the
+        // dual clamp below so the left/right stroke spans stay inside [cx0, cx1) even
+        // when the clip rect cuts through the stroke band.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Calculate outer and inner bounds
         const outerX = Math.floor(x - halfStroke);
@@ -16218,15 +16275,15 @@ if (__outA > 0) {
 
         // For each scanline in the outer bounds
         for (let py = outerY; py < outerY + outerH; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
 
             // Get outer extent
             const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadius);
             if (outer.leftX < 0) continue; // Outside outer bounds
 
-            // Clamp outer to surface
-            const outerLeft = Math.max(0, outer.leftX);
-            const outerRight = Math.min(surfaceWidth - 1, outer.rightX);
+            // Clamp outer to the clip frame (surface bounds when unclipped)
+            const outerLeft = Math.max(cx0, outer.leftX);
+            const outerRight = Math.min(cx1 - 1, outer.rightX);
             if (outerLeft > outerRight) continue;
 
             // Check if we're in the inner region (hollow part)
@@ -16234,9 +16291,13 @@ if (__outA > 0) {
                 const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadius);
 
                 if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
-                    // Draw left and right stroke spans around the inner region
-                    const innerLeft = Math.max(0, inner.leftX);
-                    const innerRight = Math.min(surfaceWidth - 1, inner.rightX);
+                    // Draw left and right stroke spans around the inner region.
+                    // Dual clamp: the left span ends at innerLeft - 1 and the right span
+                    // starts at innerRight + 1, so innerLeft must not exceed cx1 and
+                    // innerRight must not fall below cx0 - 1 or a span would escape the
+                    // clip frame on the far side of the hole.
+                    const innerLeft = Math.min(cx1, Math.max(cx0, inner.leftX));
+                    const innerRight = Math.max(cx0 - 1, Math.min(cx1 - 1, inner.rightX));
 
                     // Left span: from outerLeft to just before innerLeft
                     if (outerLeft < innerLeft) {
@@ -16314,7 +16375,19 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static strokeThick_AA_Alpha(surface, x, y, width, height, radii, lineWidth, color, globalAlpha, clipBuffer = null) {
+    static strokeThick_AA_Alpha(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        radii,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer = null,
+        clipRect = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -16324,7 +16397,18 @@ if (__outA > 0) {
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsAA.strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, color, globalAlpha, clipBuffer);
+            RectOpsAA.strokeThick_AA_Alpha(
+                surface,
+                x,
+                y,
+                width,
+                height,
+                lineWidth,
+                color,
+                globalAlpha,
+                clipBuffer,
+                clipRect
+            );
             return;
         }
 
@@ -16336,6 +16420,12 @@ if (__outA > 0) {
         const r = color.r,
             g = color.g,
             b = color.b;
+
+        // Tier-0 rect clip bounds + inner dual clamp — see strokeThick_AA_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Calculate outer and inner bounds
         const outerX = Math.floor(x - halfStroke);
@@ -16352,21 +16442,21 @@ if (__outA > 0) {
 
         // For each scanline in the outer bounds
         for (let py = outerY; py < outerY + outerH; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
 
             const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadius);
             if (outer.leftX < 0) continue;
 
-            const outerLeft = Math.max(0, outer.leftX);
-            const outerRight = Math.min(surfaceWidth - 1, outer.rightX);
+            const outerLeft = Math.max(cx0, outer.leftX);
+            const outerRight = Math.min(cx1 - 1, outer.rightX);
             if (outerLeft > outerRight) continue;
 
             if (innerW > 0 && innerH > 0 && py >= innerY && py < innerY + innerH) {
                 const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadius);
 
                 if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
-                    const innerLeft = Math.max(0, inner.leftX);
-                    const innerRight = Math.min(surfaceWidth - 1, inner.rightX);
+                    const innerLeft = Math.min(cx1, Math.max(cx0, inner.leftX));
+                    const innerRight = Math.max(cx0 - 1, Math.min(cx1 - 1, inner.rightX));
 
                     if (outerLeft < innerLeft) {
                         const leftSpanLength = innerLeft - outerLeft;
@@ -25361,7 +25451,16 @@ class Context2D {
                 const tlY = center.y - finalH / 2;
 
                 if (isOpaque) {
-                    RectOpsAA.fill_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._fillStyle, clip, tier0ClipRect);
+                    RectOpsAA.fill_AA_Opaq(
+                        this.surface,
+                        tlX,
+                        tlY,
+                        finalW,
+                        finalH,
+                        this._fillStyle,
+                        clip,
+                        tier0ClipRect
+                    );
                     return;
                 } else {
                     RectOpsAA.fill_AA_Alpha(
@@ -25465,7 +25564,16 @@ class Context2D {
 
                 if (is1pxStroke) {
                     if (isOpaque) {
-                        RectOpsAA.stroke1px_AA_Opaq(this.surface, tlX, tlY, finalW, finalH, this._strokeStyle, clip, tier0ClipRect);
+                        RectOpsAA.stroke1px_AA_Opaq(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            this._strokeStyle,
+                            clip,
+                            tier0ClipRect
+                        );
                         return;
                     } else {
                         RectOpsAA.stroke1px_AA_Alpha(
@@ -25783,7 +25891,11 @@ class Context2D {
         // Direct rendering: Color stroke with source-over, no shadows
         if (this._canUseDirectRendering(this._strokeStyle)) {
             const t = this._transform;
-            const clip = this._ensureClipBuffer();
+            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
+            // paths; the rotated branch materialises the bitmask on demand (see
+            // fillRect for the rationale).
+            const tier0ClipRect = this._tier0ClipRect();
+            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
 
             // Rounded rects require uniform scale (non-uniform would make ellipses)
             if (t.isUniformScale) {
@@ -25807,7 +25919,8 @@ class Context2D {
                                 height,
                                 radii,
                                 this._strokeStyle,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         } else {
                             RoundedRectOpsAA.stroke1px_AA_Alpha(
@@ -25819,7 +25932,8 @@ class Context2D {
                                 radii,
                                 this._strokeStyle,
                                 this.globalAlpha,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         }
                     } else {
@@ -25833,7 +25947,8 @@ class Context2D {
                                 radii,
                                 this._lineWidth,
                                 this._strokeStyle,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         } else {
                             RoundedRectOpsAA.strokeThick_AA_Alpha(
@@ -25846,7 +25961,8 @@ class Context2D {
                                 this._lineWidth,
                                 this._strokeStyle,
                                 this.globalAlpha,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         }
                     }
@@ -25870,7 +25986,8 @@ class Context2D {
                                 finalH,
                                 scaledRadius,
                                 this._strokeStyle,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         } else {
                             RoundedRectOpsAA.stroke1px_AA_Alpha(
@@ -25882,7 +25999,8 @@ class Context2D {
                                 scaledRadius,
                                 this._strokeStyle,
                                 this.globalAlpha,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         }
                     } else {
@@ -25896,7 +26014,8 @@ class Context2D {
                                 scaledRadius,
                                 scaledLineWidth,
                                 this._strokeStyle,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         } else {
                             RoundedRectOpsAA.strokeThick_AA_Alpha(
@@ -25909,7 +26028,8 @@ class Context2D {
                                 scaledLineWidth,
                                 this._strokeStyle,
                                 this.globalAlpha,
-                                clip
+                                clip,
+                                tier0ClipRect
                             );
                         }
                     }
@@ -25927,7 +26047,7 @@ class Context2D {
                         scaledLineWidth,
                         this._strokeStyle,
                         this.globalAlpha,
-                        clip
+                        this._ensureClipBuffer()
                     );
                     return;
                 }
@@ -25978,7 +26098,11 @@ class Context2D {
         // Direct rendering: Color fill with source-over, no shadows
         if (this._canUseDirectRendering(this._fillStyle)) {
             const t = this._transform;
-            const clip = this._ensureClipBuffer();
+            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
+            // paths; the rotated branch materialises the bitmask on demand (see
+            // fillRect for the rationale).
+            const tier0ClipRect = this._tier0ClipRect();
+            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
 
             // Rounded rects require uniform scale (non-uniform would make ellipses)
             if (t.isUniformScale) {
@@ -25991,7 +26115,17 @@ class Context2D {
                 if (t.isIdentity) {
                     // No transform: use axis-aligned methods with original coordinates
                     if (isOpaque) {
-                        RoundedRectOpsAA.fill_AA_Opaq(this.surface, x, y, width, height, radii, this._fillStyle, clip);
+                        RoundedRectOpsAA.fill_AA_Opaq(
+                            this.surface,
+                            x,
+                            y,
+                            width,
+                            height,
+                            radii,
+                            this._fillStyle,
+                            clip,
+                            tier0ClipRect
+                        );
                     } else {
                         RoundedRectOpsAA.fill_AA_Alpha(
                             this.surface,
@@ -26002,7 +26136,8 @@ class Context2D {
                             radii,
                             this._fillStyle,
                             this.globalAlpha,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                     }
                     return;
@@ -26024,7 +26159,8 @@ class Context2D {
                             finalH,
                             scaledRadius,
                             this._fillStyle,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                     } else {
                         RoundedRectOpsAA.fill_AA_Alpha(
@@ -26036,7 +26172,8 @@ class Context2D {
                             scaledRadius,
                             this._fillStyle,
                             this.globalAlpha,
-                            clip
+                            clip,
+                            tier0ClipRect
                         );
                     }
                     return;
@@ -26052,7 +26189,7 @@ class Context2D {
                         t.rotationAngle,
                         this._fillStyle,
                         this.globalAlpha,
-                        clip
+                        this._ensureClipBuffer()
                     );
                     return;
                 }
@@ -26103,6 +26240,10 @@ class Context2D {
         // Direct rendering: both fill and stroke are solid colors, source-over, no shadows
         if (this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle)) {
             const t = this._transform;
+            // Deliberately NOT tier-0-wired (unlike fillRoundRect/strokeRoundRect):
+            // fillStroke_AA_Any's interleaved fill/stroke spans don't take a clipRect
+            // yet, so a rect clip materialises the bitmask here. Wire it when the
+            // fused path grows a hot clipped caller.
             const clip = this._ensureClipBuffer();
 
             const hasFill = this._fillStyle.a > 0;
@@ -26585,8 +26726,7 @@ class Context2D {
      * @private
      */
     _tier0ClipRect() {
-        return (this._clipIsRect && this._isSourceOver && this._noShadow)
-            ? this._clipRect : null;
+        return this._clipIsRect && this._isSourceOver && this._noShadow ? this._clipRect : null;
     }
 
     /**
@@ -26622,8 +26762,7 @@ class Context2D {
      */
     _ensureClipMask() {
         if (this._clipMask === null && this._clipRect !== null) {
-            this._clipMask = Context2D._rectToClipMask(
-                this._clipRect, this.surface.width, this.surface.height);
+            this._clipMask = Context2D._rectToClipMask(this._clipRect, this.surface.width, this.surface.height);
         }
         return this._clipMask;
     }
@@ -26682,7 +26821,8 @@ class Context2D {
             v.push(p);
         }
         if (v.length > 1) {
-            const first = v[0], last = v[v.length - 1];
+            const first = v[0],
+                last = v[v.length - 1];
             if (first.x === last.x && first.y === last.y) v.pop(); // closing dup
         }
         if (v.length !== 4) return null; // exactly 4 distinct corners for a rect
@@ -26692,9 +26832,10 @@ class Context2D {
         // bowtie — all conservatively rejected to the bitmask path (their fill
         // region is not their bounding box, so tier-0 would not be byte-identical).
         for (let i = 0; i < 4; i++) {
-            const a = v[i], b = v[(i + 1) % 4];
-            const horiz = (a.y === b.y);
-            const vert = (a.x === b.x);
+            const a = v[i],
+                b = v[(i + 1) % 4];
+            const horiz = a.y === b.y;
+            const vert = a.x === b.x;
             if (horiz === vert) return null; // both (degenerate) or neither (diagonal)
         }
 
@@ -26726,7 +26867,7 @@ class Context2D {
         const y0 = Math.max(a.y0, b.y0);
         const x1 = Math.min(a.x1, b.x1);
         const y1 = Math.min(a.y1, b.y1);
-        return { x0, y0, x1: (x1 < x0 ? x0 : x1), y1: (y1 < y0 ? y0 : y1) };
+        return { x0, y0, x1: x1 < x0 ? x0 : x1, y1: y1 < y0 ? y0 : y1 };
     }
 
     /**
@@ -26755,9 +26896,12 @@ class Context2D {
         // Tier-0 detection — evaluated BEFORE we mutate the clip state below, since
         // it depends on whether the PRIOR clip was itself a pure rect.
         const detectedRect = Context2D._detectAxisAlignedRect(
-            polygons, opTransform, this.surface.width, this.surface.height);
-        const priorWasPureRectOrEmpty =
-            (this._clipMask === null && this._clipRect === null) || this._clipIsRect;
+            polygons,
+            opTransform,
+            this.surface.width,
+            this.surface.height
+        );
+        const priorWasPureRectOrEmpty = (this._clipMask === null && this._clipRect === null) || this._clipIsRect;
 
         if (detectedRect && priorWasPureRectOrEmpty && !Context2D._disableTier0Clip) {
             // TIER-0: the composed clip is exactly an axis-aligned rect. Track it
@@ -26768,9 +26912,7 @@ class Context2D {
             // composite ops, shadows) materialises it on demand via _ensureClipMask().
             // The prior clip was itself a pure rect (priorWasPureRectOrEmpty),
             // already captured in _clipRect, so no prior mask region is lost.
-            this._clipRect = this._clipRect
-                ? Context2D._intersectRect(this._clipRect, detectedRect)
-                : detectedRect;
+            this._clipRect = this._clipRect ? Context2D._intersectRect(this._clipRect, detectedRect) : detectedRect;
             this._clipIsRect = true;
             this._clipMask = null; // freed / never built — the allocation win
         } else {
@@ -26857,8 +26999,8 @@ class Context2D {
         // throw — explicit failure beats silent no-op, mirroring strokeText.
         if (maxWidth !== undefined) {
             throw new Error(
-                'fillText: maxWidth is not supported by SWCanvas\'s BitmapText backend. ' +
-                'Drop the argument or pre-measure with measureText and adjust your layout.'
+                "fillText: maxWidth is not supported by SWCanvas's BitmapText backend. " +
+                    'Drop the argument or pre-measure with measureText and adjust your layout.'
             );
         }
         return TextRenderer.fillText(this, text, x, y);
@@ -26869,10 +27011,7 @@ class Context2D {
     }
 
     strokeText() {
-        throw new Error(
-            'strokeText is not supported by SWCanvas\'s BitmapText backend. ' +
-            'Use fillText instead.'
-        );
+        throw new Error("strokeText is not supported by SWCanvas's BitmapText backend. " + 'Use fillText instead.');
     }
 
     // Line dash methods

@@ -98,7 +98,7 @@ class RoundedRectOpsAA {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static stroke1px_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null) {
+    static stroke1px_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
@@ -108,11 +108,17 @@ class RoundedRectOpsAA {
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsAA.stroke1px_AA_Opaq(surface, x, y, width, height, color);
+            RectOpsAA.stroke1px_AA_Opaq(surface, x, y, width, height, color, clipBuffer, clipRect);
             return;
         }
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Snap the stroke onto one device-pixel frame up front, and derive BOTH the
         // edge runs and the corner centers from it. Edges and corners must share one
@@ -129,18 +135,18 @@ class RoundedRectOpsAA {
         // Draw horizontal edges (top and bottom, excluding corners)
 
         // Top edge
-        if (topY >= 0 && topY < surfaceHeight) {
+        if (topY >= cy0 && topY < cy1) {
             for (let xx = leftX + radius; xx < rightX + 1 - radius; xx++) {
-                if (xx >= 0 && xx < surfaceWidth) {
+                if (xx >= cx0 && xx < cx1) {
                     const pos = topY * surfaceWidth + xx;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
                 }
             }
         }
         // Bottom edge
-        if (bottomY >= 0 && bottomY < surfaceHeight) {
+        if (bottomY >= cy0 && bottomY < cy1) {
             for (let xx = leftX + radius; xx < rightX + 1 - radius; xx++) {
-                if (xx >= 0 && xx < surfaceWidth) {
+                if (xx >= cx0 && xx < cx1) {
                     const pos = bottomY * surfaceWidth + xx;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
                 }
@@ -150,18 +156,18 @@ class RoundedRectOpsAA {
         // Draw vertical edges (left and right, excluding corners)
 
         // Left edge
-        if (leftX >= 0 && leftX < surfaceWidth) {
+        if (leftX >= cx0 && leftX < cx1) {
             for (let yy = topY + radius; yy < bottomY + 1 - radius; yy++) {
-                if (yy >= 0 && yy < surfaceHeight) {
+                if (yy >= cy0 && yy < cy1) {
                     const pos = yy * surfaceWidth + leftX;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
                 }
             }
         }
         // Right edge
-        if (rightX >= 0 && rightX < surfaceWidth) {
+        if (rightX >= cx0 && rightX < cx1) {
             for (let yy = topY + radius; yy < bottomY + 1 - radius; yy++) {
-                if (yy >= 0 && yy < surfaceHeight) {
+                if (yy >= cy0 && yy < cy1) {
                     const pos = yy * surfaceWidth + rightX;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
                 }
@@ -187,7 +193,7 @@ class RoundedRectOpsAA {
                 if (Math.abs(s) < QUADRANT_TRIG_EPSILON) s = 0;
                 const px = Math.floor(cx + sr * c);
                 const py = Math.floor(cy + sr * s);
-                if (px >= 0 && px < surfaceWidth && py >= 0 && py < surfaceHeight) {
+                if (px >= cx0 && px < cx1 && py >= cy0 && py < cy1) {
                     const pos = py * surfaceWidth + px;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
                 }
@@ -218,7 +224,18 @@ class RoundedRectOpsAA {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static stroke1px_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null) {
+    static stroke1px_AA_Alpha(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        radii,
+        color,
+        globalAlpha,
+        clipBuffer = null,
+        clipRect = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -228,7 +245,7 @@ class RoundedRectOpsAA {
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsAA.stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha);
+            RectOpsAA.stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer, clipRect);
             return;
         }
 
@@ -238,6 +255,12 @@ class RoundedRectOpsAA {
         const r = color.r,
             g = color.g,
             b = color.b;
+
+        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Snap the stroke onto one device-pixel frame up front, and derive the edge
         // runs AND the corner centers from it (same contract as stroke1px_AA_Opaq —
@@ -256,7 +279,7 @@ class RoundedRectOpsAA {
 
         // Helper to blend a pixel directly
         const blendPixel = (px, py) => {
-            if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) return;
+            if (px < cx0 || px >= cx1 || py < cy0 || py >= cy1) return;
             const pixelIndex = py * surfaceWidth + px;
             if (clipBuffer) {
                 const byteIndex = pixelIndex >> 3;
@@ -301,7 +324,7 @@ class RoundedRectOpsAA {
                 if (Math.abs(s) < QUADRANT_TRIG_EPSILON) s = 0;
                 const px = Math.floor(cx + sr * c);
                 const py = Math.floor(cy + sr * s);
-                if (px < 0 || px >= surfaceWidth || py < 0 || py >= surfaceHeight) continue;
+                if (px < cx0 || px >= cx1 || py < cy0 || py >= cy1) continue;
                 const pos = py * surfaceWidth + px;
                 if (pos === lastPos) continue; // Skip consecutive duplicate
                 lastPos = pos;
@@ -337,7 +360,7 @@ class RoundedRectOpsAA {
      * @param {Color} color - Fill color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static fill_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null) {
+    static fill_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
@@ -347,11 +370,20 @@ class RoundedRectOpsAA {
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
-            RectOpsAA.fill_AA_Opaq(surface, x, y, width, height, color);
+            RectOpsAA.fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer, clipRect);
             return;
         }
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip: clamp rows/spans to the clip rect (already clamped to the
+        // surface) and skip the per-pixel bit test — byte-identical to the bitmask
+        // path (see RectOpsAA). clipBuffer is null then. With no clipRect the bounds
+        // default to the surface, preserving the plain surface clamps.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Calculate integer bounds
         const rectX = Math.floor(x);
@@ -361,7 +393,7 @@ class RoundedRectOpsAA {
 
         // For each scanline
         for (let py = rectY; py < rectY + rectH; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
 
             let leftX = rectX;
             let rightX = rectX + rectW - 1;
@@ -397,9 +429,9 @@ class RoundedRectOpsAA {
                 }
             }
 
-            // Clamp to surface bounds
-            leftX = Math.max(0, leftX);
-            rightX = Math.min(surfaceWidth - 1, rightX);
+            // Clamp to the clip frame (surface bounds when unclipped)
+            leftX = Math.max(cx0, leftX);
+            rightX = Math.min(cx1 - 1, rightX);
 
             if (leftX > rightX) continue;
 
@@ -423,7 +455,7 @@ class RoundedRectOpsAA {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static fill_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null) {
+    static fill_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null, clipRect = null) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -433,7 +465,7 @@ class RoundedRectOpsAA {
 
         // Fallback to RectOps for zero radius
         if (radius <= 0) {
-            RectOpsAA.fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha);
+            RectOpsAA.fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer, clipRect);
             return;
         }
 
@@ -444,6 +476,12 @@ class RoundedRectOpsAA {
             g = color.g,
             b = color.b;
 
+        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
+
         // Calculate integer bounds
         const rectX = Math.floor(x);
         const rectY = Math.floor(y);
@@ -452,7 +490,7 @@ class RoundedRectOpsAA {
 
         // For each scanline
         for (let py = rectY; py < rectY + rectH; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
 
             let leftX = rectX;
             let rightX = rectX + rectW - 1;
@@ -486,9 +524,9 @@ class RoundedRectOpsAA {
                 }
             }
 
-            // Clamp to surface bounds
-            leftX = Math.max(0, leftX);
-            rightX = Math.min(surfaceWidth - 1, rightX);
+            // Clamp to the clip frame (surface bounds when unclipped)
+            leftX = Math.max(cx0, leftX);
+            rightX = Math.min(cx1 - 1, rightX);
 
             if (leftX > rightX) continue;
 
@@ -525,7 +563,18 @@ class RoundedRectOpsAA {
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static strokeThick_AA_Opaq(surface, x, y, width, height, radii, lineWidth, color, clipBuffer = null) {
+    static strokeThick_AA_Opaq(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        radii,
+        lineWidth,
+        color,
+        clipBuffer = null,
+        clipRect = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
@@ -535,13 +584,21 @@ class RoundedRectOpsAA {
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsAA.strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer);
+            RectOpsAA.strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer, clipRect);
             return;
         }
 
         const halfStroke = lineWidth / 2;
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip bounds — see fill_AA_Opaq. The inner (hole) extents get the
+        // dual clamp below so the left/right stroke spans stay inside [cx0, cx1) even
+        // when the clip rect cuts through the stroke band.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Calculate outer and inner bounds
         const outerX = Math.floor(x - halfStroke);
@@ -558,15 +615,15 @@ class RoundedRectOpsAA {
 
         // For each scanline in the outer bounds
         for (let py = outerY; py < outerY + outerH; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
 
             // Get outer extent
             const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadius);
             if (outer.leftX < 0) continue; // Outside outer bounds
 
-            // Clamp outer to surface
-            const outerLeft = Math.max(0, outer.leftX);
-            const outerRight = Math.min(surfaceWidth - 1, outer.rightX);
+            // Clamp outer to the clip frame (surface bounds when unclipped)
+            const outerLeft = Math.max(cx0, outer.leftX);
+            const outerRight = Math.min(cx1 - 1, outer.rightX);
             if (outerLeft > outerRight) continue;
 
             // Check if we're in the inner region (hollow part)
@@ -574,9 +631,13 @@ class RoundedRectOpsAA {
                 const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadius);
 
                 if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
-                    // Draw left and right stroke spans around the inner region
-                    const innerLeft = Math.max(0, inner.leftX);
-                    const innerRight = Math.min(surfaceWidth - 1, inner.rightX);
+                    // Draw left and right stroke spans around the inner region.
+                    // Dual clamp: the left span ends at innerLeft - 1 and the right span
+                    // starts at innerRight + 1, so innerLeft must not exceed cx1 and
+                    // innerRight must not fall below cx0 - 1 or a span would escape the
+                    // clip frame on the far side of the hole.
+                    const innerLeft = Math.min(cx1, Math.max(cx0, inner.leftX));
+                    const innerRight = Math.max(cx0 - 1, Math.min(cx1 - 1, inner.rightX));
 
                     // Left span: from outerLeft to just before innerLeft
                     if (outerLeft < innerLeft) {
@@ -654,7 +715,19 @@ class RoundedRectOpsAA {
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
-    static strokeThick_AA_Alpha(surface, x, y, width, height, radii, lineWidth, color, globalAlpha, clipBuffer = null) {
+    static strokeThick_AA_Alpha(
+        surface,
+        x,
+        y,
+        width,
+        height,
+        radii,
+        lineWidth,
+        color,
+        globalAlpha,
+        clipBuffer = null,
+        clipRect = null
+    ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
         const data = surface.data;
@@ -664,7 +737,18 @@ class RoundedRectOpsAA {
 
         // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
-            RectOpsAA.strokeThick_AA_Alpha(surface, x, y, width, height, lineWidth, color, globalAlpha, clipBuffer);
+            RectOpsAA.strokeThick_AA_Alpha(
+                surface,
+                x,
+                y,
+                width,
+                height,
+                lineWidth,
+                color,
+                globalAlpha,
+                clipBuffer,
+                clipRect
+            );
             return;
         }
 
@@ -676,6 +760,12 @@ class RoundedRectOpsAA {
         const r = color.r,
             g = color.g,
             b = color.b;
+
+        // Tier-0 rect clip bounds + inner dual clamp — see strokeThick_AA_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         // Calculate outer and inner bounds
         const outerX = Math.floor(x - halfStroke);
@@ -692,21 +782,21 @@ class RoundedRectOpsAA {
 
         // For each scanline in the outer bounds
         for (let py = outerY; py < outerY + outerH; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
 
             const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadius);
             if (outer.leftX < 0) continue;
 
-            const outerLeft = Math.max(0, outer.leftX);
-            const outerRight = Math.min(surfaceWidth - 1, outer.rightX);
+            const outerLeft = Math.max(cx0, outer.leftX);
+            const outerRight = Math.min(cx1 - 1, outer.rightX);
             if (outerLeft > outerRight) continue;
 
             if (innerW > 0 && innerH > 0 && py >= innerY && py < innerY + innerH) {
                 const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadius);
 
                 if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
-                    const innerLeft = Math.max(0, inner.leftX);
-                    const innerRight = Math.min(surfaceWidth - 1, inner.rightX);
+                    const innerLeft = Math.min(cx1, Math.max(cx0, inner.leftX));
+                    const innerRight = Math.max(cx0 - 1, Math.min(cx1 - 1, inner.rightX));
 
                     if (outerLeft < innerLeft) {
                         const leftSpanLength = innerLeft - outerLeft;
