@@ -65,6 +65,7 @@ Debug utilities help developers:
 
 - `probe-circle-crisp.js` - Full spelling grid: fill/1px/thick at integer vs fractional centers and radii, crisp-box idiom discovery, alpha overdraw check, transform pre-multiplication exactness, cardinal-extreme (trig-noise class) check
 - `sweep-circle-hashes.js` - Parameter-grid render hasher over all three circle entry points incl. partially off-surface geometry (`SWCANVAS_DIST=<path>` runs it against a saved dist for baseline/after diffs)
+- `probe-stadium-roundrect-degenerate.js` - Why fillStadium is its own renderer: measures RoundedRectOpsAA at the degenerate radius r=min(w,h)/2 (horizontal apex-column loss), the composition's alpha double-blend, and the StadiumOps primitive against an analytic ideal stadium
 
 ### Visual Comparison Tools
 

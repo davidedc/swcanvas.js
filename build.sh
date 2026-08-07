@@ -199,6 +199,8 @@ cat "$(get_src src/renderers/RectOpsAA.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/CircleOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
+cat src/renderers/StadiumOps.js >> dist/swcanvas.js
+echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/ArcOps.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat "$(get_src src/renderers/LineOps.js)" >> dist/swcanvas.js

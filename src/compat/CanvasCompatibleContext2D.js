@@ -252,9 +252,7 @@ class CanvasCompatibleContext2D {
         // HTML5 spec: getter returns the *serialized* (canonical) form of the
         // current font, not the user's verbatim input. Core stores the parsed
         // shape on this._core._font; we format it back through CssFontParser.
-        return this._core._font === null
-            ? '10px sans-serif'
-            : CssFontParser.format(this._core._font);
+        return this._core._font === null ? '10px sans-serif' : CssFontParser.format(this._core._font);
     }
     set font(value) {
         // HTML5 spec: silently ignore unparseable values; previous value stays.
@@ -270,8 +268,7 @@ class CanvasCompatibleContext2D {
         return this._core._textAlign;
     }
     set textAlign(value) {
-        if (value === 'start' || value === 'end' || value === 'left' ||
-            value === 'right' || value === 'center') {
+        if (value === 'start' || value === 'end' || value === 'left' || value === 'right' || value === 'center') {
             this._core._textAlign = value;
         }
     }
@@ -280,8 +277,14 @@ class CanvasCompatibleContext2D {
         return this._core._textBaseline;
     }
     set textBaseline(value) {
-        if (value === 'top' || value === 'hanging' || value === 'middle' ||
-            value === 'alphabetic' || value === 'ideographic' || value === 'bottom') {
+        if (
+            value === 'top' ||
+            value === 'hanging' ||
+            value === 'middle' ||
+            value === 'alphabetic' ||
+            value === 'ideographic' ||
+            value === 'bottom'
+        ) {
             this._core._textBaseline = value;
         }
     }
@@ -415,6 +418,15 @@ class CanvasCompatibleContext2D {
         this._core.fillStrokeRoundRect(x, y, width, height, radii);
     }
 
+    /**
+     * Fill a stadium (capsule) — the box's shorter axis fully rounded, cap
+     * radius min(w,h)/2, orientation implied by the longer axis. Deliberately
+     * fill-only; see Context2D.fillStadium.
+     */
+    fillStadium(x, y, width, height) {
+        this._core.fillStadium(x, y, width, height);
+    }
+
     fill(pathOrFillRule, fillRule) {
         if (typeof pathOrFillRule === 'string') {
             // fill(fillRule)
@@ -508,16 +520,19 @@ class CanvasCompatibleContext2D {
 
     /** True for HTMLImageElement / HTMLVideoElement / ImageBitmap-like sources. @private */
     static _isElementImageSource(image) {
-        return ('naturalWidth' in image) || ('videoWidth' in image) ||
-               (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap);
+        return (
+            'naturalWidth' in image ||
+            'videoWidth' in image ||
+            (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap)
+        );
     }
 
     /** Rasterize an element image source into a scratch DOM canvas → ImageLike. @private */
     static _elementToImageLike(image) {
-        const isVideo = ('videoWidth' in image);
-        const isImg = ('naturalWidth' in image);
-        const w = isVideo ? image.videoWidth : (isImg ? image.naturalWidth : image.width);
-        const h = isVideo ? image.videoHeight : (isImg ? image.naturalHeight : image.height);
+        const isVideo = 'videoWidth' in image;
+        const isImg = 'naturalWidth' in image;
+        const w = isVideo ? image.videoWidth : isImg ? image.naturalWidth : image.width;
+        const h = isVideo ? image.videoHeight : isImg ? image.naturalHeight : image.height;
 
         // Only immutable, fully-decoded images are cacheable.
         const cacheable = isImg && image.complete && image.naturalWidth > 0;

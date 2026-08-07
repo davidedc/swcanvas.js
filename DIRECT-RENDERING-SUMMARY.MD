@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-SWCanvas implements direct renderings for 5 shape types: Rectangle, RoundedRect, Circle, Line, and Arc. Each has specialized rendering paths that bypass the general polygon filler when specific conditions are met.
+SWCanvas implements direct renderings for 6 shape types: Rectangle, RoundedRect, Circle, Stadium, Line, and Arc. Each has specialized rendering paths that bypass the general polygon filler when specific conditions are met.
 
 ---
 
@@ -19,6 +19,7 @@ SWCanvas implements direct renderings for 5 shape types: Rectangle, RoundedRect,
 | Circle Fill             | Context2D.fillCircle()                | path.arc() + fill()         |
 | Circle Stroke           | Context2D.strokeCircle()              | path.arc() + stroke()       |
 | Circle Fill+Stroke      | Context2D.fillStrokeCircle()       | Separate fill + stroke      |
+| Stadium Fill            | Context2D.fillStadium()               | path.roundRect(r=min/2) + fill() |
 | Line Stroke             | Context2D.strokeLine()                | path moveTo/lineTo + stroke |
 | Arc Fill                | Context2D.fillArc()                   | path.arc() + fill()         |
 | Arc Stroke              | Context2D.outerStrokeArc()            | path.arc() + stroke()       |
@@ -101,6 +102,27 @@ Notes:
 
 Note: Circles are inherently rotation-invariant (no tilted variant needed)
 
+### 2.3b STADIUMS (StadiumOps.js)
+
+| Stroke Width | Opacity          | Function                 | Clipping TO |
+|--------------|------------------|--------------------------|-------------|
+| N/A (fill)   | Opaque           | StadiumOps.fill_Opaq()   | YES      |
+| N/A (fill)   | Semi-transparent | StadiumOps.fill_Alpha()  | YES      |
+
+A stadium (capsule) is the w-by-h box with its shorter axis fully rounded: two
+half-circle caps of radius min(w,h)/2 joined by a rectangular body, orientation
+implied by the longer axis (w === h degenerates to fillCircle's exact pixels).
+Deliberately FILL-ONLY - no stroke variants until a caller exists. Built on
+CircleOps.generateExtents (one union span per row), because (a) the
+circle+rect+circle composition double-blends its overlaps at alpha < 1, and
+(b) RoundedRectOpsAA at the degenerate radius r = min(w,h)/2 loses the
+left/right apex columns of a HORIZONTAL stadium (its corner x extents are
+edge-sampled while rows are center-sampled - hidden on normal rounded rects by
+their straight vertical edges; probed in
+debug/probe-stadium-roundrect-degenerate.js). Rotated-uniform-scale calls
+delegate to RoundedRectOpsRot at the degenerate radius (no exact-column
+contract under rotation); the crisp contract is pinned by tests/core/053.
+
 ### 2.4 LINES (LineOps.js)
 
 | Stroke Width | Orientation     | Opacity          | Function                          | Clipping TO |
@@ -160,6 +182,8 @@ Note: Arc uses Bresenham + angle filtering for stroke rendering.
 |             | so the direct path runs under translate/rotate/uniform-scale (pre-multiplication is byte-exact; test 050).    |
 |             | ⚠ Under NON-uniform scale it still draws a CIRCLE (radius × geometric-mean scale) where an ellipse belongs — |
 |             | callers needing ellipses must use the path pipeline (arc() + fill/stroke).                                    |
+| Stadium     | Transform: isUniformScale (axis-aligned 90-degree rotation swaps w/h inline; rotated delegates to             |
+|             | RoundedRectOpsRot at r = min(w,h)/2; non-uniform scale falls back to the path pipeline).                      |
 | Line        | lineCap === 'butt' (required for direct rendering)                               |
 | Arc         | lineCap === 'butt' (required for direct rendering)                               |
 |             | Angle normalization for clockwise/anticlockwise                           |
@@ -267,6 +291,7 @@ QuadScanOps.fillQuad() ───────────► SpanOps.fill_Opaq / 
 | Rectangle (fill/stroke) | YES                 | clipBuffer per pixel      | YES                           |
 | RoundedRect             | YES                 | clipBuffer per pixel      | YES for fill/stroke; fillStrokeRoundRect deliberately not (comment at its `_ensureClipBuffer()` call) |
 | Circle (all)            | YES                 | clipBuffer per pixel      | YES (fill, 1px + thick stroke, fused fillStroke) |
+| Stadium (fill)          | YES                 | clipBuffer per pixel      | YES (from birth; rotated branch uses the bitmask like other Rot paths) |
 | Line (all)              | YES                 | clipBuffer per pixel/span | NO — stroke_Any dispatches thin/thick internally and its thick diagonal branch delegates to QuadScanOps, which has no clipRect concept (comment at `_strokeLineDirect`) |
 | Arc (all)               | YES                 | clipBuffer per pixel      | NO — the 1px writers bounds-check inside shared inline preprocessor templates, so a clipRect is a codegen change, not a clamp (comment at `fillArc`) |
 

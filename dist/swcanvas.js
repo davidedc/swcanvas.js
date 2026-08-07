@@ -11550,6 +11550,231 @@ if (__outA > 0) {
 }
 
 /**
+ * StadiumOps - Static methods for optimized stadium (capsule) rendering
+ * Follows CircleOps/PolygonFiller pattern with static methods.
+ *
+ * A stadium is the fill of a w-by-h box whose shorter axis is fully rounded:
+ * two half-circle caps of radius min(w,h)/2 joined by a rectangular body.
+ * Orientation is implied by the longer axis (h >= w: caps top/bottom;
+ * w > h: caps left/right; w === h: the shape degenerates to a circle).
+ *
+ * Direct rendering is available exclusively via the dedicated Context2D
+ * method: fillStadium(). There are deliberately NO stroke variants - the one
+ * consumer (Fizzygum slider chrome) only fills; capability lands with callers.
+ *
+ * WHY NOT RoundedRectOpsAA AT r = min(w,h)/2: its corner rows compute x
+ * extents with an edge-sampled ceil/floor convention (rows are center-
+ * sampled). Normal rounded rects hide that behind their straight vertical
+ * edges, but at the degenerate radius a horizontal stadium loses its left and
+ * right apex columns (1px narrow on both sides - probed in
+ * debug/probe-stadium-roundrect-degenerate.js). Changing that convention
+ * would churn every existing rounded-rect consumer, so the stadium gets its
+ * own renderer built on CircleOps.generateExtents - cap pixels match
+ * fillCircle's crisp contract by construction (tests/core/053).
+ *
+ * WHY NOT fillCircle+fillRect+fillCircle COMPOSITION: at effectiveAlpha < 1
+ * the overlap regions blend twice and darken. Here every row is exactly ONE
+ * span - the union of the cap spans and the body strips - so coverage is
+ * single-blend everywhere by construction.
+ *
+ * CALL HIERARCHY:
+ * ---------------
+ * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha
+ * Layer 1 (Primitives): fill_Opaq, fill_Alpha -> SpanOps + CircleOps.generateExtents
+ *
+ * NAMING PATTERN: {operation}_{opacity} (no orientation suffix - the row
+ * union handles vertical, horizontal and square identically)
+ */
+class StadiumOps {
+    /**
+     * Per-row span geometry shared by fill_Opaq/fill_Alpha.
+     *
+     * The stadium is computed as the row-wise UNION of four intervals, all
+     * expressed in the exact integer-anchor arithmetic of CircleOps.fill_*
+     * (adjusted centers floor(c - 0.5), Bresenham extents, xOffset/yOffset
+     * for .5 radii), so the caps are byte-identical to fillCircle output:
+     *   - cap A circle span at this row (center x+r, y+r)
+     *   - cap B circle span at this row (center x+w-r, y+h-r)
+     *   - body strip 1: full circle width, rows between the cap center rows
+     *   - body strip 2: columns between the cap center columns, every row
+     * All four share interior columns, so the union is one contiguous span.
+     *
+     * @returns {object|null} geometry pack, or null for a degenerate box
+     */
+    static _rowGeometry(x, y, width, height) {
+        const rectX = Math.floor(x);
+        const rectY = Math.floor(y);
+        const rectW = Math.floor(width);
+        const rectH = Math.floor(height);
+        if (rectW <= 0 || rectH <= 0) return null;
+
+        const radius = Math.min(rectW, rectH) / 2;
+        const extentData = CircleOps.generateExtents(radius);
+        if (!extentData) return null;
+        const { extents, intRadius, xOffset, yOffset } = extentData;
+
+        return {
+            rectX,
+            rectY,
+            rectW,
+            rectH,
+            extents,
+            intRadius,
+            xOffset,
+            yOffset,
+            // Adjusted cap centers (CircleOps.fill_* convention)
+            capAX: Math.floor(rectX + radius - 0.5),
+            capAY: Math.floor(rectY + radius - 0.5),
+            capBX: Math.floor(rectX + rectW - radius - 0.5),
+            capBY: Math.floor(rectY + rectH - radius - 0.5)
+        };
+    }
+
+    /**
+     * Extent (max relative x) of a cap circle at absolute row py, or -1 when
+     * the row is outside the circle. Inverse of CircleOps.fill_*'s row
+     * emission: bottom rows are adjCY + rel, top rows adjCY - rel - yOffset + 1.
+     */
+    static _capExtentAtRow(g, capCenterRow, py) {
+        const rel = py >= capCenterRow ? py - capCenterRow : capCenterRow - g.yOffset + 1 - py;
+        return rel >= 0 && rel <= g.intRadius ? g.extents[rel] : -1;
+    }
+
+    /**
+     * Compute the single [left, right] span for row py (inclusive), or null
+     * for an empty row. Pure integer-box geometry - the caller clamps to the
+     * surface/clip rect.
+     */
+    static _spanAtRow(g, py) {
+        let left = Infinity;
+        let right = -Infinity;
+
+        // Cap circles
+        const eA = StadiumOps._capExtentAtRow(g, g.capAY, py);
+        if (eA >= 0) {
+            left = Math.min(left, g.capAX - eA - g.xOffset + 1);
+            right = Math.max(right, g.capAX + eA);
+        }
+        const eB = StadiumOps._capExtentAtRow(g, g.capBY, py);
+        if (eB >= 0) {
+            left = Math.min(left, g.capBX - eB - g.xOffset + 1);
+            right = Math.max(right, g.capBX + eB);
+        }
+
+        // Body strip 1: full circle width between the cap center rows
+        if (py >= g.capAY && py <= g.capBY) {
+            left = Math.min(left, g.capAX - g.intRadius - g.xOffset + 1);
+            right = Math.max(right, g.capBX + g.intRadius);
+        }
+
+        // Body strip 2: columns between the cap center columns, every box row
+        left = Math.min(left, g.capAX);
+        right = Math.max(right, g.capBX);
+
+        return left <= right ? { left, right } : null;
+    }
+
+    /**
+     * Optimized opaque stadium fill: one span per row via SpanOps.
+     * @param {Surface} surface - Target surface
+     * @param {number} x - Box top-left X
+     * @param {number} y - Box top-left Y
+     * @param {number} width - Box width
+     * @param {number} height - Box height
+     * @param {Color} color - Fill color (must be opaque, alpha=255)
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
+     * @param {{x0,y0,x1,y1}|null} clipRect - Tier-0 rect clip (half-open, pre-clamped to surface)
+     */
+    static fill_Opaq(surface, x, y, width, height, color, clipBuffer = null, clipRect = null) {
+        const surfaceWidth = surface.width;
+        const surfaceHeight = surface.height;
+        const data32 = surface.data32;
+
+        const g = StadiumOps._rowGeometry(x, y, width, height);
+        if (!g) return;
+
+        const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
+
+        // Tier-0 rect clip bounds - see CircleOps.fill_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
+
+        const startY = Math.max(cy0, g.rectY);
+        const endY = Math.min(cy1 - 1, g.rectY + g.rectH - 1);
+        for (let py = startY; py <= endY; py++) {
+            const span = StadiumOps._spanAtRow(g, py);
+            if (!span) continue;
+            const left = Math.max(cx0, span.left);
+            const right = Math.min(cx1 - 1, span.right);
+            if (left > right) continue;
+            SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, left, py, right - left + 1, packedColor, clipBuffer);
+        }
+    }
+
+    /**
+     * Stadium fill with alpha blending: one span per row, so coverage is
+     * single-blend everywhere (the property the circle+rect composition
+     * cannot give).
+     * @param {Surface} surface - Target surface
+     * @param {number} x - Box top-left X
+     * @param {number} y - Box top-left Y
+     * @param {number} width - Box width
+     * @param {number} height - Box height
+     * @param {Color} color - Fill color
+     * @param {number} globalAlpha - Context global alpha
+     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps)
+     * @param {{x0,y0,x1,y1}|null} clipRect - Tier-0 rect clip (half-open, pre-clamped to surface)
+     */
+    static fill_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer = null, clipRect = null) {
+        const surfaceWidth = surface.width;
+        const surfaceHeight = surface.height;
+        const data = surface.data;
+
+        const effectiveAlpha = (color.a / 255) * globalAlpha;
+        if (effectiveAlpha <= 0) return;
+        const invAlpha = 1 - effectiveAlpha;
+        const r = color.r,
+            g_ = color.g,
+            b = color.b;
+
+        const g = StadiumOps._rowGeometry(x, y, width, height);
+        if (!g) return;
+
+        // Tier-0 rect clip bounds - see CircleOps.fill_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
+
+        const startY = Math.max(cy0, g.rectY);
+        const endY = Math.min(cy1 - 1, g.rectY + g.rectH - 1);
+        for (let py = startY; py <= endY; py++) {
+            const span = StadiumOps._spanAtRow(g, py);
+            if (!span) continue;
+            const left = Math.max(cx0, span.left);
+            const right = Math.min(cx1 - 1, span.right);
+            if (left > right) continue;
+            SpanOps.fill_Alpha(
+                data,
+                surfaceWidth,
+                surfaceHeight,
+                left,
+                py,
+                right - left + 1,
+                r,
+                g_,
+                b,
+                effectiveAlpha,
+                invAlpha,
+                clipBuffer
+            );
+        }
+    }
+}
+
+/**
  * ArcOps - Static methods for optimized partial arc rendering
  * Follows CircleOps/PolygonFiller pattern with static methods.
  *
@@ -26405,6 +26630,136 @@ class Context2D {
         this.strokeRoundRect(x, y, width, height, radii);
     }
 
+    /**
+     * Fill a stadium (capsule): the w-by-h box with its shorter axis fully
+     * rounded — two half-circle caps of radius min(w,h)/2 joined by a
+     * rectangular body. Orientation is implied by the longer axis, so one
+     * signature covers vertical and horizontal shapes (w === h degenerates to
+     * a circle). Crisp contract: at integer geometry the fill covers EXACTLY
+     * the [x, x+w) × [y, y+h) pixel box, with caps byte-identical to
+     * fillCircle's (tests/core/053).
+     *
+     * Uses direct rendering when possible (solid color, source-over, no
+     * shadow, uniform scale). There are deliberately NO stroke variants —
+     * capability lands with callers, and the one consumer only fills.
+     * @param {number} x - Box top-left X
+     * @param {number} y - Box top-left Y
+     * @param {number} width - Box width
+     * @param {number} height - Box height
+     */
+    fillStadium(x, y, width, height) {
+        // Validate parameters
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
+            throw new Error('Stadium coordinates must be numbers');
+        }
+
+        if (width <= 0 || height <= 0) {
+            return; // Nothing to draw
+        }
+
+        // Direct rendering: Color fill with source-over, no shadows
+        if (this._canUseDirectRendering(this._fillStyle)) {
+            const t = this._transform;
+            // Tier-0 rect clip → clamp extent + clipBuffer=null on the
+            // axis-aligned paths; the rotated branch materialises the bitmask
+            // on demand (see fillRect for the rationale).
+            const tier0ClipRect = this._tier0ClipRect();
+            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
+
+            // Stadiums require uniform scale (non-uniform would make an
+            // ellipse-capped shape the caps cannot represent)
+            if (t.isUniformScale) {
+                const scaledW = width * t.scaleX;
+                const scaledH = height * t.scaleY;
+                const center = t.transformPoint({ x: x + width / 2, y: y + height / 2 });
+                const isOpaque = this._fillStyle.a === 255 && this.globalAlpha >= 1.0;
+
+                if (t.isIdentity) {
+                    // No transform: use original coordinates
+                    if (isOpaque) {
+                        StadiumOps.fill_Opaq(this.surface, x, y, width, height, this._fillStyle, clip, tier0ClipRect);
+                    } else {
+                        StadiumOps.fill_Alpha(
+                            this.surface,
+                            x,
+                            y,
+                            width,
+                            height,
+                            this._fillStyle,
+                            this.globalAlpha,
+                            clip,
+                            tier0ClipRect
+                        );
+                    }
+                    return;
+                }
+
+                if (t.isAxisAligned) {
+                    // Inline dimension swapping — a 90°-rotated stadium is
+                    // still a stadium with w/h exchanged.
+                    const finalW = t.is90DegreeRotated ? scaledH : scaledW;
+                    const finalH = t.is90DegreeRotated ? scaledW : scaledH;
+                    const tlX = center.x - finalW / 2;
+                    const tlY = center.y - finalH / 2;
+
+                    if (isOpaque) {
+                        StadiumOps.fill_Opaq(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            this._fillStyle,
+                            clip,
+                            tier0ClipRect
+                        );
+                    } else {
+                        StadiumOps.fill_Alpha(
+                            this.surface,
+                            tlX,
+                            tlY,
+                            finalW,
+                            finalH,
+                            this._fillStyle,
+                            this.globalAlpha,
+                            clip,
+                            tier0ClipRect
+                        );
+                    }
+                    return;
+                } else {
+                    // Rotated with uniform scale: a stadium IS a rounded rect
+                    // at the degenerate radius, and under rotation there is no
+                    // exact-column crisp contract for the AA-free edge pixels
+                    // to violate, so delegate to the rotated rounded-rect
+                    // renderer with r = min(w,h)/2.
+                    RoundedRectOpsRot.fill_Rot_Any(
+                        this.surface,
+                        center.x,
+                        center.y,
+                        scaledW,
+                        scaledH,
+                        Math.min(scaledW, scaledH) / 2,
+                        t.rotationAngle,
+                        this._fillStyle,
+                        this.globalAlpha,
+                        this._ensureClipBuffer()
+                    );
+                    return;
+                }
+            }
+            // Non-uniform scale: fall through to path-based rendering
+        }
+
+        // Path-based rendering: an un-baked, user-space rounded-rect path at
+        // the degenerate radius (the generic pipeline samples pixel centers,
+        // so ITS degenerate-radius output is a correct stadium), drawn as an
+        // external Path2D under the current CTM.
+        const fallbackPath = new SWPath2D();
+        fallbackPath.roundRect(x, y, width, height, Math.min(width, height) / 2);
+        this.fill(fallbackPath);
+    }
+
     // M2: Path drawing methods
     /**
      * Return a new SWPath2D with every point of `path` mapped by transform M.
@@ -28034,9 +28389,7 @@ class CanvasCompatibleContext2D {
         // HTML5 spec: getter returns the *serialized* (canonical) form of the
         // current font, not the user's verbatim input. Core stores the parsed
         // shape on this._core._font; we format it back through CssFontParser.
-        return this._core._font === null
-            ? '10px sans-serif'
-            : CssFontParser.format(this._core._font);
+        return this._core._font === null ? '10px sans-serif' : CssFontParser.format(this._core._font);
     }
     set font(value) {
         // HTML5 spec: silently ignore unparseable values; previous value stays.
@@ -28052,8 +28405,7 @@ class CanvasCompatibleContext2D {
         return this._core._textAlign;
     }
     set textAlign(value) {
-        if (value === 'start' || value === 'end' || value === 'left' ||
-            value === 'right' || value === 'center') {
+        if (value === 'start' || value === 'end' || value === 'left' || value === 'right' || value === 'center') {
             this._core._textAlign = value;
         }
     }
@@ -28062,8 +28414,14 @@ class CanvasCompatibleContext2D {
         return this._core._textBaseline;
     }
     set textBaseline(value) {
-        if (value === 'top' || value === 'hanging' || value === 'middle' ||
-            value === 'alphabetic' || value === 'ideographic' || value === 'bottom') {
+        if (
+            value === 'top' ||
+            value === 'hanging' ||
+            value === 'middle' ||
+            value === 'alphabetic' ||
+            value === 'ideographic' ||
+            value === 'bottom'
+        ) {
             this._core._textBaseline = value;
         }
     }
@@ -28197,6 +28555,15 @@ class CanvasCompatibleContext2D {
         this._core.fillStrokeRoundRect(x, y, width, height, radii);
     }
 
+    /**
+     * Fill a stadium (capsule) — the box's shorter axis fully rounded, cap
+     * radius min(w,h)/2, orientation implied by the longer axis. Deliberately
+     * fill-only; see Context2D.fillStadium.
+     */
+    fillStadium(x, y, width, height) {
+        this._core.fillStadium(x, y, width, height);
+    }
+
     fill(pathOrFillRule, fillRule) {
         if (typeof pathOrFillRule === 'string') {
             // fill(fillRule)
@@ -28290,16 +28657,19 @@ class CanvasCompatibleContext2D {
 
     /** True for HTMLImageElement / HTMLVideoElement / ImageBitmap-like sources. @private */
     static _isElementImageSource(image) {
-        return ('naturalWidth' in image) || ('videoWidth' in image) ||
-               (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap);
+        return (
+            'naturalWidth' in image ||
+            'videoWidth' in image ||
+            (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap)
+        );
     }
 
     /** Rasterize an element image source into a scratch DOM canvas → ImageLike. @private */
     static _elementToImageLike(image) {
-        const isVideo = ('videoWidth' in image);
-        const isImg = ('naturalWidth' in image);
-        const w = isVideo ? image.videoWidth : (isImg ? image.naturalWidth : image.width);
-        const h = isVideo ? image.videoHeight : (isImg ? image.naturalHeight : image.height);
+        const isVideo = 'videoWidth' in image;
+        const isImg = 'naturalWidth' in image;
+        const w = isVideo ? image.videoWidth : isImg ? image.naturalWidth : image.width;
+        const h = isVideo ? image.videoHeight : isImg ? image.naturalHeight : image.height;
 
         // Only immutable, fully-decoded images are cacheable.
         const cacheable = isImg && image.complete && image.naturalWidth > 0;
