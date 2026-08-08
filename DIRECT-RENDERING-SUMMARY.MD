@@ -178,14 +178,14 @@ Note: Arc uses Bresenham + angle filtering for stroke rendering.
 |             | Non-uniform scale + rotation → path-based rendering (produces parallelogram)         |
 | RoundedRect | Transform: isIdentity for axis-aligned; rotated uses TRANSFORM_EPSILON (0.0001) |
 |             | threshold matching Transform2D.isAxisAligned for consistent detection          |
-| Circle      | Transform: NONE — the entry points transform the center and scale the radius by uniformScale unconditionally, |
-|             | so the direct path runs under translate/rotate/uniform-scale (pre-multiplication is byte-exact; test 050).    |
-|             | ⚠ Under NON-uniform scale it still draws a CIRCLE (radius × geometric-mean scale) where an ellipse belongs — |
-|             | callers needing ellipses must use the path pipeline (arc() + fill/stroke).                                    |
+| Circle      | Transform: isUniformScale (translate/rotate/uniform-scale go direct — pre-multiplication is byte-exact,      |
+|             | test 050; NON-uniform scale gates to the generic pipeline via an un-baked user-space path, so the caller      |
+|             | gets the correct ELLIPSE rather than the geometric-mean-radius circle the direct path would draw — test 054). |
 | Stadium     | Transform: isUniformScale (axis-aligned 90-degree rotation swaps w/h inline; rotated delegates to             |
 |             | RoundedRectOpsRot at r = min(w,h)/2; non-uniform scale falls back to the path pipeline).                      |
 | Line        | lineCap === 'butt' (required for direct rendering)                               |
 | Arc         | lineCap === 'butt' (required for direct rendering)                               |
+|             | Transform: isUniformScale — same gate + generic-path fallback as Circle (test 054) |
 |             | Angle normalization for clockwise/anticlockwise                           |
 
 ---
@@ -289,7 +289,7 @@ QuadScanOps.fillQuad() ───────────► SpanOps.fill_Opaq / 
 | Shape                   | Clipping TO Support | Bitmask Method            | Tier-0 rect clip (no bitmask) |
 |-------------------------|---------------------|---------------------------|-------------------------------|
 | Rectangle (fill/stroke) | YES                 | clipBuffer per pixel      | YES                           |
-| RoundedRect             | YES                 | clipBuffer per pixel      | YES for fill/stroke; fillStrokeRoundRect deliberately not (comment at its `_ensureClipBuffer()` call) |
+| RoundedRect             | YES                 | clipBuffer per pixel      | YES (fill, stroke, fused fillStroke)             |
 | Circle (all)            | YES                 | clipBuffer per pixel      | YES (fill, 1px + thick stroke, fused fillStroke) |
 | Stadium (fill)          | YES                 | clipBuffer per pixel      | YES (from birth; rotated branch uses the bitmask like other Rot paths) |
 | Line (all)              | YES                 | clipBuffer per pixel/span | NO — stroke_Any dispatches thin/thick internally and its thick diagonal branch delegates to QuadScanOps, which has no clipRect concept (comment at `_strokeLineDirect`) |

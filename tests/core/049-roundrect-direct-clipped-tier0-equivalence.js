@@ -118,5 +118,31 @@ test('RoundRect direct rendering under rect clip - tier-0/bitmask equivalence', 
             ctx.lineWidth = 1;
             ctx.strokeRoundRect(x, y, w, h, 0.4);
         });
+        // Fused fill+stroke path (fillStroke_AA_Any) - tier-0-wired like its
+        // siblings. The thick semi-transparent stroke case exercises the
+        // fill-to-path-extent overlap mode; the r=0.4 case pins the RectOps
+        // fallback hand-off, whose FILL half historically dropped the clip
+        // args entirely and painted unclipped through a bitmask clip.
+        assertCase(`fillStroke opaque${g}`, (ctx) => {
+            pre(ctx);
+            ctx.setFillStyle(0, 0, 255, 255);
+            ctx.setStrokeStyle(255, 0, 0, 255);
+            ctx.lineWidth = 1;
+            ctx.fillStrokeRoundRect(x, y, w, h, r);
+        });
+        assertCase(`fillStroke semi thick stroke${g}`, (ctx) => {
+            pre(ctx);
+            ctx.setFillStyle(0, 0, 255, 255);
+            ctx.setStrokeStyle(255, 0, 0, 128);
+            ctx.lineWidth = 3;
+            ctx.fillStrokeRoundRect(x, y, w, h, r);
+        });
+        assertCase(`fillStroke r=0.4 fallback${g}`, (ctx) => {
+            pre(ctx);
+            ctx.setFillStyle(0, 0, 255, 255);
+            ctx.setStrokeStyle(255, 0, 0, 255);
+            ctx.lineWidth = 1;
+            ctx.fillStrokeRoundRect(x, y, w, h, 0.4);
+        });
     }
 });

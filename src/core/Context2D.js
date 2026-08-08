@@ -1472,11 +1472,11 @@ class Context2D {
         // Direct rendering: both fill and stroke are solid colors, source-over, no shadows
         if (this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle)) {
             const t = this._transform;
-            // Deliberately NOT tier-0-wired (unlike fillRoundRect/strokeRoundRect):
-            // fillStroke_AA_Any's interleaved fill/stroke spans don't take a clipRect
-            // yet, so a rect clip materialises the bitmask here. Wire it when the
-            // fused path grows a hot clipped caller.
-            const clip = this._ensureClipBuffer();
+            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
+            // paths; the rotated branch materialises the bitmask on demand (see
+            // fillRect for the rationale).
+            const tier0ClipRect = this._tier0ClipRect();
+            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
 
             const hasFill = this._fillStyle.a > 0;
             const hasStroke = this._strokeStyle.a > 0 && this._lineWidth > 0;
@@ -1502,7 +1502,8 @@ class Context2D {
                         hasFill ? this._fillStyle : null,
                         hasStroke ? this._strokeStyle : null,
                         this.globalAlpha,
-                        clip
+                        clip,
+                        tier0ClipRect
                     );
                     return;
                 }
@@ -1525,7 +1526,8 @@ class Context2D {
                         hasFill ? this._fillStyle : null,
                         hasStroke ? this._strokeStyle : null,
                         this.globalAlpha,
-                        clip
+                        clip,
+                        tier0ClipRect
                     );
                     return;
                 } else {
@@ -1542,7 +1544,7 @@ class Context2D {
                         hasFill ? this._fillStyle : null,
                         hasStroke ? this._strokeStyle : null,
                         this.globalAlpha,
-                        clip
+                        this._ensureClipBuffer()
                     );
                     return;
                 }
@@ -2499,6 +2501,19 @@ class Context2D {
     fillCircle(centerX, centerY, radius) {
         if (radius <= 0) return;
 
+        // Uniform-scale gate (mirrors fillRoundRect/fillStadium): the direct
+        // paths scale the radius by the transform's uniform scale (a geometric
+        // mean), so under a NON-uniform transform they would draw a CIRCLE
+        // where an ellipse belongs. Route to the generic pipeline instead via
+        // an un-baked user-space path under the CTM — correct shape, slower.
+        if (!this._transform.isUniformScale) {
+            Context2D._markPathBasedRendering();
+            const fallbackPath = new SWPath2D();
+            fallbackPath.arc(centerX, centerY, radius, 0, TAU);
+            this.fill(fallbackPath);
+            return;
+        }
+
         // Transform center point
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
 
@@ -2521,6 +2536,19 @@ class Context2D {
      */
     strokeCircle(centerX, centerY, radius) {
         if (radius <= 0) return;
+
+        // Uniform-scale gate (mirrors fillRoundRect/fillStadium): the direct
+        // paths scale the radius by the transform's uniform scale (a geometric
+        // mean), so under a NON-uniform transform they would draw a CIRCLE
+        // where an ellipse belongs. Route to the generic pipeline instead via
+        // an un-baked user-space path under the CTM — correct shape, slower.
+        if (!this._transform.isUniformScale) {
+            Context2D._markPathBasedRendering();
+            const fallbackPath = new SWPath2D();
+            fallbackPath.arc(centerX, centerY, radius, 0, TAU);
+            this.stroke(fallbackPath);
+            return;
+        }
 
         // Transform center point
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
@@ -2546,6 +2574,20 @@ class Context2D {
      */
     fillStrokeCircle(centerX, centerY, radius) {
         if (radius <= 0) return;
+
+        // Uniform-scale gate (mirrors fillRoundRect/fillStadium): the direct
+        // paths scale the radius by the transform's uniform scale (a geometric
+        // mean), so under a NON-uniform transform they would draw a CIRCLE
+        // where an ellipse belongs. Route to the generic pipeline instead via
+        // an un-baked user-space path under the CTM — correct shape, slower.
+        if (!this._transform.isUniformScale) {
+            Context2D._markPathBasedRendering();
+            const fallbackPath = new SWPath2D();
+            fallbackPath.arc(centerX, centerY, radius, 0, TAU);
+            this.fill(fallbackPath);
+            this.stroke(fallbackPath);
+            return;
+        }
 
         // Transform center point
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
@@ -2607,6 +2649,19 @@ class Context2D {
      */
     fillArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
         if (radius <= 0) return;
+
+        // Uniform-scale gate — see fillCircle: the direct arc paths scale the
+        // radius by the geometric-mean uniform scale, the wrong shape under a
+        // non-uniform transform. Un-baked user-space path under the CTM instead.
+        if (!this._transform.isUniformScale) {
+            Context2D._markPathBasedRendering();
+            const fallbackPath = new SWPath2D();
+            fallbackPath.moveTo(centerX, centerY);
+            fallbackPath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
+            fallbackPath.closePath();
+            this.fill(fallbackPath);
+            return;
+        }
 
         // Transform center point
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
@@ -2683,6 +2738,17 @@ class Context2D {
      */
     outerStrokeArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
         if (radius <= 0) return;
+
+        // Uniform-scale gate — see fillCircle: the direct arc paths scale the
+        // radius by the geometric-mean uniform scale, the wrong shape under a
+        // non-uniform transform. Un-baked user-space path under the CTM instead.
+        if (!this._transform.isUniformScale) {
+            Context2D._markPathBasedRendering();
+            const fallbackPath = new SWPath2D();
+            fallbackPath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
+            this.stroke(fallbackPath);
+            return;
+        }
 
         // Transform center point
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
@@ -2787,6 +2853,22 @@ class Context2D {
     fillOuterStrokeArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
         if (radius <= 0) return;
 
+        // Uniform-scale gate — see fillCircle: the direct arc paths scale the
+        // radius by the geometric-mean uniform scale, the wrong shape under a
+        // non-uniform transform. Un-baked user-space path under the CTM instead.
+        if (!this._transform.isUniformScale) {
+            Context2D._markPathBasedRendering();
+            const fallbackPath = new SWPath2D();
+            fallbackPath.moveTo(centerX, centerY);
+            fallbackPath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
+            fallbackPath.closePath();
+            this.fill(fallbackPath);
+            const strokePath = new SWPath2D();
+            strokePath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
+            this.stroke(strokePath);
+            return;
+        }
+
         // Transform center point
         const center = this._transform.transformPoint({ x: centerX, y: centerY });
 
@@ -2859,6 +2941,13 @@ class Context2D {
      * @param {number} y2 - End Y coordinate
      */
     strokeLine(x1, y1, x2, y2) {
+        // Deliberately NOT uniform-scale-gated (unlike the circle/arc entries):
+        // the endpoints are transformed exactly, so the geometry is always
+        // right — only the stroke WIDTH uses the geometric-mean uniform scale,
+        // a direction-dependent approximation under non-uniform transforms.
+        // No caller strokes lines under a non-uniform transform, and the
+        // generic stroker makes lines cheap anyway; gate it if one appears.
+
         // Transform endpoints
         const start = this._transform.transformPoint({ x: x1, y: y1 });
         const end = this._transform.transformPoint({ x: x2, y: y2 });

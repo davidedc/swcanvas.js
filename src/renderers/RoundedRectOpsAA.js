@@ -908,7 +908,8 @@ class RoundedRectOpsAA {
         fillColor,
         strokeColor,
         globalAlpha,
-        clipBuffer = null
+        clipBuffer = null,
+        clipRect = null
     ) {
         const surfaceWidth = surface.width;
         const surfaceHeight = surface.height;
@@ -924,18 +925,31 @@ class RoundedRectOpsAA {
         // Normalize radius
         const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
 
-        // Fallback to separate methods for zero radius
+        // Fallback to separate methods for zero radius. The clip args MUST be
+        // forwarded on every hand-off (the fill half historically dropped them
+        // and painted unclipped — the same clip-drop class the radius<1
+        // fill/stroke fallbacks had).
         if (radius <= 0) {
             if (hasFill) {
                 if (fillColor.a === 255 && globalAlpha >= 1.0) {
-                    RectOpsAA.fill_AA_Opaq(surface, x, y, width, height, fillColor);
+                    RectOpsAA.fill_AA_Opaq(surface, x, y, width, height, fillColor, clipBuffer, clipRect);
                 } else {
-                    RectOpsAA.fill_AA_Alpha(surface, x, y, width, height, fillColor, globalAlpha);
+                    RectOpsAA.fill_AA_Alpha(surface, x, y, width, height, fillColor, globalAlpha, clipBuffer, clipRect);
                 }
             }
             if (hasStroke) {
                 if (strokeColor.a === 255 && globalAlpha >= 1.0) {
-                    RectOpsAA.strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, strokeColor, clipBuffer);
+                    RectOpsAA.strokeThick_AA_Opaq(
+                        surface,
+                        x,
+                        y,
+                        width,
+                        height,
+                        lineWidth,
+                        strokeColor,
+                        clipBuffer,
+                        clipRect
+                    );
                 } else {
                     RectOpsAA.strokeThick_AA_Alpha(
                         surface,
@@ -946,12 +960,19 @@ class RoundedRectOpsAA {
                         lineWidth,
                         strokeColor,
                         globalAlpha,
-                        clipBuffer
+                        clipBuffer,
+                        clipRect
                     );
                 }
             }
             return;
         }
+
+        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        const cx0 = clipRect ? clipRect.x0 : 0;
+        const cy0 = clipRect ? clipRect.y0 : 0;
+        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
+        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
 
         const halfStroke = lineWidth / 2;
 
@@ -986,8 +1007,8 @@ class RoundedRectOpsAA {
         // Helper to render fill span via SpanOps
         const renderFillSpan = (startX, endX, py) => {
             if (startX > endX) return;
-            const x0 = Math.max(0, startX);
-            const x1 = Math.min(surfaceWidth - 1, endX);
+            const x0 = Math.max(cx0, startX);
+            const x1 = Math.min(cx1 - 1, endX);
             if (x0 > x1) return;
             const spanLength = x1 - x0 + 1;
 
@@ -1014,8 +1035,8 @@ class RoundedRectOpsAA {
         // Helper to render stroke span via SpanOps
         const renderStrokeSpan = (startX, endX, py) => {
             if (startX > endX) return;
-            const x0 = Math.max(0, startX);
-            const x1 = Math.min(surfaceWidth - 1, endX);
+            const x0 = Math.max(cx0, startX);
+            const x1 = Math.min(cx1 - 1, endX);
             if (x0 > x1) return;
             const spanLength = x1 - x0 + 1;
 
@@ -1053,7 +1074,7 @@ class RoundedRectOpsAA {
 
         // Process each scanline in the scan bounds
         for (let py = scanMinY; py < scanMaxY; py++) {
-            if (py < 0 || py >= surfaceHeight) continue;
+            if (py < cy0 || py >= cy1) continue;
 
             // Get outer stroke extent - uses calculated bounds from original coordinates
             const outerExtent = hasStroke
