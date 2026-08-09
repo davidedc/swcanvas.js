@@ -1,8 +1,15 @@
 // A/B sweep: hash strokeRoundRect 1px renders across a parameter grid.
 // Run once at the pinned build (baseline) and once after a rasterizer change;
 // diff the JSON to get the exact behavioral blast radius.
+//
+//   node debug/sweep-stroke1px-roundrect-hashes.js /tmp/baseline.json
+//   node debug/sweep-stroke1px-roundrect-hashes.js /tmp/after.json
+//   diff /tmp/baseline.json /tmp/after.json
+//
+// To run against a saved dist (e.g. `git show HEAD:dist/swcanvas.js` written to
+// a file — never `git stash` in this repo): SWCANVAS_DIST=/path/to/swcanvas.js
 const crypto = require('crypto');
-const SWCanvas = require('../dist/swcanvas.js');
+const SWCanvas = require(process.env.SWCANVAS_DIST || '../dist/swcanvas.js');
 
 const out = {};
 for (const alpha of [1.0, 0.5]) {

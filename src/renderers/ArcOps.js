@@ -493,13 +493,21 @@ class ArcOps {
                 /*@inline:SET_OPAQUE_ARC_FAST_CLIPPED(data32, packedColor, clipBuffer, px, py, startCos, startSin, endCos, endSin, isLargeArc, screenX, screenY, width, height)*/
             }
 
-            bx++;
-            if (d > 0) {
-                by--;
-                d = d + 4 * (bx - by) + 10;
-            } else {
+            // Update Bresenham state — the CANONICAL spelling (d-test on the
+            // pre-increment bx), identical to CircleOps.stroke1px_* and to
+            // stroke1px_Alpha below. This method historically used a variant
+            // that incremented bx first, walking a slightly different
+            // staircase: the one renderer in the family whose OPAQUE and ALPHA
+            // twins disagreed (an arc changed shape when its opacity did).
+            // The family invariant "same geometry regardless of opacity" is
+            // pinned by core test 055.
+            if (d < 0) {
                 d = d + 4 * bx + 6;
+            } else {
+                d = d + 4 * (bx - by) + 10;
+                by--;
             }
+            bx++;
         }
     }
 

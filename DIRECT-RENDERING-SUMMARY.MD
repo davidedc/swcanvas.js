@@ -170,6 +170,50 @@ Note: Arc uses Bresenham + angle filtering for stroke rendering.
 | Shadows      | No active shadow                           | Any shadowColor, shadowBlur, shadowOffset |
 | Paint Alpha  | paintSource.a > 0                          | Fully transparent paint                   |
 
+### Universal Stroke Rule — sub-pixel (HAIRLINE) widths:
+
+A stroke narrower than one device pixel is drawn AT one pixel, with the missing
+width taken out of the OPACITY instead. Every direct stroke entry — `strokeRect`,
+`strokeRoundRect`, `strokeCircle`, `outerStrokeArc`, `strokeLine`, including the
+rotated branches — dispatches `0 < scaledLineWidth < 1` to its family's
+`stroke1px_*Alpha` renderer at `globalAlpha * scaledLineWidth`. This mirrors the
+generic pipeline's rule (`Rasterizer._strokeInternal`: `lineWidth < 1` renders at
+width 1.0 with `subPixelOpacity = lineWidth`), so a hairline reads lighter than a
+1px stroke on both pipelines and on the native AA backend.
+
+Three properties are load-bearing (contract pinned by core test 055; measured by
+`debug/probe-hairline-strokes.js`):
+
+- It keys on the **DEVICE** width (`scaledLineWidth`), not the logical one: a
+  0.5-logical stroke at scale 2 is a true 1px stroke and stays on the exact-1px
+  path, while a 1-logical stroke inside a shrunk transform goes correctly faint.
+  (The generic pipeline keys on the LOGICAL width — it widens the geometry in
+  user space and lets the CTM scale it — so the two agree at identity and
+  diverge under scale by construction. The direct entries are device-space
+  renderers; that is not a divergence to reconcile.)
+- The `_Alpha` variant is **always** the target: the opacity product is < 1 by
+  construction, so the `_Opaq` twin can never apply on this branch.
+- A hairline paints **exactly the pixel set the exact-1px stroke paints**, at
+  every sub-pixel width — positional continuity across the 1px threshold.
+  Continuity with the generic path's *position* was never available: the direct
+  and generic rasterizations already differ there at `lineWidth` 1, which is the
+  shipped behaviour of every `lineWidth >= 1` caller.
+
+**Twin invariant** (test 055 §6): every family's `stroke1px_Opaq` and
+`stroke1px_Alpha` paint the same pixel set — a stroke's geometry must not
+depend on its opacity, or a hairline would not be continuous with the opaque
+1px stroke it sits next to. `ArcOps.stroke1px_Opaq` historically violated this
+(its Bresenham update used a different spelling than CircleOps'/its own alpha
+twin, so a partial arc changed shape with its opacity — 16 vs 19 px at r=11);
+its walk is now the family's canonical one. Relatedly, the rotated rect 1px
+DDA now dedups pixels shared by consecutive edges (§6.5), so rotated
+translucent strokes — including every rotated hairline — are single-blend
+(test 055 §7).
+
+Deliberately NOT wired: the fused `fillStroke*` entries' stroke halves (no
+hairline caller exists — untested surface), and gradient/pattern strokes at any
+width (no `_Alpha` direct renderer; they keep the generic path).
+
 ### Shape-Specific Conditions:
 
 | Shape       | Additional Checks                                                         |
@@ -537,6 +581,7 @@ for (corner of corners) generateArcPixels(corner, renderPixel);
 | RoundedRect AA | stroke1px_AA_Alpha | Edge shortening + lastPos | Edges exclude junctions; corners track lastPos |
 | RoundedRect Rot | _stroke1px_Rot_Alpha | Global lastPos | Single variable across all corners |
 | RoundedRect Rot | _fillStroke_Rot_1px | Double-generation + lastPos | Generate twice; no Set allocation |
+| Rect Rot | _stroke_Rot_1px_DDA | Seen-set (alpha only) | Edges iterate min→max, not p1→p2, so shared corner pixels are not emission-adjacent and lastPos is insufficient; opaque path stays allocation-free |
 
 **Note**: Opaque strokes (`_Opaq` variants) don't need overdraw prevention—setting the same pixel twice to the same opaque color is visually identical and causes no artifacts.
 
@@ -834,8 +879,10 @@ While core functions are fully covered, these edge cases could be added:
 
 1. Near-full arcs (350°-360°)
 2. Clockwise vs counterclockwise arc direction
-3. Sub-pixel stroke widths (0.1-0.9px)
-4. Shapes larger than canvas bounds
+3. Shapes larger than canvas bounds
+
+(Sub-pixel stroke widths are no longer on this list: core test 055 pins the
+hairline rule across all five stroke entries — see §3's Universal Stroke Rule.)
 
 ---
 

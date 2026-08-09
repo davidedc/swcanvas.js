@@ -9079,6 +9079,17 @@ if (__outA > 0) {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         const invAlpha = 1 - effectiveAlpha;
 
+        // Overdraw prevention (the §6.5 doctrine): the 4 edges are drawn as
+        // independent closed intervals, so consecutive edges can land on the
+        // same pixel at a shared corner — invisible when opaque (same value
+        // written twice), a visibly darker dot once the stroke is translucent.
+        // Each edge iterates min→max of its major coordinate, not p1→p2, so
+        // the duplicate is NOT always adjacent in emission order and lastPos
+        // tracking (the RoundedRectOpsRot idiom) is not sufficient — a seen-set
+        // is. Alpha only: this path is cold (rotated + translucent + 1px) and
+        // the opaque fast loops stay allocation-free and byte-identical.
+        const seen = isOpaqueColor ? null : new Set();
+
         // Draw each of the 4 edges
         for (let i = 0; i < 4; i++) {
             const p1 = corners[i];
@@ -9104,7 +9115,8 @@ if (__outA > 0) {
                     }
                     if (isOpaqueColor) {
                         data32[pixelIndex] = packedColor;
-                    } else {
+                    } else if (!seen.has(pixelIndex)) {
+                        seen.add(pixelIndex);
                         RectOpsRot._blendPixelAlpha(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha, null);
                     }
                 }
@@ -9127,7 +9139,8 @@ if (__outA > 0) {
                     }
                     if (isOpaqueColor) {
                         data32[pixelIndex] = packedColor;
-                    } else {
+                    } else if (!seen.has(pixelIndex)) {
+                        seen.add(pixelIndex);
                         RectOpsRot._blendPixelAlpha(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha, null);
                     }
                 }
@@ -9150,7 +9163,8 @@ if (__outA > 0) {
                     }
                     if (isOpaqueColor) {
                         data32[pixelIndex] = packedColor;
-                    } else {
+                    } else if (!seen.has(pixelIndex)) {
+                        seen.add(pixelIndex);
                         RectOpsRot._blendPixelAlpha(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha, null);
                     }
                 }
@@ -12279,13 +12293,21 @@ class ArcOps {
 }
             }
 
-            bx++;
-            if (d > 0) {
-                by--;
-                d = d + 4 * (bx - by) + 10;
-            } else {
+            // Update Bresenham state — the CANONICAL spelling (d-test on the
+            // pre-increment bx), identical to CircleOps.stroke1px_* and to
+            // stroke1px_Alpha below. This method historically used a variant
+            // that incremented bx first, walking a slightly different
+            // staircase: the one renderer in the family whose OPAQUE and ALPHA
+            // twins disagreed (an arc changed shape when its opacity did).
+            // The family invariant "same geometry regardless of opacity" is
+            // pinned by core test 055.
+            if (d < 0) {
                 d = d + 4 * bx + 6;
+            } else {
+                d = d + 4 * (bx - by) + 10;
+                by--;
             }
+            bx++;
         }
     }
 
@@ -25112,6 +25134,44 @@ class Rasterizer {
  * 4. Save/restore: Stencil buffer is deep-copied during save() and restored
  */
 
+/**
+ * HAIRLINE (SUB-PIXEL) STROKES ON THE DIRECT PATHS — ONE RULE
+ *
+ * A stroke narrower than one device pixel cannot be drawn narrower than one
+ * pixel, so the engine draws it AT one pixel and takes the missing width out of
+ * the OPACITY instead. That rule is the generic pipeline's
+ * (Rasterizer._strokeInternal: any lineWidth < 1 renders at width 1.0 with
+ * subPixelOpacity = lineWidth, threaded through PolygonFiller), and every
+ * direct stroke entry below restates it:
+ *
+ *     isHairlineStroke  ->  the family's stroke1px_*Alpha renderer,
+ *                           at globalAlpha * scaledLineWidth
+ *
+ * Three properties of that spelling are load-bearing:
+ *
+ * 1. It keys on the DEVICE width (scaledLineWidth, already multiplied by the
+ *    transform's uniform scale), not the logical one, so a 0.5-logical stroke
+ *    at scale 2 is a true 1px stroke and stays on the exact-1px path, while a
+ *    1-logical stroke inside a shrunk island correctly goes faint. (The generic
+ *    pipeline keys on the LOGICAL width — it widens the stroke geometry in user
+ *    space and lets the CTM scale it — so the two pipelines agree at identity
+ *    and diverge under scale by construction. That is not a bug to reconcile:
+ *    the direct entries are device-space renderers.)
+ * 2. The _Alpha variant is ALWAYS the target: the opacity product is < 1 by
+ *    construction, so the _Opaq twin can never apply on this branch.
+ * 3. It makes the hairline positionally CONTINUOUS with the exact-1px stroke —
+ *    measured: as the width approaches 1 the painted pixel SET becomes
+ *    identical to the 1px renderer's, differing only in opacity (debug/
+ *    probe-hairline-strokes.js §5). Agreeing with the GENERIC path's position
+ *    instead was never available: the direct and generic rasterizations already
+ *    differ there at lineWidth 1 (188px of 96 for a rect at identity), which is
+ *    the shipped behaviour of every lineWidth >= 1 caller.
+ *
+ * Deliberately NOT wired: the fused fillStroke* entries' stroke halves (no
+ * hairline caller exists; untested surface), and gradient/pattern strokes at
+ * any width (they have no _Alpha direct renderer and keep the generic path).
+ */
+
 class Context2D {
     // Static flag to track path-based rendering usage (for testing)
     // Reset before each test, check after to verify direct rendering was used
@@ -25878,6 +25938,12 @@ class Context2D {
             const scaledLineWidth = t.getScaledLineWidth(this._lineWidth);
 
             const isOpaque = this._strokeStyle.a === 255 && this.globalAlpha >= 1.0;
+            // HAIRLINE (sub-pixel) stroke — see the class-level note at the top
+            // of this file for the one rule all direct stroke entries share.
+            // Declared out here because the rotated branch below needs it too.
+            const is1pxStroke = Math.abs(scaledLineWidth - 1) < STROKE_1PX_TOLERANCE;
+            const isHairlineStroke = scaledLineWidth > 0 && scaledLineWidth < 1 && !is1pxStroke;
+            const strokeAlpha = isHairlineStroke ? this.globalAlpha * scaledLineWidth : this.globalAlpha;
 
             if (t.isAxisAligned) {
                 // Inline dimension swapping
@@ -25886,11 +25952,10 @@ class Context2D {
                 const tlX = center.x - finalW / 2;
                 const tlY = center.y - finalH / 2;
 
-                const is1pxStroke = Math.abs(scaledLineWidth - 1) < STROKE_1PX_TOLERANCE;
                 const isThickStroke = scaledLineWidth > 1;
 
-                if (is1pxStroke) {
-                    if (isOpaque) {
+                if (is1pxStroke || isHairlineStroke) {
+                    if (isOpaque && !isHairlineStroke) {
                         RectOpsAA.stroke1px_AA_Opaq(
                             this.surface,
                             tlX,
@@ -25910,7 +25975,7 @@ class Context2D {
                             finalW,
                             finalH,
                             this._strokeStyle,
-                            this.globalAlpha,
+                            strokeAlpha,
                             clip,
                             tier0ClipRect
                         );
@@ -25949,6 +26014,11 @@ class Context2D {
             } else if (t.isUniformScale) {
                 // Rotated with uniform scale: use line-based stroke. Not tier-0-wired;
                 // materialises the bitmask on demand for a rect clip.
+                // The hairline rule reaches this branch through strokeAlpha alone:
+                // stroke_Rot_Any already routes lineWidth <= 1 to its 1px DDA and
+                // derives opaque-vs-alpha from the globalAlpha it is handed (the
+                // DDA dedups shared corner pixels, so translucent coverage is
+                // single-blend — the §6.5 doctrine).
                 RectOpsRot.stroke_Rot_Any(
                     this.surface,
                     center.x,
@@ -25958,7 +26028,7 @@ class Context2D {
                     t.rotationAngle,
                     scaledLineWidth,
                     this._strokeStyle,
-                    this.globalAlpha,
+                    strokeAlpha,
                     this._ensureClipBuffer()
                 );
                 return;
@@ -26233,11 +26303,18 @@ class Context2D {
                 const scaledRadius = radius * t.scaleX;
                 const is1pxStroke = Math.abs(scaledLineWidth - 1) < STROKE_1PX_TOLERANCE;
                 const isOpaque = this._strokeStyle.a === 255 && this.globalAlpha >= 1.0;
+                // HAIRLINE (sub-pixel) stroke — see the class-level note at the
+                // top of this file for the one rule all direct stroke entries
+                // share. Below 1px this used to reach strokeThick_AA_*, which
+                // renders a sub-pixel width at FULL opacity (wrong weight) and
+                // with an open outline.
+                const isHairlineStroke = scaledLineWidth > 0 && scaledLineWidth < 1 && !is1pxStroke;
+                const strokeAlpha = isHairlineStroke ? this.globalAlpha * scaledLineWidth : this.globalAlpha;
 
                 if (t.isIdentity) {
                     // No transform: use axis-aligned methods with original coordinates
-                    if (is1pxStroke) {
-                        if (isOpaque) {
+                    if (is1pxStroke || isHairlineStroke) {
+                        if (isOpaque && !isHairlineStroke) {
                             RoundedRectOpsAA.stroke1px_AA_Opaq(
                                 this.surface,
                                 x,
@@ -26258,7 +26335,7 @@ class Context2D {
                                 height,
                                 radii,
                                 this._strokeStyle,
-                                this.globalAlpha,
+                                strokeAlpha,
                                 clip,
                                 tier0ClipRect
                             );
@@ -26303,8 +26380,8 @@ class Context2D {
                     const tlX = center.x - finalW / 2;
                     const tlY = center.y - finalH / 2;
 
-                    if (is1pxStroke) {
-                        if (isOpaque) {
+                    if (is1pxStroke || isHairlineStroke) {
+                        if (isOpaque && !isHairlineStroke) {
                             RoundedRectOpsAA.stroke1px_AA_Opaq(
                                 this.surface,
                                 tlX,
@@ -26325,7 +26402,7 @@ class Context2D {
                                 finalH,
                                 scaledRadius,
                                 this._strokeStyle,
-                                this.globalAlpha,
+                                strokeAlpha,
                                 clip,
                                 tier0ClipRect
                             );
@@ -26362,7 +26439,11 @@ class Context2D {
                     }
                     return;
                 } else {
-                    // Rotated with uniform scale: use strokeRotated
+                    // Rotated with uniform scale: use strokeRotated.
+                    // The hairline rule reaches this branch through strokeAlpha
+                    // alone: stroke_Rot_Any already routes lineWidth <= 1 to its
+                    // 1px renderers and picks opaque-vs-alpha from the
+                    // globalAlpha it is handed.
                     RoundedRectOpsRot.stroke_Rot_Any(
                         this.surface,
                         center.x,
@@ -26373,7 +26454,7 @@ class Context2D {
                         t.rotationAngle,
                         scaledLineWidth,
                         this._strokeStyle,
-                        this.globalAlpha,
+                        strokeAlpha,
                         this._ensureClipBuffer()
                     );
                     return;
@@ -27870,10 +27951,15 @@ class Context2D {
         if (isColor && isSourceOver && isButtCap) {
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
             const is1pxStroke = Math.abs(scaledLineWidth - 1) < STROKE_1PX_TOLERANCE;
+            // HAIRLINE (sub-pixel) stroke — see the class-level note at the top
+            // of this file. Below 1px this used to reach strokeOuter_*, whose
+            // annulus scan at a sub-pixel width degenerates into a handful of
+            // FULL-opacity scattered pixels (measured: 8 of 19, outline broken).
+            const isHairlineStroke = scaledLineWidth > 0 && scaledLineWidth < 1 && !is1pxStroke;
 
-            if (is1pxStroke) {
+            if (is1pxStroke || isHairlineStroke) {
                 // Optimized 1px stroke path
-                if (isOpaque) {
+                if (isOpaque && !isHairlineStroke) {
                     ArcOps.stroke1px_Opaq(
                         this.surface,
                         center.x,
@@ -27893,7 +27979,7 @@ class Context2D {
                         angles.start,
                         angles.end,
                         paintSource,
-                        this.globalAlpha,
+                        isHairlineStroke ? this.globalAlpha * scaledLineWidth : this.globalAlpha,
                         clipBuffer
                     );
                 }
@@ -28110,6 +28196,16 @@ class Context2D {
     _strokeCircleDirect(cx, cy, radius, lineWidth, paintSource) {
         const isColor = paintSource instanceof Color;
         const is1pxStroke = Math.abs(lineWidth - 1) < STROKE_1PX_TOLERANCE;
+        // HAIRLINE (sub-pixel) stroke — see the class-level note at the top of
+        // this file. lineWidth here is already in device units. Below 1px this
+        // used to fall through to the path fallback at the bottom, which strokes
+        // in DEVICE space at an identity transform: at identity that inherits
+        // the generic pipeline's faint rule, but under a scaled transform it
+        // re-rasterizes a sub-pixel ring it can no longer place and LOSES most
+        // of it (measured: 35 of 70 ring pixels at scale 1.4, open). That is the
+        // ring-vanish Fizzygum's rotate-handle hit. The fallback stays for what
+        // it is actually for: gradient and pattern strokes at any width.
+        const isHairlineStroke = lineWidth > 0 && lineWidth < 1 && !is1pxStroke;
         const isSourceOver = this.globalCompositeOperation === 'source-over';
         // Tier-0 rect clip → clamp extent + clipBuffer=null on the direct paths
         // (mirrors strokeRoundRect); the path fallback consults the context's
@@ -28118,8 +28214,8 @@ class Context2D {
         const clipBuffer = tier0ClipRect ? null : this._ensureClipBuffer();
 
         // Direct rendering 1: 1px strokes using Bresenham algorithm
-        if (isColor && is1pxStroke && isSourceOver) {
-            const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
+        if (isColor && (is1pxStroke || isHairlineStroke) && isSourceOver) {
+            const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0 && !isHairlineStroke;
             if (isOpaque) {
                 CircleOps.stroke1px_Opaq(this.surface, cx, cy, radius, paintSource, clipBuffer, tier0ClipRect);
                 return;
@@ -28130,7 +28226,7 @@ class Context2D {
                     cy,
                     radius,
                     paintSource,
-                    this.globalAlpha,
+                    isHairlineStroke ? this.globalAlpha * lineWidth : this.globalAlpha,
                     clipBuffer,
                     tier0ClipRect
                 );
@@ -28198,13 +28294,32 @@ class Context2D {
         // Direct rendering only supports butt line caps (open shapes need cap handling)
         const isButtCap = this.lineCap === 'butt';
 
+        // HAIRLINE (sub-pixel) stroke — see the class-level note at the top of
+        // this file. lineWidth here is already in device units. LineOps' thin
+        // branches (both of them) rasterize the same Bresenham line and ignore
+        // the width below THIN_LINE_THRESHOLD, so the rule needs no geometry
+        // change here at all: it is exactly "take the ALPHA thin branch, at the
+        // multiplied alpha" — the same pixels, at the right weight. Until now a
+        // hairline drew a FULL-opacity 1px line, the one entry with no faint
+        // rule anywhere in its history.
+        // It is gated on everything the alpha thin branch needs, so that a
+        // gradient hairline still reaches the fallback at its TRUE width.
+        const isHairlineStroke =
+            paintSource instanceof Color &&
+            this.globalCompositeOperation === 'source-over' &&
+            isButtCap &&
+            lineWidth > 0 &&
+            lineWidth < 1 &&
+            Math.abs(lineWidth - 1) >= STROKE_1PX_TOLERANCE; // i.e. not the exact-1px case
+
         // Get color for solid color direct rendering
         const isOpaqueColor =
             paintSource instanceof Color &&
             paintSource.a === 255 &&
             this.globalAlpha >= 1.0 &&
             this.globalCompositeOperation === 'source-over' &&
-            isButtCap;
+            isButtCap &&
+            !isHairlineStroke;
 
         // Check for semitransparent color direct rendering (Color with alpha blending)
         const isSemiTransparentColor =
@@ -28213,16 +28328,17 @@ class Context2D {
             this.globalCompositeOperation === 'source-over' &&
             isButtCap;
 
-        // Try direct rendering via LineOps
+        // Try direct rendering via LineOps. ⚠ `lineWidth` itself must stay
+        // untouched — the gradient/pattern fallback below strokes at it.
         const directRenderingUsed = LineOps.stroke_Any(
             this.surface,
             x1,
             y1,
             x2,
             y2,
-            lineWidth,
+            isHairlineStroke ? 1 : lineWidth,
             paintSource,
-            this.globalAlpha,
+            isHairlineStroke ? this.globalAlpha * lineWidth : this.globalAlpha,
             clipBuffer,
             isOpaqueColor,
             isSemiTransparentColor

@@ -123,6 +123,17 @@ class RectOpsRot {
         const effectiveAlpha = (color.a / 255) * globalAlpha;
         const invAlpha = 1 - effectiveAlpha;
 
+        // Overdraw prevention (the §6.5 doctrine): the 4 edges are drawn as
+        // independent closed intervals, so consecutive edges can land on the
+        // same pixel at a shared corner — invisible when opaque (same value
+        // written twice), a visibly darker dot once the stroke is translucent.
+        // Each edge iterates min→max of its major coordinate, not p1→p2, so
+        // the duplicate is NOT always adjacent in emission order and lastPos
+        // tracking (the RoundedRectOpsRot idiom) is not sufficient — a seen-set
+        // is. Alpha only: this path is cold (rotated + translucent + 1px) and
+        // the opaque fast loops stay allocation-free and byte-identical.
+        const seen = isOpaqueColor ? null : new Set();
+
         // Draw each of the 4 edges
         for (let i = 0; i < 4; i++) {
             const p1 = corners[i];
@@ -148,7 +159,8 @@ class RectOpsRot {
                     }
                     if (isOpaqueColor) {
                         data32[pixelIndex] = packedColor;
-                    } else {
+                    } else if (!seen.has(pixelIndex)) {
+                        seen.add(pixelIndex);
                         RectOpsRot._blendPixelAlpha(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha, null);
                     }
                 }
@@ -171,7 +183,8 @@ class RectOpsRot {
                     }
                     if (isOpaqueColor) {
                         data32[pixelIndex] = packedColor;
-                    } else {
+                    } else if (!seen.has(pixelIndex)) {
+                        seen.add(pixelIndex);
                         RectOpsRot._blendPixelAlpha(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha, null);
                     }
                 }
@@ -194,7 +207,8 @@ class RectOpsRot {
                     }
                     if (isOpaqueColor) {
                         data32[pixelIndex] = packedColor;
-                    } else {
+                    } else if (!seen.has(pixelIndex)) {
+                        seen.add(pixelIndex);
                         RectOpsRot._blendPixelAlpha(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha, null);
                     }
                 }

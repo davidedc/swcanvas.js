@@ -67,6 +67,12 @@ Debug utilities help developers:
 - `sweep-circle-hashes.js` - Parameter-grid render hasher over all three circle entry points incl. partially off-surface geometry (`SWCANVAS_DIST=<path>` runs it against a saved dist for baseline/after diffs)
 - `probe-stadium-roundrect-degenerate.js` - Why fillStadium is its own renderer: measures RoundedRectOpsAA at the degenerate radius r=min(w,h)/2 (horizontal apex-column loss), the composition's alpha double-blend, and the StadiumOps primitive against an analytic ideal stadium
 
+### Hairline (Sub-Pixel) Stroke Rule
+
+**Purpose**: Measure what each of the five direct stroke entries does BELOW one device pixel, against the generic pipeline's rule (1px geometry at proportional opacity) and against the faint-1px dispatch that now implements it. Built while restating that rule on the direct paths (see DIRECT-RENDERING-SUMMARY.MD §3's Universal Stroke Rule; pinned by `tests/core/055`).
+
+- `probe-hairline-strokes.js` - Per entry (`strokeRect`/`strokeRoundRect`/`strokeCircle`/`outerStrokeArc`/`strokeLine`, plus the rotated rect/roundRect branches): today-vs-generic-vs-faint-1px at identity and under scale(1.4)/scale(0.7), reporting painted count, opacity levels, outline connectivity and whether the generic path was reached; plus faintness-vs-width monotonicity, the Fizzygum rotate-handle ring inside a scaled island, and the threshold-continuity question (does a hairline land where the exact-1px stroke lands, or where the generic path puts it — they differ)
+
 ### Visual Comparison Tools
 
 **Purpose**: Generate side-by-side comparisons and reference implementations.
