@@ -44,6 +44,7 @@ All entry points are in `Context2D.js`. Use grep to find exact locations: `grep 
 | N/A (fill)   | Rotated (uniform scale) | Both             | RectOpsRot.fill_Rot_Any()      | YES      |
 | 1px          | Axis-aligned            | Opaque           | RectOpsAA.stroke1px_AA_Opaq()     | YES      |
 | 1px          | Axis-aligned            | Semi-transparent | RectOpsAA.stroke1px_AA_Alpha()    | YES      |
+| <1px (hairline) | Axis-aligned         | Any              | RectOpsAA.stroke1px_AA_Alpha() at globalAlpha×width (§3) | YES |
 | >1px         | Axis-aligned            | Opaque           | RectOpsAA.strokeThick_AA_Opaq()   | YES      |
 | >1px         | Axis-aligned            | Semi-transparent | RectOpsAA.strokeThick_AA_Alpha()  | YES      |
 | Any          | Rotated (uniform scale) | Both             | RectOpsRot.stroke_Rot_Any()    | YES      |
@@ -67,6 +68,7 @@ Notes:
 | N/A (fill)   | Rotated      | Both             | RoundedRectOpsRot.fill_Rot_Any()      | YES      |
 | 1px          | Axis-aligned | Opaque           | RoundedRectOpsAA.stroke1px_AA_Opaq()     | YES      |
 | 1px          | Axis-aligned | Semi-transparent | RoundedRectOpsAA.stroke1px_AA_Alpha()    | YES      |
+| <1px (hairline) | Axis-aligned | Any           | RoundedRectOpsAA.stroke1px_AA_Alpha() at globalAlpha×width (§3) | YES |
 | Any          | Rotated      | Both             | RoundedRectOpsRot.stroke_Rot_Any()    | YES      |
 | >1px         | Axis-aligned | Opaque           | RoundedRectOpsAA.strokeThick_AA_Opaq()   | YES      |
 | >1px         | Axis-aligned | Semi-transparent | RoundedRectOpsAA.strokeThick_AA_Alpha()  | YES      |
@@ -95,6 +97,7 @@ Notes:
 | N/A (fill)   | Semi-transparent | CircleOps.fill_Alpha()      | YES      |
 | 1px          | Opaque           | CircleOps.stroke1px_Opaq()  | YES      |
 | 1px          | Semi-transparent | CircleOps.stroke1px_Alpha() | YES      |
+| <1px (hairline) | Any           | CircleOps.stroke1px_Alpha() at globalAlpha×width (§3) | YES |
 | >1px         | Opaque           | CircleOps.strokeThick_Opaq() | YES      |
 | >1px         | Semi-transparent | CircleOps.strokeThick_Alpha()| YES     |
 | Any          | Both             | CircleOps.fillStroke_Any()  | YES      |
@@ -127,8 +130,9 @@ contract under rotation); the crisp contract is pinned by tests/core/053.
 
 | Stroke Width | Orientation     | Opacity          | Function                          | Clipping TO |
 |--------------|-----------------|------------------|-----------------------------------|-------------|
-| ≤1.5px       | Any (Bresenham) | Opaque           | LineOps.stroke_Any() thin path    | YES      |
-| ≤1.5px       | Any (Bresenham) | Semi-transparent | LineOps.stroke_Any() thin alpha   | YES      |
+| 1px–1.5px    | Any (Bresenham) | Opaque           | LineOps.stroke_Any() thin path    | YES      |
+| 1px–1.5px    | Any (Bresenham) | Semi-transparent | LineOps.stroke_Any() thin alpha   | YES      |
+| <1px (hairline) | Any (Bresenham) | Any           | LineOps.stroke_Any() thin alpha at globalAlpha×width (§3) | YES |
 | >1.5px       | Horizontal      | Opaque           | LineOps.stroke_Any() → SpanOps    | YES      |
 | >1.5px       | Vertical        | Opaque           | LineOps.stroke_Any() → SpanOps    | YES      |
 | >1.5px       | Diagonal/Tilted | Opaque           | LineOps._strokeThick_PolyScan()   | YES      |
@@ -147,13 +151,14 @@ Note: Lines already handle all orientations - no separate "rotated" variant need
 | 1px          | Opaque           | ArcOps.stroke1px_Opaq()            | YES      |
 | 1px          | Opaque (junctions) | ArcOps.stroke1px_Opaq_Exact()    | YES      |
 | 1px          | Semi-transparent | ArcOps.stroke1px_Alpha()           | YES      |
+| <1px (hairline) | Any           | ArcOps.stroke1px_Alpha() at globalAlpha×width (§3) | YES |
 | >1px         | Opaque           | ArcOps.strokeOuter_Opaq()          | YES      |
 | >1px         | Semi-transparent | ArcOps.strokeOuter_Alpha()         | YES      |
 | Any          | Both             | ArcOps.fillStrokeOuter_Any()       | YES      |
 
 Note: Arc uses Bresenham + angle filtering for stroke rendering.
 **stroke1px_Alpha()** uses conditional deduplication (same pattern as CircleOps) - avoids Set allocation via x!=y + cardinal point checks.
-**stroke1px_Opaq_Exact()** uses angle-based iteration (not Bresenham) guaranteeing pixels at exact start/end angles - used by RoundedRectOpsAA.stroke_Rot_Any() for junction alignment.
+**stroke1px_Opaq_Exact()** uses angle-based iteration (not Bresenham) guaranteeing pixels at exact start/end angles - used by RoundedRectOpsRot.stroke_Rot_Any() for junction alignment.
 **Requires lineCap === 'butt' for direct rendering (non-butt caps fall to path-based rendering).**
 **Performance optimizations**: Uses module-level scratch buffer (`_arcEventBuffer`) for scanline events, avoiding per-scanline allocation. Events sorted via custom insertion sort (faster than native sort for N < 6 elements).
 
@@ -179,7 +184,11 @@ rotated branches — dispatches `0 < scaledLineWidth < 1` to its family's
 `stroke1px_*Alpha` renderer at `globalAlpha * scaledLineWidth`. This mirrors the
 generic pipeline's rule (`Rasterizer._strokeInternal`: `lineWidth < 1` renders at
 width 1.0 with `subPixelOpacity = lineWidth`), so a hairline reads lighter than a
-1px stroke on both pipelines and on the native AA backend.
+1px stroke on both pipelines — and real browser canvases honour the same
+hairline-faintness behaviour through their own machinery (measured on Chrome: a
+0.5px black stroke on white reads one uniform mid-gray row), so the stroke
+WEIGHT matches cross-engine too. This is a hairline faintness rule, NOT
+anti-aliasing: SWCanvas stays non-AA — one uniform opacity level per stroke.
 
 Three properties are load-bearing (contract pinned by core test 055; measured by
 `debug/probe-hairline-strokes.js`):
@@ -595,6 +604,7 @@ for (corner of corners) generateArcPixels(corner, renderPixel);
 | Fill alpha            | ✓    | ✓         | ✓      | N/A  | ✓   |
 | Stroke 1px opaque     | ✓    | ✓         | ✓      | ✓    | ✓   |
 | Stroke 1px alpha      | ✓    | ✓         | ✓      | ✓    | ✓   |
+| Stroke hairline <1px (§3) | ✓ | ✓        | ✓      | ✓    | ✓   |
 | Stroke thick opaque   | ✓    | ✓         | ✓      | ✓    | ✓   |
 | Stroke thick alpha    | ✓    | ✓         | ✓      | ✓    | ✓   |
 | fillStroke()       | ✓    | ✓         | ✓      | N/A  | ✓   |
