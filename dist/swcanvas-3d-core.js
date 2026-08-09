@@ -848,6 +848,11 @@ class DepthBuffer {
         const x1 = Math.min(this.width, Math.ceil(x + w));
         const y1 = Math.min(this.height, Math.ceil(y + h));
 
+        // A rect fully left of the buffer leaves x1 negative after the one-sided
+        // clamps; TypedArray.fill wraps a negative end to length+end, so bail on
+        // empty extents before the loop (the off-surface span-wrap class).
+        if (x1 <= x0 || y1 <= y0) return;
+
         for (let row = y0; row < y1; row++) {
             const rowStart = row * this.width;
             this.data.fill(0, rowStart + x0, rowStart + x1);

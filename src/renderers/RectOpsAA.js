@@ -393,6 +393,16 @@ class RectOpsAA {
         const yStart = Math.max(cy0, top);
         const yEnd = Math.min(bottom, cy1);
 
+        // Empty/off-surface extents must bail BEFORE the fill loop: TypedArray.fill
+        // treats a NEGATIVE end as length+end (it wraps), so a rect fully left of
+        // the surface (rowRight < 0 after the one-sided clamps) would flood every
+        // overlapping row from its start to near the END of the buffer — the
+        // off-surface span-wrap corruption class (see test 052 / test 056 and
+        // fillStroke_Any's earlier fix). The per-pixel loops are inherently safe
+        // (their conditions never run), so this guard only defends the .fill path;
+        // it is byte-identical for every non-empty extent.
+        if (rowRight <= rowLeft || yEnd <= yStart) return;
+
         if (clipBuffer) {
             for (let py = yStart; py < yEnd; py++) {
                 const base = py * surfaceWidth;

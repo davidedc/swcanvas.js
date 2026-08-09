@@ -1797,6 +1797,11 @@ class DepthBuffer {
         const x1 = Math.min(this.width, Math.ceil(x + w));
         const y1 = Math.min(this.height, Math.ceil(y + h));
 
+        // A rect fully left of the buffer leaves x1 negative after the one-sided
+        // clamps; TypedArray.fill wraps a negative end to length+end, so bail on
+        // empty extents before the loop (the off-surface span-wrap class).
+        if (x1 <= x0 || y1 <= y0) return;
+
         for (let row = y0; row < y1; row++) {
             const rowStart = row * this.width;
             this.data.fill(0, rowStart + x0, rowStart + x1);
@@ -10018,6 +10023,16 @@ if (__outA > 0) {
         const rowRight = Math.min(right, cx1);
         const yStart = Math.max(cy0, top);
         const yEnd = Math.min(bottom, cy1);
+
+        // Empty/off-surface extents must bail BEFORE the fill loop: TypedArray.fill
+        // treats a NEGATIVE end as length+end (it wraps), so a rect fully left of
+        // the surface (rowRight < 0 after the one-sided clamps) would flood every
+        // overlapping row from its start to near the END of the buffer — the
+        // off-surface span-wrap corruption class (see test 052 / test 056 and
+        // fillStroke_Any's earlier fix). The per-pixel loops are inherently safe
+        // (their conditions never run), so this guard only defends the .fill path;
+        // it is byte-identical for every non-empty extent.
+        if (rowRight <= rowLeft || yEnd <= yStart) return;
 
         if (clipBuffer) {
             for (let py = yStart; py < yEnd; py++) {
