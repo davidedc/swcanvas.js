@@ -24086,7 +24086,7 @@ class TextRenderer {
 
         // (x - box.x, y - box.y) stays in CSS pixels — drawTextFromAtlas
         // multiplies by pixelDensity internally. Don't double-scale.
-        BitmapText.drawTextFromAtlas(
+        const drawResult = BitmapText.drawTextFromAtlas(
             interCtx, text, x - box.x, y - box.y, fontProps, userTextProps
         );
 
@@ -24097,7 +24097,12 @@ class TextRenderer {
             box.x, box.y, box.width, box.height
         );
 
-        return { rendered: true, status: { code: 0 } };
+        // Propagate the inner draw's status: the intermediate may have rendered
+        // PLACEHOLDERS (NO_ATLAS / PARTIAL_ATLAS), and a caller watching for cold
+        // draws (e.g. a host that repaints when atlases warm) must see that from
+        // the transformed path exactly as it does from the direct-blit path —
+        // swallowing it here made transformed placeholder text unobservable.
+        return drawResult || { rendered: true, status: { code: 0 } };
     }
 
     static measureText(coreCtx, text) {
