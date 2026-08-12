@@ -533,7 +533,15 @@ const encodingOptions = SWCanvas.Core.BitmapEncodingOptions.withGrayBackground(1
 
 ### Image Rendering
 
-SWCanvas supports drawing ImageLike objects with nearest-neighbor sampling:
+SWCanvas supports drawing ImageLike objects. Axis-aligned draws (plain blits and
+scales) sample nearest-neighbor; non-axis-aligned draws (any rotation/skew)
+sample bilinear at the destination pixel center, filtered premultiplied — a
+nearest-neighbor rotation periodically drops the pixels of 1-2px source
+features, disintegrating them into dashes (see
+`debug/probe-rotated-thinline-gaps.js` and
+`tests/core/057-drawimage-rotated-bilinear-contract.js`). A rotation whose
+samples land exactly on texel centers (e.g. an exact 90° `setTransform` with
+integer translation) reproduces pure texels bit-exactly, no blur:
 
 ```javascript
 // ImageLike interface: { width, height, data: Uint8ClampedArray }

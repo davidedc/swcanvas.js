@@ -25030,6 +25030,36 @@ class Rasterizer {
         const xScale = (destWidth === sourceWidth) ? 1 : sourceWidth / destWidth;
         const yScale = (destHeight === sourceHeight) ? 1 : sourceHeight / destHeight;
 
+        // Sampling policy: axis-aligned transforms (b === 0 && c === 0 — every
+        // plain blit and scale) keep the historical nearest-neighbor sample,
+        // byte-for-byte. A NON-axis-aligned transform (rotation/skew) samples
+        // BILINEAR instead: under rotation the floor-quantized NN sample point
+        // periodically lands on the texel BESIDE a thin source feature, so
+        // 1-2px features (hairline strokes, selection overlays) disintegrate
+        // into dashes. Bilinear cannot produce a pure-background gap along a
+        // continuous source feature — every nearby destination pixel blends it
+        // in. See debug/probe-rotated-thinline-gaps.js and tests/core/*bilinear*.
+        const useBilinear = (transform.b !== 0 || transform.c !== 0);
+        // Bilinear samples at the DEST PIXEL CENTER (native semantics): the
+        // corner-mapped destPoint below (kept for containment and for the NN
+        // path, byte-compat) plus this constant device-space (0.5, 0.5) offset
+        // pushed through the inverse transform. Texel centers live at +0.5, so
+        // a 90°-style composite with integer translation lands samples exactly
+        // ON texel centers -> the zero-fraction fast path -> crisp pure texels
+        // (no blur), while arbitrary angles reconstruct without the half-texel
+        // shift a floor-anchored kernel would smear into every resample.
+        const centerOffX = (invA + invC) * 0.5;
+        const centerOffY = (invB + invD) * 0.5;
+        // Bilinear tap bounds: the texel range of the sx/sy/sw/sh source
+        // sub-rect, clamped to the image. A tap OUTSIDE these bounds
+        // contributes transparent black — never clamped edge content — so a
+        // sub-rect blit cannot smear pixels that were never part of the
+        // source rect.
+        const tapMinX = Math.max(0, Math.floor(sourceX));
+        const tapMaxX = Math.min(imgWidth - 1, Math.ceil(sourceX + sourceWidth) - 1);
+        const tapMinY = Math.max(0, Math.floor(sourceY));
+        const tapMaxY = Math.min(imgHeight - 1, Math.ceil(sourceY + sourceHeight) - 1);
+
         // Render each pixel in the bounding box
         for (let deviceY = minY; deviceY <= maxY; deviceY++) {
             for (let deviceX = minX; deviceX <= maxX; deviceX++) {
@@ -25043,37 +25073,134 @@ class Rasterizer {
                 const destPointX = invA * deviceX + invC * deviceY + invE;
                 const destPointY = invB * deviceX + invD * deviceY + invF;
 
-                // Check if we're inside the destination rectangle
-                if (
-                    destPointX < destX ||
-                    destPointX >= destXMax ||
-                    destPointY < destY ||
-                    destPointY >= destYMax
-                ) {
-                    continue;
+                let srcR, srcG, srcB, srcA;
+                if (!useBilinear) {
+                    // Check if we're inside the destination rectangle
+                    // (corner-mapped point — the historical inclusion rule)
+                    if (
+                        destPointX < destX ||
+                        destPointX >= destXMax ||
+                        destPointY < destY ||
+                        destPointY >= destYMax
+                    ) {
+                        continue;
+                    }
+
+                    // Map destination coordinates to source coordinates.
+                    // See the xScale/yScale comment above for why this form is
+                    // FP-stable in the same-size case.
+                    const sourceXf = sourceX + (destPointX - destX) * xScale;
+                    const sourceYf = sourceY + (destPointY - destY) * yScale;
+
+                    // Nearest-neighbor sampling (axis-aligned transforms — the
+                    // historical path, byte-for-byte)
+                    const sourcePX = Math.floor(sourceXf);
+                    const sourcePY = Math.floor(sourceYf);
+
+                    // Bounds check for source coordinates
+                    if (sourcePX < 0 || sourcePY < 0 || sourcePX >= imgWidth || sourcePY >= imgHeight) {
+                        continue;
+                    }
+
+                    // Sample source pixel
+                    const sourceOffset = (sourcePY * imgWidth + sourcePX) * 4;
+                    srcR = imgData[sourceOffset];
+                    srcG = imgData[sourceOffset + 1];
+                    srcB = imgData[sourceOffset + 2];
+                    srcA = imgData[sourceOffset + 3];
+                } else {
+                    // Bilinear: the DEST PIXEL CENTER (see centerOffX/Y above)
+                    // drives BOTH containment and sampling — one convention per
+                    // path. (Mixing corner containment with center sampling
+                    // shifts the included window one pixel against the sampled
+                    // window under a 90°-style transform, dropping an edge
+                    // row/column.)
+                    const centerPointX = destPointX + centerOffX;
+                    const centerPointY = destPointY + centerOffY;
+                    if (
+                        centerPointX < destX ||
+                        centerPointX >= destXMax ||
+                        centerPointY < destY ||
+                        centerPointY >= destYMax
+                    ) {
+                        continue;
+                    }
+
+                    // Put texel centers at +0.5 and split into floor texel +
+                    // fractions. A sample landing exactly on a texel center has
+                    // fractions 0/0 and takes the pure-texel fast path —
+                    // bit-exact with a NN sample of that point.
+                    const sampleXf = sourceX + (centerPointX - destX) * xScale;
+                    const sampleYf = sourceY + (centerPointY - destY) * yScale;
+                    const gx = sampleXf - 0.5;
+                    const gy = sampleYf - 0.5;
+                    const x0 = Math.floor(gx);
+                    const y0 = Math.floor(gy);
+                    const fx = gx - x0;
+                    const fy = gy - y0;
+
+                    if (fx === 0 && fy === 0) {
+                        // Pure-texel fast path (zero-fraction exactness)
+                        if (x0 < tapMinX || x0 > tapMaxX || y0 < tapMinY || y0 > tapMaxY) {
+                            continue;
+                        }
+                        const sourceOffset = (y0 * imgWidth + x0) * 4;
+                        srcR = imgData[sourceOffset];
+                        srcG = imgData[sourceOffset + 1];
+                        srcB = imgData[sourceOffset + 2];
+                        srcA = imgData[sourceOffset + 3];
+                    } else {
+                        // Bilinear over the 4 neighboring texels, filtered
+                        // PREMULTIPLIED: source texels are straight RGBA and fully
+                        // transparent texels carry arbitrary RGB, so a straight-alpha
+                        // lerp would bleed that RGB into edges (dark fringes). Weight
+                        // each texel's RGB by its alpha, accumulate, un-premultiply at
+                        // the end. Plain double arithmetic in a fixed accumulation
+                        // order (00, 10, 01, 11) — byte-identical on V8 and JSC.
+                        const x1 = x0 + 1;
+                        const y1 = y0 + 1;
+                        const w00 = (1 - fx) * (1 - fy);
+                        const w10 = fx * (1 - fy);
+                        const w01 = (1 - fx) * fy;
+                        const w11 = fx * fy;
+                        let aSum = 0, rSum = 0, gSum = 0, bSum = 0;
+                        if (w00 !== 0 && x0 >= tapMinX && x0 <= tapMaxX && y0 >= tapMinY && y0 <= tapMaxY) {
+                            const o = (y0 * imgWidth + x0) * 4;
+                            const wa = w00 * imgData[o + 3];
+                            if (wa !== 0) {
+                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
+                            }
+                        }
+                        if (w10 !== 0 && x1 >= tapMinX && x1 <= tapMaxX && y0 >= tapMinY && y0 <= tapMaxY) {
+                            const o = (y0 * imgWidth + x1) * 4;
+                            const wa = w10 * imgData[o + 3];
+                            if (wa !== 0) {
+                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
+                            }
+                        }
+                        if (w01 !== 0 && x0 >= tapMinX && x0 <= tapMaxX && y1 >= tapMinY && y1 <= tapMaxY) {
+                            const o = (y1 * imgWidth + x0) * 4;
+                            const wa = w01 * imgData[o + 3];
+                            if (wa !== 0) {
+                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
+                            }
+                        }
+                        if (w11 !== 0 && x1 >= tapMinX && x1 <= tapMaxX && y1 >= tapMinY && y1 <= tapMaxY) {
+                            const o = (y1 * imgWidth + x1) * 4;
+                            const wa = w11 * imgData[o + 3];
+                            if (wa !== 0) {
+                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
+                            }
+                        }
+                        if (aSum === 0) continue; // all taps transparent
+                        // Un-premultiply back to straight RGBA (the alpha weights
+                        // cancel out of the RGB average).
+                        srcR = Math.round(rSum / aSum);
+                        srcG = Math.round(gSum / aSum);
+                        srcB = Math.round(bSum / aSum);
+                        srcA = Math.round(aSum);
+                    }
                 }
-
-                // Map destination coordinates to source coordinates.
-                // See the xScale/yScale comment above for why this form is
-                // FP-stable in the same-size case.
-                const sourceXf = sourceX + (destPointX - destX) * xScale;
-                const sourceYf = sourceY + (destPointY - destY) * yScale;
-
-                // Nearest-neighbor sampling
-                const sourcePX = Math.floor(sourceXf);
-                const sourcePY = Math.floor(sourceYf);
-
-                // Bounds check for source coordinates
-                if (sourcePX < 0 || sourcePY < 0 || sourcePX >= imgWidth || sourcePY >= imgHeight) {
-                    continue;
-                }
-
-                // Sample source pixel
-                const sourceOffset = (sourcePY * imgWidth + sourcePX) * 4;
-                const srcR = imgData[sourceOffset];
-                const srcG = imgData[sourceOffset + 1];
-                const srcB = imgData[sourceOffset + 2];
-                const srcA = imgData[sourceOffset + 3];
 
                 // Apply global alpha
                 const effectiveAlpha = (srcA / 255) * globalAlpha;
