@@ -900,8 +900,8 @@ class DepthBuffer {
  * - Width and height MUST be powers of two. Sampling uses mask-based
  *   wrap-around addressing: texelIndex = ((v & vMask) << shift) | (u & uMask),
  *   which makes out-of-range coordinates repeat the texture at zero cost.
- * - Sampling is nearest-neighbor (like Pattern and axis-aligned drawImage;
- *   only non-axis-aligned drawImage samples bilinear, see Rasterizer).
+ * - Sampling is nearest-neighbor (like Pattern; drawImage, by contrast,
+ *   smooths whenever it resamples — see Rasterizer — while Texture3D stays NN).
  * - Texel alpha is written to the surface AS-IS by the 3D primitives (no
  *   blending); for normal opaque rendering author textures with alpha 255.
  *

@@ -266,13 +266,13 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `strokeRoundRect` | same | same (stroke) | same | generic via `stroke(path)` — the ONE rect-family fallback that honours `lineDash` (radius≤0 → `strokeRect`) |
 | `fillStrokeRoundRect` | same | both Color, source-over, `_noShadow`, something to draw | as `fillStrokeRect` + non-uniform | decomposes → `fillRoundRect` + `strokeRoundRect` (radius≤0 → `fillStrokeRect`) |
 | `fillStadium` | isUniformScale (rot arm delegates to `RoundedRectOpsRot`, r=min/2) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform | generic via external `SWPath2D` (no stroke API exists) |
-| `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over, and (a<255 OR globalAlpha≥1) | non-Color · composite · ⚠ a=255 & globalAlpha<1 (§9) | legacy fallback — ⚠ CTM-broken (§9) |
-| `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over | non-Color · a=0 · composite | legacy fallback — ⚠ CTM-broken (§9); cap/join/dash ignored |
+| `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over, and (a<255 OR globalAlpha≥1) | non-Color · composite · ⚠ a=255 & globalAlpha<1 (§9) | generic via external `SWPath2D` |
+| `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over | non-Color · a=0 · composite | generic via external `SWPath2D` (honours cap/join/dash) |
 | `fillStrokeCircle` | isUniformScale (pre-gate) | both Color, source-over, something to draw | either non-Color · composite · nothing | sequential `_fillCircleDirect` + `_strokeCircleDirect` (still direct dispatchers) |
-| `fillArc` | isUniformScale (pre-gate) | Color, source-over (NO shadow gate, NO a>0 fallback — a=0 returns silently) | non-Color · composite | legacy fallback — ⚠ CTM-broken (§9); never tier-0-clipped |
-| `outerStrokeArc` | isUniformScale (pre-gate) | Color, a>0, source-over, lineCap 'butt' | non-Color · a=0 · composite · round/square cap | legacy fallback — ⚠ CTM-broken (§9) |
-| `fillOuterStrokeArc` | isUniformScale (pre-gate) | both Color, source-over, lineCap 'butt', something to draw | composite · cap · ⚠ non-Color half is silently DROPPED, not fallen back (§9) | part-legacy fallback |
-| `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt' | non-Color · composite · round/square cap | legacy fallback — ⚠ CTM-broken (§9); alpha/CTM/clip/shadow/dash never gate |
+| `fillArc` | isUniformScale (pre-gate) | Color, source-over (NO shadow gate, NO a>0 fallback — a=0 returns silently) | non-Color · composite | generic via external `SWPath2D`; never tier-0-clipped |
+| `outerStrokeArc` | isUniformScale (pre-gate) | Color, a>0, source-over, lineCap 'butt' | non-Color · a=0 · composite · round/square cap | generic via external `SWPath2D` (honours the cap) |
+| `fillOuterStrokeArc` | isUniformScale (pre-gate) | both Color, source-over, lineCap 'butt', something to draw | composite · cap · ⚠ non-Color half is silently DROPPED, not fallen back (§9) | sequential generic via external `SWPath2D` |
+| `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt' | non-Color · composite · round/square cap | generic via external `SWPath2D` (honours cap/dash; HTML5 anisotropic width under non-uniform CTM); alpha/CTM/clip/shadow never gate |
 | `fillText` | direct atlas blit iff `b=c=0, a=d=dpr`, integer e/f; else intermediate buffer + `drawImage` | none (no composite/shadow/alpha/clip gate — both arms honour them via `drawImage`) | `maxWidth` → throw · gradient/pattern → ⚠ silent BLACK substitution (console.warn) | both arms mark path-based |
 | `strokeText` | — | — | ALWAYS throws | — |
 | `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer) |
@@ -823,14 +823,12 @@ current consumers:
    neither `isOpaqueColor` (fails globalAlpha) nor `isSemiTransparentColor` (fails `a < 255`) in
    `_fillCircleDirect`, so it drops to the legacy fallback although `CircleOps.fill_Alpha`
    handles it exactly. Every sibling entry handles this case directly.
-2. **The legacy circle/arc/line fallbacks double-apply the CTM.** `_fillCircleDirect`,
-   `_strokeCircleDirect`, `_strokeLineDirect`, `fillArc`, `outerStrokeArc` and
-   `fillOuterStrokeArc` feed already-device-space coordinates into `beginPath()/arc()/moveTo()`,
-   which bake the live CTM again (only some then reset to IDENTITY, and only after building).
-   Under any non-identity CTM these fallbacks draw at the wrong place/size. The newer
-   `!isUniformScale` pre-gates use an un-baked external `SWPath2D` and are correct — two
-   generations of fallback code coexist; the legacy ones should be migrated to the external-path
-   form.
+2. **FIXED (2026-08-13): the legacy circle/arc/line fallbacks double-applied the CTM.**
+   `_fillCircleDirect`, `_strokeCircleDirect`, `_strokeLineDirect`, `fillArc`, `outerStrokeArc`
+   and `fillOuterStrokeArc` fed already-device-space coordinates into the current default path,
+   which bakes the live CTM again. All six sites now build an un-baked USER-space `SWPath2D`
+   and pass it as an external path (the same form as the `!isUniformScale` pre-gates), so
+   geometry and paint share one application of the CTM. Pinned by `tests/core/059`.
 3. **`fillOuterStrokeArc` silently drops gradient/pattern halves.** Its generic fallback guards
    on `hasFill`/`hasStroke`, which embed `instanceof Color`, so a non-Color half draws NOTHING
    instead of falling back.

@@ -2611,8 +2611,8 @@ class Context2D {
         // Get paint source
         const paintSource = this._fillStyle;
 
-        // Use optimized circle renderer
-        this._fillCircleDirect(center.x, center.y, scaledRadius, paintSource);
+        // Use optimized circle renderer (user-space args feed its generic fallback)
+        this._fillCircleDirect(center.x, center.y, scaledRadius, paintSource, centerX, centerY, radius);
     }
 
     /**
@@ -2648,8 +2648,8 @@ class Context2D {
         // Get paint source
         const paintSource = this._strokeStyle;
 
-        // Use optimized circle stroke renderer
-        this._strokeCircleDirect(center.x, center.y, scaledRadius, scaledLineWidth, paintSource);
+        // Use optimized circle stroke renderer (user-space args feed its generic fallback)
+        this._strokeCircleDirect(center.x, center.y, scaledRadius, scaledLineWidth, paintSource, centerX, centerY, radius);
     }
 
     /**
@@ -2716,8 +2716,8 @@ class Context2D {
             );
         } else {
             // Fallback to sequential rendering for gradients, patterns, or non-source-over
-            this._fillCircleDirect(center.x, center.y, scaledRadius, fillPaintSource);
-            this._strokeCircleDirect(center.x, center.y, scaledRadius, scaledLineWidth, strokePaintSource);
+            this._fillCircleDirect(center.x, center.y, scaledRadius, fillPaintSource, centerX, centerY, radius);
+            this._strokeCircleDirect(center.x, center.y, scaledRadius, scaledLineWidth, strokePaintSource, centerX, centerY, radius);
         }
     }
 
@@ -2805,13 +2805,16 @@ class Context2D {
             return;
         }
 
-        // Path-based rendering: use path system
+        // Gradients/patterns/non-source-over: generic pipeline via an un-baked
+        // USER-space external path under the live CTM — same form as the
+        // !isUniformScale gate above (device coords on the default path would
+        // apply the CTM twice; see _fillCircleDirect's fallback note).
         Context2D._markPathBasedRendering();
-        this.beginPath();
-        this.moveTo(center.x, center.y);
-        this.arc(center.x, center.y, scaledRadius, startAngle, endAngle, anticlockwise);
-        this.closePath();
-        this.fill();
+        const fallbackPath = new SWPath2D();
+        fallbackPath.moveTo(centerX, centerY);
+        fallbackPath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
+        fallbackPath.closePath();
+        this.fill(fallbackPath);
     }
 
     /**
@@ -2926,11 +2929,14 @@ class Context2D {
             return;
         }
 
-        // Path-based rendering: use path system (arc only, not pie slice)
+        // Gradients/patterns/non-source-over/round-square caps: generic
+        // pipeline via an un-baked USER-space external path under the live CTM
+        // (arc only, not pie slice) — same form as the !isUniformScale gate
+        // above; see _fillCircleDirect's fallback note.
         Context2D._markPathBasedRendering();
-        this.beginPath();
-        this.arc(center.x, center.y, scaledRadius, startAngle, endAngle, anticlockwise);
-        this.stroke();
+        const fallbackPath = new SWPath2D();
+        fallbackPath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
+        this.stroke(fallbackPath);
     }
 
     /**
@@ -3005,23 +3011,25 @@ class Context2D {
             return;
         }
 
-        // Path-based rendering: sequential rendering
+        // Sequential generic rendering via un-baked USER-space external paths
+        // under the live CTM — same form as the !isUniformScale gate above;
+        // see _fillCircleDirect's fallback note.
         Context2D._markPathBasedRendering();
 
         // Fill pie slice
         if (hasFill) {
-            this.beginPath();
-            this.moveTo(center.x, center.y);
-            this.arc(center.x, center.y, scaledRadius, startAngle, endAngle, anticlockwise);
-            this.closePath();
-            this.fill();
+            const fillPath = new SWPath2D();
+            fillPath.moveTo(centerX, centerY);
+            fillPath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
+            fillPath.closePath();
+            this.fill(fillPath);
         }
 
         // Stroke outer arc only
         if (hasStroke) {
-            this.beginPath();
-            this.arc(center.x, center.y, scaledRadius, startAngle, endAngle, anticlockwise);
-            this.stroke();
+            const strokePath = new SWPath2D();
+            strokePath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
+            this.stroke(strokePath);
         }
     }
 
@@ -3051,8 +3059,8 @@ class Context2D {
         // Get paint source
         const paintSource = this._strokeStyle;
 
-        // Use optimized line renderer
-        this._strokeLineDirect(start.x, start.y, end.x, end.y, scaledLineWidth, paintSource);
+        // Use optimized line renderer (user-space args feed its generic fallback)
+        this._strokeLineDirect(start.x, start.y, end.x, end.y, scaledLineWidth, paintSource, x1, y1, x2, y2);
     }
 
     // ========================================================================
@@ -3062,8 +3070,15 @@ class Context2D {
     /**
      * Optimized circle fill using midpoint algorithm with horizontal spans
      * @private
+     * @param {number} cx - Device-space center x (CTM pre-applied by the caller)
+     * @param {number} cy - Device-space center y
+     * @param {number} radius - Device-space radius (uniform scale pre-applied)
+     * @param {Object} paintSource - Fill paint (Color, gradient, or pattern)
+     * @param {number} userX - User-space center x, for the generic fallback
+     * @param {number} userY - User-space center y, for the generic fallback
+     * @param {number} userRadius - User-space radius, for the generic fallback
      */
-    _fillCircleDirect(cx, cy, radius, paintSource) {
+    _fillCircleDirect(cx, cy, radius, paintSource, userX, userY, userRadius) {
         const surface = this.surface;
 
         // Check for solid color direct rendering
@@ -3088,23 +3103,33 @@ class Context2D {
                 CircleOps.fill_Alpha(surface, cx, cy, radius, paintSource, this.globalAlpha, clipBuffer, tier0ClipRect);
             }
         } else {
-            // Path-based rendering: use path system for gradients/patterns/non-source-over compositing
-            Context2D._markPathBasedRendering(); // Mark path-based rendering for testing
-            this.beginPath();
-            this.arc(cx, cy, radius, 0, TAU);
-            // Temporarily set identity transform since we already transformed
-            const savedTransform = this._transform;
-            this._transform = Transform2D.IDENTITY;
-            this.fill();
-            this._transform = savedTransform;
+            // Gradients/patterns/non-source-over: generic pipeline via an
+            // un-baked USER-space external path, like every pre-gate fallback.
+            // An external SWPath2D is rasterized under the live CTM, which maps
+            // the geometry AND the paint source together (see fill()). The
+            // device-space coordinates must not be used here: the current
+            // default path bakes the CTM at build time, so feeding it
+            // already-transformed points applies the CTM twice.
+            Context2D._markPathBasedRendering();
+            const fallbackPath = new SWPath2D();
+            fallbackPath.arc(userX, userY, userRadius, 0, TAU);
+            this.fill(fallbackPath);
         }
     }
 
     /**
      * Optimized circle stroke - dispatches to direct rendering when possible
      * @private
+     * @param {number} cx - Device-space center x (CTM pre-applied by the caller)
+     * @param {number} cy - Device-space center y
+     * @param {number} radius - Device-space radius (uniform scale pre-applied)
+     * @param {number} lineWidth - Device-space line width (uniform scale pre-applied)
+     * @param {Object} paintSource - Stroke paint (Color, gradient, or pattern)
+     * @param {number} userX - User-space center x, for the generic fallback
+     * @param {number} userY - User-space center y, for the generic fallback
+     * @param {number} userRadius - User-space radius, for the generic fallback
      */
-    _strokeCircleDirect(cx, cy, radius, lineWidth, paintSource) {
+    _strokeCircleDirect(cx, cy, radius, lineWidth, paintSource, userX, userY, userRadius) {
         const isColor = paintSource instanceof Color;
         const is1pxStroke = Math.abs(lineWidth - 1) < STROKE_1PX_TOLERANCE;
         // HAIRLINE (sub-pixel) stroke — see the class-level note at the top of
@@ -3175,24 +3200,32 @@ class Context2D {
             return;
         }
 
-        // Fallback to path system for gradients, patterns, or non-source-over compositing
+        // Gradients/patterns/non-source-over: generic pipeline via an un-baked
+        // USER-space external path under the live CTM (see _fillCircleDirect's
+        // fallback note — device coords on the default path apply the CTM
+        // twice). stroke(path) widens at this._lineWidth in user space and the
+        // CTM scales it, so the device-space `lineWidth` param is unused here.
         Context2D._markPathBasedRendering();
-        this.beginPath();
-        this.arc(cx, cy, radius, 0, TAU);
-        const savedTransform = this._transform;
-        this._transform = Transform2D.IDENTITY;
-        const savedLineWidth = this._lineWidth;
-        this._lineWidth = lineWidth;
-        this.stroke();
-        this._lineWidth = savedLineWidth;
-        this._transform = savedTransform;
+        const fallbackPath = new SWPath2D();
+        fallbackPath.arc(userX, userY, userRadius, 0, TAU);
+        this.stroke(fallbackPath);
     }
 
     /**
      * Optimized line stroke
      * @private
+     * @param {number} x1 - Device-space start x (CTM pre-applied by the caller)
+     * @param {number} y1 - Device-space start y
+     * @param {number} x2 - Device-space end x
+     * @param {number} y2 - Device-space end y
+     * @param {number} lineWidth - Device-space line width (geometric-mean scale pre-applied)
+     * @param {Object} paintSource - Stroke paint (Color, gradient, or pattern)
+     * @param {number} ux1 - User-space start x, for the generic fallback
+     * @param {number} uy1 - User-space start y, for the generic fallback
+     * @param {number} ux2 - User-space end x, for the generic fallback
+     * @param {number} uy2 - User-space end y, for the generic fallback
      */
-    _strokeLineDirect(x1, y1, x2, y2, lineWidth, paintSource) {
+    _strokeLineDirect(x1, y1, x2, y2, lineWidth, paintSource, ux1, uy1, ux2, uy2) {
         // Deliberately NOT tier-0-wired (unlike fillCircle/strokeCircle):
         // LineOps.stroke_Any decides thin-vs-thick INSIDE the dispatcher, and its
         // thick non-axis-aligned branch delegates to QuadScanOps, which has no
@@ -3256,18 +3289,18 @@ class Context2D {
         );
 
         if (!directRenderingUsed) {
-            // Path-based rendering for non-Color paint sources (gradients, patterns)
+            // Non-Color paints (gradients, patterns), round/square caps,
+            // non-source-over: generic pipeline via an un-baked USER-space
+            // external path under the live CTM (see _fillCircleDirect's
+            // fallback note). stroke(path) widens at this._lineWidth in user
+            // space and the CTM scales it — under a non-uniform CTM that gives
+            // the HTML5-correct direction-dependent width, where the direct
+            // path above accepts the geometric-mean approximation.
             Context2D._markPathBasedRendering();
-            this.beginPath();
-            this.moveTo(x1, y1);
-            this.lineTo(x2, y2);
-            const savedTransform = this._transform;
-            this._transform = Transform2D.IDENTITY;
-            const savedLineWidth = this._lineWidth;
-            this._lineWidth = lineWidth;
-            this.stroke();
-            this._lineWidth = savedLineWidth;
-            this._transform = savedTransform;
+            const fallbackPath = new SWPath2D();
+            fallbackPath.moveTo(ux1, uy1);
+            fallbackPath.lineTo(ux2, uy2);
+            this.stroke(fallbackPath);
         }
     }
 }
