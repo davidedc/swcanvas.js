@@ -166,14 +166,25 @@ Note: Arc uses Bresenham + angle filtering for stroke rendering.
 
 ## 3. Condition Checks for Direct Rendering Eligibility
 
-### Universal Conditions (all shapes):
+### Universal Conditions — with their TRUE scope (audited 2026-08-12):
 
-| Condition    | Check                                      | What Blocks It                            |
-|--------------|--------------------------------------------|-------------------------------------------|
-| Paint Source | paintSource instanceof Color               | Gradients, Patterns                       |
-| Composite Op | globalCompositeOperation === 'source-over' | All other ops (copy, xor, etc.)           |
-| Shadows      | No active shadow                           | Any shadowColor, shadowBlur, shadowOffset |
-| Paint Alpha  | paintSource.a > 0                          | Fully transparent paint                   |
+Only the first two rows are genuinely universal. The shadow and alpha gates are FAMILY-scoped:
+the rect/roundRect/stadium entries dispatch through `_canUseDirectRendering` /
+`_canUseDirectRenderingForFillStroke` (Context2D), which carry all four checks; the circle, arc
+and line entries re-derive their gates INLINE and carry only the first two (see the per-entry
+table below and §9 for the consequences).
+
+| Condition    | Check                                      | What Blocks It                            | Scope |
+|--------------|--------------------------------------------|-------------------------------------------|-------|
+| Paint Source | paintSource instanceof Color               | Gradients, Patterns                       | ALL entries |
+| Composite Op | globalCompositeOperation === 'source-over' | All other ops (copy, xor, etc.)           | ALL entries |
+| Shadows      | `_noShadow` (no shadowColor, or `=== Color.transparent`, or zero blur+offsets) | Any other shadow state | rect / roundRect / stadium families ONLY — circle/arc/line direct paths never consult it and silently DROP ctx shadows (§9) |
+| Paint Alpha  | paintSource.a > 0                          | Fully transparent paint                   | rect / roundRect / stadium (→ generic, a pure pessimization) · `fillArc` returns early drawing nothing · `_fillCircleDirect` routes a=0 to `fill_Alpha` (draws nothing) |
+| Line Cap     | lineCap === 'butt'                         | 'round', 'square'                         | line + arc STROKE entries only (`strokeLine`, `outerStrokeArc`, `fillOuterStrokeArc`) |
+
+`globalAlpha` is deliberately in NO gate: it selects the `_Alpha` renderer variant, which is
+still a direct path (one exception: `fillCircle`'s unwired opaque-color+`globalAlpha<1` case,
+§9).
 
 ### Universal Stroke Rule — sub-pixel (HAIRLINE) widths:
 
@@ -227,10 +238,8 @@ width (no `_Alpha` direct renderer; they keep the generic path).
 
 | Shape       | Additional Checks                                                         |
 |-------------|---------------------------------------------------------------------------|
-| Rectangle   | Transform: isAxisAligned OR isUniformScale                                |
-|             | Non-uniform scale + rotation → path-based rendering (produces parallelogram)         |
-| RoundedRect | Transform: isIdentity for axis-aligned; rotated uses TRANSFORM_EPSILON (0.0001) |
-|             | threshold matching Transform2D.isAxisAligned for consistent detection          |
+| Rectangle   | Transform: isAxisAligned OR isUniformScale. Generic ONLY when BOTH fail — a non-90°-multiple rotation combined with non-uniform scale, a SHEAR, or a mirror-with-rotation (produces a parallelogram/quad the rect renderers can't draw). NOTE isAxisAligned covers 0/90/180/270 incl. flips, so a 90°-ROTATED NON-UNIFORM CTM stays fully direct (AA arm, w/h swapped); a tilted UNIFORM CTM stays direct (Rot arm). |
+| RoundedRect | Transform: isUniformScale REQUIRED (non-uniform would need ellipse corners → generic; ⚠ stricter than plain rects — axis-aligned `scale(2,1)` goes generic here but stays direct for Rectangle). Within it, a three-arm ladder: isIdentity (literal user coords) → isAxisAligned (device coords, 90° w/h swap) → rotated (`*_Rot_Any`). All arms are the same renderer family with numerically equivalent arguments at scale 1. |
 | Circle      | Transform: isUniformScale (translate/rotate/uniform-scale go direct — pre-multiplication is byte-exact,      |
 |             | test 050; NON-uniform scale gates to the generic pipeline via an un-baked user-space path, so the caller      |
 |             | gets the correct ELLIPSE rather than the geometric-mean-radius circle the direct path would draw — test 054). |
@@ -240,6 +249,38 @@ width (no `_Alpha` direct renderer; they keep the generic path).
 | Arc         | lineCap === 'butt' (required for direct rendering)                               |
 |             | Transform: isUniformScale — same gate + generic-path fallback as Circle (test 054) |
 |             | Angle normalization for clockwise/anticlockwise                           |
+
+### Per-entry dispatch summary (complete conditions, audited 2026-08-12)
+
+The one table that answers "when does THIS entry leave the direct path, and where does it land".
+"Decomposes" means the fused entry re-enters its two component entries, each re-dispatching
+independently (so e.g. a gradient fill + solid stroke yields a generic fill and a DIRECT stroke).
+
+| Entry | CTM for direct | Non-CTM for direct | Falls back on | Fallback target |
+|---|---|---|---|---|
+| `fillRect` | isAxisAligned OR isUniformScale | Color, a>0, source-over, `_noShadow` | gradient/pattern · a=0 · composite · shadow · shear/mirror-rot/rot+non-uniform | generic rasterizer (⚠ negative dims: direct arm no-ops, generic arm THROWS — §9) |
+| `strokeRect` | same | same (stroke paint) | same | generic (`lineDash` ignored on BOTH arms — §9) |
+| `fillStrokeRect` | same | both paints Color, source-over, `_noShadow`, something to draw | either paint non-Color · nothing to draw · composite · shadow · CTM | decomposes → `fillRect` + `strokeRect` |
+| `clearRect` | n/a (`b===0 && c===0` picks span loop vs inverse-transform loop) | none | NEVER — direct-only | — (ignores alpha/composite/shadow by design) |
+| `fillRoundRect` | isUniformScale (ladder identity→AA→rot) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform scale | generic via external `SWPath2D` (radius≤0 → `fillRect`) |
+| `strokeRoundRect` | same | same (stroke) | same | generic via `stroke(path)` — the ONE rect-family fallback that honours `lineDash` (radius≤0 → `strokeRect`) |
+| `fillStrokeRoundRect` | same | both Color, source-over, `_noShadow`, something to draw | as `fillStrokeRect` + non-uniform | decomposes → `fillRoundRect` + `strokeRoundRect` (radius≤0 → `fillStrokeRect`) |
+| `fillStadium` | isUniformScale (rot arm delegates to `RoundedRectOpsRot`, r=min/2) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform | generic via external `SWPath2D` (no stroke API exists) |
+| `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over, and (a<255 OR globalAlpha≥1) | non-Color · composite · ⚠ a=255 & globalAlpha<1 (§9) | legacy fallback — ⚠ CTM-broken (§9) |
+| `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over | non-Color · a=0 · composite | legacy fallback — ⚠ CTM-broken (§9); cap/join/dash ignored |
+| `fillStrokeCircle` | isUniformScale (pre-gate) | both Color, source-over, something to draw | either non-Color · composite · nothing | sequential `_fillCircleDirect` + `_strokeCircleDirect` (still direct dispatchers) |
+| `fillArc` | isUniformScale (pre-gate) | Color, source-over (NO shadow gate, NO a>0 fallback — a=0 returns silently) | non-Color · composite | legacy fallback — ⚠ CTM-broken (§9); never tier-0-clipped |
+| `outerStrokeArc` | isUniformScale (pre-gate) | Color, a>0, source-over, lineCap 'butt' | non-Color · a=0 · composite · round/square cap | legacy fallback — ⚠ CTM-broken (§9) |
+| `fillOuterStrokeArc` | isUniformScale (pre-gate) | both Color, source-over, lineCap 'butt', something to draw | composite · cap · ⚠ non-Color half is silently DROPPED, not fallen back (§9) | part-legacy fallback |
+| `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt' | non-Color · composite · round/square cap | legacy fallback — ⚠ CTM-broken (§9); alpha/CTM/clip/shadow/dash never gate |
+| `fillText` | direct atlas blit iff `b=c=0, a=d=dpr`, integer e/f; else intermediate buffer + `drawImage` | none (no composite/shadow/alpha/clip gate — both arms honour them via `drawImage`) | `maxWidth` → throw · gradient/pattern → ⚠ silent BLACK substitution (console.warn) | both arms mark path-based |
+| `strokeText` | — | — | ALWAYS throws | — |
+| `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer) |
+
+Clip state is NOT a dispatch condition anywhere: no clip → raw fills; tier-0 rect clip → clamped
+extents (where wired — `fillStrokeRect`, all `*_Rot_*` arms, `ArcOps` and `LineOps` always
+materialise the bitmask instead, a perf loss only); path clip → per-pixel bitmask test INSIDE the
+direct renderers.
 
 ---
 
@@ -772,6 +813,60 @@ if (isOpaque) {
 ### Low Priority Enhancements:
 
 1. **clipRect/clipCircle convenience methods** - Optional non-standard API additions
+
+### Defects / inconsistencies found by the 2026-08-12 dispatch audit
+
+Unfixed; recorded here so they are not re-discovered. Each is a candidate fix; none blocks
+current consumers:
+
+1. **`fillCircle`'s unwired opacity case.** An opaque Color under `globalAlpha < 1` matches
+   neither `isOpaqueColor` (fails globalAlpha) nor `isSemiTransparentColor` (fails `a < 255`) in
+   `_fillCircleDirect`, so it drops to the legacy fallback although `CircleOps.fill_Alpha`
+   handles it exactly. Every sibling entry handles this case directly.
+2. **The legacy circle/arc/line fallbacks double-apply the CTM.** `_fillCircleDirect`,
+   `_strokeCircleDirect`, `_strokeLineDirect`, `fillArc`, `outerStrokeArc` and
+   `fillOuterStrokeArc` feed already-device-space coordinates into `beginPath()/arc()/moveTo()`,
+   which bake the live CTM again (only some then reset to IDENTITY, and only after building).
+   Under any non-identity CTM these fallbacks draw at the wrong place/size. The newer
+   `!isUniformScale` pre-gates use an un-baked external `SWPath2D` and are correct — two
+   generations of fallback code coexist; the legacy ones should be migrated to the external-path
+   form.
+3. **`fillOuterStrokeArc` silently drops gradient/pattern halves.** Its generic fallback guards
+   on `hasFill`/`hasStroke`, which embed `instanceof Color`, so a non-Color half draws NOTHING
+   instead of falling back.
+4. **Ctx shadows are silently dropped by the circle/arc/line direct paths.** `_noShadow` is only
+   consulted by the rect/roundRect/stadium gates; `ShadowPipeline` is only invoked from
+   `Rasterizer`. So `shadowBlur=5; fillCircle(...)` draws shadowless while `fillRect(...)`
+   renders the shadow.
+5. **`_noShadow` uses reference identity for transparency** (`shadowColor === Color.transparent`)
+   while the setter builds a NEW Color for `'rgba(0,0,0,0)'` — an invisible shadow with non-zero
+   blur/offset therefore de-fast-paths every rect-family draw (pure pessimization, and the
+   direct/generic rasterizations differ per the §3 hairline doctrine note). `needsShadow`
+   correctly checks `shadowColor.a > 0`; the gate should too.
+6. **`fillRect`/`strokeRect` argument-validation divergence.** No validation at the entry:
+   negative dimensions silently no-op on the direct arm but THROW in `Rasterizer.fillRect` — the
+   same call succeeds or throws depending on whether the paint is a Color or a gradient. (The
+   other rect-family entries validate up front.)
+7. **`setLineDash` is honoured inconsistently:** a no-op for `strokeRect` on BOTH arms (the
+   generic arm omits it from the stroke props), ignored by every direct stroke arm, honoured
+   only by `strokeRoundRect`'s `stroke(path)` fallback and by explicit path `stroke()`.
+8. **`clearRect`'s axis-aligned test is raw `b===0 && c===0`** (no `TRANSFORM_EPSILON`),
+   disagreeing with every other entry's `isAxisAligned` at the epsilon boundary.
+9. **Fully-transparent paint (`a === 0`) is handled three different ways:** rects → generic
+   pipeline (wasted work, draws nothing); `fillArc` → early return (no draw, no fallback);
+   `_fillCircleDirect` → `fill_Alpha` (draws nothing). Harmless visually, inconsistent
+   dispatch-wise.
+10. **(owner observation, 2026-08-12) The rect generic-path condition looks wider than
+   necessary.** `fillRect`/`strokeRect` fall to the generic pipeline at
+   `!isAxisAligned && !isUniformScale` — but a rectangle under ANY affine CTM is a
+   parallelogram, and the quad machinery to fill one directly already exists and is already a
+   fast-path dependency: `RectOpsRot.fill_Rot_Any` renders through `QuadScanOps.fillQuad`, which
+   takes four arbitrary corners. Transforming the rect's corners and quad-filling should cover
+   shear / mirror-with-rotation / rotation+non-uniform-scale as a direct path too. The genuinely
+   open half is STROKES under non-uniform transforms (edge thickness varies with direction —
+   four per-edge quads with per-edge widths, or the geometric-mean approximation `strokeLine`
+   already accepts). Reviewed and either extended or justified in
+   `plans/direct-dispatch-gaps-and-coverage.md`.
 
 ---
 
