@@ -55,7 +55,13 @@ evidence and a controlled downstream (Fizzygum) reference migration.
   (254 + 79). 13 committed PNGs moved, each eyeballed (strips in
   `Fizzygum-tests/.scratch/b1-eyeball/`): rotated-fill boundary hairlines + Δ1
   alpha-composition on translucent fills — the two expected classes, nothing else.
-- **B2 fillRoundRect** — pending.
+- **B2 fillRoundRect** — DONE. `:1521` ladder deleted; radius≤0→fillRect delegation kept;
+  `RoundedRectOpsAA.fill_AA_Opaq/Alpha` deleted (~200 lines) after a fresh caller grep
+  found zero callers (fused arm composes `RectOpsAA` fills); class-header hierarchy +
+  "see fill_AA_Opaq" anchors re-pointed at `RectOpsAA`. 4 fill-only DR roundrect cases
+  flipped (fill+stroke cases ride the fused arm and stay direct — unchanged). Battery
+  green (254 + 79); **zero** committed PNGs moved (the visual corpus has no plain
+  roundRect fills).
 - **B3 fillStadium** — pending.
 - **B4 sweep** — pending.
 - **Phase C** — NOT STARTED (owner-attended session).

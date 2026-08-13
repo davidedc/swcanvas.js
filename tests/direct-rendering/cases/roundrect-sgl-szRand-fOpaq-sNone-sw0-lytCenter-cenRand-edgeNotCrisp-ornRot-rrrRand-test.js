@@ -153,7 +153,8 @@ registerDirectRenderingTest(
     'rounded-rects',
     {
         extremes: false,  // Rotated shapes have complex bounds, skip strict extremes check
-        shapeIntegrity: { hasFill: true, hasStroke: false }
+        shapeIntegrity: { hasFill: true, hasStroke: false },
+        allowPathBasedRendering: true // roundRect FILLS are generic since the fill-arm removal (DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16)
     },
     {
         title: 'Single Rotated Rounded Rectangle - Opaque Fill (Random)',

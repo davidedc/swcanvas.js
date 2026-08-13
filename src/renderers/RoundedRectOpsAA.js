@@ -3,7 +3,9 @@
  * Follows the PolygonFiller/RectOpsAA/CircleOps/LineOps pattern.
  *
  * Direct rendering is available exclusively via dedicated Context2D methods:
- * fillRoundRect(), strokeRoundRect(), fillStrokeRoundRect()
+ * strokeRoundRect(), fillStrokeRoundRect(). Plain roundRect FILLS always take the
+ * generic pipeline - the fill_AA_* statics were removed on parity evidence
+ * (DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16).
  *
  * Path-based rounded rectangles (beginPath() + roundRect() + fill()/stroke()) use the
  * generic polygon pipeline for consistent, predictable behavior.
@@ -16,7 +18,6 @@
  * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
  * Layer 1 (Primitives - call SpanOps, fallback to RectOpsAA for radius=0):
- *   fill_AA_Opaq, fill_AA_Alpha          → SpanOps.fill_Opaq/fill_Alpha
  *   stroke1px_AA_Opaq                    → Direct pixel writes
  *   stroke1px_AA_Alpha                   → Inline BLEND_ALPHA marker
  *   strokeThick_AA_Opaq, strokeThick_AA_Alpha → SpanOps.fill_Opaq/fill_Alpha
@@ -114,7 +115,7 @@ class RoundedRectOpsAA {
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
 
-        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        // Tier-0 rect clip bounds — see RectOpsAA.fill_AA_Opaq.
         const cx0 = clipRect ? clipRect.x0 : 0;
         const cy0 = clipRect ? clipRect.y0 : 0;
         const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
@@ -256,7 +257,7 @@ class RoundedRectOpsAA {
             g = color.g,
             b = color.b;
 
-        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        // Tier-0 rect clip bounds — see RectOpsAA.fill_AA_Opaq.
         const cx0 = clipRect ? clipRect.x0 : 0;
         const cy0 = clipRect ? clipRect.y0 : 0;
         const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
@@ -348,208 +349,6 @@ class RoundedRectOpsAA {
     }
 
     /**
-     * Direct rendering for opaque fill on axis-aligned rounded rectangle.
-     * Uses scanline algorithm with 32-bit packed writes.
-     *
-     * @param {Surface} surface - Target surface
-     * @param {number} x - Top-left X coordinate
-     * @param {number} y - Top-left Y coordinate
-     * @param {number} width - Rectangle width
-     * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius
-     * @param {Color} color - Fill color (must be opaque)
-     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
-     */
-    static fill_AA_Opaq(surface, x, y, width, height, radii, color, clipBuffer = null, clipRect = null) {
-        const surfaceWidth = surface.width;
-        const surfaceHeight = surface.height;
-        const data32 = surface.data32;
-
-        // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
-
-        // Fallback to RectOps for zero radius
-        if (radius <= 0) {
-            RectOpsAA.fill_AA_Opaq(surface, x, y, width, height, color, clipBuffer, clipRect);
-            return;
-        }
-
-        const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
-
-        // Tier-0 rect clip: clamp rows/spans to the clip rect (already clamped to the
-        // surface) and skip the per-pixel bit test — byte-identical to the bitmask
-        // path (see RectOpsAA). clipBuffer is null then. With no clipRect the bounds
-        // default to the surface, preserving the plain surface clamps.
-        const cx0 = clipRect ? clipRect.x0 : 0;
-        const cy0 = clipRect ? clipRect.y0 : 0;
-        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
-        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
-
-        // Calculate integer bounds
-        const rectX = Math.floor(x);
-        const rectY = Math.floor(y);
-        const rectW = Math.floor(width);
-        const rectH = Math.floor(height);
-
-        // For each scanline
-        for (let py = rectY; py < rectY + rectH; py++) {
-            if (py < cy0 || py >= cy1) continue;
-
-            let leftX = rectX;
-            let rightX = rectX + rectW - 1;
-
-            // Adjust for rounded corners
-            if (py < rectY + radius) {
-                // Top corners - calculate x extent based on circle equation
-                const cornerCenterY = rectY + radius;
-                const dy = cornerCenterY - py - 0.5;
-                const dySquared = dy * dy;
-                const radiusSquared = radius * radius;
-
-                if (dySquared < radiusSquared) {
-                    const dx = Math.sqrt(radiusSquared - dySquared);
-                    leftX = Math.ceil(rectX + radius - dx);
-                    rightX = Math.floor(rectX + rectW - radius + dx - 1);
-                } else {
-                    continue; // Outside the rounded area
-                }
-            } else if (py >= rectY + rectH - radius) {
-                // Bottom corners
-                const cornerCenterY = rectY + rectH - radius;
-                const dy = py - cornerCenterY + 0.5;
-                const dySquared = dy * dy;
-                const radiusSquared = radius * radius;
-
-                if (dySquared < radiusSquared) {
-                    const dx = Math.sqrt(radiusSquared - dySquared);
-                    leftX = Math.ceil(rectX + radius - dx);
-                    rightX = Math.floor(rectX + rectW - radius + dx - 1);
-                } else {
-                    continue; // Outside the rounded area
-                }
-            }
-
-            // Clamp to the clip frame (surface bounds when unclipped)
-            leftX = Math.max(cx0, leftX);
-            rightX = Math.min(cx1 - 1, rightX);
-
-            if (leftX > rightX) continue;
-
-            // Fill scanline
-            const spanLength = rightX - leftX + 1;
-            SpanOps.fill_Opaq(data32, surfaceWidth, surfaceHeight, leftX, py, spanLength, packedColor, clipBuffer);
-        }
-    }
-
-    /**
-     * Direct rendering for semi-transparent fill on axis-aligned rounded rectangle.
-     * Uses scanline algorithm with alpha blending.
-     *
-     * @param {Surface} surface - Target surface
-     * @param {number} x - Top-left X coordinate
-     * @param {number} y - Top-left Y coordinate
-     * @param {number} width - Rectangle width
-     * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius
-     * @param {Color} color - Fill color
-     * @param {number} globalAlpha - Global alpha value
-     * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
-     */
-    static fill_AA_Alpha(surface, x, y, width, height, radii, color, globalAlpha, clipBuffer = null, clipRect = null) {
-        const surfaceWidth = surface.width;
-        const surfaceHeight = surface.height;
-        const data = surface.data;
-
-        // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
-
-        // Fallback to RectOps for zero radius
-        if (radius <= 0) {
-            RectOpsAA.fill_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer, clipRect);
-            return;
-        }
-
-        const effectiveAlpha = (color.a / 255) * globalAlpha;
-        if (effectiveAlpha <= 0) return;
-        const invAlpha = 1 - effectiveAlpha;
-        const r = color.r,
-            g = color.g,
-            b = color.b;
-
-        // Tier-0 rect clip bounds — see fill_AA_Opaq.
-        const cx0 = clipRect ? clipRect.x0 : 0;
-        const cy0 = clipRect ? clipRect.y0 : 0;
-        const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
-        const cy1 = clipRect ? clipRect.y1 : surfaceHeight;
-
-        // Calculate integer bounds
-        const rectX = Math.floor(x);
-        const rectY = Math.floor(y);
-        const rectW = Math.floor(width);
-        const rectH = Math.floor(height);
-
-        // For each scanline
-        for (let py = rectY; py < rectY + rectH; py++) {
-            if (py < cy0 || py >= cy1) continue;
-
-            let leftX = rectX;
-            let rightX = rectX + rectW - 1;
-
-            // Adjust for rounded corners (same logic as fill_AA_Opaq)
-            if (py < rectY + radius) {
-                const cornerCenterY = rectY + radius;
-                const dy = cornerCenterY - py - 0.5;
-                const dySquared = dy * dy;
-                const radiusSquared = radius * radius;
-
-                if (dySquared < radiusSquared) {
-                    const dx = Math.sqrt(radiusSquared - dySquared);
-                    leftX = Math.ceil(rectX + radius - dx);
-                    rightX = Math.floor(rectX + rectW - radius + dx - 1);
-                } else {
-                    continue;
-                }
-            } else if (py >= rectY + rectH - radius) {
-                const cornerCenterY = rectY + rectH - radius;
-                const dy = py - cornerCenterY + 0.5;
-                const dySquared = dy * dy;
-                const radiusSquared = radius * radius;
-
-                if (dySquared < radiusSquared) {
-                    const dx = Math.sqrt(radiusSquared - dySquared);
-                    leftX = Math.ceil(rectX + radius - dx);
-                    rightX = Math.floor(rectX + rectW - radius + dx - 1);
-                } else {
-                    continue;
-                }
-            }
-
-            // Clamp to the clip frame (surface bounds when unclipped)
-            leftX = Math.max(cx0, leftX);
-            rightX = Math.min(cx1 - 1, rightX);
-
-            if (leftX > rightX) continue;
-
-            // Fill scanline with alpha blending
-            const spanLength = rightX - leftX + 1;
-            SpanOps.fill_Alpha(
-                data,
-                surfaceWidth,
-                surfaceHeight,
-                leftX,
-                py,
-                spanLength,
-                r,
-                g,
-                b,
-                effectiveAlpha,
-                invAlpha,
-                clipBuffer
-            );
-        }
-    }
-
-    /**
      * Direct rendering for thick opaque stroke on axis-aligned rounded rectangle.
      * Uses scanline algorithm to fill the stroke region between inner and outer bounds.
      *
@@ -592,7 +391,7 @@ class RoundedRectOpsAA {
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
 
-        // Tier-0 rect clip bounds — see fill_AA_Opaq. The inner (hole) extents get the
+        // Tier-0 rect clip bounds — see RectOpsAA.fill_AA_Opaq. The inner (hole) extents get the
         // dual clamp below so the left/right stroke spans stay inside [cx0, cx1) even
         // when the clip rect cuts through the stroke band.
         const cx0 = clipRect ? clipRect.x0 : 0;
@@ -968,7 +767,7 @@ class RoundedRectOpsAA {
             return;
         }
 
-        // Tier-0 rect clip bounds — see fill_AA_Opaq.
+        // Tier-0 rect clip bounds — see RectOpsAA.fill_AA_Opaq.
         const cx0 = clipRect ? clipRect.x0 : 0;
         const cy0 = clipRect ? clipRect.y0 : 0;
         const cx1 = clipRect ? clipRect.x1 : surfaceWidth;

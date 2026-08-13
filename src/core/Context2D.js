@@ -1396,7 +1396,8 @@ class Context2D {
 
     /**
      * Fill a rounded rectangle.
-     * Uses direct rendering when possible (solid color, source-over, no shadow, uniform scale).
+     * Always renders through the generic path pipeline (fill arms removed on
+     * parity evidence - §9 entries 15-16); radius <= 0 delegates to fillRect.
      * @param {number} x - Rectangle x coordinate
      * @param {number} y - Rectangle y coordinate
      * @param {number} width - Rectangle width
@@ -1434,108 +1435,13 @@ class Context2D {
             return;
         }
 
-        // Direct rendering: Color fill with source-over, no shadows
-        if (this._canUseDirectRendering(this._fillStyle)) {
-            const t = this._transform;
-            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
-            // paths; the rotated branch materialises the bitmask on demand (see
-            // fillRect for the rationale).
-            const tier0ClipRect = this._tier0ClipRect();
-            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
-
-            // Rounded rects require uniform scale (non-uniform would make ellipses)
-            if (t.isUniformScale) {
-                const scaledW = width * t.scaleX;
-                const scaledH = height * t.scaleY;
-                const center = t.transformPoint({ x: x + width / 2, y: y + height / 2 });
-                const scaledRadius = radius * t.scaleX;
-                const isOpaque = this._fillStyle.a === 255 && this.globalAlpha >= 1.0;
-
-                if (t.isIdentity) {
-                    // No transform: use axis-aligned methods with original coordinates
-                    if (isOpaque) {
-                        RoundedRectOpsAA.fill_AA_Opaq(
-                            this.surface,
-                            x,
-                            y,
-                            width,
-                            height,
-                            radii,
-                            this._fillStyle,
-                            clip,
-                            tier0ClipRect
-                        );
-                    } else {
-                        RoundedRectOpsAA.fill_AA_Alpha(
-                            this.surface,
-                            x,
-                            y,
-                            width,
-                            height,
-                            radii,
-                            this._fillStyle,
-                            this.globalAlpha,
-                            clip,
-                            tier0ClipRect
-                        );
-                    }
-                    return;
-                }
-
-                if (t.isAxisAligned) {
-                    // Inline dimension swapping
-                    const finalW = t.is90DegreeRotated ? scaledH : scaledW;
-                    const finalH = t.is90DegreeRotated ? scaledW : scaledH;
-                    const tlX = center.x - finalW / 2;
-                    const tlY = center.y - finalH / 2;
-
-                    if (isOpaque) {
-                        RoundedRectOpsAA.fill_AA_Opaq(
-                            this.surface,
-                            tlX,
-                            tlY,
-                            finalW,
-                            finalH,
-                            scaledRadius,
-                            this._fillStyle,
-                            clip,
-                            tier0ClipRect
-                        );
-                    } else {
-                        RoundedRectOpsAA.fill_AA_Alpha(
-                            this.surface,
-                            tlX,
-                            tlY,
-                            finalW,
-                            finalH,
-                            scaledRadius,
-                            this._fillStyle,
-                            this.globalAlpha,
-                            clip,
-                            tier0ClipRect
-                        );
-                    }
-                    return;
-                } else {
-                    // Rotated with uniform scale: use fillRotated
-                    RoundedRectOpsRot.fill_Rot_Any(
-                        this.surface,
-                        center.x,
-                        center.y,
-                        scaledW,
-                        scaledH,
-                        scaledRadius,
-                        t.rotationAngle,
-                        this._fillStyle,
-                        this.globalAlpha,
-                        this._ensureClipBuffer()
-                    );
-                    return;
-                }
-            }
-            // Non-uniform scale: fall through to path-based rendering
-        }
-
+        // NO direct fill arm, deliberately: roundRect FILLS are uniformly generic
+        // (disable-and-benchmark measured dead parity across sizes, opacities and
+        // rotations - DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16 and
+        // plans/one-rect-fill-pipeline-and-fill-arm-removal.md). Do not re-add a
+        // fill fast path without fresh benchmark evidence. Direct roundRect
+        // machinery lives on in strokeRoundRect/fillStrokeRoundRect only.
+        //
         // Path-based rendering: build an un-baked, user-space path and fill it as an
         // external Path2D so it draws under the current CTM. (The current default
         // path bakes the CTM at build time — the wrong coordinate space here.)

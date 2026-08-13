@@ -114,6 +114,7 @@ registerDirectRenderingTest(
     'rounded-rects',
     {
         // Default visual comparison
+        allowPathBasedRendering: true // roundRect FILLS are generic since the fill-arm removal (DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16)
     },
     {
         title: 'Rounded Rectangles Without Stroke (Multiple, Fixed Size, Random Pos)',

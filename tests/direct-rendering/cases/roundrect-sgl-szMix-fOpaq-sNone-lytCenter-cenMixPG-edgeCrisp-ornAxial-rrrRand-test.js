@@ -98,7 +98,8 @@ registerDirectRenderingTest(
     {
         extremes: true,
         totalUniqueColors: 2,  // White background + opaque blue
-        shapeIntegrity: { hasFill: true, hasStroke: false }
+        shapeIntegrity: { hasFill: true, hasStroke: false },
+        allowPathBasedRendering: true // roundRect FILLS are generic since the fill-arm removal (DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16)
     },
     {
         title: 'Single Opaque Filled Rounded Rectangle (Crisp, Mixed P/G Centering)',

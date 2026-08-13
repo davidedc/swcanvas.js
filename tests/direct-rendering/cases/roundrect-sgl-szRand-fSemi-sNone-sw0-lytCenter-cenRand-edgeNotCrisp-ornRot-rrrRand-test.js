@@ -157,7 +157,8 @@ registerDirectRenderingTest(
     {
         extremes: false,  // Rotated shapes have complex bounds, skip strict extremes check
         totalUniqueColors: 2,  // Background + single semi-transparent fill color (no overdraw)
-        shapeIntegrity: { hasFill: true, hasStroke: false }
+        shapeIntegrity: { hasFill: true, hasStroke: false },
+        allowPathBasedRendering: true // roundRect FILLS are generic since the fill-arm removal (DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16)
     },
     {
         title: 'Single Rotated Rounded Rectangle - Semi-Transparent Fill (Random)',
