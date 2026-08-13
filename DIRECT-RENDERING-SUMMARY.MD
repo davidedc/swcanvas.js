@@ -230,9 +230,14 @@ DDA now dedups pixels shared by consecutive edges (§6.5), so rotated
 translucent strokes — including every rotated hairline — are single-blend
 (test 055 §7).
 
-Deliberately NOT wired: the fused `fillStroke*` entries' stroke halves (no
-hairline caller exists — untested surface), and gradient/pattern strokes at any
-width (no `_Alpha` direct renderer; they keep the generic path).
+Deliberately NOT wired: the fused `fillStroke*` entries' stroke halves — all
+FOUR of them (`fillStrokeRect`, `fillStrokeRoundRect`, `fillStrokeCircle`,
+`fillOuterStrokeArc`) paint their `lineWidth <= 1` strokes at FULL weight (no
+hairline caller exists — previously an untested surface, now a PINNED contract:
+core test 068 asserts full-weight fused vs faint standalone per entry, noting
+the circle/arc fused sub-pixel rings can be PARTIAL — the degenerate annulus
+scan — so the pin is about weight, not coverage). Gradient/pattern strokes at
+any width also stay unwired (no `_Alpha` direct renderer; generic path).
 
 ### Shape-Specific Conditions:
 
