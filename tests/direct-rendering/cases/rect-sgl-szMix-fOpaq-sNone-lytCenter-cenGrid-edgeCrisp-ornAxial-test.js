@@ -91,7 +91,8 @@ registerDirectRenderingTest(
     {
         extremes: true,
         totalUniqueColors: 2,
-        shapeIntegrity: { hasFill: true, hasStroke: false }
+        shapeIntegrity: { hasFill: true, hasStroke: false },
+        allowPathBasedRendering: true // rect FILLS are generic since the fill-arm removal (DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16)
     },
     {
         title: 'Filled Rectangle - Opaque Color',

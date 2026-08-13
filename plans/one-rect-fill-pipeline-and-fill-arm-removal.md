@@ -26,8 +26,35 @@ evidence and a controlled downstream (Fizzygum) reference migration.
   axis-aligned scale(2,1), dispatch difference proven live per draw via the path-based
   flag; (c) **zero** committed visual-output PNGs moved (177 tracked — nothing to
   eyeball); (d) perf before/after: see the table in this box. §9 entry 15 written.
-- **Phase B step 0 (re-census)** — pending.
-- **B1 fillRect** — pending.
+- **Phase B step 0 (re-census)** — DONE. Preview swap injection-PROVEN (marker in
+  `fizzygum-boot-sw-min.js`), all four gates `false &&`-disabled on the Phase-A engine:
+  **164/293 failed, `geometry-violations: 0`** (list:
+  `Fizzygum-tests/.scratch/…/census-failing-164.json`, also in the session scratchpad).
+  Diffpage sample (10 tests, both dprs, `fg classify` + pixel forensics in
+  `Fizzygum-tests/.scratch/census-diffviz/`): the §2.3 menu-shadow Δ1 class is GONE
+  (menu screenshots down from 1,295 Δ1 px to 15–42 boundary px — Phase A cured it), and
+  most diffs are the honest §2.2 classes (corners/bands/caps, counts 15–320/screenshot at
+  maxΔ 127–248). **NEW FINDING (the plan's §2.3 "~nothing post-A" prediction was wrong):**
+  a second ±1 class, whole-region Δ1 on TRANSLUCENT fills under `globalAlpha`
+  (box/highlight tests: 7k–43k px, 100% Δ1). Root cause, probe-isolated (256-alpha sweep,
+  direct-vs-generic, dispatch proven live): fillStyle-alpha alone is byte-identical
+  (0/255 alphas differ); the divergence is GLOBAL-ALPHA COMPOSITION ONLY (30/100
+  globalAlpha values differ). The direct arms compose float
+  (`effectiveAlpha = (color.a/255)*globalAlpha`, `RectOpsAA.fill_AA_Alpha`); the generic
+  pipeline quantizes to a byte first (`Color.withGlobalAlpha` `Math.round`, via
+  `PolygonFiller._evaluatePaintSource`). The quantized convention is the engine's DOMINANT
+  one (every path fill/gradient/stroke already composes globalAlpha this way), so the
+  fill-arm removal CONVERGES fills onto it — the divergence dies with the arms being
+  deleted; nothing is hiding in the survivor. Churn class accepted into the recapture
+  scope; owner eyeballs at Phase C before any recapture (and may still reject there).
+- **B1 fillRect** — DONE. `:763` block (AA + rot branches) deleted; 066 collapsed to the
+  all-CTMs-generic pin (renamed `066-fillrect-all-ctms-generic-pin.js`); 062 reduced to
+  byte-identity + visible-shadow; 6 DR rect cases flipped (`allowPathBasedRendering:
+  true` + rationale); 054/055 fixture flag-resets moved AFTER the background fillRect
+  (the reset preceded a now-generic fixture fill — the flag is global). Battery green
+  (254 + 79). 13 committed PNGs moved, each eyeballed (strips in
+  `Fizzygum-tests/.scratch/b1-eyeball/`): rotated-fill boundary hairlines + Δ1
+  alpha-composition on translucent fills — the two expected classes, nothing else.
 - **B2 fillRoundRect** — pending.
 - **B3 fillStadium** — pending.
 - **B4 sweep** — pending.

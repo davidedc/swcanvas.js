@@ -4003,8 +4003,11 @@
 
             // 3. Rotation + uniform scale still goes direct.
             {
-                SWCanvas.Core.Context2D.resetPathBasedFlag();
                 const { ctx } = newCtx();
+                // Reset AFTER the fixture background: fillRect is generic since the
+                // fill-arm removal, so a pre-fixture reset would see ITS flag, not the
+                // circle's.
+                SWCanvas.Core.Context2D.resetPathBasedFlag();
                 ctx.save();
                 ctx.translate(60, 40);
                 ctx.rotate(0.5);
@@ -4165,8 +4168,10 @@
 
             // Render an entry at a given LOGICAL lineWidth and globalAlpha.
             function render(entry, transform, logicalLineWidth, globalAlpha) {
-                SWCanvas.Core.Context2D.resetPathBasedFlag();
                 const { surface, ctx } = newCtx();
+                // Reset AFTER the fixture background: fillRect is generic since the
+                // fill-arm removal; the flag must isolate the entry's own dispatch.
+                SWCanvas.Core.Context2D.resetPathBasedFlag();
                 ctx.save();
                 transform.apply(ctx);
                 ctx.setStrokeStyle(0, 0, 0, 255);
@@ -4291,8 +4296,10 @@
             //    stroke — and every rotated hairline, translucent by construction —
             //    shows exactly ONE blended level: no darker corner dots.
             {
-                SWCanvas.Core.Context2D.resetPathBasedFlag();
                 const { surface, ctx } = newCtx();
+                // Reset AFTER the fixture background (fillRect is generic since the
+                // fill-arm removal).
+                SWCanvas.Core.Context2D.resetPathBasedFlag();
                 ctx.save();
                 ctx.translate(28, 28);
                 ctx.rotate(0.3);
@@ -5347,22 +5354,31 @@
         // This file will be concatenated into the main test suite
         //
         // Regression guard (a de-pessimization, not a wrong-pixels bug). The cached
-        // _noShadow flag - consulted by every rect/roundRect/stadium direct-rendering
-        // gate - tested `shadowColor === Color.transparent` (reference identity),
-        // while ShadowPipeline.needsShadow tests `shadowColor.a > 0`. Every non-default
+        // _noShadow flag - consulted by the rect/roundRect/stadium direct-rendering
+        // gates of the era, and still by the stroke/fused/circle/arc gates - tested
+        // `shadowColor === Color.transparent` (reference identity), while
+        // ShadowPipeline.needsShadow tests `shadowColor.a > 0`. Every non-default
         // route allocates a fresh Color (setShadowColor, the compat CSS parser), so the
         // common "disable the shadow by colour, leave blur/offset set" idiom flipped
-        // _noShadow false and silently abandoned the whole family to the generic
-        // pipeline for a shadow that would never be drawn. The flag now checks
-        // `shadowColor.a === 0` - the exact negation of needsShadow. Contract:
-        //   1. STRUCTURAL: transparent shadow colour (fresh Color, a=0) with blur and
-        //      offsets set keeps fillRect/fillRoundRect on the direct path.
-        //   2. BYTE-IDENTITY: that state renders identically to the default no-shadow
-        //      state.
-        //   3. NOT OVERSHOT: a real (visible) shadow still leaves the direct path and
-        //      renders shadow pixels.
+        // _noShadow false and silently routed the draw through the shadow machinery
+        // for a shadow that would never be drawn. The flag now checks
+        // `shadowColor.a === 0` - the exact negation of needsShadow (§9 entry 5).
+        //
+        // HISTORY: this test originally ALSO pinned structurally that an invisible
+        // shadow kept fillRect/fillRoundRect on their direct fill arms. Those arms were
+        // removed by the fill-arm-removal campaign
+        // (plans/one-rect-fill-pipeline-and-fill-arm-removal.md) - rect-family FILLS
+        // are now uniformly generic, so the structural half became vacuous and was
+        // dropped. The BYTE-IDENTITY contract below is the surviving guard: however an
+        // invisible shadow is spelled, it must not change a single pixel - under
+        // either pipeline. (The _noShadow flag itself still gates the stroke, fused,
+        // circle and arc direct arms, where §9 entry 5's de-pessimization remains live.)
+        // Contract:
+        //   1. BYTE-IDENTITY: value-transparent shadow state (fresh Color a=0, blur and
+        //      offsets set) renders identically to the default no-shadow state.
+        //   2. NOT OVERSHOT: a real (visible) shadow still renders shadow pixels.
 
-        test('_noShadow - transparent shadow colour by value keeps direct paths', () => {
+        test('_noShadow - transparent shadow colour by value is a no-op on pixels', () => {
             const W = 80;
             const H = 80;
 
@@ -5374,41 +5390,21 @@
                 return { surface, ctx };
             }
 
-            // 1. Structural: invisible shadow (fresh transparent Color + blur/offsets)
-            //    must not de-fast-path the rect family.
-            {
-                const { ctx } = newCtx();
-                ctx.setShadowColor(0, 0, 0, 0); // fresh Color, not the Color.transparent instance
-                ctx.setShadowBlur(5);
-                ctx.setShadowOffsetX(3);
-                ctx.setShadowOffsetY(3);
-                ctx.setFillStyle(255, 0, 0, 255);
-                SWCanvas.Core.Context2D.resetPathBasedFlag();
-                ctx.fillRect(20, 20, 30, 30);
-                if (SWCanvas.Core.Context2D.wasPathBasedUsed()) {
-                    throw new Error('fillRect with an INVISIBLE shadow (a=0, blur/offsets set) fell to the generic pipeline');
-                }
-                SWCanvas.Core.Context2D.resetPathBasedFlag();
-                ctx.fillRoundRect(20, 55, 30, 20, 5);
-                if (SWCanvas.Core.Context2D.wasPathBasedUsed()) {
-                    throw new Error('fillRoundRect with an INVISIBLE shadow fell to the generic pipeline');
-                }
-                log('  invisible shadow (value-transparent): rect family stays direct');
-            }
-
-            // 2. Byte-identity with the default no-shadow state.
+            // 1. Byte-identity with the default no-shadow state (fillRect + fillRoundRect).
             {
                 const a = newCtx();
-                a.ctx.setShadowColor(0, 0, 0, 0);
+                a.ctx.setShadowColor(0, 0, 0, 0); // fresh Color, not the Color.transparent instance
                 a.ctx.setShadowBlur(5);
                 a.ctx.setShadowOffsetX(3);
                 a.ctx.setShadowOffsetY(3);
                 a.ctx.setFillStyle(255, 0, 0, 255);
                 a.ctx.fillRect(20, 20, 30, 30);
+                a.ctx.fillRoundRect(20, 55, 30, 20, 5);
 
                 const b = newCtx();
                 b.ctx.setFillStyle(255, 0, 0, 255);
                 b.ctx.fillRect(20, 20, 30, 30);
+                b.ctx.fillRoundRect(20, 55, 30, 20, 5);
 
                 for (let i = 0; i < a.surface.data.length; i++) {
                     if (a.surface.data[i] !== b.surface.data[i]) {
@@ -5418,10 +5414,10 @@
                         );
                     }
                 }
-                log('  invisible shadow === default no-shadow (byte-identical)');
+                log('  invisible shadow === default no-shadow (byte-identical, rect + roundRect)');
             }
 
-            // 3. Not overshot: a VISIBLE shadow still renders (via the generic path).
+            // 2. Not overshot: a VISIBLE shadow still renders.
             {
                 const { surface, ctx } = newCtx();
                 ctx.setShadowColor(0, 0, 255, 255);
@@ -5948,30 +5944,28 @@
         });
 
 
-        // Test: fillRect under GENERAL affine CTMs stays on the generic pipeline (decision pin)
+        // Test: fillRect dispatches to the generic pipeline under EVERY CTM (decision pin)
         // This file will be concatenated into the main test suite
         //
-        // DECISION RECORD PIN, not a bug guard. A transformed rectangle is a convex
-        // parallelogram, and a direct quad arm (corner transform ->
-        // QuadScanOps.fillQuad) was implemented and benchmarked for the CTM class
-        // failing BOTH isAxisAligned and isUniformScale (shear, mirror-with-rotation,
-        // rotation + non-uniform scale). benchmark-session over the rect-affine perf
-        // cases measured NO win - 0.99x-1.02x across every size and opacity, dead
-        // parity: the generic pipeline's solid-fill span arm
-        // (PolygonFiller._fillPolygonsDirect, tier-0-wired) is already direct-grade
-        // for this workload, and even the tiny-shape per-call-overhead case showed
-        // nothing. Landing it would have added a new dispatch surface, a new
-        // UNWIRED-clip arm (fillQuad has no clipRect concept), and a rasterization-
-        // convention change on the moved fills, for zero measured benefit - so the
-        // extension was REJECTED ON EVIDENCE (DIRECT-RENDERING-SUMMARY.MD §9,
-        // 2026-08-13; perf case: tests/direct-rendering/perf-cases/rect-affine-perf.js).
+        // DECISION RECORD PIN, not a bug guard. fillRect once had two direct fill arms
+        // (RectOpsAA for axis-aligned CTMs, RectOpsRot for tilted uniform-scale CTMs)
+        // and a rejected third (the general-affine quad arm - benchmarked at 0.99x-1.02x,
+        // dead parity, DIRECT-RENDERING-SUMMARY.MD §9 entry 10). The remaining two were
+        // then ALSO removed on benchmark evidence: disable-and-benchmark measured the
+        // generic pipeline's tier-0-wired solid span arm (PolygonFiller._fillPolygonsDirect)
+        // at parity for tilted fills (1.00-1.01x) and within 2-6% on small/mid
+        // alpha axis-aligned fills - a cost the owner explicitly accepted for one
+        // rect-fill implementation (§9 entries 15-16;
+        // plans/one-rect-fill-pipeline-and-fill-arm-removal.md). Rect FILLS are now
+        // uniformly generic across ALL CTM classes; the direct rect machinery lives on
+        // only in strokes and the fused fillStroke entries (out of scope, structural wins).
         //
-        // This test pins the decision structurally: general-affine fillRects dispatch
-        // to the generic pipeline. If it starts failing, someone re-introduced a
-        // general-affine direct arm - do that only with fresh benchmark evidence, and
-        // then update this pin and the §9 record together.
+        // This test pins the decision structurally: fillRect dispatches generic under
+        // every CTM class. If it starts failing, someone re-introduced a rect-fill
+        // fast path - do that only with fresh §2.1-grade benchmark evidence, and then
+        // update this pin and the §9 record together.
 
-        test('fillRect general-affine CTMs - stays generic (rejected-extension pin)', () => {
+        test('fillRect - dispatches generic under every CTM class (fill-arm-removal pin)', () => {
             const W = 100;
             const H = 60;
 
@@ -5983,7 +5977,25 @@
                 return { surface, ctx };
             }
 
-            const GENERAL_CTMS = [
+            const ALL_CTMS = [
+                ['identity', (ctx) => {}],
+                ['integer translate', (ctx) => ctx.translate(10, 5)],
+                ['axis-aligned scale', (ctx) => ctx.scale(2, 1)],
+                [
+                    '90-degree rotation',
+                    (ctx) => {
+                        ctx.translate(50, 30);
+                        ctx.rotate(Math.PI / 2);
+                    }
+                ],
+                [
+                    'tilted uniform scale',
+                    (ctx) => {
+                        ctx.translate(50, 30);
+                        ctx.rotate(0.5);
+                        ctx.scale(1.5, 1.5);
+                    }
+                ],
                 ['shear', (ctx) => ctx.transform(1, 0, 0.5, 1, 5, 0)],
                 [
                     'rotation + non-uniform scale',
@@ -5992,65 +6004,26 @@
                         ctx.rotate(0.5);
                         ctx.scale(2, 1);
                     }
-                ],
-                [
-                    'mirror + rotation',
-                    (ctx) => {
-                        ctx.translate(50, 30);
-                        ctx.rotate(0.3);
-                        ctx.scale(-1, 1);
-                    }
                 ]
             ];
 
-            for (const [label, applyCtm] of GENERAL_CTMS) {
-                const { ctx } = newCtx();
-                ctx.save();
-                applyCtm(ctx);
-                ctx.setFillStyle(255, 0, 0, 255);
-                SWCanvas.Core.Context2D.resetPathBasedFlag();
-                ctx.fillRect(-10, -8, 20, 16);
-                ctx.restore();
-                if (!SWCanvas.Core.Context2D.wasPathBasedUsed()) {
-                    throw new Error(
-                        `fillRect under ${label} took a direct path - the rejected general-affine ` +
-                            `extension is back without its §9 decision record being revisited`
-                    );
+            for (const [label, applyCtm] of ALL_CTMS) {
+                for (const alpha of [255, 128]) {
+                    const { ctx } = newCtx();
+                    ctx.save();
+                    applyCtm(ctx);
+                    ctx.setFillStyle(255, 0, 0, alpha);
+                    SWCanvas.Core.Context2D.resetPathBasedFlag();
+                    ctx.fillRect(-10, -8, 20, 16);
+                    ctx.restore();
+                    if (!SWCanvas.Core.Context2D.wasPathBasedUsed()) {
+                        throw new Error(
+                            `fillRect under ${label} (alpha ${alpha}) took a direct path - a rect-fill ` +
+                                `fast path is back without the §9 fill-arm-removal record being revisited`
+                        );
+                    }
                 }
                 log(`  ${label}: generic (as decided)`);
-            }
-
-            // The two DIRECT classes stay direct (guards the decision's boundary):
-            // axis-aligned 90-degree-rotated non-uniform, and tilted uniform.
-            {
-                const { ctx } = newCtx();
-                ctx.save();
-                ctx.translate(50, 30);
-                ctx.rotate(Math.PI / 2);
-                ctx.scale(2, 1);
-                ctx.setFillStyle(255, 0, 0, 255);
-                SWCanvas.Core.Context2D.resetPathBasedFlag();
-                ctx.fillRect(-10, -8, 20, 16);
-                ctx.restore();
-                if (SWCanvas.Core.Context2D.wasPathBasedUsed()) {
-                    throw new Error('90-rotated non-uniform fillRect fell to the generic pipeline (AA arm regressed)');
-                }
-                log('  90-degree-rotated non-uniform: still direct (AA arm)');
-            }
-            {
-                const { ctx } = newCtx();
-                ctx.save();
-                ctx.translate(50, 30);
-                ctx.rotate(0.5);
-                ctx.scale(1.5, 1.5);
-                ctx.setFillStyle(255, 0, 0, 255);
-                SWCanvas.Core.Context2D.resetPathBasedFlag();
-                ctx.fillRect(-10, -8, 20, 16);
-                ctx.restore();
-                if (SWCanvas.Core.Context2D.wasPathBasedUsed()) {
-                    throw new Error('tilted uniform-scale fillRect fell to the generic pipeline (Rot arm regressed)');
-                }
-                log('  tilted uniform scale: still direct (Rot arm)');
             }
         });
 

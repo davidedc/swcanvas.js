@@ -161,7 +161,8 @@ registerDirectRenderingTest(
     'rectangles',
     {
         extremes: true,
-        shapeIntegrity: true
+        shapeIntegrity: true,
+        allowPathBasedRendering: true // rect FILLS are generic since the fill-arm removal (DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16); strokes stay direct
     },
     {
         title: 'Rectangles: M-Size Semi-Transparent Fill, Random Semi-Transparent Stroke, Random Position, No Rotation',

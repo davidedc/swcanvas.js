@@ -2,22 +2,31 @@
 // This file will be concatenated into the main test suite
 //
 // Regression guard (a de-pessimization, not a wrong-pixels bug). The cached
-// _noShadow flag - consulted by every rect/roundRect/stadium direct-rendering
-// gate - tested `shadowColor === Color.transparent` (reference identity),
-// while ShadowPipeline.needsShadow tests `shadowColor.a > 0`. Every non-default
+// _noShadow flag - consulted by the rect/roundRect/stadium direct-rendering
+// gates of the era, and still by the stroke/fused/circle/arc gates - tested
+// `shadowColor === Color.transparent` (reference identity), while
+// ShadowPipeline.needsShadow tests `shadowColor.a > 0`. Every non-default
 // route allocates a fresh Color (setShadowColor, the compat CSS parser), so the
 // common "disable the shadow by colour, leave blur/offset set" idiom flipped
-// _noShadow false and silently abandoned the whole family to the generic
-// pipeline for a shadow that would never be drawn. The flag now checks
-// `shadowColor.a === 0` - the exact negation of needsShadow. Contract:
-//   1. STRUCTURAL: transparent shadow colour (fresh Color, a=0) with blur and
-//      offsets set keeps fillRect/fillRoundRect on the direct path.
-//   2. BYTE-IDENTITY: that state renders identically to the default no-shadow
-//      state.
-//   3. NOT OVERSHOT: a real (visible) shadow still leaves the direct path and
-//      renders shadow pixels.
+// _noShadow false and silently routed the draw through the shadow machinery
+// for a shadow that would never be drawn. The flag now checks
+// `shadowColor.a === 0` - the exact negation of needsShadow (§9 entry 5).
+//
+// HISTORY: this test originally ALSO pinned structurally that an invisible
+// shadow kept fillRect/fillRoundRect on their direct fill arms. Those arms were
+// removed by the fill-arm-removal campaign
+// (plans/one-rect-fill-pipeline-and-fill-arm-removal.md) - rect-family FILLS
+// are now uniformly generic, so the structural half became vacuous and was
+// dropped. The BYTE-IDENTITY contract below is the surviving guard: however an
+// invisible shadow is spelled, it must not change a single pixel - under
+// either pipeline. (The _noShadow flag itself still gates the stroke, fused,
+// circle and arc direct arms, where §9 entry 5's de-pessimization remains live.)
+// Contract:
+//   1. BYTE-IDENTITY: value-transparent shadow state (fresh Color a=0, blur and
+//      offsets set) renders identically to the default no-shadow state.
+//   2. NOT OVERSHOT: a real (visible) shadow still renders shadow pixels.
 
-test('_noShadow - transparent shadow colour by value keeps direct paths', () => {
+test('_noShadow - transparent shadow colour by value is a no-op on pixels', () => {
     const W = 80;
     const H = 80;
 
@@ -29,41 +38,21 @@ test('_noShadow - transparent shadow colour by value keeps direct paths', () => 
         return { surface, ctx };
     }
 
-    // 1. Structural: invisible shadow (fresh transparent Color + blur/offsets)
-    //    must not de-fast-path the rect family.
-    {
-        const { ctx } = newCtx();
-        ctx.setShadowColor(0, 0, 0, 0); // fresh Color, not the Color.transparent instance
-        ctx.setShadowBlur(5);
-        ctx.setShadowOffsetX(3);
-        ctx.setShadowOffsetY(3);
-        ctx.setFillStyle(255, 0, 0, 255);
-        SWCanvas.Core.Context2D.resetPathBasedFlag();
-        ctx.fillRect(20, 20, 30, 30);
-        if (SWCanvas.Core.Context2D.wasPathBasedUsed()) {
-            throw new Error('fillRect with an INVISIBLE shadow (a=0, blur/offsets set) fell to the generic pipeline');
-        }
-        SWCanvas.Core.Context2D.resetPathBasedFlag();
-        ctx.fillRoundRect(20, 55, 30, 20, 5);
-        if (SWCanvas.Core.Context2D.wasPathBasedUsed()) {
-            throw new Error('fillRoundRect with an INVISIBLE shadow fell to the generic pipeline');
-        }
-        log('  invisible shadow (value-transparent): rect family stays direct');
-    }
-
-    // 2. Byte-identity with the default no-shadow state.
+    // 1. Byte-identity with the default no-shadow state (fillRect + fillRoundRect).
     {
         const a = newCtx();
-        a.ctx.setShadowColor(0, 0, 0, 0);
+        a.ctx.setShadowColor(0, 0, 0, 0); // fresh Color, not the Color.transparent instance
         a.ctx.setShadowBlur(5);
         a.ctx.setShadowOffsetX(3);
         a.ctx.setShadowOffsetY(3);
         a.ctx.setFillStyle(255, 0, 0, 255);
         a.ctx.fillRect(20, 20, 30, 30);
+        a.ctx.fillRoundRect(20, 55, 30, 20, 5);
 
         const b = newCtx();
         b.ctx.setFillStyle(255, 0, 0, 255);
         b.ctx.fillRect(20, 20, 30, 30);
+        b.ctx.fillRoundRect(20, 55, 30, 20, 5);
 
         for (let i = 0; i < a.surface.data.length; i++) {
             if (a.surface.data[i] !== b.surface.data[i]) {
@@ -73,10 +62,10 @@ test('_noShadow - transparent shadow colour by value keeps direct paths', () => 
                 );
             }
         }
-        log('  invisible shadow === default no-shadow (byte-identical)');
+        log('  invisible shadow === default no-shadow (byte-identical, rect + roundRect)');
     }
 
-    // 3. Not overshot: a VISIBLE shadow still renders (via the generic path).
+    // 2. Not overshot: a VISIBLE shadow still renders.
     {
         const { surface, ctx } = newCtx();
         ctx.setShadowColor(0, 0, 255, 255);

@@ -135,8 +135,10 @@ test('Hairline strokes - the sub-pixel rule on all five direct stroke entries', 
 
     // Render an entry at a given LOGICAL lineWidth and globalAlpha.
     function render(entry, transform, logicalLineWidth, globalAlpha) {
-        SWCanvas.Core.Context2D.resetPathBasedFlag();
         const { surface, ctx } = newCtx();
+        // Reset AFTER the fixture background: fillRect is generic since the
+        // fill-arm removal; the flag must isolate the entry's own dispatch.
+        SWCanvas.Core.Context2D.resetPathBasedFlag();
         ctx.save();
         transform.apply(ctx);
         ctx.setStrokeStyle(0, 0, 0, 255);
@@ -261,8 +263,10 @@ test('Hairline strokes - the sub-pixel rule on all five direct stroke entries', 
     //    stroke — and every rotated hairline, translucent by construction —
     //    shows exactly ONE blended level: no darker corner dots.
     {
-        SWCanvas.Core.Context2D.resetPathBasedFlag();
         const { surface, ctx } = newCtx();
+        // Reset AFTER the fixture background (fillRect is generic since the
+        // fill-arm removal).
+        SWCanvas.Core.Context2D.resetPathBasedFlag();
         ctx.save();
         ctx.translate(28, 28);
         ctx.rotate(0.3);

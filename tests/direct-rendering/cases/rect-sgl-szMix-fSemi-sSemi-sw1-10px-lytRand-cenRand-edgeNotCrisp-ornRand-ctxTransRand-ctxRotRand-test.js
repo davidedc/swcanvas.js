@@ -130,7 +130,7 @@ registerDirectRenderingTest(
     'rectangles',
     {
         // No extremes check - original test had none
-        // allowPathBasedRendering: false is the default - test MUST use direct rendering
+        allowPathBasedRendering: true, // rect FILLS are generic since the fill-arm removal (DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16); strokes stay direct
         totalUniqueColors: 4,  // background + fill + stroke + blend (semitransparent stroke causes blending)
         shapeIntegrity: true
     },

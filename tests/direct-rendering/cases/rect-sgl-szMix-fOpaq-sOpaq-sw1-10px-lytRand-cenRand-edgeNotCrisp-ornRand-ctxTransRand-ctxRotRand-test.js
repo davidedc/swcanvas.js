@@ -130,7 +130,8 @@ registerDirectRenderingTest(
     {
         // No extremes check - rotated shapes have complex bounds
         totalUniqueColors: 3,  // background + opaque fill + opaque stroke (stroke overwrites fill at edges)
-        shapeIntegrity: true
+        shapeIntegrity: true,
+        allowPathBasedRendering: true // rect FILLS are generic since the fill-arm removal (DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16); strokes stay direct
     },
     {
         title: 'Rectangle: Rotated, Single, Opaque Fill + Opaque Stroke, Random Position & Rotation',

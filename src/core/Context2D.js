@@ -759,96 +759,13 @@ class Context2D {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
         }
 
-        // Direct rendering: Color fill with source-over, no shadows (clipping supported)
-        if (this._canUseDirectRendering(this._fillStyle)) {
-            const t = this._transform;
-            // Tier-0 rect clip → clamp draw extent + pass clipBuffer=null on the
-            // axis-aligned path. The rotated RectOpsRot branch isn't tier-0-wired,
-            // so it materialises the bitmask on demand (_ensureClipBuffer) — under
-            // the mask-skip, clip() no longer builds a mask for a rect clip. Within
-            // this branch _isSourceOver && _noShadow hold, so _tier0ClipRect()
-            // reduces to (_clipIsRect ? _clipRect : null).
-            const tier0ClipRect = this._tier0ClipRect();
-            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
-
-            // Fast access to pre-computed transform values (no getters, no sqrt/atan2)
-            const scaledW = width * t.scaleX;
-            const scaledH = height * t.scaleY;
-            const center = t.transformPoint({ x: x + width / 2, y: y + height / 2 });
-
-            // Inline opacity check
-            const isOpaque = this._fillStyle.a === 255 && this.globalAlpha >= 1.0;
-
-            if (t.isAxisAligned) {
-                // Inline dimension swapping - no RectOpsAA.getRotatedDimensions() call needed
-                const finalW = t.is90DegreeRotated ? scaledH : scaledW;
-                const finalH = t.is90DegreeRotated ? scaledW : scaledH;
-                const tlX = center.x - finalW / 2;
-                const tlY = center.y - finalH / 2;
-
-                if (isOpaque) {
-                    RectOpsAA.fill_AA_Opaq(
-                        this.surface,
-                        tlX,
-                        tlY,
-                        finalW,
-                        finalH,
-                        this._fillStyle,
-                        clip,
-                        tier0ClipRect
-                    );
-                    return;
-                } else {
-                    RectOpsAA.fill_AA_Alpha(
-                        this.surface,
-                        tlX,
-                        tlY,
-                        finalW,
-                        finalH,
-                        this._fillStyle,
-                        this.globalAlpha,
-                        clip,
-                        tier0ClipRect
-                    );
-                    return;
-                }
-            } else if (t.isUniformScale) {
-                // Rotated with uniform scale: use edge-function algorithm.
-                // Not tier-0-wired (Fizzygum never clips a rotated draw); materialise
-                // the bitmask on demand for a rect clip.
-                const rotClip = this._ensureClipBuffer();
-                if (isOpaque) {
-                    RectOpsRot.fill_Rot_Any(
-                        this.surface,
-                        center.x,
-                        center.y,
-                        scaledW,
-                        scaledH,
-                        t.rotationAngle,
-                        this._fillStyle,
-                        1.0,
-                        rotClip
-                    );
-                    return;
-                } else {
-                    RectOpsRot.fill_Rot_Any(
-                        this.surface,
-                        center.x,
-                        center.y,
-                        scaledW,
-                        scaledH,
-                        t.rotationAngle,
-                        this._fillStyle,
-                        this.globalAlpha,
-                        rotClip
-                    );
-                    return;
-                }
-            }
-            // Non-uniform scale + rotation: fall through to path-based rendering (produces parallelogram)
-        }
-
-        // Path-based rendering: gradients, patterns, non-source-over, shadows, clipping
+        // NO direct fill arm, deliberately: rect FILLS are uniformly generic. The
+        // AA and tilted direct fill arms were removed on disable-and-benchmark
+        // evidence (generic parity; the AA arm's 2-6% small-alpha edge explicitly
+        // accepted as a loss) - see DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16
+        // and plans/one-rect-fill-pipeline-and-fill-arm-removal.md. Do not re-add
+        // a fill fast path without fresh benchmark evidence (tests/core pins this).
+        // Direct rect machinery lives on in strokeRect/fillStrokeRect only.
         Context2D._markPathBasedRendering();
         const tier0ClipRect = this._tier0ClipRect();
         this.rasterizer.beginOp({

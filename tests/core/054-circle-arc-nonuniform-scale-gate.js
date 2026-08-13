@@ -191,8 +191,11 @@ test('Circle/arc direct rendering - non-uniform scale gates to generic pipeline'
 
     // 3. Rotation + uniform scale still goes direct.
     {
-        SWCanvas.Core.Context2D.resetPathBasedFlag();
         const { ctx } = newCtx();
+        // Reset AFTER the fixture background: fillRect is generic since the
+        // fill-arm removal, so a pre-fixture reset would see ITS flag, not the
+        // circle's.
+        SWCanvas.Core.Context2D.resetPathBasedFlag();
         ctx.save();
         ctx.translate(60, 40);
         ctx.rotate(0.5);
