@@ -239,8 +239,8 @@ width (no `_Alpha` direct renderer; they keep the generic path).
 | Shape       | Additional Checks                                                         |
 |-------------|---------------------------------------------------------------------------|
 | Rectangle   | Transform: isAxisAligned OR isUniformScale. Generic ONLY when BOTH fail — a non-90°-multiple rotation combined with non-uniform scale, a SHEAR, or a mirror-with-rotation (produces a parallelogram/quad the rect renderers can't draw). NOTE isAxisAligned covers 0/90/180/270 incl. flips, so a 90°-ROTATED NON-UNIFORM CTM stays fully direct (AA arm, w/h swapped); a tilted UNIFORM CTM stays direct (Rot arm). |
-| RoundedRect | Transform: isUniformScale REQUIRED (non-uniform would need ellipse corners → generic; ⚠ stricter than plain rects — axis-aligned `scale(2,1)` goes generic here but stays direct for Rectangle). Within it, a three-arm ladder: isIdentity (literal user coords) → isAxisAligned (device coords, 90° w/h swap) → rotated (`*_Rot_Any`). All arms are the same renderer family with numerically equivalent arguments at scale 1. |
-| Circle      | Transform: isUniformScale (translate/rotate/uniform-scale go direct — pre-multiplication is byte-exact,      |
+| RoundedRect | Transform: isUniformScale REQUIRED (non-uniform would need ellipse corners → generic; ⚠ stricter than plain rects — axis-aligned `scale(2,1)` goes generic here but stays direct for Rectangle; keeping that gate is a RECORDED decision — §9 entry 11). RADII CONTRACT: a `radii` array is collapsed FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 per-corner semantics), then rounded to an integer and clamped by `RoundedRectUtils.normalizeRadius`. Within it, a three-arm ladder: isIdentity (literal user coords) → isAxisAligned (device coords, 90° w/h swap) → rotated (`*_Rot_Any`). All arms are the same renderer family with numerically equivalent arguments at scale 1. |
+| Circle      | Transform: isUniformScale (translate/rotate/uniform-scale go direct — pre-multiplication is byte-exact;      |
 |             | test 050; NON-uniform scale gates to the generic pipeline via an un-baked user-space path, so the caller      |
 |             | gets the correct ELLIPSE rather than the geometric-mean-radius circle the direct path would draw — test 054). |
 | Stadium     | Transform: isUniformScale (axis-aligned 90-degree rotation swaps w/h inline; rotated delegates to             |
@@ -893,6 +893,27 @@ current consumers:
    (`tests/direct-rendering/perf-cases/rect-affine-perf.js`) and a structural pin
    (`tests/core/066`) that fails if a general-affine direct arm reappears — re-attempt only
    with fresh benchmark evidence, updating the pin and this record together.
+11. **DECIDED (2026-08-13): no elliptical-corner renderer — the roundRect/stadium
+   `isUniformScale` gate stays.** An axis-aligned non-uniform scale of a roundRect is a
+   roundRect with per-axis corner radii; supporting it directly means Bresenham ELLIPSE
+   quadrants (two-region algorithm) across the whole `RoundedRectOpsAA` family — fill,
+   stroke1px, strokeThick, fused, opaque/alpha variants — plus re-deriving the
+   junction-exactness doctrine (tests 046–048 pin edge/arc junction pixels against ~1e-16
+   trig noise at floor() boundaries) for two radii, plus the rotated/stadium delegations.
+   Out of proportion for a case with a correct generic fallback and no known caller
+   (Fizzygum composes only similitudes). The radii-array collapse is now DOCUMENTED instead
+   (JSDoc at the three entries + the §3 RoundedRect row): first-element-wins to a uniform
+   radius, integer-rounded and clamped — deliberately NOT HTML5 per-corner semantics, and
+   `[a, b]` must never be reinterpreted as rx/ry (that would conflict with the spec meaning).
+12. **DECIDED (2026-08-13, re-affirming the P6 design): no `EllipseOps` direct family.**
+   Circles/arcs under non-uniform scale are ellipses; all six entries route through the
+   correct un-baked user-space path fallback (pinned by `tests/core/054`). A direct family
+   would need two-radius Bresenham walks for fill/stroke1px/strokeThick (opaque/alpha) plus
+   arc-angle filtering where the parametric angle no longer equals the geometric angle —
+   a larger project than the roundRect ellipse corners (entry 11) for the same no-known-caller
+   workload. The generic fallback stays the deliberate design; do not build speculatively,
+   and do not duplicate the existing `ellipse()` PATH method (both API layers already have
+   it — only an immediate-mode direct family is absent, deliberately).
 
 ---
 

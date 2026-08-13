@@ -26533,7 +26533,11 @@ class Context2D {
      * @param {number} y - Rectangle y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number|number[]} radii - Corner radius. An array is collapsed
+     *   FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 roundRect()'s
+     *   per-corner semantics - do not read [a, b] as per-corner or as rx/ry),
+     *   and the renderer rounds it to an integer and clamps it to half the
+     *   smaller dimension (RoundedRectUtils.normalizeRadius).
      */
     strokeRoundRect(x, y, width, height, radii) {
         // Validate parameters
@@ -26757,7 +26761,11 @@ class Context2D {
      * @param {number} y - Rectangle y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number|number[]} radii - Corner radius. An array is collapsed
+     *   FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 roundRect()'s
+     *   per-corner semantics - do not read [a, b] as per-corner or as rx/ry),
+     *   and the renderer rounds it to an integer and clamps it to half the
+     *   smaller dimension (RoundedRectUtils.normalizeRadius).
      */
     fillRoundRect(x, y, width, height, radii) {
         // Validate parameters
@@ -26903,7 +26911,11 @@ class Context2D {
      * @param {number} y - Rectangle y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number|number[]} radii - Corner radius. An array is collapsed
+     *   FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 roundRect()'s
+     *   per-corner semantics - do not read [a, b] as per-corner or as rx/ry),
+     *   and the renderer rounds it to an integer and clamps it to half the
+     *   smaller dimension (RoundedRectUtils.normalizeRadius).
      */
     fillStrokeRoundRect(x, y, width, height, radii) {
         // Validate parameters
