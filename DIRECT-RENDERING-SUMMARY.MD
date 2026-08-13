@@ -178,7 +178,7 @@ table below and §9 for the consequences).
 |--------------|--------------------------------------------|-------------------------------------------|-------|
 | Paint Source | paintSource instanceof Color               | Gradients, Patterns                       | ALL entries |
 | Composite Op | globalCompositeOperation === 'source-over' | All other ops (copy, xor, etc.)           | ALL entries |
-| Shadows      | `_noShadow` (no shadowColor, or `=== Color.transparent`, or zero blur+offsets) | Any other shadow state | rect / roundRect / stadium families ONLY — circle/arc/line direct paths never consult it and silently DROP ctx shadows (§9) |
+| Shadows      | `_noShadow` (no shadowColor, or `shadowColor.a === 0`, or zero blur+offsets — the exact negation of `ShadowPipeline.needsShadow`) | Any other shadow state | rect / roundRect / stadium families ONLY — circle/arc/line direct paths never consult it and silently DROP ctx shadows (§9) |
 | Paint Alpha  | paintSource.a > 0                          | Fully transparent paint                   | rect / roundRect / stadium (→ generic, a pure pessimization) · `fillArc` returns early drawing nothing · `_fillCircleDirect` routes a=0 to `fill_Alpha` (draws nothing) |
 | Line Cap     | lineCap === 'butt'                         | 'round', 'square'                         | line + arc STROKE entries only (`strokeLine`, `outerStrokeArc`, `fillOuterStrokeArc`) |
 
@@ -838,11 +838,11 @@ current consumers:
    consulted by the rect/roundRect/stadium gates; `ShadowPipeline` is only invoked from
    `Rasterizer`. So `shadowBlur=5; fillCircle(...)` draws shadowless while `fillRect(...)`
    renders the shadow.
-5. **`_noShadow` uses reference identity for transparency** (`shadowColor === Color.transparent`)
-   while the setter builds a NEW Color for `'rgba(0,0,0,0)'` — an invisible shadow with non-zero
-   blur/offset therefore de-fast-paths every rect-family draw (pure pessimization, and the
-   direct/generic rasterizations differ per the §3 hairline doctrine note). `needsShadow`
-   correctly checks `shadowColor.a > 0`; the gate should too.
+5. **FIXED (2026-08-13): `_noShadow` used reference identity for transparency**
+   (`shadowColor === Color.transparent`) while the setter builds a NEW Color for
+   `'rgba(0,0,0,0)'` — an invisible shadow with non-zero blur/offset de-fast-pathed every
+   rect-family draw (pure pessimization). The flag now checks `shadowColor.a === 0`, the exact
+   negation of `ShadowPipeline.needsShadow`. Pinned by `tests/core/062`.
 6. **`fillRect`/`strokeRect` argument-validation divergence.** No validation at the entry:
    negative dimensions silently no-op on the direct arm but THROW in `Rasterizer.fillRect` — the
    same call succeeds or throws depending on whether the paint is a Color or a gradient. (The

@@ -209,9 +209,15 @@ class Context2D {
      * @private
      */
     _updateNoShadowFlag() {
+        // Exact negation of ShadowPipeline.needsShadow. Transparency is a VALUE
+        // test (a === 0), not reference identity with Color.transparent: every
+        // non-default route (setShadowColor, the compat CSS parser) allocates a
+        // fresh Color, so an identity test misses "disable the shadow by
+        // colour, leave blur/offset set" and abandons every rect-family direct
+        // path for a shadow that would never be drawn.
         this._noShadow =
             !this.shadowColor ||
-            this.shadowColor === Color.transparent ||
+            this.shadowColor.a === 0 ||
             (this.shadowBlur === 0 && this.shadowOffsetX === 0 && this.shadowOffsetY === 0);
     }
 
