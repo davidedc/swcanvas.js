@@ -183,8 +183,7 @@ table below and §9 for the consequences).
 | Line Cap     | lineCap === 'butt'                         | 'round', 'square'                         | line + arc STROKE entries only (`strokeLine`, `outerStrokeArc`, `fillOuterStrokeArc`) |
 
 `globalAlpha` is deliberately in NO gate: it selects the `_Alpha` renderer variant, which is
-still a direct path (one exception: `fillCircle`'s unwired opaque-color+`globalAlpha<1` case,
-§9).
+still a direct path.
 
 ### Universal Stroke Rule — sub-pixel (HAIRLINE) widths:
 
@@ -266,7 +265,7 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `strokeRoundRect` | same | same (stroke) | same | generic via `stroke(path)` — the ONE rect-family fallback that honours `lineDash` (radius≤0 → `strokeRect`) |
 | `fillStrokeRoundRect` | same | both Color, source-over, `_noShadow`, something to draw | as `fillStrokeRect` + non-uniform | decomposes → `fillRoundRect` + `strokeRoundRect` (radius≤0 → `fillStrokeRect`) |
 | `fillStadium` | isUniformScale (rot arm delegates to `RoundedRectOpsRot`, r=min/2) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform | generic via external `SWPath2D` (no stroke API exists) |
-| `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over, and (a<255 OR globalAlpha≥1) | non-Color · composite · ⚠ a=255 & globalAlpha<1 (§9) | generic via external `SWPath2D` |
+| `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over | non-Color · composite | generic via external `SWPath2D` |
 | `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over | non-Color · a=0 · composite | generic via external `SWPath2D` (honours cap/join/dash) |
 | `fillStrokeCircle` | isUniformScale (pre-gate) | both Color, source-over, something to draw | either non-Color · composite · nothing | sequential `_fillCircleDirect` + `_strokeCircleDirect` (still direct dispatchers) |
 | `fillArc` | isUniformScale (pre-gate) | Color, source-over (NO shadow gate, NO a>0 fallback — a=0 returns silently) | non-Color · composite | generic via external `SWPath2D`; never tier-0-clipped |
@@ -819,10 +818,11 @@ if (isOpaque) {
 Unfixed; recorded here so they are not re-discovered. Each is a candidate fix; none blocks
 current consumers:
 
-1. **`fillCircle`'s unwired opacity case.** An opaque Color under `globalAlpha < 1` matches
-   neither `isOpaqueColor` (fails globalAlpha) nor `isSemiTransparentColor` (fails `a < 255`) in
-   `_fillCircleDirect`, so it drops to the legacy fallback although `CircleOps.fill_Alpha`
-   handles it exactly. Every sibling entry handles this case directly.
+1. **FIXED (2026-08-13): `fillCircle`'s unwired opacity case.** An opaque Color under
+   `globalAlpha < 1` matched neither `isOpaqueColor` (fails globalAlpha) nor
+   `isSemiTransparentColor` (required `a < 255`) in `_fillCircleDirect` and dropped to the
+   fallback. `isSemiTransparentColor` now also accepts `globalAlpha < 1`, dispatching the case
+   to `CircleOps.fill_Alpha` like every sibling entry. Pinned by `tests/core/060`.
 2. **FIXED (2026-08-13): the legacy circle/arc/line fallbacks double-applied the CTM.**
    `_fillCircleDirect`, `_strokeCircleDirect`, `_strokeLineDirect`, `fillArc`, `outerStrokeArc`
    and `fillOuterStrokeArc` fed already-device-space coordinates into the current default path,

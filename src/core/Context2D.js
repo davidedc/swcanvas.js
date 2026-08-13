@@ -3087,7 +3087,11 @@ class Context2D {
 
         const isOpaqueColor = isColor && paintSource.a === 255 && this.globalAlpha >= 1.0 && isSourceOver;
 
-        const isSemiTransparentColor = isColor && paintSource.a < 255 && isSourceOver;
+        // Everything else a Color can be goes through fill_Alpha: a < 255, and
+        // ALSO an opaque color under globalAlpha < 1 (like every sibling entry
+        // - fillRect, fillRoundRect, fillArc, fillStadium dispatch that case to
+        // their _Alpha renderer rather than the generic fallback).
+        const isSemiTransparentColor = isColor && (paintSource.a < 255 || this.globalAlpha < 1.0) && isSourceOver;
 
         if (isOpaqueColor || isSemiTransparentColor) {
             // Tier-0 rect clip → clamp extent + clipBuffer=null (mirrors
