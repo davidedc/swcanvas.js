@@ -268,13 +268,13 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `fillStrokeRect` | same | both paints Color, source-over, `_noShadow`, something to draw | either paint non-Color · nothing to draw · composite · shadow · CTM | decomposes → `fillRect` + `strokeRect` |
 | `clearRect` | n/a (`b===0 && c===0` picks span loop vs inverse-transform loop) | none | NEVER — direct-only | — (ignores alpha/composite/shadow by design) |
 | `fillRoundRect` | isUniformScale (ladder identity→AA→rot) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform scale | generic via external `SWPath2D` (radius≤0 → `fillRect`) |
-| `strokeRoundRect` | same | same (stroke) | same | generic via `stroke(path)` — the ONE rect-family fallback that honours `lineDash` (radius≤0 → `strokeRect`) |
+| `strokeRoundRect` | same | same (stroke) + no dash | same · dash set | generic via `stroke(path)`, honours `lineDash` (radius≤0 → `strokeRect`) |
 | `fillStrokeRoundRect` | same | both Color, source-over, `_noShadow`, something to draw | as `fillStrokeRect` + non-uniform | decomposes → `fillRoundRect` + `strokeRoundRect` (radius≤0 → `fillStrokeRect`) |
 | `fillStadium` | isUniformScale (rot arm delegates to `RoundedRectOpsRot`, r=min/2) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform | generic via external `SWPath2D` (no stroke API exists) |
 | `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over, `_noShadow` | non-Color · composite · shadow | generic via external `SWPath2D` |
 | `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow | generic via external `SWPath2D` (honours cap/join/dash) |
 | `fillStrokeCircle` | isUniformScale (pre-gate) | both Color, source-over, `_noShadow`, something to draw | either non-Color · composite · shadow · nothing | sequential `_fillCircleDirect` + `_strokeCircleDirect` (still direct dispatchers) |
-| `fillArc` | isUniformScale (pre-gate) | Color, source-over, `_noShadow` (NO a>0 fallback — a=0 returns silently) | non-Color · composite · shadow | generic via external `SWPath2D`; never tier-0-clipped |
+| `fillArc` | isUniformScale (pre-gate) | Color, source-over, `_noShadow` | non-Color · composite · shadow (a=0 → early return, §3 Paint Alpha) | generic via external `SWPath2D`; never tier-0-clipped |
 | `outerStrokeArc` | isUniformScale (pre-gate) | Color, a>0, source-over, lineCap 'butt', `_noShadow` | non-Color · a=0 · composite · round/square cap · shadow | generic via external `SWPath2D` (honours the cap) |
 | `fillOuterStrokeArc` | isUniformScale (pre-gate) | both Color, source-over, lineCap 'butt', `_noShadow`, something to draw | either paint non-Color · composite · cap · shadow | sequential generic via external `SWPath2D` (both halves) |
 | `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt', `_noShadow` | non-Color · composite · round/square cap · shadow | generic via external `SWPath2D` (honours cap/dash; HTML5 anisotropic width under non-uniform CTM); alpha/CTM/clip never gate |
@@ -910,6 +910,9 @@ current consumers:
    (JSDoc at the three entries + the §3 RoundedRect row): first-element-wins to a uniform
    radius, integer-rounded and clamped — deliberately NOT HTML5 per-corner semantics, and
    `[a, b]` must never be reinterpreted as rx/ry (that would conflict with the spec meaning).
+   The collapse is ENGINE-WIDE and consistent: `SWPath2D.roundRect()` (the path method)
+   applies the same first-element-wins simplification (its JSDoc now says so too), so the
+   path and immediate-mode APIs cannot disagree about what a radii array means.
 12. **DECIDED (2026-08-13, re-affirming the P6 design): no `EllipseOps` direct family.**
    Circles/arcs under non-uniform scale are ellipses; all six entries route through the
    correct un-baked user-space path fallback (pinned by `tests/core/054`). A direct family

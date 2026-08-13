@@ -6,16 +6,16 @@ This directory contains the comprehensive **modular test infrastructure** for SW
 
 ```
 tests/
-├── core/                          # 88 individual core test files (001-037)
+├── core/                          # 88 individual core test files (001-068 + 3xx text + 4xx 3D)
 │   ├── 001-surface-creation-valid.js
 │   ├── 015-alpha-blending-test.js  
 │   ├── 031-transform-matrix-order-dependency.js
-│   └── ... (33 more files)
-├── visual/                        # 154 individual visual test files (001-140)
+│   └── ... (85 more files)
+├── visual/                        # 154 individual visual test files (001-209, numbering has gaps)
 │   ├── 001-simple-rectangle-test.js
 │   ├── 027-fill-rule-complex-test.js
 │   ├── 056-stroke-pixel-analysis-test.js
-│   └── ... (137 more files)
+│   └── ... (151 more files)
 ├── browser/                       # Browser-specific test files
 │   ├── index.html                 # Main browser test page (interactive + comparisons)
 │   ├── minimal-example.html       # Minimal usage example
@@ -72,11 +72,11 @@ npm run test:direct-rendering  # Runs 79 direct rendering path verification test
 
 SWCanvas uses a **modular complementary dual test system** where individual test files are automatically concatenated at build time, maintaining both development flexibility and production performance:
 
-### Core Functionality Tests - 37 Individual Files
+### Core Functionality Tests - 88 Individual Files
 **Location**: `/tests/core/` (individual files) → `/tests/dist/core-functionality-tests.js` (concatenated)
 
 **Modular Structure**:
-- **37 individual test files** numbered 001-037 with descriptive names
+- **88 individual test files** with descriptive names (001-068, plus the 3xx text and 4xx 3D ranges)
 - **Build-time concatenation** into single optimized file
 - **Smart test runner** automatically uses built version
 - **Development benefit**: No merge conflicts, focused editing
@@ -108,7 +108,7 @@ test('Surface creation with valid dimensions', () => {
 });
 ```
 
-### Visual Rendering Tests - 140 Individual Files
+### Visual Rendering Tests - 154 Individual Files
 **Location**: `/tests/visual/` (individual files) → `/tests/dist/visual-rendering-tests.js` (concatenated)
 
 **Modular Structure**:

@@ -1443,12 +1443,17 @@ class SWPath2D {
 
     /**
      * Adds a rounded rectangle subpath to the current path.
-     * Follows the HTML5 Canvas roundRect() specification.
+     * Follows the HTML5 Canvas roundRect() geometry (arcTo corners), with one
+     * documented divergence shared with the immediate-mode roundRect entries:
+     * a radii ARRAY is collapsed FIRST-ELEMENT-WINS to one uniform radius -
+     * NOT the spec's per-corner semantics (up to 4 entries, each optionally
+     * {x,y}); do not read [a, b] as per-corner or as rx/ry. See
+     * DIRECT-RENDERING-SUMMARY.MD §9 entry 11 for the recorded decision.
      * @param {number} x - X coordinate of the rectangle's top-left corner
      * @param {number} y - Y coordinate of the rectangle's top-left corner
      * @param {number} width - Width of the rectangle
      * @param {number} height - Height of the rectangle
-     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number|number[]} radii - Corner radius (array: first element wins)
      */
     roundRect(x, y, width, height, radii) {
         // Normalize radii to a single value for simplicity

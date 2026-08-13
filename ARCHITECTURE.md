@@ -722,7 +722,7 @@ Context2D                              # Orchestration and state management
 │                                    → RectOpsRot.*_Rot_*()   [rotated]
 ├── fillCircle/strokeCircle ─────────→ CircleOps.*()
 ├── strokeLine ──────────────────────→ LineOps.stroke_Any()
-├── fillArc/strokeArc ───────────────→ ArcOps.*()
+├── fillArc/outerStrokeArc ──────────→ ArcOps.*()
 └── fillRoundRect/strokeRoundRect ───→ RoundedRectOpsAA.*_AA_*()  [axis-aligned]
                                      → RoundedRectOpsRot.*_Rot_*() [rotated]
 ```
