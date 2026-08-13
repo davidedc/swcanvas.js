@@ -181,6 +181,7 @@ table below and §9 for the consequences).
 | Shadows      | `_noShadow` (no shadowColor, or `shadowColor.a === 0`, or zero blur+offsets — the exact negation of `ShadowPipeline.needsShadow`) | Any other shadow state | ALL entries — the rect/roundRect/stadium families via `_canUseDirectRendering`/`_canUseDirectRenderingForFillStroke`, the circle/arc/line entries via their inline gates (an active shadow routes to the generic fallback, which renders it) |
 | Paint Alpha  | `_isInvisibleDraw`: paint `a === 0` or `globalAlpha === 0`, source-over only | Fully transparent paint / zero globalAlpha | ALL entries — uniform early-return-no-draw at the entry top (fused entries: only when BOTH halves invisible); non-source-over composites keep the generic pipeline ('copy' with transparent paint has visible effects) |
 | Line Cap     | lineCap === 'butt'                         | 'round', 'square'                         | line + arc STROKE entries only (`strokeLine`, `outerStrokeArc`, `fillOuterStrokeArc`) |
+| Line Dash    | `_lineDash.length === 0`                   | any dash pattern set via setLineDash      | ALL direct STROKE arms incl. fused stroke halves — dashed strokes take the generic path, which applies the dash (policy decided 2026-08-13; fills unaffected) |
 
 `globalAlpha` is deliberately in NO gate: it selects the `_Alpha` renderer variant, which is
 still a direct path.
@@ -258,7 +259,7 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | Entry | CTM for direct | Non-CTM for direct | Falls back on | Fallback target |
 |---|---|---|---|---|
 | `fillRect` | isAxisAligned OR isUniformScale | Color, a>0, source-over, `_noShadow` | gradient/pattern · composite · shadow · shear/mirror-rot/rot+non-uniform (a=0 → early return, §3 Paint Alpha) | generic rasterizer (negative/zero dims and bad types validated up front — §9 note) |
-| `strokeRect` | same | same (stroke paint) | same | generic (`lineDash` ignored on BOTH arms — §9; dims/types validated up front like fillRect) |
+| `strokeRect` | same | same (stroke paint) + no dash | same · dash set | generic (honours `lineDash`; dims/types validated up front like fillRect) |
 | `fillStrokeRect` | same | both paints Color, source-over, `_noShadow`, something to draw | either paint non-Color · nothing to draw · composite · shadow · CTM | decomposes → `fillRect` + `strokeRect` |
 | `clearRect` | n/a (`b===0 && c===0` picks span loop vs inverse-transform loop) | none | NEVER — direct-only | — (ignores alpha/composite/shadow by design) |
 | `fillRoundRect` | isUniformScale (ladder identity→AA→rot) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform scale | generic via external `SWPath2D` (radius≤0 → `fillRect`) |
@@ -855,11 +856,17 @@ current consumers:
    dimensions — a documented divergence from HTML5's normalize-the-rect behaviour for the
    fillRect/strokeRect/clearRect trio, chosen for uniformity with the pre-existing
    fillStrokeRect/clearRect/roundRect/stadium convention. Pinned by `tests/core/064`.
-7. **`setLineDash` is honoured inconsistently:** a no-op for `strokeRect` on BOTH arms (the
-   generic arm omits it from the stroke props), ignored by every direct stroke arm, honoured
-   only by `strokeRoundRect`'s `stroke(path)` fallback and by explicit path `stroke()`.
-8. **`clearRect`'s axis-aligned test is raw `b===0 && c===0`** (no `TRANSFORM_EPSILON`),
-   disagreeing with every other entry's `isAxisAligned` at the epsilon boundary.
+7. **FIXED (2026-08-13): `setLineDash` was honoured inconsistently** (no-op for `strokeRect`
+   on BOTH arms — its generic fallback omitted the dash fields from the stroke props — and
+   ignored by every direct stroke arm). Policy decided: DASHED STROKES GATE TO THE GENERIC
+   PATH. Every direct stroke arm (standalone and fused halves) declines when
+   `_lineDash.length > 0`, and strokeRect's fallback now forwards the dash props, so
+   setLineDash works uniformly across the immediate-mode API. Pinned by `tests/core/065`.
+8. **FIXED (2026-08-13): `clearRect`'s axis-aligned test was raw `b===0 && c===0`** (no
+   `TRANSFORM_EPSILON`). Now `isAxisAligned && !is90DegreeRotated` — the precomputed
+   epsilon-ized equivalent (NOT plain `isAxisAligned`: that includes 90° rotations, whose axis
+   swap the span loop cannot express). Sub-epsilon shears take the span loop instead of the
+   per-pixel inverse-transform cliff; pixels unchanged (probe-verified pre-fix).
 9. **FIXED (2026-08-13): fully-transparent paint (`a === 0`) was handled three different
    ways.** Every direct-shape entry now early-returns through `_isInvisibleDraw` (paint
    `a === 0`, or `globalAlpha === 0` with any paint — the "decide while there" half, decided
