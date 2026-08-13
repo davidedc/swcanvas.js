@@ -236,9 +236,7 @@ class Context2D {
      * @private
      */
     _isInvisibleDraw(paintSource) {
-        return (
-            this._isSourceOver && (this.globalAlpha === 0 || (paintSource instanceof Color && paintSource.a === 0))
-        );
+        return this._isSourceOver && (this.globalAlpha === 0 || (paintSource instanceof Color && paintSource.a === 0));
     }
 
     /**
@@ -1066,7 +1064,10 @@ class Context2D {
 
         // Direct rendering: both fill and stroke are solid colors, source-over, no shadows
         // Dashed strokes route to the decomposed/generic path (see strokeRect).
-        if (this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle) && this._lineDash.length === 0) {
+        if (
+            this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle) &&
+            this._lineDash.length === 0
+        ) {
             const t = this._transform;
             // Deliberately NOT tier-0-wired - the one AA rect-family arm left
             // out: RectOpsAA.fillStroke_AA_Any's signature ends at clipBuffer,
@@ -1668,7 +1669,10 @@ class Context2D {
 
         // Direct rendering: both fill and stroke are solid colors, source-over, no shadows
         // Dashed strokes route to the decomposed/generic path (see strokeRect).
-        if (this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle) && this._lineDash.length === 0) {
+        if (
+            this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle) &&
+            this._lineDash.length === 0
+        ) {
             const t = this._transform;
             // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
             // paths; the rotated branch materialises the bitmask on demand (see
@@ -2774,7 +2778,16 @@ class Context2D {
         const paintSource = this._strokeStyle;
 
         // Use optimized circle stroke renderer (user-space args feed its generic fallback)
-        this._strokeCircleDirect(center.x, center.y, scaledRadius, scaledLineWidth, paintSource, centerX, centerY, radius);
+        this._strokeCircleDirect(
+            center.x,
+            center.y,
+            scaledRadius,
+            scaledLineWidth,
+            paintSource,
+            centerX,
+            centerY,
+            radius
+        );
     }
 
     /**
@@ -2829,7 +2842,14 @@ class Context2D {
         // _noShadow term: the direct renderers cannot draw a ctx shadow, so an
         // active shadow routes to the generic fallback (which can) - the same
         // policy _canUseDirectRendering applies to the rect family.
-        if (fillIsColor && strokeIsColor && isSourceOver && this._noShadow && this._lineDash.length === 0 && (hasFill || hasStroke)) {
+        if (
+            fillIsColor &&
+            strokeIsColor &&
+            isSourceOver &&
+            this._noShadow &&
+            this._lineDash.length === 0 &&
+            (hasFill || hasStroke)
+        ) {
             // Use unified method for coordinated fill+stroke rendering (no gaps).
             // Tier-0 rect clip → clamp extent + clipBuffer=null (see fillRect).
             const tier0ClipRect = this._tier0ClipRect();
@@ -2849,7 +2869,16 @@ class Context2D {
         } else {
             // Fallback to sequential rendering for gradients, patterns, or non-source-over
             this._fillCircleDirect(center.x, center.y, scaledRadius, fillPaintSource, centerX, centerY, radius);
-            this._strokeCircleDirect(center.x, center.y, scaledRadius, scaledLineWidth, strokePaintSource, centerX, centerY, radius);
+            this._strokeCircleDirect(
+                center.x,
+                center.y,
+                scaledRadius,
+                scaledLineWidth,
+                strokePaintSource,
+                centerX,
+                centerY,
+                radius
+            );
         }
     }
 
@@ -3141,7 +3170,15 @@ class Context2D {
         const isButtCap = this.lineCap === 'butt';
 
         // _noShadow: see fillArc - shadows only render via the generic fallback.
-        if (fillIsColor && strokeIsColor && isSourceOver && isButtCap && this._noShadow && this._lineDash.length === 0 && (hasFill || hasStroke)) {
+        if (
+            fillIsColor &&
+            strokeIsColor &&
+            isSourceOver &&
+            isButtCap &&
+            this._noShadow &&
+            this._lineDash.length === 0 &&
+            (hasFill || hasStroke)
+        ) {
             // Use unified direct rendering
             ArcOps.fillStrokeOuter_Any(
                 this.surface,
@@ -3326,7 +3363,13 @@ class Context2D {
         // Direct rendering 1: 1px strokes using Bresenham algorithm.
         // _noShadow on both branches: shadows only render via the generic
         // fallback (see _fillCircleDirect).
-        if (isColor && (is1pxStroke || isHairlineStroke) && isSourceOver && this._noShadow && this._lineDash.length === 0) {
+        if (
+            isColor &&
+            (is1pxStroke || isHairlineStroke) &&
+            isSourceOver &&
+            this._noShadow &&
+            this._lineDash.length === 0
+        ) {
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0 && !isHairlineStroke;
             if (isOpaque) {
                 CircleOps.stroke1px_Opaq(this.surface, cx, cy, radius, paintSource, clipBuffer, tier0ClipRect);
@@ -3347,7 +3390,14 @@ class Context2D {
         }
 
         // Direct rendering 2: Thick strokes using scanline annulus algorithm
-        if (isColor && isSourceOver && this._noShadow && this._lineDash.length === 0 && lineWidth > 1 && paintSource.a > 0) {
+        if (
+            isColor &&
+            isSourceOver &&
+            this._noShadow &&
+            this._lineDash.length === 0 &&
+            lineWidth > 1 &&
+            paintSource.a > 0
+        ) {
             const isOpaqueThick = paintSource.a === 255 && this.globalAlpha >= 1.0;
             if (isOpaqueThick) {
                 CircleOps.strokeThick_Opaq(

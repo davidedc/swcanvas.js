@@ -1,14 +1,18 @@
 # Clipping Optimisation Plan
 
-**Status**: VALIDATED — GO (2026-07-07). The consumer system (Fizzygum) has long been
-integrated, and a full profiling campaign of its 190-test SystemTest suite delivered the
-§8 workload data: **every §8.3 trigger threshold is exceeded at the maximum possible
-value** (100.000% of clips are axis-aligned integer rects — see §8.5). The design in
-§5–6 stands as written; execute §9 Stages 1–3. One sequencing note: the same campaign
-found two even larger SWCanvas costs to land FIRST — the per-call debug `console.log` in
-`Context2D.drawImage` (src/core/Context2D.js:1855; measured ≈33% of the consumer's busy
-CPU) and a drawImage fast path — see the consumer-side ranked plan at
-`Fizzygum/docs/runtime-performance-optimization-plan.md` (items S1–S3).
+**Status**: STAGES 1–3 LANDED (refreshed 2026-08-13; validated GO 2026-07-07). The §5–6
+design shipped via `6b20dcc`/`277e8e3`/`7414c35`/`af9af84` — tier-0 rect clip detection,
+clamped extents on the wired arms, and the mask-skip. What remains OPEN is §9 Stage 4
+(Cohen-Sutherland endpoint clipping for 1px strokes in `LineOps` + the `CircleOps`
+bbox hoist), still gated on profiling showing 1px strokes hot, and Stage 5's optional
+items. The 2026-08-13 dispatch-audit close-out re-reviewed the tier-0-UNWIRED arms
+(`RectOpsRot`, `RoundedRectOpsRot`, `ArcOps`, `LineOps`, `QuadScanOps`,
+`RectOpsAA.fillStroke_AA_Any`) and left them standing with in-code notes at every
+dispatch site — wire only with a benchmark-justified hot clipped caller
+(`DIRECT-RENDERING-SUMMARY.MD` §9 entry 13). Historical validation data: the consumer
+profiling campaign found 100.000% of clips are axis-aligned integer rects (§8.5), and
+sequenced the drawImage debug-log removal + fast path first (both since landed
+consumer-side).
 
 **Date**: 2026-05-23 (workload validation added 2026-07-07)
 

@@ -280,7 +280,7 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt', `_noShadow` | non-Color · composite · round/square cap · shadow | generic via external `SWPath2D` (honours cap/dash; HTML5 anisotropic width under non-uniform CTM); alpha/CTM/clip never gate |
 | `fillText` | direct atlas blit iff `b=c=0, a=d=dpr`, integer e/f; else intermediate buffer + `drawImage` | none (no composite/shadow/alpha/clip gate — both arms honour them via `drawImage`) | `maxWidth` → throw · gradient/pattern → ⚠ silent BLACK substitution (console.warn) | both arms mark path-based |
 | `strokeText` | — | — | ALWAYS throws | — |
-| `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer) |
+| `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer). SAMPLING is its own two-arm dispatch: NEAREST-NEIGHBOR iff the draw does not resample — axis-aligned AND effective sample step = 1 (per-device-pixel source step `invA*xScale`/`invD*yScale`, where CTM scale and src/dst rect ratio COMPOSE) — else BILINEAR; `imageSmoothingEnabled=false` (per HTML5: boolean-coerced, save/restored, both API layers) forces NN for every draw |
 
 Clip state is NOT a dispatch condition anywhere: no clip → raw fills; tier-0 rect clip → clamped
 extents (where wired — `fillStrokeRect`, all `*_Rot_*` arms, `ArcOps` and `LineOps` always
@@ -1039,6 +1039,16 @@ All 39 documented direct rendering functions have **100% explicit test coverage*
 - **79 test files** in `tests/direct-rendering/cases/`
 - **395 test runs passed** (79 tests × 5 iterations)
 - Run command: `node tests/direct-rendering/run-direct-rendering-tests.js -i 5`
+
+**Dispatch-contract pins (`tests/core/`, added 2026-08-13):** the DISPATCH layer's
+behaviour — which entry takes which path, and what the fallbacks render — is pinned by
+core tests 059–068: 059 fallback CTM correctness (all seven circle/arc/line entries
+byte-equal external-path renders), 060 fillCircle opaque+globalAlpha direct dispatch,
+061 fillOuterStrokeArc non-Color fallback, 062 value-based `_noShadow`, 063 shadow
+routing through all seven hand-rolled gates, 064 entry validation / invisible-draw
+consistency, 065 dash gating to the generic path, 066 the general-affine
+stays-generic decision pin (§9 entry 10), 067 the radii-collapse contract (§9 entry
+11), 068 the fused hairline full-weight contract.
 
 ### 11.3 Optional Future Edge Case Tests
 

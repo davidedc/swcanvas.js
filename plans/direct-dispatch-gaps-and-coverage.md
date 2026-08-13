@@ -1,5 +1,13 @@
 # Direct-dispatch gaps: deep review, defect fixes, and fast-path coverage extension
 
+**✅ EXECUTED IN FULL 2026-08-13** — Tier A (A1–A7) landed as seven fix commits with
+pinning tests (`tests/core/059`–`065`); Tier B resolved every item (B1 implemented,
+benchmarked at DEAD PARITY, and REJECTED per its own review clause — decision + harness
+kept; B2/B3/B5 decided-and-recorded; B4 pinned); Tier C close-out done. All ten §9 gap
+entries are struck or converted to decision records (now entries 1–13 in
+`DIRECT-RENDERING-SUMMARY.MD` §9). The close-out record, including the downstream
+re-vendor dispatch-move list, is §6 at the bottom of this file.
+
 **PLAN ONLY. Written to be executed COLD by an LLM/engineer with ZERO prior context.**
 Authored 2026-08-12 against SWCanvas `430cafa`; **fact-checked in full and revised 2026-08-13
 at HEAD `0f0d25d`** — every claim below was re-verified against `src/` at that SHA (three
@@ -360,3 +368,41 @@ entry or convert it to a documented-decision note) and the §3 tables if dispatc
   revision re-verified every §1 claim against `src/` at `0f0d25d` with empirical probes;
   probe details (bounding boxes, pixel counts) live in that session's transcript — the
   load-bearing facts are all restated inline above.
+
+## §6 Close-out record (2026-08-13 execution)
+
+Commit stack (on top of `0f0d25d`): `a23e939` step-0 audit landing · `be8b2c2` A1 ·
+`f80b919` A2 · `4c0c69d` A3 · `eb69e4d` A4 · `66a19d1` A5 · `96dbfba` A6 · `4f07f01` A7 ·
+`e319c4f` B1 (rejection record) · `55123f5` B2+B3 · `b11ceb2` B4 · `c3dff04` B5 ·
+Tier C docs commit. Verification at close: 88 core + 154 visual + 79 direct-rendering,
+all green after every commit.
+
+**Dispatch-move list for the Fizzygum re-vendor session** (baseline: pin `0f0d25d`;
+every move below happens between that pin and this campaign's HEAD):
+
+1. **Fallback pixels move where they were previously WRONG** (A1): gradient/pattern/
+   non-source-over circle/arc/line draws under any non-identity CTM now render at the
+   correct place with paint evaluated in user space. Byte-exposure only where Fizzygum
+   drew those combinations under a CTM — they were misrendered before, so any reference
+   capturing them was capturing a bug.
+2. **fillCircle, opaque color + globalAlpha < 1** (A2): generic → direct
+   (`CircleOps.fill_Alpha`) — non-AA circle rasterization instead of pixel-center
+   polygon sampling, and (with A5) the shadow policy of the direct family.
+3. **Rect/roundRect/stadium draws under a value-transparent shadow colour with non-zero
+   blur/offset** (A4): generic → direct; output byte-identical (pinned by test 062).
+4. **Solid-color circle/arc/line draws with an ACTIVE shadow** (A5): direct → generic;
+   the shape re-rasterizes under the generic convention and GAINS the previously-dropped
+   shadow. Fizzygum exposure: any SWCanvas-side shadowed direct-shape call.
+5. **DASHED immediate-mode strokes** (A7): direct → generic, and now render dashed
+   instead of solid — a behaviour fix; solid strokes untouched.
+6. **Negative-dimension fillRect/strokeRect, singular-CTM clearRect, a=0/globalAlpha=0
+   draws** (A6): no pixel-producing moves — all draw nothing (strokeRect's stray pixels
+   gone; two throw paths became silent no-ops).
+7. **NOT moved** (B1 rejected): rects under shear/mirror-rotation/rot+non-uniform stay
+   generic — dispatch for every CTM class is unchanged; Fizzygum's
+   rotation+uniform-scale islands were never in scope (similitudes, §0 caveat).
+
+Since Fizzygum composes only similitudes and (per the §0 caveat) had zero exposure on
+the flagship item, the realistic exposure set is items 2, 4 and 5 — and only where
+Fizzygum actually issues those calls on the SW backend. Screenshot-reference churn, if
+any, needs the usual eyeball + webkit-verify pass, not blind recapture.
