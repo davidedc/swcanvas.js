@@ -26353,6 +26353,13 @@ class Context2D {
         // Dashed strokes route to the decomposed/generic path (see strokeRect).
         if (this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle) && this._lineDash.length === 0) {
             const t = this._transform;
+            // Deliberately NOT tier-0-wired - the one AA rect-family arm left
+            // out: RectOpsAA.fillStroke_AA_Any's signature ends at clipBuffer,
+            // so a rect clip materialises the bitmask here (the single-purpose
+            // fillRect/strokeRect arms clamp extents instead). Wiring means
+            // threading the clipRect clamp through the fused fill+stroke
+            // composite; do it together with a benchmark-justified hot clipped
+            // caller (tier-0 design: plans/clipping-optimization.md).
             const clip = this._ensureClipBuffer();
 
             const hasFill = this._fillStyle.a > 0;

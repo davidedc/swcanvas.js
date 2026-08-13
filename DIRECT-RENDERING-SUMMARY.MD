@@ -919,6 +919,16 @@ current consumers:
    workload. The generic fallback stays the deliberate design; do not build speculatively,
    and do not duplicate the existing `ellipse()` PATH method (both API layers already have
    it — only an immediate-mode direct family is absent, deliberately).
+13. **REVIEWED (2026-08-13): tier-0 clip wiring for the unwired arms — left standing.** The
+   NOT-wired list (`RectOpsRot`, `RoundedRectOpsRot`, `ArcOps`, `LineOps`, `QuadScanOps`,
+   `RectOpsAA.fillStroke_AA_Any`) was re-reviewed after the general-affine trial (entry 10 —
+   whose rejection also removed the would-be NEW unwired quad arm). No benchmark evidence
+   exists for wiring any of them: every omission is a perf loss only (the bitmask is
+   materialised, correctness holds), each has a deliberate in-code note at its dispatch site
+   — `fillStrokeRect`'s was the one missing and is now added — and the LineOps answer is
+   pre-designed (Cohen-Sutherland endpoint clipping, `plans/clipping-optimization.md` §9
+   Stage 4, itself profiling-gated: "if 1px strokes are hot"). Wire an arm only together
+   with a benchmark-justified hot clipped caller.
 
 ---
 
