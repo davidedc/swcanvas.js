@@ -3014,10 +3014,17 @@ class Context2D {
         // Sequential generic rendering via un-baked USER-space external paths
         // under the live CTM — same form as the !isUniformScale gate above;
         // see _fillCircleDirect's fallback note.
+        // Presence here is paint EXISTENCE, not paint type: hasFill/hasStroke
+        // embed `instanceof Color` (correct for the direct arm's null-paint
+        // slots) and would silently DROP a gradient/pattern half instead of
+        // falling it back. A Color half at a === 0 draws nothing either way
+        // and is skipped.
         Context2D._markPathBasedRendering();
+        const fallbackHasFill = fillIsColor ? fillPaintSource.a > 0 : true;
+        const fallbackHasStroke = strokeIsColor ? strokePaintSource.a > 0 : true;
 
         // Fill pie slice
-        if (hasFill) {
+        if (fallbackHasFill) {
             const fillPath = new SWPath2D();
             fillPath.moveTo(centerX, centerY);
             fillPath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
@@ -3026,7 +3033,7 @@ class Context2D {
         }
 
         // Stroke outer arc only
-        if (hasStroke) {
+        if (fallbackHasStroke) {
             const strokePath = new SWPath2D();
             strokePath.arc(centerX, centerY, radius, startAngle, endAngle, anticlockwise);
             this.stroke(strokePath);

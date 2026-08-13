@@ -270,7 +270,7 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `fillStrokeCircle` | isUniformScale (pre-gate) | both Color, source-over, something to draw | either non-Color · composite · nothing | sequential `_fillCircleDirect` + `_strokeCircleDirect` (still direct dispatchers) |
 | `fillArc` | isUniformScale (pre-gate) | Color, source-over (NO shadow gate, NO a>0 fallback — a=0 returns silently) | non-Color · composite | generic via external `SWPath2D`; never tier-0-clipped |
 | `outerStrokeArc` | isUniformScale (pre-gate) | Color, a>0, source-over, lineCap 'butt' | non-Color · a=0 · composite · round/square cap | generic via external `SWPath2D` (honours the cap) |
-| `fillOuterStrokeArc` | isUniformScale (pre-gate) | both Color, source-over, lineCap 'butt', something to draw | composite · cap · ⚠ non-Color half is silently DROPPED, not fallen back (§9) | sequential generic via external `SWPath2D` |
+| `fillOuterStrokeArc` | isUniformScale (pre-gate) | both Color, source-over, lineCap 'butt', something to draw | either paint non-Color · composite · cap | sequential generic via external `SWPath2D` (both halves) |
 | `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt' | non-Color · composite · round/square cap | generic via external `SWPath2D` (honours cap/dash; HTML5 anisotropic width under non-uniform CTM); alpha/CTM/clip/shadow never gate |
 | `fillText` | direct atlas blit iff `b=c=0, a=d=dpr`, integer e/f; else intermediate buffer + `drawImage` | none (no composite/shadow/alpha/clip gate — both arms honour them via `drawImage`) | `maxWidth` → throw · gradient/pattern → ⚠ silent BLACK substitution (console.warn) | both arms mark path-based |
 | `strokeText` | — | — | ALWAYS throws | — |
@@ -829,9 +829,11 @@ current consumers:
    which bakes the live CTM again. All six sites now build an un-baked USER-space `SWPath2D`
    and pass it as an external path (the same form as the `!isUniformScale` pre-gates), so
    geometry and paint share one application of the CTM. Pinned by `tests/core/059`.
-3. **`fillOuterStrokeArc` silently drops gradient/pattern halves.** Its generic fallback guards
-   on `hasFill`/`hasStroke`, which embed `instanceof Color`, so a non-Color half draws NOTHING
-   instead of falling back.
+3. **FIXED (2026-08-13): `fillOuterStrokeArc` silently dropped gradient/pattern halves.** Its
+   generic fallback guarded on `hasFill`/`hasStroke`, which embed `instanceof Color`, so a
+   non-Color half drew NOTHING instead of falling back (both-gradient drew nothing at all).
+   The fallback now recomputes presence from paint existence (`fallbackHasFill`/
+   `fallbackHasStroke`). Pinned by `tests/core/061`.
 4. **Ctx shadows are silently dropped by the circle/arc/line direct paths.** `_noShadow` is only
    consulted by the rect/roundRect/stadium gates; `ShadowPipeline` is only invoked from
    `Rasterizer`. So `shadowBlur=5; fillCircle(...)` draws shadowless while `fillRect(...)`
