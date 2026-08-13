@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-SWCanvas implements direct renderings for 6 shape types: Rectangle, RoundedRect, Circle, Stadium, Line, and Arc. Each has specialized rendering paths that bypass the general polygon filler when specific conditions are met.
+SWCanvas implements direct renderings for 5 shape types: Rectangle, RoundedRect, Circle, Line, and Arc. Each has specialized rendering paths that bypass the general polygon filler when specific conditions are met. Plain FILLS of rect/roundRect/stadium are the deliberate exception — they always take the generic pipeline (§9 entries 15-16).
 
 ---
 
@@ -10,16 +10,16 @@ SWCanvas implements direct renderings for 6 shape types: Rectangle, RoundedRect,
 
 | Shape                   | Entry Point                           | Path-Based Fallback         |
 |-------------------------|---------------------------------------|-----------------------------|
-| Rectangle Fill          | Context2D.fillRect()                  | rasterizer.fillRect()       |
+| Rectangle Fill          | Context2D.fillRect() — NO direct arm  | rasterizer.fillRect() (always) |
 | Rectangle Stroke        | Context2D.strokeRect()                | rasterizer.stroke(path)     |
 | Rectangle Fill+Stroke   | Context2D.fillStrokeRect()         | Separate fill + stroke      |
-| RoundedRect Fill        | Context2D.fillRoundRect()             | path.roundRect() + fill()   |
+| RoundedRect Fill        | Context2D.fillRoundRect() — NO direct arm | path.roundRect() + fill() (always) |
 | RoundedRect Stroke      | Context2D.strokeRoundRect()           | path.roundRect() + stroke() |
 | RoundedRect Fill+Stroke | Context2D.fillStrokeRoundRect()    | Separate fill + stroke      |
 | Circle Fill             | Context2D.fillCircle()                | path.arc() + fill()         |
 | Circle Stroke           | Context2D.strokeCircle()              | path.arc() + stroke()       |
 | Circle Fill+Stroke      | Context2D.fillStrokeCircle()       | Separate fill + stroke      |
-| Stadium Fill            | Context2D.fillStadium()               | path.roundRect(r=min/2) + fill() |
+| Stadium Fill            | Context2D.fillStadium() — NO direct arm | path.roundRect(r=min/2) + fill() (always) |
 | Line Stroke             | Context2D.strokeLine()                | path moveTo/lineTo + stroke |
 | Arc Fill                | Context2D.fillArc()                   | path.arc() + fill()         |
 | Arc Stroke              | Context2D.outerStrokeArc()            | path.arc() + stroke()       |
@@ -30,6 +30,10 @@ All entry points are in `Context2D.js`. Use grep to find exact locations: `grep 
 **Notes:**
 - Direct rendering is available **exclusively** via dedicated methods (e.g., `fillCircle()`, `strokeRect()`). Path-based rendering (`beginPath()` + `arc()/rect()` + `fill()/stroke()`) always uses the generic polygon pipeline for consistent, predictable behavior.
 - Private methods (`_fillCircleDirect`, `_strokeCircleDirect`, `_strokeLineDirect`) are internal helpers called by the public convenience methods.
+- **The three plain FILL entries above have no direct arm at all** — `fillRect`, `fillRoundRect`
+  and `fillStadium` always take their fallback column. Their fast paths were removed on
+  benchmark evidence (§9 entries 15-16); strokes, the fused `fillStroke*` entries, and the
+  circle/arc/line families keep theirs.
 
 ---
 
@@ -39,9 +43,7 @@ All entry points are in `Context2D.js`. Use grep to find exact locations: `grep 
 
 | Stroke Width | Orientation             | Opacity          | Function                        | Clipping TO |
 |--------------|-------------------------|------------------|---------------------------------|-------------|
-| N/A (fill)   | Axis-aligned            | Opaque           | RectOpsAA.fill_AA_Opaq()          | YES      |
-| N/A (fill)   | Axis-aligned            | Semi-transparent | RectOpsAA.fill_AA_Alpha()         | YES      |
-| N/A (fill)   | Rotated (uniform scale) | Both             | RectOpsRot.fill_Rot_Any()      | YES      |
+| N/A (fill)   | Any                     | Any              | NONE - always generic (§9 entries 15-16) | via pipeline |
 | 1px          | Axis-aligned            | Opaque           | RectOpsAA.stroke1px_AA_Opaq()     | YES      |
 | 1px          | Axis-aligned            | Semi-transparent | RectOpsAA.stroke1px_AA_Alpha()    | YES      |
 | <1px (hairline) | Axis-aligned         | Any              | RectOpsAA.stroke1px_AA_Alpha() at globalAlpha×width (§3) | YES |
@@ -54,6 +56,11 @@ All entry points are in `Context2D.js`. Use grep to find exact locations: `grep 
 
 Notes:
 - Context2D calls RectOpsAA for axis-aligned (AA) operations and RectOpsRot directly for rotated operations.
+- **Plain `fillRect` has no direct arm** - the AA and rotated fill arms were removed on
+  benchmark evidence (§9 entries 15-16). The fill STATICS live on as internals:
+  `RectOpsAA.fill_AA_Opaq/Alpha` are called by `RoundedRectOpsAA.fillStroke_AA_Any` (and by
+  its radius=0 fallback), and `RectOpsRot.fill_Rot_Any` by `RectOpsRot.fillStroke_Rot_Any`
+  and `RoundedRectOpsRot`'s radius=0 fallback. They are no longer dispatch targets.
 - `RectOpsAA.fillStroke_AA_Any()` uses three optimized paths:
   - **1px fast path** (`lineWidth <= 1`): Fill inner extent via SpanOps + direct 4-edge pixel stroke. No overlap exists between fill and stroke for 1px, so no composite calculation needed.
   - **5-segment path** (thick semi-transparent strokes): Pre-computed composite color for overlap regions, zero overdraw.
@@ -63,9 +70,7 @@ Notes:
 
 | Stroke Width | Orientation  | Opacity          | Function                               | Clipping TO |
 |--------------|--------------|------------------|----------------------------------------|-------------|
-| N/A (fill)   | Axis-aligned | Opaque           | RoundedRectOpsAA.fill_AA_Opaq()          | YES      |
-| N/A (fill)   | Axis-aligned | Semi-transparent | RoundedRectOpsAA.fill_AA_Alpha()         | YES      |
-| N/A (fill)   | Rotated      | Both             | RoundedRectOpsRot.fill_Rot_Any()      | YES      |
+| N/A (fill)   | Any          | Any              | NONE - always generic (§9 entries 15-16) | via pipeline |
 | 1px          | Axis-aligned | Opaque           | RoundedRectOpsAA.stroke1px_AA_Opaq()     | YES      |
 | 1px          | Axis-aligned | Semi-transparent | RoundedRectOpsAA.stroke1px_AA_Alpha()    | YES      |
 | <1px (hairline) | Axis-aligned | Any           | RoundedRectOpsAA.stroke1px_AA_Alpha() at globalAlpha×width (§3) | YES |
@@ -78,6 +83,10 @@ Notes:
 
 Notes:
 - Context2D calls RoundedRectOpsAA for axis-aligned (AA) operations and RoundedRectOpsRot directly for rotated operations.
+- **Plain `fillRoundRect` has no direct arm** - the dispatch ladder was removed on benchmark
+  evidence (§9 entries 15-16), which left `RoundedRectOpsAA.fill_AA_Opaq/Alpha` with zero
+  callers; both were DELETED. `RoundedRectOpsRot.fill_Rot_Any` survives as an internal of
+  `RoundedRectOpsRot.fillStroke_Rot_Any`, not as a dispatch target.
 - RoundedRectOpsRot falls back to RectOpsRot (not RectOpsAA) when radius=0 for consistency.
 - Axis-aligned rounded rectangle **stroke** (1px alpha) uses edge shortening + lastPos tracking to prevent overdraw.
 - Rotated rounded rectangle **stroke** (1px opaque) uses hybrid algorithm: 4 edges via inline Bresenham + 4 corner arcs via ArcOps.stroke1px_Opaq_Exact().
@@ -105,26 +114,25 @@ Notes:
 
 Note: Circles are inherently rotation-invariant (no tilted variant needed)
 
-### 2.3b STADIUMS (StadiumOps.js)
-
-| Stroke Width | Opacity          | Function                 | Clipping TO |
-|--------------|------------------|--------------------------|-------------|
-| N/A (fill)   | Opaque           | StadiumOps.fill_Opaq()   | YES      |
-| N/A (fill)   | Semi-transparent | StadiumOps.fill_Alpha()  | YES      |
+### 2.3b STADIUMS (no direct renderer)
 
 A stadium (capsule) is the w-by-h box with its shorter axis fully rounded: two
 half-circle caps of radius min(w,h)/2 joined by a rectangular body, orientation
-implied by the longer axis (w === h degenerates to fillCircle's exact pixels).
-Deliberately FILL-ONLY - no stroke variants until a caller exists. Built on
-CircleOps.generateExtents (one union span per row), because (a) the
-circle+rect+circle composition double-blends its overlaps at alpha < 1, and
-(b) RoundedRectOpsAA at the degenerate radius r = min(w,h)/2 loses the
-left/right apex columns of a HORIZONTAL stadium (its corner x extents are
-edge-sampled while rows are center-sampled - hidden on normal rounded rects by
-their straight vertical edges; probed in
-debug/probe-stadium-roundrect-degenerate.js). Rotated-uniform-scale calls
-delegate to RoundedRectOpsRot at the degenerate radius (no exact-column
-contract under rotation); the crisp contract is pinned by tests/core/053.
+implied by the longer axis. `fillStadium` is FILL-ONLY (no stroke variants until
+a caller exists) and has **no direct arm**: it builds an un-baked user-space
+roundRect path at the degenerate radius r = min(w,h)/2 and fills it through the
+generic pipeline under the current CTM.
+
+It once had a dedicated `StadiumOps` renderer built on CircleOps.generateExtents,
+because (a) a circle+rect+circle composition double-blends its overlaps at
+alpha < 1, and (b) the direct roundRect arm at the degenerate radius lost the
+left/right apex columns of a HORIZONTAL stadium (its corner x extents were
+edge-sampled while rows were center-sampled; probed in
+debug/probe-stadium-roundrect-degenerate.js). Both defects belonged to those
+DIRECT arms: the generic pipeline samples pixel centers and emits one span per
+row, so it has neither. `StadiumOps.js` was deleted with the other fill arms
+(§9 entries 15-16); the crisp-box, symmetry, single-blend, tier-0, transform and
+containment contract is still pinned by tests/core/053.
 
 ### 2.4 LINES (LineOps.js)
 
@@ -243,13 +251,13 @@ any width also stay unwired (no `_Alpha` direct renderer; generic path).
 
 | Shape       | Additional Checks                                                         |
 |-------------|---------------------------------------------------------------------------|
-| Rectangle   | Transform: isAxisAligned OR isUniformScale. Generic ONLY when BOTH fail — a non-90°-multiple rotation combined with non-uniform scale, a SHEAR, or a mirror-with-rotation (produces a parallelogram/quad the rect renderers can't draw). NOTE isAxisAligned covers 0/90/180/270 incl. flips, so a 90°-ROTATED NON-UNIFORM CTM stays fully direct (AA arm, w/h swapped); a tilted UNIFORM CTM stays direct (Rot arm). |
-| RoundedRect | Transform: isUniformScale REQUIRED (non-uniform would need ellipse corners → generic; ⚠ stricter than plain rects — axis-aligned `scale(2,1)` goes generic here but stays direct for Rectangle; keeping that gate is a RECORDED decision — §9 entry 11). RADII CONTRACT: a `radii` array is collapsed FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 per-corner semantics), then rounded to an integer and clamped by `RoundedRectUtils.normalizeRadius`. Within it, a three-arm ladder: isIdentity (literal user coords) → isAxisAligned (device coords, 90° w/h swap) → rotated (`*_Rot_Any`). All arms are the same renderer family with numerically equivalent arguments at scale 1. |
+| Rectangle   | STROKES and the fused entry (fills are always generic). Transform: isAxisAligned OR isUniformScale. Generic ONLY when BOTH fail — a non-90°-multiple rotation combined with non-uniform scale, a SHEAR, or a mirror-with-rotation (produces a parallelogram/quad the rect renderers can't draw). NOTE isAxisAligned covers 0/90/180/270 incl. flips, so a 90°-ROTATED NON-UNIFORM CTM stays fully direct (AA arm, w/h swapped); a tilted UNIFORM CTM stays direct (Rot arm). |
+| RoundedRect | STROKES and the fused entry (fills are always generic). Transform: isUniformScale REQUIRED (non-uniform would need ellipse corners → generic; ⚠ stricter than plain rects — axis-aligned `scale(2,1)` goes generic here but stays direct for Rectangle; keeping that gate is a RECORDED decision — §9 entry 11). RADII CONTRACT: a `radii` array is collapsed FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 per-corner semantics), then rounded to an integer and clamped by `RoundedRectUtils.normalizeRadius`. Within it, a three-arm ladder: isIdentity (literal user coords) → isAxisAligned (device coords, 90° w/h swap) → rotated (`*_Rot_Any`). All arms are the same renderer family with numerically equivalent arguments at scale 1. |
 | Circle      | Transform: isUniformScale (translate/rotate/uniform-scale go direct — pre-multiplication is byte-exact;      |
 |             | test 050; NON-uniform scale gates to the generic pipeline via an un-baked user-space path, so the caller      |
 |             | gets the correct ELLIPSE rather than the geometric-mean-radius circle the direct path would draw — test 054). |
-| Stadium     | Transform: isUniformScale (axis-aligned 90-degree rotation swaps w/h inline; rotated delegates to             |
-|             | RoundedRectOpsRot at r = min(w,h)/2; non-uniform scale falls back to the path pipeline).                      |
+| Stadium     | NO direct arm — every `fillStadium` builds a user-space roundRect path at r = min(w,h)/2 and       |
+|             | fills it generically (§9 entries 15-16); there is no stroke entry.                                 |
 | Line        | lineCap === 'butt' (required for direct rendering)                               |
 | Arc         | lineCap === 'butt' (required for direct rendering)                               |
 |             | Transform: isUniformScale — same gate + generic-path fallback as Circle (test 054) |
@@ -263,14 +271,14 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 
 | Entry | CTM for direct | Non-CTM for direct | Falls back on | Fallback target |
 |---|---|---|---|---|
-| `fillRect` | isAxisAligned OR isUniformScale | Color, a>0, source-over, `_noShadow` | gradient/pattern · composite · shadow · shear/mirror-rot/rot+non-uniform (a=0 → early return, §3 Paint Alpha) | generic rasterizer (negative/zero dims and bad types validated up front — §9 note) |
-| `strokeRect` | same | same (stroke paint) + no dash | same · dash set | generic (honours `lineDash`; dims/types validated up front like fillRect) |
-| `fillStrokeRect` | same | both paints Color, source-over, `_noShadow`, something to draw | either paint non-Color · nothing to draw · composite · shadow · CTM | decomposes → `fillRect` + `strokeRect` |
+| `fillRect` | NONE — always generic (fill arms removed, §9 entries 15-16) | n/a | ALWAYS (a=0 → early return, §3 Paint Alpha) | generic rasterizer (negative/zero dims and bad types validated up front — §9 note) |
+| `strokeRect` | isAxisAligned OR isUniformScale | Color, a>0, source-over, `_noShadow`, no dash | gradient/pattern · composite · shadow · shear/mirror-rot/rot+non-uniform · dash set | generic (honours `lineDash`; dims/types validated up front like fillRect) |
+| `fillStrokeRect` | isAxisAligned OR isUniformScale | both paints Color, source-over, `_noShadow`, something to draw | either paint non-Color · nothing to draw · composite · shadow · CTM | decomposes → `fillRect` (generic) + `strokeRect` (direct) |
 | `clearRect` | n/a (`b===0 && c===0` picks span loop vs inverse-transform loop) | none | NEVER — direct-only | — (ignores alpha/composite/shadow by design) |
-| `fillRoundRect` | isUniformScale (ladder identity→AA→rot) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform scale | generic via external `SWPath2D` (radius≤0 → `fillRect`) |
-| `strokeRoundRect` | same | same (stroke) + no dash | same · dash set | generic via `stroke(path)`, honours `lineDash` (radius≤0 → `strokeRect`) |
-| `fillStrokeRoundRect` | same | both Color, source-over, `_noShadow`, something to draw | as `fillStrokeRect` + non-uniform | decomposes → `fillRoundRect` + `strokeRoundRect` (radius≤0 → `fillStrokeRect`) |
-| `fillStadium` | isUniformScale (rot arm delegates to `RoundedRectOpsRot`, r=min/2) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform | generic via external `SWPath2D` (no stroke API exists) |
+| `fillRoundRect` | NONE — always generic (fill ladder removed, §9 entries 15-16) | n/a | ALWAYS (a=0 → early return) | generic via external `SWPath2D` (radius≤0 → `fillRect`, itself generic) |
+| `strokeRoundRect` | isUniformScale | Color, a>0, source-over, `_noShadow`, no dash | non-Color · a=0 · composite · shadow · non-uniform scale · dash set | generic via `stroke(path)`, honours `lineDash` (radius≤0 → `strokeRect`) |
+| `fillStrokeRoundRect` | isUniformScale | both Color, source-over, `_noShadow`, something to draw | as `fillStrokeRect` + non-uniform | decomposes → `fillRoundRect` (generic) + `strokeRoundRect` (direct) (radius≤0 → `fillStrokeRect`) |
+| `fillStadium` | NONE — always generic (`StadiumOps` deleted, §9 entries 15-16) | n/a | ALWAYS (a=0 → early return) | generic via external `SWPath2D` at r=min(w,h)/2 (no stroke API exists) |
 | `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over, `_noShadow` | non-Color · composite · shadow | generic via external `SWPath2D` |
 | `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow | generic via external `SWPath2D` (honours cap/join/dash) |
 | `fillStrokeCircle` | isUniformScale (pre-gate) | both Color, source-over, `_noShadow`, something to draw | either non-Color · composite · shadow · nothing | sequential `_fillCircleDirect` + `_strokeCircleDirect` (still direct dispatchers) |
@@ -313,9 +321,6 @@ RoundedRectOpsRot.*_Rot_*() ─────► RectOpsRot.*_Rot_*()
 RoundedRectOpsAA.stroke1px_AA_Opaq() ► RectOpsAA.stroke1px_AA_Opaq()
    (fallback when radius=0)
 
-RoundedRectOpsAA.fill_AA_Opaq() ────► RectOpsAA.fill_AA_Opaq()
-   (fallback when radius=0)
-
 RoundedRectOpsAA.strokeThick_AA_Opaq() ► RectOpsAA.strokeThick_AA_Opaq()
    (fallback when radius=0)
 
@@ -339,9 +344,6 @@ CircleOps.strokeThick_Alpha() ────► SpanOps.fill_Alpha()
 
 CircleOps.fillStroke_Any() ───────► SpanOps.fill_Opaq/fill_Alpha
    (fill spans + stroke segments)
-
-RoundedRectOpsAA.fill_AA_Opaq() ────► SpanOps.fill_Opaq()
-   (each scanline)
 
 RoundedRectOpsAA.fillStroke_AA_Any() ─► SpanOps.fill_Opaq/fill_Alpha (via helper functions)
 
@@ -387,14 +389,15 @@ QuadScanOps.fillQuad() ───────────► SpanOps.fill_Opaq / 
 
 | Shape                   | Clipping TO Support | Bitmask Method            | Tier-0 rect clip (no bitmask) |
 |-------------------------|---------------------|---------------------------|-------------------------------|
-| Rectangle (fill/stroke) | YES                 | clipBuffer per pixel      | YES                           |
-| RoundedRect             | YES                 | clipBuffer per pixel      | YES (fill, stroke, fused fillStroke)             |
+| Rectangle (stroke, fused) | YES               | clipBuffer per pixel      | YES                           |
+| RoundedRect (stroke, fused) | YES             | clipBuffer per pixel      | YES (stroke, fused fillStroke)  |
 | Circle (all)            | YES                 | clipBuffer per pixel      | YES (fill, 1px + thick stroke, fused fillStroke) |
-| Stadium (fill)          | YES                 | clipBuffer per pixel      | YES (from birth; rotated branch uses the bitmask like other Rot paths) |
 | Line (all)              | YES                 | clipBuffer per pixel/span | NO — stroke_Any dispatches thin/thick internally and its thick diagonal branch delegates to QuadScanOps, which has no clipRect concept (comment at `_strokeLineDirect`) |
 | Arc (all)               | YES                 | clipBuffer per pixel      | NO — the 1px writers bounds-check inside shared inline preprocessor templates, so a clipRect is a codegen change, not a clamp (comment at `fillArc`) |
 
-All shapes take a `clipBuffer` parameter passed from Context2D to their respective *Ops methods.
+All shapes take a `clipBuffer` parameter passed from Context2D to their respective *Ops methods. Plain
+rect/roundRect/stadium FILLS are not in this table: they run on the generic pipeline, which handles
+both the tier-0 clipRect and the bitmask itself.
 
 **Tier-0 rect clip**: when the active clip collapses to a single axis-aligned rect, wired entry points skip the bitmask entirely — they consult `Context2D._tier0ClipRect()` and pass the rect down as a `clipRect` parameter; the renderer clamps its row/span/pixel extents to it (defaults = surface bounds, so unclipped output is byte-identical by construction). The byte-identical contract lives at `Context2D._tier0ClipRect`'s doc comment; equivalence is pinned by `tests/core/049` (RoundedRect) and `tests/core/051` (Circle). ⚠ `SpanOps` does NOT clamp — callers must keep spans inside the surface AND the clip rect (`tests/core/052` pins the off-surface containment contract for the fused circle path).
 
@@ -646,8 +649,8 @@ for (corner of corners) generateArcPixels(corner, renderPixel);
 
 | Feature               | Rect | RoundRect | Circle | Line | Arc |
 |-----------------------|------|-----------|--------|------|-----|
-| Fill opaque           | ✓    | ✓         | ✓      | N/A  | ✓   |
-| Fill alpha            | ✓    | ✓         | ✓      | N/A  | ✓   |
+| Fill opaque           | ✗ (generic) | ✗ (generic) | ✓  | N/A  | ✓   |
+| Fill alpha            | ✗ (generic) | ✗ (generic) | ✓  | N/A  | ✓   |
 | Stroke 1px opaque     | ✓    | ✓         | ✓      | ✓    | ✓   |
 | Stroke 1px alpha      | ✓    | ✓         | ✓      | ✓    | ✓   |
 | Stroke hairline <1px (§3) | ✓ | ✓        | ✓      | ✓    | ✓   |
@@ -676,10 +679,10 @@ Methods follow the dual-suffix pattern: `{operation}[Thickness]_{orientation}_{o
 
 | Class              | Fill Methods                                      | Stroke Methods                                                                                         |
 |--------------------|---------------------------------------------------|--------------------------------------------------------------------------------------------------------|
-| RectOpsAA            | fill_AA_Opaq, fill_AA_Alpha                       | stroke1px_AA_Opaq, stroke1px_AA_Alpha, strokeThick_AA_Opaq, strokeThick_AA_Alpha                       |
-| RectOpsRot        | fill_Rot_Any                                      | stroke_Rot_Any                                                                                         |
-| RoundedRectOpsAA     | fill_AA_Opaq, fill_AA_Alpha                       | stroke1px_AA_Opaq, stroke1px_AA_Alpha, strokeThick_AA_Opaq, strokeThick_AA_Alpha                       |
-| RoundedRectOpsRot | fill_Rot_Any                                      | stroke_Rot_Any                                                                                         |
+| RectOpsAA            | fill_AA_Opaq, fill_AA_Alpha (internals — no dispatch) | stroke1px_AA_Opaq, stroke1px_AA_Alpha, strokeThick_AA_Opaq, strokeThick_AA_Alpha                   |
+| RectOpsRot        | fill_Rot_Any (internal — no dispatch)             | stroke_Rot_Any                                                                                         |
+| RoundedRectOpsAA     | — (fill_AA_* DELETED, §9 entries 15-16)           | stroke1px_AA_Opaq, stroke1px_AA_Alpha, strokeThick_AA_Opaq, strokeThick_AA_Alpha                       |
+| RoundedRectOpsRot | fill_Rot_Any (internal — no dispatch)             | stroke_Rot_Any                                                                                         |
 | CircleOps          | fill_Opaq, fill_Alpha                             | stroke1px_Opaq, stroke1px_Alpha, strokeThick_Opaq, strokeThick_Alpha                                   |
 | LineOps            | N/A                                               | stroke_Any (public dispatcher)                                                                         |
 | ArcOps             | fill_Opaq, fill_Alpha                             | stroke1px_Opaq, stroke1px_Opaq_Exact, stroke1px_Alpha, strokeOuter_Opaq, strokeOuter_Alpha             |
@@ -725,7 +728,6 @@ Each *Ops file contains a **CALL HIERARCHY** header comment documenting method d
  * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
  * Layer 1 (Primitives - call SpanOps, fallback to RectOpsAA for radius=0):
- *   fill_AA_Opaq, fill_AA_Alpha
  *   stroke1px_AA_Opaq, stroke1px_AA_Alpha
  *   strokeThick_AA_Opaq, strokeThick_AA_Alpha
  *
@@ -973,6 +975,34 @@ current consumers:
    committed PNGs moved. The `_fillFullCoverCanvasWide` micro-arm (entry: BitmapText
    `source-in` tint) is byte-identical and KEPT. Plan:
    `plans/one-rect-fill-pipeline-and-fill-arm-removal.md`.
+16. **DONE (2026-08-13): all four parity FILL fast paths removed — rect, roundRect and stadium
+   fills are now uniformly generic.** Disable-and-benchmark (12 super-measurements, CV ≤ ~1%,
+   dispatch difference proven live via the path-based flag on both dists; ratio = generic/fast
+   median, >1 means the arm wins) measured: axis-aligned rect fill 1.02x opaque / 1.02x semi
+   (worst single case 1.06x, szS semi); tilted rect fill 1.00x / 1.01x; roundRect fill 1.00x on
+   every case, AA and rotated. Stadium has no perf case by design — its algorithm class (span
+   walk + cap geometry) is roundRect's, so parity holds by proxy. **The AA rect arm's 2–6% edge
+   on small/mid alpha fills is a real cost the owner explicitly accepted** for one fill
+   implementation. Removed: `fillRect`'s AA+rot dispatch block, `fillRoundRect`'s
+   identity→AA→rot ladder, `fillStadium`'s block, and — left callerless by the ladder —
+   `RoundedRectOpsAA.fill_AA_Opaq/Alpha` plus the whole of `StadiumOps.js`. Kept as internals
+   (no longer dispatch targets): `RectOpsAA.fill_AA_*` (fused arm, roundRect radius=0),
+   `RectOpsRot.fill_Rot_Any` and `RoundedRectOpsRot.fill_Rot_Any` (fused arms, radius=0
+   fallbacks). Strokes, fused `fillStroke*` entries and the circle/arc/line families are NOT
+   affected and NOT on the same evidence — they avoid geometry construction the generic path
+   must do, and the fused arms are seam-prevention correctness features (§5 of the plan).
+   CONVENTION CHANGES this ships, both eyeballed before landing: (a) translucent fills under
+   `globalAlpha < 1` move ±1 — the direct arms composed effective alpha in float
+   (`(color.a/255)*globalAlpha`), the generic pipeline quantizes to a byte first
+   (`Color.withGlobalAlpha`), which is what every path fill, gradient and stroke already did, so
+   fills CONVERGE on the engine's dominant convention (fillStyle alpha alone is byte-identical
+   across all 255 values — probe-isolated); (b) rotated fills, roundRect corners and stadium
+   caps move by boundary hairlines (integer-scanline/Bresenham vs pixel-center sampling).
+   Inverted pins now force this conversation before any re-addition: `tests/core/066` (fillRect
+   generic under every CTM class) and `tests/core/069` (all three fill entries generic while
+   their stroke/fused siblings stay direct). Do not re-add a fill fast path without fresh
+   §2.1-grade benchmark evidence. Plan:
+   `plans/one-rect-fill-pipeline-and-fill-arm-removal.md`.
 
 ---
 
@@ -999,17 +1029,21 @@ current consumers:
 
 ## 11. Test Coverage Analysis
 
-All 39 documented direct rendering functions have **100% explicit test coverage** via dedicated tests in `tests/direct-rendering/cases/`.
+All 34 documented direct rendering functions have **100% explicit test coverage** via dedicated
+tests in `tests/direct-rendering/cases/`. Three of them (`RectOpsAA.fill_AA_Opaq/Alpha`,
+`RectOpsRot.fill_Rot_Any`) are no longer DISPATCH targets since the fill-arm removal (§9 entries
+15-16) — they survive as internals of the fused/radius-0 paths and are covered through those
+entries. `RoundedRectOpsAA.fill_AA_Opaq/Alpha` were deleted outright, and `StadiumOps` with them.
 
 ### 11.1 Coverage Matrix
 
-#### RECTANGULAR (RectOpsAA.js + RectOpsRot.js) - 9/9 Functions Covered
+#### RECTANGULAR (RectOpsAA.js + RectOpsRot.js) - 9/9 Functions Covered (6 dispatched + 3 internal)
 
 | Function | Test File(s) |
 |----------|--------------|
-| `RectOpsAA.fill_AA_Opaq()` | `rect-fill-opaque-test.js` |
-| `RectOpsAA.fill_AA_Alpha()` | `rect-sgl-*-fSemi-*` tests |
-| `RectOpsRot.fill_Rot_Any()` | `rect-sgl-szMix-fOpaq-sOpaq-*-ctxRotRand-test.js` |
+| `RectOpsAA.fill_AA_Opaq()` *(internal)* | via `RoundedRectOpsAA.fillStroke_AA_Any` radius=0 and the fused rect arm — `rect-*-fSemi-sMix-*` tests |
+| `RectOpsAA.fill_AA_Alpha()` *(internal)* | same, alpha variants |
+| `RectOpsRot.fill_Rot_Any()` *(internal)* | via `RectOpsRot.fillStroke_Rot_Any` / `RoundedRectOpsRot` radius=0 — `rect-sgl-szMix-fOpaq-sOpaq-*-ctxRotRand-test.js` |
 | `RectOpsAA.stroke1px_AA_Opaq()` | `rect-sgl-szMix-fNone-sOpaq-sw1px-*` tests |
 | `RectOpsAA.stroke1px_AA_Alpha()` | `rect-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-ornAxial-test.js` |
 | `RectOpsAA.strokeThick_AA_Opaq()` | `rect-*-sw1-10px-*-sOpaq-*` tests |
@@ -1017,13 +1051,11 @@ All 39 documented direct rendering functions have **100% explicit test coverage*
 | `RectOpsRot.stroke_Rot_Any()` | `rect-sgl-szMix-fOpaq-sOpaq-*-ctxRotRand-test.js` |
 | `RectOpsAA.fillStroke_AA_Any()` | `rect-*-fSemi-sMix-*` tests |
 
-#### ROUNDED RECTANGLES (RoundedRectOpsAA.js + RoundedRectOpsRot.js) - 10/10 Functions Covered
+#### ROUNDED RECTANGLES (RoundedRectOpsAA.js + RoundedRectOpsRot.js) - 8/8 Functions Covered (7 dispatched + 1 internal)
 
 | Function | Test File(s) |
 |----------|--------------|
-| `RoundedRectOpsAA.fill_AA_Opaq()` | `roundrect-sgl-szMix-fOpaq-sNone-lytCenter-cenMixPG-edgeCrisp-ornAxial-rrrRand-test.js` |
-| `RoundedRectOpsAA.fill_AA_Alpha()` | `roundrect-m8-xl-fSemi-sNone-*` |
-| `RoundedRectOpsRot.fill_Rot_Any()` | `roundrect-sgl-szRand-f{Opaq,Semi}-sNone-sw0-lytCenter-cenRand-edgeNotCrisp-ornRot-rrrRand-test.js` |
+| `RoundedRectOpsRot.fill_Rot_Any()` *(internal)* | via `RoundedRectOpsRot.fillStroke_Rot_Any` — `roundrect-sgl-szRand-fOpaq-sSemi-*-ornRot-*` tests |
 | `RoundedRectOpsAA.stroke1px_AA_Opaq()` | `roundrect-*-sw1px-*-sOpaq-*` tests |
 | `RoundedRectOpsAA.stroke1px_AA_Alpha()` | `roundrect-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-ornAxial-rrrRand-test.js` |
 | `RoundedRectOpsAA.strokeThick_AA_Opaq()` | `roundrect-*-sw1-11px-*-sOpaq-*` tests |
@@ -1072,12 +1104,12 @@ All 39 documented direct rendering functions have **100% explicit test coverage*
 
 | Shape | Functions | Covered |
 |-------|-----------|---------|
-| Rectangle | 9 | 9 ✓ |
-| RoundedRect | 10 | 10 ✓ |
+| Rectangle | 9 (6 dispatched + 3 internal) | 9 ✓ |
+| RoundedRect | 8 (7 dispatched + 1 internal) | 8 ✓ |
 | Circle | 7 | 7 ✓ |
 | Line | 5 | 5 ✓ |
 | Arc | 8 | 8 ✓ |
-| **Total** | **39** | **39 ✓** |
+| **Total** | **37** | **37 ✓** |
 
 **Test Suite Statistics:**
 - **79 test files** in `tests/direct-rendering/cases/`
@@ -1086,13 +1118,15 @@ All 39 documented direct rendering functions have **100% explicit test coverage*
 
 **Dispatch-contract pins (`tests/core/`, added 2026-08-13):** the DISPATCH layer's
 behaviour — which entry takes which path, and what the fallbacks render — is pinned by
-core tests 059–068: 059 fallback CTM correctness (all seven circle/arc/line entries
+core tests 059–069: 059 fallback CTM correctness (all seven circle/arc/line entries
 byte-equal external-path renders), 060 fillCircle opaque+globalAlpha direct dispatch,
 061 fillOuterStrokeArc non-Color fallback, 062 value-based `_noShadow`, 063 shadow
 routing through all seven hand-rolled gates, 064 entry validation / invisible-draw
-consistency, 065 dash gating to the generic path, 066 the general-affine
-stays-generic decision pin (§9 entry 10), 067 the radii-collapse contract (§9 entry
-11), 068 the fused hairline full-weight contract.
+consistency, 065 dash gating to the generic path, 066 fillRect generic under EVERY CTM
+(the fill-arm-removal pin, §9 entries 15-16), 067 the radii-collapse contract (§9 entry
+11), 068 the fused hairline full-weight contract, 069 the three fill entries' inverted
+pin — fillRect/fillRoundRect/fillStadium all dispatch generic while their stroke and
+fused siblings stay direct (§9 entries 15-16).
 
 ### 11.3 Optional Future Edge Case Tests
 

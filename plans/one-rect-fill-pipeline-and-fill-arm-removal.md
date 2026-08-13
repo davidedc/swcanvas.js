@@ -72,8 +72,20 @@ evidence and a controlled downstream (Fizzygum) reference migration.
   (`stadium-fill-contract.basic.png`, 24 px on the cap arcs) — eyeballed: box exact,
   symmetry intact, one-pixel staircase difference on the arc quadrants (the §2.2 cap
   class). Stale `StadiumOps` labels in `debug/` updated.
-- **B4 sweep** — pending.
-- **Phase C** — NOT STARTED (owner-attended session).
+- **B4 sweep** — DONE. Fresh dead-code greps: `RectOpsAA.fill_AA_*`,
+  `RectOpsRot.fill_Rot_Any`, `RoundedRectOpsRot.fill_Rot_Any` all still have live callers
+  as INTERNALS (fused arms, radius-0 fallbacks) — kept and relabelled as internals
+  everywhere they are documented; nothing else went callerless. New inverted pin
+  `tests/core/069` (three fill entries generic × every CTM × both opacities, AND the four
+  stroke/fused siblings still direct — the second half guards over-reach). Core tests
+  88→89. `DIRECT-RENDERING-SUMMARY.MD` updated end-to-end (§9 entry 16 = the full decision
+  record; exec summary, §1, §2.1/2.2/2.3b, §3, §4, §5, §7, §8, §11). `update-test-counts` +
+  the CLAUDE.md line it misses; both consistency checkers clean. Battery green (255 + 79),
+  no PNG moved.
+- **Phase C** — NOT STARTED (owner-attended session). Inputs ready: the SWCanvas stack is
+  5 commits on `main`, unpushed; the recapture scope to expect is the 164-test census list
+  above (`Fizzygum-tests/.scratch/census-failing-164.json`), which was measured with all
+  four arms disabled on the Phase-A engine — i.e. exactly this stack's behaviour.
 
 Phase A perf evidence (gate d, rect-aa-perf + roundrect-aa-perf fill-semi, 12
 super-measurements, warmup 2000 ms, median ms after/before): rect szXXS 1.026 ·
