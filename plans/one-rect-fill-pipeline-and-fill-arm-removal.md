@@ -18,6 +18,32 @@ evidence and a controlled downstream (Fizzygum) reference migration.
 
 ---
 
+## EXECUTION STATUS (updated as phases land — 2026-08-13 session)
+
+- **Phase A — DONE.** Bespoke branch + `_fillAxisAlignedRect` deleted; the device-bbox
+  corner block feeding only it deleted too. Gates: (a) full battery green (254 + 79);
+  (b) integer-geometry byte-identity probe direct-vs-generic **0 px** — opaque, α=128,
+  axis-aligned scale(2,1), dispatch difference proven live per draw via the path-based
+  flag; (c) **zero** committed visual-output PNGs moved (177 tracked — nothing to
+  eyeball); (d) perf before/after: see the table in this box. §9 entry 15 written.
+- **Phase B step 0 (re-census)** — pending.
+- **B1 fillRect** — pending.
+- **B2 fillRoundRect** — pending.
+- **B3 fillStadium** — pending.
+- **B4 sweep** — pending.
+- **Phase C** — NOT STARTED (owner-attended session).
+
+Phase A perf evidence (gate d, rect-aa-perf + roundrect-aa-perf fill-semi, 12
+super-measurements, warmup 2000 ms, median ms after/before): rect szXXS 1.026 ·
+szXS 1.032 · szS 1.037 · szM 1.016 · szL 1.008 · szXL 1.003 · szXXL 1.009;
+roundrect szXXS 1.032 · szXS 1.010 · szS 1.019 · szM 1.020 · szL 1.005 ·
+szXL 1.002 · szXXL 1.006. As predicted: these fills still take the DIRECT arm in
+Phase A (dispatch untouched — probe (b) proved direct dispatch live on the after
+build), so the ≤4% small-case drift is session noise at CV ~1–2%, not a code
+effect; the big-case ratios (≤1%) bound any real shift. Evidence filed, no gate.
+
+---
+
 ## §0 Orientation
 
 SWCanvas is a deterministic 2D raster engine (same input → identical bytes, Node and browser)

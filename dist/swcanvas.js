@@ -24463,119 +24463,31 @@ class Rasterizer {
             return;
         }
 
-        // No clipping - use optimized direct rectangle filling
-        // Transform rectangle corners
-        const transform = this._currentOp.transform;
-        const topLeft = transform.transformPoint({ x: x, y: y });
-        const topRight = transform.transformPoint({ x: x + width, y: y });
-        const bottomLeft = transform.transformPoint({ x: x, y: y + height });
-        const bottomRight = transform.transformPoint({ x: x + width, y: y + height });
+        // No stencil clip, no canvas-wide composite: the generic polygon pipeline is
+        // the ONE rect-fill implementation (tier-0 clipRect, every composite, and
+        // gradients/patterns under any transform are all wired there — a bespoke
+        // per-pixel arm here would have to re-implement each of those to stay correct).
+        const rectPolygon = [
+            { x: x, y: y },
+            { x: x + width, y: y },
+            { x: x + width, y: y + height },
+            { x: x, y: y + height }
+        ];
 
-        // Find bounding box in device space
-        const minX = Math.max(0, Math.floor(Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x)));
-        const maxX = Math.min(
-            this._surface.width - 1,
-            Math.floor(Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x) - 1)
+        const rectColor = Array.isArray(color) ? new Color(color[0], color[1], color[2], color[3]) : color;
+        PolygonFiller.fillPolygons(
+            this._surface,
+            [rectPolygon],
+            rectColor,
+            'nonzero',
+            this._currentOp.transform,
+            this._currentOp.clipMask,
+            this._currentOp.globalAlpha,
+            1.0,
+            this._currentOp.composite,
+            this._currentOp.sourceMask,
+            this._currentOp.clipRect
         );
-        const minY = Math.max(0, Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)));
-        const maxY = Math.min(
-            this._surface.height - 1,
-            Math.floor(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y) - 1)
-        );
-
-        // Optimized path for axis-aligned rectangles with solid colors only
-        if (
-            this._currentOp.transform.b === 0 &&
-            this._currentOp.transform.c === 0 &&
-            (color instanceof Color || Array.isArray(color))
-        ) {
-            this._fillAxisAlignedRect(minX, minY, maxX - minX + 1, maxY - minY + 1, color);
-        } else {
-            // Handle rotated rectangles by converting to polygon
-            const rectPolygon = [
-                { x: x, y: y },
-                { x: x + width, y: y },
-                { x: x + width, y: y + height },
-                { x: x, y: y + height }
-            ];
-
-            // Use existing polygon filling system which handles transforms and stencil clipping
-            const rectColor = Array.isArray(color) ? new Color(color[0], color[1], color[2], color[3]) : color;
-            PolygonFiller.fillPolygons(
-                this._surface,
-                [rectPolygon],
-                rectColor,
-                'nonzero',
-                this._currentOp.transform,
-                this._currentOp.clipMask,
-                this._currentOp.globalAlpha,
-                1.0,
-                this._currentOp.composite,
-                this._currentOp.sourceMask,
-                this._currentOp.clipRect
-            );
-        }
-    }
-
-    /**
-     * Fill axis-aligned rectangle (optimized path)
-     * @param {number} x - Rectangle x
-     * @param {number} y - Rectangle y
-     * @param {number} width - Rectangle width
-     * @param {number} height - Rectangle height
-     * @param {Array|Color} color - Fill color
-     * @private
-     */
-    _fillAxisAlignedRect(x, y, width, height, color) {
-        const surface = this._surface;
-        const globalAlpha = this._currentOp.globalAlpha;
-
-        // Convert color to Color object if needed and apply global alpha
-        const colorObj = Array.isArray(color) ? new Color(color[0], color[1], color[2], color[3]) : color;
-        const finalColor = colorObj.withGlobalAlpha(globalAlpha);
-        const srcR = finalColor.r;
-        const srcG = finalColor.g;
-        const srcB = finalColor.b;
-        const srcA = finalColor.a;
-
-        for (let py = y; py < y + height; py++) {
-            if (py < 0 || py >= surface.height) continue;
-
-            for (let px = x; px < x + width; px++) {
-                if (px < 0 || px >= surface.width) continue;
-
-                // Check stencil buffer clipping
-                if (this._currentOp.clipMask && this._isPixelClipped(px, py)) {
-                    continue; // Skip pixels clipped by stencil buffer
-                }
-
-                const offset = py * surface.stride + px * 4;
-
-                // Get destination pixel for blending
-                const dstR = surface.data[offset];
-                const dstG = surface.data[offset + 1];
-                const dstB = surface.data[offset + 2];
-                const dstA = surface.data[offset + 3];
-
-                // Use CompositeOperations for consistent blending
-                const result = CompositeOperations.blendPixel(
-                    this._currentOp.composite,
-                    srcR,
-                    srcG,
-                    srcB,
-                    srcA, // source
-                    dstR,
-                    dstG,
-                    dstB,
-                    dstA // destination
-                );
-
-                surface.data[offset] = result.r;
-                surface.data[offset + 1] = result.g;
-                surface.data[offset + 2] = result.b;
-                surface.data[offset + 3] = result.a;
-            }
-        }
     }
 
     /**

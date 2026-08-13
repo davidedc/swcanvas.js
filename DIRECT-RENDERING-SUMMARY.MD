@@ -950,6 +950,29 @@ current consumers:
    public contract (getImageData, the browser-comparison harness, every pixel-probing
    test); do not re-attempt blend micro-optimizations without first changing that contract
    deliberately.
+15. **DONE (2026-08-13): `Rasterizer._fillAxisAlignedRect` retired — the generic side now has
+   ONE rect-fill implementation.** The engine carried THREE independent "fill an axis-aligned
+   solid rect" implementations: the direct `RectOpsAA` arm, `PolygonFiller`'s tier-0-wired
+   solid span arm, and a bespoke per-pixel `blendPixel` loop inside `Rasterizer.fillRect`'s
+   generic route. The bespoke arm was retired for two defects, not for speed. (1) CLIP TRAP:
+   its pixel loop tested only `clipMask`, never the tier-0 `clipRect` — unreachable with a
+   live clipRect only because every solid source-over unshadowed fillRect took the DIRECT arm
+   first; removing the direct arm (the fill-arm removal campaign, this plan's Phase B) would
+   have routed tier-0-clipped solid fills into it and drawn OUTSIDE THE CLIP — the same
+   partial-wiring bug class as the `6b20dcc` roundRect-fallback fix. (2) ±1 BLEND DIVERGENCE:
+   it quantized `withGlobalAlpha` to a byte then `blendPixel`-lerped with `Math.round`, where
+   the shared templates compute float-alpha un-premultiplied Porter-Duff stored through
+   `Uint8ClampedArray` rounding — translucent fills landed ±1 different (measured: 1,295 px at
+   Δ1 in one Fizzygum menu-shadow screenshot), and since SHADOWED solid axis-aligned fills
+   already took the generic route, shipped SWCanvas blended the same fill differently
+   depending on whether a shadow was active. Retirement (not in-place repair — the bespoke
+   generation is the defect, the A1 lesson of entry 2) routes every non-clipMask,
+   non-canvas-wide `Rasterizer.fillRect` through `PolygonFiller.fillPolygons`. Verified:
+   integer-geometry direct-vs-generic byte-identity probe 0 px (opaque, α=128, scale(2,1);
+   dispatch difference proven live via the path-based flag), full battery green, zero
+   committed PNGs moved. The `_fillFullCoverCanvasWide` micro-arm (entry: BitmapText
+   `source-in` tint) is byte-identical and KEPT. Plan:
+   `plans/one-rect-fill-pipeline-and-fill-arm-removal.md`.
 
 ---
 
