@@ -15,7 +15,7 @@ See [index page](https://davidedc.github.io/swcanvas.js/) for link to all browse
 - **Memory Efficient Clipping**: Stencil-based clipping system with proper intersection support
 - **Sub-pixel Stroke Rendering**: Thin strokes render with proportional opacity, works with all paint sources
 - **Full Porter-Duff Compositing**: Complete `globalCompositeOperation` support with all 10 standard operations working correctly
-- **Comprehensive Test Coverage**: 75 core tests + 154 visual tests + 79 direct rendering tests
+- **Comprehensive Test Coverage**: 78 core tests + 154 visual tests + 79 direct rendering tests
 - **Immutable Value Objects**: Point, Rectangle, Transform2D, Color prevent mutation bugs
 - **Cross-Platform**: Works in Node.js and browsers
 - **No Dependencies**: Pure JavaScript implementation
@@ -59,7 +59,7 @@ This generates:
 - `dist/swcanvas.js` - Complete library for development
 - `dist/swcanvas.min.js` - Minified library for production (84% smaller)
 - `dist/swcanvas.min.js.map` - Source map for debugging
-- `tests/dist/core-functionality-tests.js` from 75 individual test files in `/tests/core/`
+- `tests/dist/core-functionality-tests.js` from 78 individual test files in `/tests/core/`
 - `tests/dist/visual-rendering-tests.js` from 154 individual test files in `/tests/visual/`
 
 ### Node.js Usage
@@ -160,7 +160,7 @@ npm test
 ```
 
 This runs:
-- 75 modular core functionality tests (automatically uses built tests from `/tests/core/`)
+- 78 modular core functionality tests (automatically uses built tests from `/tests/core/`)
 - 154 visual rendering tests generating PNG files in `tests/output/`
 
 ### Browser Tests
@@ -533,15 +533,22 @@ const encodingOptions = SWCanvas.Core.BitmapEncodingOptions.withGrayBackground(1
 
 ### Image Rendering
 
-SWCanvas supports drawing ImageLike objects. Axis-aligned draws (plain blits and
-scales) sample nearest-neighbor; non-axis-aligned draws (any rotation/skew)
-sample bilinear at the destination pixel center, filtered premultiplied — a
-nearest-neighbor rotation periodically drops the pixels of 1-2px source
-features, disintegrating them into dashes (see
+SWCanvas supports drawing ImageLike objects. `drawImage` smooths whenever the
+draw actually RESAMPLES the source — any rotation/skew, or an axis-aligned draw
+whose effective sample step ≠ 1 (the CTM scale and the src/dst rect ratio
+compose) — sampling bilinear at the destination pixel center, filtered
+premultiplied. Draws that do not resample (axis-aligned, step exactly 1 — every
+plain blit) keep the historical nearest-neighbor bytes exactly. WHY bilinear on
+rotation: a nearest-neighbor rotation periodically drops the pixels of 1-2px
+source features, disintegrating them into dashes (see
 `debug/probe-rotated-thinline-gaps.js` and
-`tests/core/057-drawimage-rotated-bilinear-contract.js`). A rotation whose
-samples land exactly on texel centers (e.g. an exact 90° `setTransform` with
-integer translation) reproduces pure texels bit-exactly, no blur:
+`tests/core/057-drawimage-rotated-bilinear-contract.js`); scaled-draw smoothing
+matches the HTML5 default (`imageSmoothingEnabled` is implemented: default
+`true`, boolean-coerced, save/restore state, settable on both API layers —
+`false` forces nearest-neighbor for every transform, rotation included; see
+`tests/core/058-drawimage-scaled-smoothing-contract.js`). A draw whose samples
+land exactly on texel centers (e.g. an exact 90° `setTransform` with integer
+translation) reproduces pure texels bit-exactly, no blur:
 
 ```javascript
 // ImageLike interface: { width, height, data: Uint8ClampedArray }

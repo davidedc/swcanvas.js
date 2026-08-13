@@ -160,6 +160,13 @@ class CanvasCompatibleContext2D {
         this._core.globalCompositeOperation = value;
     }
 
+    get imageSmoothingEnabled() {
+        return this._core.imageSmoothingEnabled;
+    }
+    set imageSmoothingEnabled(value) {
+        this._core.imageSmoothingEnabled = value; // core setter coerces to boolean
+    }
+
     get lineWidth() {
         return this._core.lineWidth;
     }

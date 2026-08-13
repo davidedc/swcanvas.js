@@ -1849,8 +1849,8 @@ class DepthBuffer {
  * - Width and height MUST be powers of two. Sampling uses mask-based
  *   wrap-around addressing: texelIndex = ((v & vMask) << shift) | (u & uMask),
  *   which makes out-of-range coordinates repeat the texture at zero cost.
- * - Sampling is nearest-neighbor (consistent with the rest of SWCanvas —
- *   Pattern and drawImage are nearest-neighbor too).
+ * - Sampling is nearest-neighbor (like Pattern and axis-aligned drawImage;
+ *   only non-axis-aligned drawImage samples bilinear, see Rasterizer).
  * - Texel alpha is written to the surface AS-IS by the 3D primitives (no
  *   blending); for normal opaque rendering author textures with alpha 255.
  *
@@ -24310,7 +24310,9 @@ class Rasterizer {
             shadowColor: params.shadowColor || Color.transparent,
             shadowBlur: params.shadowBlur || 0,
             shadowOffsetX: params.shadowOffsetX || 0,
-            shadowOffsetY: params.shadowOffsetY || 0
+            shadowOffsetY: params.shadowOffsetY || 0,
+            // Sampling policy (drawImage only; HTML5 default true when unset)
+            imageSmoothingEnabled: params.imageSmoothingEnabled !== false
         };
     }
 
@@ -25030,16 +25032,35 @@ class Rasterizer {
         const xScale = (destWidth === sourceWidth) ? 1 : sourceWidth / destWidth;
         const yScale = (destHeight === sourceHeight) ? 1 : sourceHeight / destHeight;
 
-        // Sampling policy: axis-aligned transforms (b === 0 && c === 0 — every
-        // plain blit and scale) keep the historical nearest-neighbor sample,
-        // byte-for-byte. A NON-axis-aligned transform (rotation/skew) samples
-        // BILINEAR instead: under rotation the floor-quantized NN sample point
-        // periodically lands on the texel BESIDE a thin source feature, so
-        // 1-2px features (hairline strokes, selection overlays) disintegrate
-        // into dashes. Bilinear cannot produce a pure-background gap along a
-        // continuous source feature — every nearby destination pixel blends it
-        // in. See debug/probe-rotated-thinline-gaps.js and tests/core/*bilinear*.
-        const useBilinear = (transform.b !== 0 || transform.c !== 0);
+        // Sampling policy: smooth (bilinear) whenever the draw actually
+        // RESAMPLES the source; keep the historical nearest-neighbor sample,
+        // byte-for-byte, when it does not. Two ways a draw resamples:
+        //  - a NON-axis-aligned transform (rotation/skew): under rotation the
+        //    floor-quantized NN sample point periodically lands on the texel
+        //    BESIDE a thin source feature, so 1-2px features (hairline
+        //    strokes, selection overlays) disintegrate into dashes. Bilinear
+        //    cannot produce a pure-background gap along a continuous source
+        //    feature — every nearby destination pixel blends it in. See
+        //    debug/probe-rotated-thinline-gaps.js and tests/core/*bilinear*.
+        //  - an axis-aligned draw whose EFFECTIVE SAMPLE STEP ≠ 1: the
+        //    per-device-pixel source step is invA*xScale / invD*yScale — the
+        //    CTM scale and the src/dst rect ratio COMPOSE (a ctx.scale with
+        //    same-size rects and a rect-scaled blit under identity both
+        //    resample; a scale(2) CTM drawing a physical-resolution buffer at
+        //    half-size rects steps exactly 1 and does not). NN upscale
+        //    duplicates rows/columns chunkily and downscale drops them;
+        //    native smooths both (imageSmoothingEnabled defaults true).
+        // Step-1 axis-aligned draws (every plain blit — glyphs, back buffers)
+        // stay on the NN branch BY CONSTRUCTION, so their bytes cannot move.
+        // imageSmoothingEnabled === false forces the NN branch for EVERY
+        // transform — including rotation, per the HTML5 property's semantics
+        // (the user's explicit opt-out, e.g. pixel art; it re-admits the
+        // rotated thin-feature dashing bilinear exists to prevent).
+        const smoothingEnabled = this._currentOp.imageSmoothingEnabled !== false;
+        const stepX = invA * xScale;
+        const stepY = invD * yScale;
+        const useBilinear = smoothingEnabled &&
+            (transform.b !== 0 || transform.c !== 0 || stepX !== 1 || stepY !== 1);
         // Bilinear samples at the DEST PIXEL CENTER (native semantics): the
         // corner-mapped destPoint below (kept for containment and for the NN
         // path, byte-compat) plus this constant device-space (0.5, 0.5) offset
@@ -25385,6 +25406,16 @@ class Context2D {
         this.shadowOffsetX = 0; // No horizontal offset
         this.shadowOffsetY = 0; // No vertical offset
 
+        // Image smoothing (HTML5 imageSmoothingEnabled, default true). When true,
+        // drawImage samples BILINEAR whenever the draw actually resamples the
+        // source (any rotation/skew, or an axis-aligned draw whose effective
+        // sample step != 1); step-1 axis-aligned draws are nearest-neighbor
+        // byte-exact either way. When false, every draw samples nearest-neighbor
+        // — including rotation, matching the HTML5 property's semantics (which
+        // re-admits the thin-feature dashing bilinear exists to prevent; that is
+        // the user's explicit choice, e.g. pixel art).
+        this._imageSmoothingEnabled = true;
+
         // Internal path and clipping. The current default path holds DEVICE-space
         // geometry (the CTM is baked at build time); see the path methods below.
         this._currentPath = new SWPath2D();
@@ -25446,6 +25477,16 @@ class Context2D {
     set globalCompositeOperation(value) {
         this._globalCompositeOperation = value;
         this._isSourceOver = value === 'source-over';
+    }
+
+    // HTML5 Canvas-compatible imageSmoothingEnabled property (boolean IDL
+    // attribute: any assigned value coerces to boolean, default true)
+    get imageSmoothingEnabled() {
+        return this._imageSmoothingEnabled;
+    }
+
+    set imageSmoothingEnabled(value) {
+        this._imageSmoothingEnabled = !!value;
     }
 
     /**
@@ -25525,6 +25566,8 @@ class Context2D {
             shadowBlur: this.shadowBlur,
             shadowOffsetX: this.shadowOffsetX,
             shadowOffsetY: this.shadowOffsetY,
+            // Image smoothing
+            imageSmoothingEnabled: this._imageSmoothingEnabled,
             // Cached state flags
             _noShadow: this._noShadow,
             _isSourceOver: this._isSourceOver,
@@ -25575,6 +25618,10 @@ class Context2D {
         this.shadowBlur = snapshot.shadowBlur || 0;
         this.shadowOffsetX = snapshot.shadowOffsetX || 0;
         this.shadowOffsetY = snapshot.shadowOffsetY || 0;
+
+        // Restore image smoothing (older snapshots predating the field restore
+        // to the HTML5 default, true)
+        this._imageSmoothingEnabled = snapshot.imageSmoothingEnabled ?? true;
 
         // Restore cached state flags
         this._noShadow = snapshot._noShadow ?? true;
@@ -27664,7 +27711,9 @@ class Context2D {
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
             shadowOffsetX: this.shadowOffsetX,
-            shadowOffsetY: this.shadowOffsetY
+            shadowOffsetY: this.shadowOffsetY,
+            // Sampling policy input (see Rasterizer._drawImageInternal)
+            imageSmoothingEnabled: this._imageSmoothingEnabled
         });
 
         // Delegate to rasterizer
@@ -28668,6 +28717,13 @@ class CanvasCompatibleContext2D {
     }
     set globalCompositeOperation(value) {
         this._core.globalCompositeOperation = value;
+    }
+
+    get imageSmoothingEnabled() {
+        return this._core.imageSmoothingEnabled;
+    }
+    set imageSmoothingEnabled(value) {
+        this._core.imageSmoothingEnabled = value; // core setter coerces to boolean
     }
 
     get lineWidth() {

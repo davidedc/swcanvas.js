@@ -70,7 +70,9 @@ class Rasterizer {
             shadowColor: params.shadowColor || Color.transparent,
             shadowBlur: params.shadowBlur || 0,
             shadowOffsetX: params.shadowOffsetX || 0,
-            shadowOffsetY: params.shadowOffsetY || 0
+            shadowOffsetY: params.shadowOffsetY || 0,
+            // Sampling policy (drawImage only; HTML5 default true when unset)
+            imageSmoothingEnabled: params.imageSmoothingEnabled !== false
         };
     }
 
@@ -790,16 +792,35 @@ class Rasterizer {
         const xScale = (destWidth === sourceWidth) ? 1 : sourceWidth / destWidth;
         const yScale = (destHeight === sourceHeight) ? 1 : sourceHeight / destHeight;
 
-        // Sampling policy: axis-aligned transforms (b === 0 && c === 0 — every
-        // plain blit and scale) keep the historical nearest-neighbor sample,
-        // byte-for-byte. A NON-axis-aligned transform (rotation/skew) samples
-        // BILINEAR instead: under rotation the floor-quantized NN sample point
-        // periodically lands on the texel BESIDE a thin source feature, so
-        // 1-2px features (hairline strokes, selection overlays) disintegrate
-        // into dashes. Bilinear cannot produce a pure-background gap along a
-        // continuous source feature — every nearby destination pixel blends it
-        // in. See debug/probe-rotated-thinline-gaps.js and tests/core/*bilinear*.
-        const useBilinear = (transform.b !== 0 || transform.c !== 0);
+        // Sampling policy: smooth (bilinear) whenever the draw actually
+        // RESAMPLES the source; keep the historical nearest-neighbor sample,
+        // byte-for-byte, when it does not. Two ways a draw resamples:
+        //  - a NON-axis-aligned transform (rotation/skew): under rotation the
+        //    floor-quantized NN sample point periodically lands on the texel
+        //    BESIDE a thin source feature, so 1-2px features (hairline
+        //    strokes, selection overlays) disintegrate into dashes. Bilinear
+        //    cannot produce a pure-background gap along a continuous source
+        //    feature — every nearby destination pixel blends it in. See
+        //    debug/probe-rotated-thinline-gaps.js and tests/core/*bilinear*.
+        //  - an axis-aligned draw whose EFFECTIVE SAMPLE STEP ≠ 1: the
+        //    per-device-pixel source step is invA*xScale / invD*yScale — the
+        //    CTM scale and the src/dst rect ratio COMPOSE (a ctx.scale with
+        //    same-size rects and a rect-scaled blit under identity both
+        //    resample; a scale(2) CTM drawing a physical-resolution buffer at
+        //    half-size rects steps exactly 1 and does not). NN upscale
+        //    duplicates rows/columns chunkily and downscale drops them;
+        //    native smooths both (imageSmoothingEnabled defaults true).
+        // Step-1 axis-aligned draws (every plain blit — glyphs, back buffers)
+        // stay on the NN branch BY CONSTRUCTION, so their bytes cannot move.
+        // imageSmoothingEnabled === false forces the NN branch for EVERY
+        // transform — including rotation, per the HTML5 property's semantics
+        // (the user's explicit opt-out, e.g. pixel art; it re-admits the
+        // rotated thin-feature dashing bilinear exists to prevent).
+        const smoothingEnabled = this._currentOp.imageSmoothingEnabled !== false;
+        const stepX = invA * xScale;
+        const stepY = invD * yScale;
+        const useBilinear = smoothingEnabled &&
+            (transform.b !== 0 || transform.c !== 0 || stepX !== 1 || stepY !== 1);
         // Bilinear samples at the DEST PIXEL CENTER (native semantics): the
         // corner-mapped destPoint below (kept for containment and for the NN
         // path, byte-compat) plus this constant device-space (0.5, 0.5) offset

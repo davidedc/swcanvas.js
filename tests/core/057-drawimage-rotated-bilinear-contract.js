@@ -1,7 +1,9 @@
-// Test: the transformed-drawImage sampling contract. Axis-aligned transforms
-// (b === 0 && c === 0) sample nearest-neighbor, byte-for-byte as they always
-// have; NON-axis-aligned transforms (rotation/skew) sample BILINEAR at the
-// dest pixel center, filtered premultiplied, with texels outside the source
+// Test: the transformed-drawImage sampling contract. Draws that do not
+// resample — axis-aligned with an effective sample step of exactly 1 —
+// sample nearest-neighbor, byte-for-byte as they always have; draws that DO
+// resample (rotation/skew, and axis-aligned scale — see
+// 058-drawimage-scaled-smoothing-contract.js) sample BILINEAR at the dest
+// pixel center, filtered premultiplied, with texels outside the source
 // sub-rect contributing transparent black.
 //
 // WHY: under nearest-neighbor rotation the floor-quantized sample point
@@ -161,27 +163,30 @@ test('exact 90 deg + integer translation stays crisp: pure texels, no blends', (
     assertEquals(wrong, 0, 'pixels of the 90 deg composite differing from the exact source texel');
 });
 
-// -- the axis-aligned gate (scale stays nearest-neighbor) ---------------------
+// -- the step-1 gate (non-resampling draws stay nearest-neighbor) -------------
 
-test('axis-aligned scaled drawImage still samples nearest-neighbor (hard edge)', () => {
-    // 2x1 red|green scaled x8: NN keeps a hard vertical edge — any blended
-    // column would mean bilinear leaked into the axis-aligned path.
+test('step-1 same-size drawImage stays nearest-neighbor byte-exact (hard edge)', () => {
+    // 2x1 red|green blitted same-size at an integer position: the effective
+    // sample step is exactly 1, nothing resamples, and the historical NN
+    // bytes must come out — any blended column would mean the smoothing gate
+    // leaked into the step-1 path (the path every glyph and back-buffer blit
+    // rides).
     const data = new Uint8ClampedArray(2 * 1 * 4);
     data[0] = 255; data[3] = 255;              // red
     data[5] = 255; data[7] = 255;              // green
     const src = { width: 2, height: 1, data: data };
 
-    const dst = SWCanvas.createCanvas(16, 8);
+    const dst = SWCanvas.createCanvas(8, 4);
     const ctx = dst.getContext('2d');
-    ctx.drawImage(src, 0, 0, 16, 8);
+    ctx.drawImage(src, 3, 1);
 
-    const img = ctx.getImageData(0, 0, 16, 8);
+    const img = ctx.getImageData(0, 0, 8, 4);
     let wrong = 0;
-    for (let x = 0; x < 16; x++) {
-        const o = x * 4;
-        const expectRed = x < 8;
+    for (let x = 3; x < 5; x++) {
+        const o = (1 * 8 + x) * 4;
+        const expectRed = x === 3;
         if (img.data[o] !== (expectRed ? 255 : 0) || img.data[o + 1] !== (expectRed ? 0 : 255) ||
-            img.data[o + 2] !== 0) wrong++;
+            img.data[o + 2] !== 0 || img.data[o + 3] !== 255) wrong++;
     }
-    assertEquals(wrong, 0, 'columns of the scaled blit not exactly red|green (blend leak)');
+    assertEquals(wrong, 0, 'pixels of the same-size blit not exactly red|green (smoothing leak)');
 });

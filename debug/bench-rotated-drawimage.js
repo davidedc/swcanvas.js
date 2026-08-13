@@ -21,24 +21,39 @@ for (let i = 0; i < 30; i++) sctx.fillRect((i * 37) % 350, (i * 53) % 260, 40, 3
 const dst = SWCanvas.createCanvas(800, 600);
 const ctx = dst.getContext('2d');
 
-function once(angle) {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = 'white';
-  ctx.fillRect(0, 0, 800, 600);
-  ctx.translate(150.37, 60.61);
-  ctx.rotate(angle);
-  ctx.drawImage(src, 0, 0);
+function onceRotated(angle) {
+  return function () {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, 800, 600);
+    ctx.translate(150.37, 60.61);
+    ctx.rotate(angle);
+    ctx.drawImage(src, 0, 0);
+  };
+}
+
+// axis-aligned rect-scaled composite (Fizzygum's _compositeScaleOnly shape:
+// identity-ish CTM, differing src/dst rects) — the D2 scale-smoothing hot path
+function onceScaledRect(factor) {
+  return function () {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, 800, 600);
+    ctx.drawImage(src, 0, 0, SRCW, SRCH, 20, 15,
+      Math.round(SRCW * factor), Math.round(SRCH * factor));
+  };
 }
 
 // warmup
-for (let i = 0; i < 5; i++) once(Math.PI / 6);
+for (let i = 0; i < 5; i++) onceRotated(Math.PI / 6)();
+for (let i = 0; i < 5; i++) onceScaledRect(1.5)();
 
 const RUNS = 30;
-function bench(label, angle) {
+function bench(label, fn) {
   const times = [];
   for (let i = 0; i < RUNS; i++) {
     const t0 = process.hrtime.bigint();
-    once(angle);
+    fn();
     const t1 = process.hrtime.bigint();
     times.push(Number(t1 - t0) / 1e6);
   }
@@ -50,5 +65,8 @@ function bench(label, angle) {
 }
 
 console.log('dist: ' + distPath);
-bench('rotated 30 deg   (bilinear path)', Math.PI / 6);
-bench('axis-aligned 0deg (NN path)     ', 0);
+bench('rotated 30 deg    (bilinear path)  ', onceRotated(Math.PI / 6));
+bench('axis-aligned 0deg (step-1 NN path) ', onceRotated(0));
+bench('scaled x2   rect  (island scale)   ', onceScaledRect(2));
+bench('scaled x1.5 rect  (island scale)   ', onceScaledRect(1.5));
+bench('scaled x0.5 rect  (downscale)      ', onceScaledRect(0.5));

@@ -121,6 +121,16 @@ class Context2D {
         this.shadowOffsetX = 0; // No horizontal offset
         this.shadowOffsetY = 0; // No vertical offset
 
+        // Image smoothing (HTML5 imageSmoothingEnabled, default true). When true,
+        // drawImage samples BILINEAR whenever the draw actually resamples the
+        // source (any rotation/skew, or an axis-aligned draw whose effective
+        // sample step != 1); step-1 axis-aligned draws are nearest-neighbor
+        // byte-exact either way. When false, every draw samples nearest-neighbor
+        // — including rotation, matching the HTML5 property's semantics (which
+        // re-admits the thin-feature dashing bilinear exists to prevent; that is
+        // the user's explicit choice, e.g. pixel art).
+        this._imageSmoothingEnabled = true;
+
         // Internal path and clipping. The current default path holds DEVICE-space
         // geometry (the CTM is baked at build time); see the path methods below.
         this._currentPath = new SWPath2D();
@@ -182,6 +192,16 @@ class Context2D {
     set globalCompositeOperation(value) {
         this._globalCompositeOperation = value;
         this._isSourceOver = value === 'source-over';
+    }
+
+    // HTML5 Canvas-compatible imageSmoothingEnabled property (boolean IDL
+    // attribute: any assigned value coerces to boolean, default true)
+    get imageSmoothingEnabled() {
+        return this._imageSmoothingEnabled;
+    }
+
+    set imageSmoothingEnabled(value) {
+        this._imageSmoothingEnabled = !!value;
     }
 
     /**
@@ -261,6 +281,8 @@ class Context2D {
             shadowBlur: this.shadowBlur,
             shadowOffsetX: this.shadowOffsetX,
             shadowOffsetY: this.shadowOffsetY,
+            // Image smoothing
+            imageSmoothingEnabled: this._imageSmoothingEnabled,
             // Cached state flags
             _noShadow: this._noShadow,
             _isSourceOver: this._isSourceOver,
@@ -311,6 +333,10 @@ class Context2D {
         this.shadowBlur = snapshot.shadowBlur || 0;
         this.shadowOffsetX = snapshot.shadowOffsetX || 0;
         this.shadowOffsetY = snapshot.shadowOffsetY || 0;
+
+        // Restore image smoothing (older snapshots predating the field restore
+        // to the HTML5 default, true)
+        this._imageSmoothingEnabled = snapshot.imageSmoothingEnabled ?? true;
 
         // Restore cached state flags
         this._noShadow = snapshot._noShadow ?? true;
@@ -2400,7 +2426,9 @@ class Context2D {
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
             shadowOffsetX: this.shadowOffsetX,
-            shadowOffsetY: this.shadowOffsetY
+            shadowOffsetY: this.shadowOffsetY,
+            // Sampling policy input (see Rasterizer._drawImageInternal)
+            imageSmoothingEnabled: this._imageSmoothingEnabled
         });
 
         // Delegate to rasterizer
