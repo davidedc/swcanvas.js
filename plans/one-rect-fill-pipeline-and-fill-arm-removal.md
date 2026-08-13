@@ -86,6 +86,28 @@ evidence and a controlled downstream (Fizzygum) reference migration.
   5 commits on `main`, unpushed; the recapture scope to expect is the 164-test census list
   above (`Fizzygum-tests/.scratch/census-failing-164.json`), which was measured with all
   four arms disabled on the Phase-A engine — i.e. exactly this stack's behaviour.
+  **Scope gate PASSED on the real stack**: the preview-swap suite failed exactly those 164,
+  zero surplus, `geometry-violations: 0`. Review page built over all 164 at dpr 1+2
+  (`Fizzygum-tests/.scratch/diff-page/index.html`); every changed screenshot classified
+  (`.scratch/phasec-classify.js`): 650 hairline, 316 alpha-Δ1/mixed — the two expected
+  classes — and 16 outliers, resolved below.
+
+  **⭐ FINDING (2026-08-13): the removal FIXES a silently-dropped fill.** The 16 outliers are
+  all from two sibling tests (`macroSliderTextSliderPatchCycle`,
+  `macroSliderTextTwoWayPatchCycle`), deterministic, both dprs, bisected to **B2** (Phase A
+  and B1 pass). Their macro source builds the text widget with an explicit
+  `backgroundColor = Color.create 230, 230, 130`; the NEW render paints exactly
+  `230,230,130` while the REFERENCES show `205,205,205` — bare desktop, i.e. the specified
+  background was never painted (its glyph interiors were missing too, leaving hollow text).
+  **The new render is correct and the two references encode a missing paint.** Recapture
+  them as a BUG FIX, not churn. ⚠ The MECHANISM is still unexplained and is a live
+  follow-up: five candidates were probed against both engines and all falsified —
+  off-surface throws, dropped fills unclipped, dropped fills under tier-0 AND mask clips,
+  `fillStyle`/`strokeStyle`/`globalAlpha` side effects, current-path clobbering — and no
+  swallowed page error appears in any log. In isolation the two engines agree on roundRect
+  fills to within ~19% on tiny corners, so whatever conditions this lives on the Fizzygum
+  side. Worth chasing: a spec'd fill that silently does not paint is a bug class that can
+  hide elsewhere.
 
 Phase A perf evidence (gate d, rect-aa-perf + roundrect-aa-perf fill-semi, 12
 super-measurements, warmup 2000 ms, median ms after/before): rect szXXS 1.026 ·
