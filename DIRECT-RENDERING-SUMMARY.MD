@@ -179,7 +179,7 @@ table below and §9 for the consequences).
 | Paint Source | paintSource instanceof Color               | Gradients, Patterns                       | ALL entries |
 | Composite Op | globalCompositeOperation === 'source-over' | All other ops (copy, xor, etc.)           | ALL entries |
 | Shadows      | `_noShadow` (no shadowColor, or `shadowColor.a === 0`, or zero blur+offsets — the exact negation of `ShadowPipeline.needsShadow`) | Any other shadow state | ALL entries — the rect/roundRect/stadium families via `_canUseDirectRendering`/`_canUseDirectRenderingForFillStroke`, the circle/arc/line entries via their inline gates (an active shadow routes to the generic fallback, which renders it) |
-| Paint Alpha  | paintSource.a > 0                          | Fully transparent paint                   | rect / roundRect / stadium (→ generic, a pure pessimization) · `fillArc` returns early drawing nothing · `_fillCircleDirect` routes a=0 to `fill_Alpha` (draws nothing) |
+| Paint Alpha  | `_isInvisibleDraw`: paint `a === 0` or `globalAlpha === 0`, source-over only | Fully transparent paint / zero globalAlpha | ALL entries — uniform early-return-no-draw at the entry top (fused entries: only when BOTH halves invisible); non-source-over composites keep the generic pipeline ('copy' with transparent paint has visible effects) |
 | Line Cap     | lineCap === 'butt'                         | 'round', 'square'                         | line + arc STROKE entries only (`strokeLine`, `outerStrokeArc`, `fillOuterStrokeArc`) |
 
 `globalAlpha` is deliberately in NO gate: it selects the `_Alpha` renderer variant, which is
@@ -257,8 +257,8 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 
 | Entry | CTM for direct | Non-CTM for direct | Falls back on | Fallback target |
 |---|---|---|---|---|
-| `fillRect` | isAxisAligned OR isUniformScale | Color, a>0, source-over, `_noShadow` | gradient/pattern · a=0 · composite · shadow · shear/mirror-rot/rot+non-uniform | generic rasterizer (⚠ negative dims: direct arm no-ops, generic arm THROWS — §9) |
-| `strokeRect` | same | same (stroke paint) | same | generic (`lineDash` ignored on BOTH arms — §9) |
+| `fillRect` | isAxisAligned OR isUniformScale | Color, a>0, source-over, `_noShadow` | gradient/pattern · composite · shadow · shear/mirror-rot/rot+non-uniform (a=0 → early return, §3 Paint Alpha) | generic rasterizer (negative/zero dims and bad types validated up front — §9 note) |
+| `strokeRect` | same | same (stroke paint) | same | generic (`lineDash` ignored on BOTH arms — §9; dims/types validated up front like fillRect) |
 | `fillStrokeRect` | same | both paints Color, source-over, `_noShadow`, something to draw | either paint non-Color · nothing to draw · composite · shadow · CTM | decomposes → `fillRect` + `strokeRect` |
 | `clearRect` | n/a (`b===0 && c===0` picks span loop vs inverse-transform loop) | none | NEVER — direct-only | — (ignores alpha/composite/shadow by design) |
 | `fillRoundRect` | isUniformScale (ladder identity→AA→rot) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform scale | generic via external `SWPath2D` (radius≤0 → `fillRect`) |
@@ -845,19 +845,27 @@ current consumers:
    `'rgba(0,0,0,0)'` — an invisible shadow with non-zero blur/offset de-fast-pathed every
    rect-family draw (pure pessimization). The flag now checks `shadowColor.a === 0`, the exact
    negation of `ShadowPipeline.needsShadow`. Pinned by `tests/core/062`.
-6. **`fillRect`/`strokeRect` argument-validation divergence.** No validation at the entry:
-   negative dimensions silently no-op on the direct arm but THROW in `Rasterizer.fillRect` — the
-   same call succeeds or throws depending on whether the paint is a Color or a gradient. (The
-   other rect-family entries validate up front.)
+6. **FIXED (2026-08-13): `fillRect`/`strokeRect`/`strokeLine` argument-validation divergence.**
+   The three entries now validate types up front (family convention: `'Rectangle coordinates
+   must be numbers'` / `'Line coordinates must be numbers'`) and return-without-drawing on
+   negative/zero dimensions, so success-vs-throw no longer depends on the paint source and the
+   negative-dimension `strokeRect` stray-pixel bug is gone. `clearRect`'s previously-unguarded
+   `transform.invert()` now returns silently under a singular CTM (like `fill()`/`stroke()`).
+   NOTE the deliberate contract: the whole immediate-mode family draws NOTHING for negative
+   dimensions — a documented divergence from HTML5's normalize-the-rect behaviour for the
+   fillRect/strokeRect/clearRect trio, chosen for uniformity with the pre-existing
+   fillStrokeRect/clearRect/roundRect/stadium convention. Pinned by `tests/core/064`.
 7. **`setLineDash` is honoured inconsistently:** a no-op for `strokeRect` on BOTH arms (the
    generic arm omits it from the stroke props), ignored by every direct stroke arm, honoured
    only by `strokeRoundRect`'s `stroke(path)` fallback and by explicit path `stroke()`.
 8. **`clearRect`'s axis-aligned test is raw `b===0 && c===0`** (no `TRANSFORM_EPSILON`),
    disagreeing with every other entry's `isAxisAligned` at the epsilon boundary.
-9. **Fully-transparent paint (`a === 0`) is handled three different ways:** rects → generic
-   pipeline (wasted work, draws nothing); `fillArc` → early return (no draw, no fallback);
-   `_fillCircleDirect` → `fill_Alpha` (draws nothing). Harmless visually, inconsistent
-   dispatch-wise.
+9. **FIXED (2026-08-13): fully-transparent paint (`a === 0`) was handled three different
+   ways.** Every direct-shape entry now early-returns through `_isInvisibleDraw` (paint
+   `a === 0`, or `globalAlpha === 0` with any paint — the "decide while there" half, decided
+   yes). The guard is deliberately source-over-scoped: other composites can make invisible
+   paint visible ('copy' clears pixels) and keep the generic pipeline. Fused entries return
+   only when BOTH halves are invisible. Pinned by `tests/core/064`.
 10. **(owner observation, 2026-08-12) The rect generic-path condition looks wider than
    necessary.** `fillRect`/`strokeRect` fall to the generic pipeline at
    `!isAxisAligned && !isUniformScale` — but a rectangle under ANY affine CTM is a

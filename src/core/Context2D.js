@@ -222,6 +222,26 @@ class Context2D {
     }
 
     /**
+     * True when a draw can have no visible effect under source-over: fully
+     * transparent Color paint, or globalAlpha 0 (any paint). Used by every
+     * direct-shape entry as an early-return-no-draw guard, so the
+     * paint-a=0/globalAlpha-0 cases dispatch uniformly (previously: rects ran
+     * the whole generic pipeline, circles/lines scanned writing nothing,
+     * fillArc returned early - three behaviours for one no-op).
+     * Deliberately restricted to source-over: other composites make invisible
+     * paint visible ('copy' with transparent paint clears pixels), so they
+     * keep the generic pipeline.
+     * @param {Color|Gradient|Pattern} paintSource - The paint to check
+     * @returns {boolean} true if the draw cannot change any pixel
+     * @private
+     */
+    _isInvisibleDraw(paintSource) {
+        return (
+            this._isSourceOver && (this.globalAlpha === 0 || (paintSource instanceof Color && paintSource.a === 0))
+        );
+    }
+
+    /**
      * Fast-path check for direct rendering eligibility.
      * @param {Color|Gradient|Pattern} paintSource - The paint to check
      * @returns {boolean} true if direct rendering can be used
@@ -725,6 +745,22 @@ class Context2D {
 
     // Drawing methods - rectangle operations
     fillRect(x, y, width, height) {
+        // Validate parameters up front (family convention - fillStrokeRect,
+        // clearRect, the roundRect/stadium entries all do), so bad arguments
+        // fail identically whatever the paint source. Previously the throw
+        // came from a different layer with a different message per paint.
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
+            throw new Error('Rectangle coordinates must be numbers');
+        }
+
+        if (width <= 0 || height <= 0) {
+            return; // Nothing to draw for negative/zero dimensions (family convention)
+        }
+
+        if (this._isInvisibleDraw(this._fillStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
+        }
+
         // Direct rendering: Color fill with source-over, no shadows (clipping supported)
         if (this._canUseDirectRendering(this._fillStyle)) {
             const t = this._transform;
@@ -836,6 +872,21 @@ class Context2D {
     }
 
     strokeRect(x, y, width, height) {
+        // Validate parameters up front - see fillRect. The negative-dimension
+        // return also fixes a pixel bug: the direct 1px frame walk painted
+        // stray pixels for negative width/height.
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
+            throw new Error('Rectangle coordinates must be numbers');
+        }
+
+        if (width <= 0 || height <= 0) {
+            return; // Nothing to draw for negative/zero dimensions (family convention)
+        }
+
+        if (this._isInvisibleDraw(this._strokeStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
+        }
+
         // Direct rendering: Color stroke with source-over, no shadows (clipping supported)
         if (this._canUseDirectRendering(this._strokeStyle)) {
             const t = this._transform;
@@ -1005,6 +1056,10 @@ class Context2D {
             return; // Nothing to draw for zero dimensions
         }
 
+        if (this._isInvisibleDraw(this._fillStyle) && this._isInvisibleDraw(this._strokeStyle)) {
+            return; // Neither half can change a pixel under source-over
+        }
+
         // Direct rendering: both fill and stroke are solid colors, source-over, no shadows
         if (this._canUseDirectRenderingForFillStroke(this._fillStyle, this._strokeStyle)) {
             const t = this._transform;
@@ -1142,8 +1197,16 @@ class Context2D {
             }
         } else {
             // For rotated/skewed rectangles, we need to test each pixel
-            // This is more complex but handles all transformation cases correctly
-            const invTransform = transform.invert();
+            // This is more complex but handles all transformation cases correctly.
+            // A singular CTM maps the rect to zero area: nothing to clear -
+            // return silently like fill()/stroke() do, instead of letting
+            // invert() throw.
+            let invTransform;
+            try {
+                invTransform = transform.invert();
+            } catch (e) {
+                return;
+            }
 
             for (let py = Math.max(0, minY); py <= Math.min(surface.height - 1, maxY); py++) {
                 for (let px = Math.max(0, minX); px <= Math.min(surface.width - 1, maxX); px++) {
@@ -1189,6 +1252,10 @@ class Context2D {
 
         if (width === 0 || height === 0) {
             return; // Nothing to draw for zero dimensions
+        }
+
+        if (this._isInvisibleDraw(this._strokeStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
         }
 
         // Normalize radius to check for zero
@@ -1409,6 +1476,10 @@ class Context2D {
             return; // Nothing to draw for zero dimensions
         }
 
+        if (this._isInvisibleDraw(this._fillStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
+        }
+
         // Normalize radius to check for zero
         const radius = Array.isArray(radii) ? radii[0] : radii || 0;
 
@@ -1551,6 +1622,10 @@ class Context2D {
             return; // Nothing to draw for zero dimensions
         }
 
+        if (this._isInvisibleDraw(this._fillStyle) && this._isInvisibleDraw(this._strokeStyle)) {
+            return; // Neither half can change a pixel under source-over
+        }
+
         // Normalize radius to check for zero
         const radius = Array.isArray(radii) ? radii[0] : radii || 0;
 
@@ -1674,6 +1749,10 @@ class Context2D {
 
         if (width <= 0 || height <= 0) {
             return; // Nothing to draw
+        }
+
+        if (this._isInvisibleDraw(this._fillStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
         }
 
         // Direct rendering: Color fill with source-over, no shadows
@@ -2594,6 +2673,10 @@ class Context2D {
     fillCircle(centerX, centerY, radius) {
         if (radius <= 0) return;
 
+        if (this._isInvisibleDraw(this._fillStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
+        }
+
         // Uniform-scale gate (mirrors fillRoundRect/fillStadium): the direct
         // paths scale the radius by the transform's uniform scale (a geometric
         // mean), so under a NON-uniform transform they would draw a CIRCLE
@@ -2629,6 +2712,10 @@ class Context2D {
      */
     strokeCircle(centerX, centerY, radius) {
         if (radius <= 0) return;
+
+        if (this._isInvisibleDraw(this._strokeStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
+        }
 
         // Uniform-scale gate (mirrors fillRoundRect/fillStadium): the direct
         // paths scale the radius by the transform's uniform scale (a geometric
@@ -2667,6 +2754,10 @@ class Context2D {
      */
     fillStrokeCircle(centerX, centerY, radius) {
         if (radius <= 0) return;
+
+        if (this._isInvisibleDraw(this._fillStyle) && this._isInvisibleDraw(this._strokeStyle)) {
+            return; // Neither half can change a pixel under source-over
+        }
 
         // Uniform-scale gate (mirrors fillRoundRect/fillStadium): the direct
         // paths scale the radius by the transform's uniform scale (a geometric
@@ -2745,6 +2836,10 @@ class Context2D {
      */
     fillArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
         if (radius <= 0) return;
+
+        if (this._isInvisibleDraw(this._fillStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
+        }
 
         // Uniform-scale gate — see fillCircle: the direct arc paths scale the
         // radius by the geometric-mean uniform scale, the wrong shape under a
@@ -2839,6 +2934,10 @@ class Context2D {
      */
     outerStrokeArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
         if (radius <= 0) return;
+
+        if (this._isInvisibleDraw(this._strokeStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
+        }
 
         // Uniform-scale gate — see fillCircle: the direct arc paths scale the
         // radius by the geometric-mean uniform scale, the wrong shape under a
@@ -2963,6 +3062,10 @@ class Context2D {
     fillOuterStrokeArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
         if (radius <= 0) return;
 
+        if (this._isInvisibleDraw(this._fillStyle) && this._isInvisibleDraw(this._strokeStyle)) {
+            return; // Neither half can change a pixel under source-over
+        }
+
         // Uniform-scale gate — see fillCircle: the direct arc paths scale the
         // radius by the geometric-mean uniform scale, the wrong shape under a
         // non-uniform transform. Un-baked user-space path under the CTM instead.
@@ -3061,6 +3164,16 @@ class Context2D {
      * @param {number} y2 - End Y coordinate
      */
     strokeLine(x1, y1, x2, y2) {
+        // Validate parameters up front (family convention - see fillRect), so
+        // bad arguments fail identically whatever the paint source.
+        if (typeof x1 !== 'number' || typeof y1 !== 'number' || typeof x2 !== 'number' || typeof y2 !== 'number') {
+            throw new Error('Line coordinates must be numbers');
+        }
+
+        if (this._isInvisibleDraw(this._strokeStyle)) {
+            return; // Transparent paint / globalAlpha 0 under source-over draws nothing
+        }
+
         // Deliberately NOT uniform-scale-gated (unlike the circle/arc entries):
         // the endpoints are transformed exactly, so the geometry is always
         // right — only the stroke WIDTH uses the geometric-mean uniform scale,
