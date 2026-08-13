@@ -178,7 +178,7 @@ table below and §9 for the consequences).
 |--------------|--------------------------------------------|-------------------------------------------|-------|
 | Paint Source | paintSource instanceof Color               | Gradients, Patterns                       | ALL entries |
 | Composite Op | globalCompositeOperation === 'source-over' | All other ops (copy, xor, etc.)           | ALL entries |
-| Shadows      | `_noShadow` (no shadowColor, or `shadowColor.a === 0`, or zero blur+offsets — the exact negation of `ShadowPipeline.needsShadow`) | Any other shadow state | rect / roundRect / stadium families ONLY — circle/arc/line direct paths never consult it and silently DROP ctx shadows (§9) |
+| Shadows      | `_noShadow` (no shadowColor, or `shadowColor.a === 0`, or zero blur+offsets — the exact negation of `ShadowPipeline.needsShadow`) | Any other shadow state | ALL entries — the rect/roundRect/stadium families via `_canUseDirectRendering`/`_canUseDirectRenderingForFillStroke`, the circle/arc/line entries via their inline gates (an active shadow routes to the generic fallback, which renders it) |
 | Paint Alpha  | paintSource.a > 0                          | Fully transparent paint                   | rect / roundRect / stadium (→ generic, a pure pessimization) · `fillArc` returns early drawing nothing · `_fillCircleDirect` routes a=0 to `fill_Alpha` (draws nothing) |
 | Line Cap     | lineCap === 'butt'                         | 'round', 'square'                         | line + arc STROKE entries only (`strokeLine`, `outerStrokeArc`, `fillOuterStrokeArc`) |
 
@@ -265,13 +265,13 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `strokeRoundRect` | same | same (stroke) | same | generic via `stroke(path)` — the ONE rect-family fallback that honours `lineDash` (radius≤0 → `strokeRect`) |
 | `fillStrokeRoundRect` | same | both Color, source-over, `_noShadow`, something to draw | as `fillStrokeRect` + non-uniform | decomposes → `fillRoundRect` + `strokeRoundRect` (radius≤0 → `fillStrokeRect`) |
 | `fillStadium` | isUniformScale (rot arm delegates to `RoundedRectOpsRot`, r=min/2) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow · non-uniform | generic via external `SWPath2D` (no stroke API exists) |
-| `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over | non-Color · composite | generic via external `SWPath2D` |
-| `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over | non-Color · a=0 · composite | generic via external `SWPath2D` (honours cap/join/dash) |
-| `fillStrokeCircle` | isUniformScale (pre-gate) | both Color, source-over, something to draw | either non-Color · composite · nothing | sequential `_fillCircleDirect` + `_strokeCircleDirect` (still direct dispatchers) |
-| `fillArc` | isUniformScale (pre-gate) | Color, source-over (NO shadow gate, NO a>0 fallback — a=0 returns silently) | non-Color · composite | generic via external `SWPath2D`; never tier-0-clipped |
-| `outerStrokeArc` | isUniformScale (pre-gate) | Color, a>0, source-over, lineCap 'butt' | non-Color · a=0 · composite · round/square cap | generic via external `SWPath2D` (honours the cap) |
-| `fillOuterStrokeArc` | isUniformScale (pre-gate) | both Color, source-over, lineCap 'butt', something to draw | either paint non-Color · composite · cap | sequential generic via external `SWPath2D` (both halves) |
-| `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt' | non-Color · composite · round/square cap | generic via external `SWPath2D` (honours cap/dash; HTML5 anisotropic width under non-uniform CTM); alpha/CTM/clip/shadow never gate |
+| `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over, `_noShadow` | non-Color · composite · shadow | generic via external `SWPath2D` |
+| `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow | generic via external `SWPath2D` (honours cap/join/dash) |
+| `fillStrokeCircle` | isUniformScale (pre-gate) | both Color, source-over, `_noShadow`, something to draw | either non-Color · composite · shadow · nothing | sequential `_fillCircleDirect` + `_strokeCircleDirect` (still direct dispatchers) |
+| `fillArc` | isUniformScale (pre-gate) | Color, source-over, `_noShadow` (NO a>0 fallback — a=0 returns silently) | non-Color · composite · shadow | generic via external `SWPath2D`; never tier-0-clipped |
+| `outerStrokeArc` | isUniformScale (pre-gate) | Color, a>0, source-over, lineCap 'butt', `_noShadow` | non-Color · a=0 · composite · round/square cap · shadow | generic via external `SWPath2D` (honours the cap) |
+| `fillOuterStrokeArc` | isUniformScale (pre-gate) | both Color, source-over, lineCap 'butt', `_noShadow`, something to draw | either paint non-Color · composite · cap · shadow | sequential generic via external `SWPath2D` (both halves) |
+| `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt', `_noShadow` | non-Color · composite · round/square cap · shadow | generic via external `SWPath2D` (honours cap/dash; HTML5 anisotropic width under non-uniform CTM); alpha/CTM/clip never gate |
 | `fillText` | direct atlas blit iff `b=c=0, a=d=dpr`, integer e/f; else intermediate buffer + `drawImage` | none (no composite/shadow/alpha/clip gate — both arms honour them via `drawImage`) | `maxWidth` → throw · gradient/pattern → ⚠ silent BLACK substitution (console.warn) | both arms mark path-based |
 | `strokeText` | — | — | ALWAYS throws | — |
 | `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer) |
@@ -834,10 +834,12 @@ current consumers:
    non-Color half drew NOTHING instead of falling back (both-gradient drew nothing at all).
    The fallback now recomputes presence from paint existence (`fallbackHasFill`/
    `fallbackHasStroke`). Pinned by `tests/core/061`.
-4. **Ctx shadows are silently dropped by the circle/arc/line direct paths.** `_noShadow` is only
-   consulted by the rect/roundRect/stadium gates; `ShadowPipeline` is only invoked from
-   `Rasterizer`. So `shadowBlur=5; fillCircle(...)` draws shadowless while `fillRect(...)`
-   renders the shadow.
+4. **FIXED (2026-08-13): ctx shadows were silently dropped by the circle/arc/line direct
+   paths.** `_noShadow` was only consulted by the rect/roundRect/stadium gates. The circle,
+   arc and line entries' inline gates now carry the `_noShadow` term, routing any active
+   shadow to the (CTM-correct) generic fallback — the same policy as the rect family; the
+   direct renderers themselves still have no shadow code (deliberate: out of proportion).
+   Pinned by `tests/core/063` (all seven entries).
 5. **FIXED (2026-08-13): `_noShadow` used reference identity for transparency**
    (`shadowColor === Color.transparent`) while the setter builds a NEW Color for
    `'rgba(0,0,0,0)'` — an invisible shadow with non-zero blur/offset de-fast-pathed every

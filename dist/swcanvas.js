@@ -27988,7 +27988,10 @@ class Context2D {
         const hasFill = fillIsColor && fillPaintSource.a > 0;
         const hasStroke = strokeIsColor && strokePaintSource.a > 0;
 
-        if (fillIsColor && strokeIsColor && isSourceOver && (hasFill || hasStroke)) {
+        // _noShadow term: the direct renderers cannot draw a ctx shadow, so an
+        // active shadow routes to the generic fallback (which can) - the same
+        // policy _canUseDirectRendering applies to the rect family.
+        if (fillIsColor && strokeIsColor && isSourceOver && this._noShadow && (hasFill || hasStroke)) {
             // Use unified method for coordinated fill+stroke rendering (no gaps).
             // Tier-0 rect clip → clamp extent + clipBuffer=null (see fillRect).
             const tier0ClipRect = this._tier0ClipRect();
@@ -28063,11 +28066,13 @@ class Context2D {
         // clipped caller appears.
         const clipBuffer = this._ensureClipBuffer();
 
-        // Check for direct rendering conditions
+        // Check for direct rendering conditions. _noShadow: the direct
+        // renderers cannot draw a ctx shadow - an active shadow routes to the
+        // generic fallback (same policy as the rect family's gates).
         const isColor = paintSource instanceof Color;
         const isSourceOver = this.globalCompositeOperation === 'source-over';
 
-        if (isColor && isSourceOver) {
+        if (isColor && isSourceOver && this._noShadow) {
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
             if (isOpaque) {
                 ArcOps.fill_Opaq(
@@ -28153,7 +28158,8 @@ class Context2D {
         // Direct rendering only supports butt line caps (open arc shapes need cap handling)
         const isButtCap = this.lineCap === 'butt';
 
-        if (isColor && isSourceOver && isButtCap) {
+        // _noShadow: see fillArc - shadows only render via the generic fallback.
+        if (isColor && isSourceOver && isButtCap && this._noShadow) {
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
             const is1pxStroke = Math.abs(scaledLineWidth - 1) < STROKE_1PX_TOLERANCE;
             // HAIRLINE (sub-pixel) stroke — see the class-level note at the top
@@ -28284,7 +28290,8 @@ class Context2D {
         // Direct rendering only supports butt line caps (open arc shapes need cap handling)
         const isButtCap = this.lineCap === 'butt';
 
-        if (fillIsColor && strokeIsColor && isSourceOver && isButtCap && (hasFill || hasStroke)) {
+        // _noShadow: see fillArc - shadows only render via the generic fallback.
+        if (fillIsColor && strokeIsColor && isSourceOver && isButtCap && this._noShadow && (hasFill || hasStroke)) {
             // Use unified direct rendering
             ArcOps.fillStrokeOuter_Any(
                 this.surface,
@@ -28383,13 +28390,18 @@ class Context2D {
         const isColor = paintSource instanceof Color;
         const isSourceOver = this.globalCompositeOperation === 'source-over';
 
-        const isOpaqueColor = isColor && paintSource.a === 255 && this.globalAlpha >= 1.0 && isSourceOver;
+        // _noShadow term in both: the direct renderers cannot draw a ctx
+        // shadow - an active shadow routes to the generic fallback below (same
+        // policy as the rect family's _canUseDirectRendering).
+        const isOpaqueColor =
+            isColor && paintSource.a === 255 && this.globalAlpha >= 1.0 && isSourceOver && this._noShadow;
 
         // Everything else a Color can be goes through fill_Alpha: a < 255, and
         // ALSO an opaque color under globalAlpha < 1 (like every sibling entry
         // - fillRect, fillRoundRect, fillArc, fillStadium dispatch that case to
         // their _Alpha renderer rather than the generic fallback).
-        const isSemiTransparentColor = isColor && (paintSource.a < 255 || this.globalAlpha < 1.0) && isSourceOver;
+        const isSemiTransparentColor =
+            isColor && (paintSource.a < 255 || this.globalAlpha < 1.0) && isSourceOver && this._noShadow;
 
         if (isOpaqueColor || isSemiTransparentColor) {
             // Tier-0 rect clip → clamp extent + clipBuffer=null (mirrors
@@ -28451,8 +28463,10 @@ class Context2D {
         const tier0ClipRect = this._tier0ClipRect();
         const clipBuffer = tier0ClipRect ? null : this._ensureClipBuffer();
 
-        // Direct rendering 1: 1px strokes using Bresenham algorithm
-        if (isColor && (is1pxStroke || isHairlineStroke) && isSourceOver) {
+        // Direct rendering 1: 1px strokes using Bresenham algorithm.
+        // _noShadow on both branches: shadows only render via the generic
+        // fallback (see _fillCircleDirect).
+        if (isColor && (is1pxStroke || isHairlineStroke) && isSourceOver && this._noShadow) {
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0 && !isHairlineStroke;
             if (isOpaque) {
                 CircleOps.stroke1px_Opaq(this.surface, cx, cy, radius, paintSource, clipBuffer, tier0ClipRect);
@@ -28473,7 +28487,7 @@ class Context2D {
         }
 
         // Direct rendering 2: Thick strokes using scanline annulus algorithm
-        if (isColor && isSourceOver && lineWidth > 1 && paintSource.a > 0) {
+        if (isColor && isSourceOver && this._noShadow && lineWidth > 1 && paintSource.a > 0) {
             const isOpaqueThick = paintSource.a === 255 && this.globalAlpha >= 1.0;
             if (isOpaqueThick) {
                 CircleOps.strokeThick_Opaq(
@@ -28558,12 +28572,16 @@ class Context2D {
             lineWidth < 1 &&
             Math.abs(lineWidth - 1) >= STROKE_1PX_TOLERANCE; // i.e. not the exact-1px case
 
-        // Get color for solid color direct rendering
+        // Get color for solid color direct rendering. _noShadow in both
+        // eligibility flags: LineOps cannot draw a ctx shadow - an active
+        // shadow makes stroke_Any decline and routes to the generic fallback
+        // below (see _fillCircleDirect).
         const isOpaqueColor =
             paintSource instanceof Color &&
             paintSource.a === 255 &&
             this.globalAlpha >= 1.0 &&
             this.globalCompositeOperation === 'source-over' &&
+            this._noShadow &&
             isButtCap &&
             !isHairlineStroke;
 
@@ -28572,6 +28590,7 @@ class Context2D {
             paintSource instanceof Color &&
             !isOpaqueColor &&
             this.globalCompositeOperation === 'source-over' &&
+            this._noShadow &&
             isButtCap;
 
         // Try direct rendering via LineOps. ⚠ `lineWidth` itself must stay
@@ -28592,7 +28611,7 @@ class Context2D {
 
         if (!directRenderingUsed) {
             // Non-Color paints (gradients, patterns), round/square caps,
-            // non-source-over: generic pipeline via an un-baked USER-space
+            // non-source-over, active shadows: generic pipeline via an un-baked USER-space
             // external path under the live CTM (see _fillCircleDirect's
             // fallback note). stroke(path) widens at this._lineWidth in user
             // space and the CTM scales it — under a non-uniform CTM that gives
