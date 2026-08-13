@@ -1,6 +1,19 @@
 # One rect-fill pipeline: retire the Rasterizer bespoke arm, then remove the four parity fill fast-paths
 
-**PLAN ONLY. Written to be executed COLD by an LLM/engineer with ZERO prior context.**
+**✅ EXECUTED IN FULL 2026-08-13** — Phase A (`45dffae`) retired
+`Rasterizer._fillAxisAlignedRect`; B1–B3 (`8f11434`, `838b9f7`, `bf7d44c`) removed all four
+parity fill dispatch arms, deleting `StadiumOps.js` and `RoundedRectOpsAA.fill_AA_*`
+outright; B4 (`2160409`) swept the dead code, rewrote `DIRECT-RENDERING-SUMMARY.MD` as the
+dispatch truth reference (§9 entries 15–16) and added the inverted pins (`tests/core/066`,
+`069`). SWCanvas `main` at `58a0880`. Phase C landed the downstream migration: Fizzygum pin
+`ad1a703 → 58a0880` (`fb087298`) and a 165-test re-baseline (`89ae0fb94`), owner-eyeballed,
+gauntlet 14/14 including WebKit. Net −1214 lines upstream. **One question stays OPEN — see
+the EXECUTION STATUS box's Phase C entry**: the mechanism by which the `fillRoundRect` arm
+removal made a specified-but-never-painted widget background appear. Five candidate
+mechanisms are probed and falsified there; a spec'd fill that silently does not paint is a
+class that can hide elsewhere.
+
+**Originally written to be executed COLD by an LLM/engineer with ZERO prior context.**
 Authored 2026-08-13 against SWCanvas `1819328` (all evidence below measured at that HEAD or
 during the same-day campaign that produced it; `file:line` refs cited fresh at `1819328` —
 lines DRIFT, the quoted code and method names are authoritative, grep them before trusting a
