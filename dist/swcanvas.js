@@ -24874,7 +24874,7 @@ class Context2D {
         this._stateStack = new StateStack();
 
         // Current state
-        this.globalAlpha = 1.0;
+        this._globalAlpha = 1.0;
         this._globalCompositeOperation = 'source-over';
         this._transform = Transform2D.IDENTITY;
         this._fillStyle = new Color(0, 0, 0, 255); // Black
@@ -24956,6 +24956,31 @@ class Context2D {
         // HTML5 Canvas spec: ignore zero, negative, Infinity, and NaN values
         if (typeof value === 'number' && value > 0 && isFinite(value)) {
             this._lineWidth = value;
+        }
+        // Otherwise, keep the current value unchanged (ignore invalid input)
+    }
+
+    // HTML5 Canvas-compatible globalAlpha property with validation
+    get globalAlpha() {
+        return this._globalAlpha;
+    }
+
+    set globalAlpha(value) {
+        // HTML5 Canvas spec: "if the given value is either infinite, NaN, or not in
+        // the range 0.0 to 1.0, then it must be ignored, without assigning a new
+        // value" — so an invalid assignment leaves the previous alpha standing.
+        //
+        // This is NOT cosmetic conformance. Before it, the value was a plain public
+        // field, so `ctx.globalAlpha = undefined` (or NaN) was stored RAW and every
+        // downstream `(color.a / 255) * globalAlpha` went NaN — a fill then covered
+        // ZERO pixels while its fillStyle, geometry and clip were all correct, and
+        // nothing threw. Fizzygum shipped exactly that bug: a widget's specified
+        // backgroundColor silently never painted (Fizzygum
+        // docs/archive/dropped-background-fill-investigation.md). Native canvas
+        // ignores the assignment, so the fault was invisible on the native backend
+        // and only SWCanvas reproduced it.
+        if (typeof value === 'number' && isFinite(value) && value >= 0 && value <= 1) {
+            this._globalAlpha = value;
         }
         // Otherwise, keep the current value unchanged (ignore invalid input)
     }
@@ -25105,8 +25130,9 @@ class Context2D {
      * @private
      */
     _applySnapshot(snapshot) {
-        this.globalAlpha = snapshot.globalAlpha;
-        // Use backing field directly to avoid setter overhead (flags are saved separately)
+        // Use backing fields directly to avoid setter overhead (flags are saved
+        // separately; a snapshot only ever holds already-validated values)
+        this._globalAlpha = snapshot.globalAlpha;
         this._globalCompositeOperation = snapshot.globalCompositeOperation;
         this._transform = snapshot.transform;
         this._fillStyle = snapshot.fillStyle;
