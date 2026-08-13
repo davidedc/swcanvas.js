@@ -873,17 +873,26 @@ current consumers:
    yes). The guard is deliberately source-over-scoped: other composites can make invisible
    paint visible ('copy' clears pixels) and keep the generic pipeline. Fused entries return
    only when BOTH halves are invisible. Pinned by `tests/core/064`.
-10. **(owner observation, 2026-08-12) The rect generic-path condition looks wider than
-   necessary.** `fillRect`/`strokeRect` fall to the generic pipeline at
-   `!isAxisAligned && !isUniformScale` — but a rectangle under ANY affine CTM is a
-   parallelogram, and the quad machinery to fill one directly already exists and is already a
-   fast-path dependency: `RectOpsRot.fill_Rot_Any` renders through `QuadScanOps.fillQuad`, which
-   takes four arbitrary corners. Transforming the rect's corners and quad-filling should cover
-   shear / mirror-with-rotation / rotation+non-uniform-scale as a direct path too. The genuinely
-   open half is STROKES under non-uniform transforms (edge thickness varies with direction —
-   four per-edge quads with per-edge widths, or the geometric-mean approximation `strokeLine`
-   already accepts). Reviewed and either extended or justified in
-   `plans/direct-dispatch-gaps-and-coverage.md`.
+10. **DECIDED (2026-08-13): general-affine rects STAY on the generic pipeline — extension
+   rejected on benchmark evidence.** The 2026-08-12 observation was correct that the quad
+   machinery covers the shape: a general-affine direct arm (corner transform →
+   `RectOpsRot.fill_Quad_Any` → `QuadScanOps.fillQuad`) was implemented, tested green, and
+   measured with `benchmark-session.js` over 14 new `rect-affine` perf cases
+   (rotation+non-uniform-scale fills, every size XXS–XXL, opaque and semi). Result: DEAD
+   PARITY with the generic pipeline — 0.99x–1.02x everywhere, including the tiny-shape
+   per-call-overhead case. Cause: solid-color source-over generic fills already run the
+   tier-0-wired span arm (`PolygonFiller._fillPolygonsDirect`), which is direct-grade. Landing
+   would have added a new dispatch surface, a new UNWIRED-clip arm (fillQuad has no clipRect
+   concept), and a rasterization-convention change (fillQuad integer-scanline vs
+   PolygonFiller pixel-center — three visual-output PNGs moved during the trial), for zero
+   measured win — so the plan's own "if it does NOT win, record that and stop" applied and
+   the src change was reverted. STROKES under general-affine CTMs stay generic for a second,
+   independent reason: a non-uniform transform varies edge thickness with direction, and the
+   generic stroker gives the HTML5-exact anisotropic edges (a direct arm would need four
+   per-edge quads at per-edge widths). Artifacts kept: the measurement harness
+   (`tests/direct-rendering/perf-cases/rect-affine-perf.js`) and a structural pin
+   (`tests/core/066`) that fails if a general-affine direct arm reappears — re-attempt only
+   with fresh benchmark evidence, updating the pin and this record together.
 
 ---
 

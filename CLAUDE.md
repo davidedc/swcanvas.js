@@ -6,7 +6,7 @@ Deterministic 2D raster engine with a dual API: HTML5-compatible (`SWCanvas.crea
 
 ```bash
 npm run build                                # REQUIRED before every test run (expands @inline markers)
-npm test                                     # 85 core + 154 visual tests
+npm test                                     # 86 core + 154 visual tests
 npm run test:direct-rendering                # 79 direct-renderer correctness tests
 npm run test:direct-rendering:perf           # Quick perf sanity check — NOT a measurement
 npm run lint           # / lint:fix          # ESLint on src/
