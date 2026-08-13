@@ -932,6 +932,24 @@ current consumers:
    pre-designed (Cohen-Sutherland endpoint clipping, `plans/clipping-optimization.md` §9
    Stage 4, itself profiling-gated: "if 1px strokes are hot"). Wire an arm only together
    with a benchmark-justified hot clipped caller.
+14. **DECIDED (2026-08-13): no arithmetic micro-surgery in the BLEND_ALPHA inner loop — it
+   is memory/conversion-bound, not ALU-bound.** An opaque-destination fast branch was
+   prototyped in the template (when `dstA === 255`, `outA = alpha + (1−alpha)` is EXACTLY
+   1.0 in IEEE doubles — Sterbenz above α=0.5, half-ulp ties-to-even below — so the branch
+   collapses to a pure lerp, provably byte-identical: the full battery regenerated every
+   visual PNG byte-for-byte). It removes BOTH per-pixel float divisions and two multiplies —
+   and measured 0.98x on rect/roundRect fill-semi (the branch test costs more than the
+   divisions saved) and 1.00x on circle fill-semi, at CV ≤ ~1%. Reading: the loop's real
+   cost is four byte loads + three/four clamped stores with float→byte conversion + the
+   dependent dst-alpha load; out-of-order execution hides the divide latency behind that
+   traffic. Together with entry 10 this establishes the pattern: for FILLS, both per-row
+   scaffolding (entry 10) and per-pixel arithmetic (this entry) are already at their
+   practical floor in byte-exact vanilla JS. The remaining structural lever would be a
+   PREMULTIPLIED surface format (kills the division and the per-pixel unpremultiply
+   dependency) — rejected here because the non-premultiplied `Surface.data` layout is a
+   public contract (getImageData, the browser-comparison harness, every pixel-probing
+   test); do not re-attempt blend micro-optimizations without first changing that contract
+   deliberately.
 
 ---
 
