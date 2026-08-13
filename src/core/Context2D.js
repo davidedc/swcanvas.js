@@ -1588,13 +1588,12 @@ class Context2D {
      * rounded — two half-circle caps of radius min(w,h)/2 joined by a
      * rectangular body. Orientation is implied by the longer axis, so one
      * signature covers vertical and horizontal shapes (w === h degenerates to
-     * a circle). Crisp contract: at integer geometry the fill covers EXACTLY
-     * the [x, x+w) × [y, y+h) pixel box, with caps byte-identical to
-     * fillCircle's (tests/core/053).
+     * a circle).
      *
-     * Uses direct rendering when possible (solid color, source-over, no
-     * shadow, uniform scale). There are deliberately NO stroke variants —
-     * capability lands with callers, and the one consumer only fills.
+     * Always renders through the generic path pipeline (fill arms removed on
+     * parity evidence - §9 entries 15-16). There are deliberately NO stroke
+     * variants — capability lands with callers, and the one consumer only
+     * fills.
      * @param {number} x - Box top-left X
      * @param {number} y - Box top-left Y
      * @param {number} width - Box width
@@ -1614,100 +1613,13 @@ class Context2D {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
         }
 
-        // Direct rendering: Color fill with source-over, no shadows
-        if (this._canUseDirectRendering(this._fillStyle)) {
-            const t = this._transform;
-            // Tier-0 rect clip → clamp extent + clipBuffer=null on the
-            // axis-aligned paths; the rotated branch materialises the bitmask
-            // on demand (see fillRect for the rationale).
-            const tier0ClipRect = this._tier0ClipRect();
-            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
-
-            // Stadiums require uniform scale (non-uniform would make an
-            // ellipse-capped shape the caps cannot represent)
-            if (t.isUniformScale) {
-                const scaledW = width * t.scaleX;
-                const scaledH = height * t.scaleY;
-                const center = t.transformPoint({ x: x + width / 2, y: y + height / 2 });
-                const isOpaque = this._fillStyle.a === 255 && this.globalAlpha >= 1.0;
-
-                if (t.isIdentity) {
-                    // No transform: use original coordinates
-                    if (isOpaque) {
-                        StadiumOps.fill_Opaq(this.surface, x, y, width, height, this._fillStyle, clip, tier0ClipRect);
-                    } else {
-                        StadiumOps.fill_Alpha(
-                            this.surface,
-                            x,
-                            y,
-                            width,
-                            height,
-                            this._fillStyle,
-                            this.globalAlpha,
-                            clip,
-                            tier0ClipRect
-                        );
-                    }
-                    return;
-                }
-
-                if (t.isAxisAligned) {
-                    // Inline dimension swapping — a 90°-rotated stadium is
-                    // still a stadium with w/h exchanged.
-                    const finalW = t.is90DegreeRotated ? scaledH : scaledW;
-                    const finalH = t.is90DegreeRotated ? scaledW : scaledH;
-                    const tlX = center.x - finalW / 2;
-                    const tlY = center.y - finalH / 2;
-
-                    if (isOpaque) {
-                        StadiumOps.fill_Opaq(
-                            this.surface,
-                            tlX,
-                            tlY,
-                            finalW,
-                            finalH,
-                            this._fillStyle,
-                            clip,
-                            tier0ClipRect
-                        );
-                    } else {
-                        StadiumOps.fill_Alpha(
-                            this.surface,
-                            tlX,
-                            tlY,
-                            finalW,
-                            finalH,
-                            this._fillStyle,
-                            this.globalAlpha,
-                            clip,
-                            tier0ClipRect
-                        );
-                    }
-                    return;
-                } else {
-                    // Rotated with uniform scale: a stadium IS a rounded rect
-                    // at the degenerate radius, and under rotation there is no
-                    // exact-column crisp contract for the AA-free edge pixels
-                    // to violate, so delegate to the rotated rounded-rect
-                    // renderer with r = min(w,h)/2.
-                    RoundedRectOpsRot.fill_Rot_Any(
-                        this.surface,
-                        center.x,
-                        center.y,
-                        scaledW,
-                        scaledH,
-                        Math.min(scaledW, scaledH) / 2,
-                        t.rotationAngle,
-                        this._fillStyle,
-                        this.globalAlpha,
-                        this._ensureClipBuffer()
-                    );
-                    return;
-                }
-            }
-            // Non-uniform scale: fall through to path-based rendering
-        }
-
+        // NO direct fill arm, deliberately: stadium FILLS are uniformly generic.
+        // The StadiumOps arm was removed with the other fill fast paths on parity
+        // evidence (stadium shares roundRect's algorithm class - span walk + cap
+        // geometry - so parity holds by proxy; DIRECT-RENDERING-SUMMARY.MD §9
+        // entries 15-16, plans/one-rect-fill-pipeline-and-fill-arm-removal.md).
+        // Do not re-add a fill fast path without fresh benchmark evidence.
+        //
         // Path-based rendering: an un-baked, user-space rounded-rect path at
         // the degenerate radius (the generic pipeline samples pixel centers,
         // so ITS degenerate-radius output is a correct stadium), drawn as an

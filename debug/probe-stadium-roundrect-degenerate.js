@@ -241,9 +241,12 @@ console.log('\n############ 5. transform pre-multiplication exactness');
 console.log('\ndone.');
 
 // ---------------------------------------------------------------------------
-// 6. THE ANSWER: the dedicated StadiumOps primitive (fillStadium) vs ideal
+// 6. THE ANSWER: the fillStadium entry point vs ideal. (It measured a dedicated
+// StadiumOps primitive when written; that direct arm was later removed on
+// parity evidence and fillStadium now renders generically - the entry point,
+// and so this probe, is unchanged. DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16.)
 // ---------------------------------------------------------------------------
-console.log('\n############ 6. fillStadium (StadiumOps) vs ideal stadium');
+console.log('\n############ 6. fillStadium vs ideal stadium');
 for (const [x, y, w, h] of CASES) {
     const ctx = newCtx();
     ctx.fillStyle = 'rgb(255,0,0)';

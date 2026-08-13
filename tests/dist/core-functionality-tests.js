@@ -3529,29 +3529,42 @@
         });
 
 
-        // Test: fillStadium direct rendering - shape contract, clip equivalence, containment
+        // Test: fillStadium - shape contract, clip equivalence, containment
         // This file will be concatenated into the main test suite
         //
         // fillStadium(x, y, w, h) fills the box with its shorter axis fully rounded:
         // two half-circle caps of radius min(w,h)/2 joined by a rectangular body,
-        // orientation implied by the longer axis. It exists because (a) the
-        // circle+rect composition double-blends its overlaps at alpha < 1, and (b)
-        // RoundedRectOpsAA at the degenerate radius loses the left/right apex columns
-        // of a HORIZONTAL stadium (its corner x-extents are edge-sampled; probed in
-        // debug/probe-stadium-roundrect-degenerate.js). Contract pinned here:
+        // orientation implied by the longer axis. It renders through the generic
+        // pipeline (a user-space roundRect path at the degenerate radius) since the
+        // fill-arm removal - DIRECT-RENDERING-SUMMARY.MD §9 entries 15-16. Contract
+        // pinned here:
         //   1. CRISP BOX: at integer geometry the fill covers EXACTLY [x,x+w)x[y,y+h),
         //      both orientations, even and odd minor axis, symmetric in both axes.
-        //   2. CAPS ARE fillCircle's: a square stadium is byte-identical to the
-        //      inscribed fillCircle (both parities), and the pure cap rows of a
-        //      vertical stadium are byte-identical to the corresponding fillCircle rows.
-        //   3. ALPHA: single-blend everywhere (one span per row - no overlap).
-        //   4. TIER-0: under a rect clip, tier-0 output is byte-identical to the
+        //      This is the check that once justified a bespoke renderer - the direct
+        //      degenerate-radius roundRect arm lost a HORIZONTAL stadium's left/right
+        //      apex columns (edge-sampled corner x-extents; probed in
+        //      debug/probe-stadium-roundrect-degenerate.js) - and it still holds on the
+        //      generic pipeline, which samples pixel centers.
+        //   2. ALPHA: single-blend everywhere (one span per row - no overlap). The
+        //      other historical reason for a bespoke renderer: a circle+rect
+        //      composition double-blends its overlaps at alpha < 1.
+        //   3. TIER-0: under a rect clip, tier-0 output is byte-identical to the
         //      forced-bitmask clip (two-identical-rects technique), with no leak.
-        //   5. TRANSFORMS: scaled user-space calls are byte-identical to the
+        //   4. TRANSFORMS: scaled user-space calls are byte-identical to the
         //      equivalent device-space call; 90-degree axis-aligned rotation works
         //      (a rotated stadium is a stadium with w/h swapped).
-        //   6. CONTAINMENT: partially off-surface stadiums paint nothing outside the
+        //   5. CONTAINMENT: partially off-surface stadiums paint nothing outside the
         //      shape (spans are clamped - no wrapped writes).
+        //
+        // RETIRED with the fill-arm removal: a CAPS-ARE-fillCircle's pin (square
+        // stadium byte-identical to the inscribed fillCircle; a vertical stadium's
+        // pure cap rows byte-identical to fillCircle's rows). It compared StadiumOps'
+        // Bresenham caps against CircleOps' - one shared construction, two direct
+        // arms. fillStadium is now generic (arcs flattened, pixel centers sampled)
+        // while fillCircle keeps its direct arm, so the two build their caps by
+        // different methods and byte-identity is no longer the contract. The shape
+        // checks above (crisp box, symmetry, single-blend, containment) are what
+        // actually guarded the cap geometry; they all still hold.
 
         test('Stadium fill - shape contract, clip equivalence, containment', () => {
             const W = 90;
@@ -3636,42 +3649,7 @@
                 log(`  ${w}x${h}: exact box, symmetric`);
             }
 
-            // 2a. Square stadium === inscribed fillCircle, both parities.
-            for (const s of [24, 25]) {
-                const a = newCtx();
-                a.ctx.setFillStyle(255, 0, 0, 255);
-                a.ctx.fillStadium(10, 10, s, s);
-                const b = newCtx();
-                b.ctx.setFillStyle(255, 0, 0, 255);
-                b.ctx.fillCircle(10 + s / 2, 10 + s / 2, s / 2);
-                assertBytesEqual(`square ${s}x${s} vs fillCircle`, a.surface, b.surface);
-            }
-            log('  square stadium === inscribed fillCircle (both parities)');
-
-            // 2b. Pure cap rows of a vertical stadium === the same rows of fillCircle.
-            {
-                const a = newCtx();
-                a.ctx.setFillStyle(255, 0, 0, 255);
-                a.ctx.fillStadium(10, 5, 20, 60);
-                const b = newCtx();
-                b.ctx.setFillStyle(255, 0, 0, 255);
-                b.ctx.fillCircle(20, 15, 10); // top cap circle: center (10+10, 5+10)
-                // Rows strictly above the cap center's anchor row are pure cap rows.
-                const capAnchorRow = Math.floor(15 - 0.5);
-                for (let y = 5; y < capAnchorRow; y++) {
-                    for (let x = 0; x < W; x++) {
-                        const o = y * a.surface.stride + x * 4;
-                        for (let c = 0; c < 4; c++) {
-                            if (a.surface.data[o + c] !== b.surface.data[o + c]) {
-                                throw new Error(`cap row ${y}: stadium differs from fillCircle at (${x},${y})`);
-                            }
-                        }
-                    }
-                }
-                log('  vertical-stadium cap rows === fillCircle rows');
-            }
-
-            // 3. Alpha uniformity: one blended level only.
+            // 2. Alpha uniformity: one blended level only.
             for (const [w, h] of [
                 [20, 60],
                 [60, 20],
@@ -3696,7 +3674,7 @@
             }
             log('  alpha: single-blend everywhere');
 
-            // 4. Tier-0 === bitmask under a rect clip, no leak (test 049's technique).
+            // 3. Tier-0 === bitmask under a rect clip, no leak (test 049's technique).
             {
                 const CLIP = { x: 14, y: 10, w: 30, h: 18 };
                 function renderClipped(clipMode, drawFn) {
@@ -3752,7 +3730,7 @@
                 }
             }
 
-            // 5. Transforms: pre-multiplication exact; 90-degree rotation swaps w/h.
+            // 4. Transforms: pre-multiplication exact; 90-degree rotation swaps w/h.
             {
                 const scaled = newCtx();
                 scaled.ctx.save();
@@ -3781,7 +3759,7 @@
                 log('  transforms: pre-multiplication exact, 90-degree swap exact');
             }
 
-            // 6. Off-surface containment: nothing painted outside the shape.
+            // 5. Off-surface containment: nothing painted outside the shape.
             for (const [label, x, y, w, h] of [
                 ['off-left', -30, 30, 60, 20],
                 ['off-right', 60, 30, 60, 20],

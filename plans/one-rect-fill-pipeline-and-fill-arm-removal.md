@@ -62,7 +62,16 @@ evidence and a controlled downstream (Fizzygum) reference migration.
   flipped (fill+stroke cases ride the fused arm and stay direct — unchanged). Battery
   green (254 + 79); **zero** committed PNGs moved (the visual corpus has no plain
   roundRect fills).
-- **B3 fillStadium** — pending.
+- **B3 fillStadium** — DONE. `:1795` block deleted (incl. the rotated
+  `RoundedRectOpsRot` delegation); `StadiumOps.js` deleted (224 lines) after a fresh
+  caller grep; `build.sh` concat entry removed. `tests/core/053`: the
+  caps-byte-identical-to-`fillCircle` pin RETIRED (it compared two DIRECT arms' shared
+  Bresenham construction; stadium is generic now, circle is not — header records it);
+  crisp-box, symmetry, single-blend, tier-0, transform and containment checks all still
+  hold and pass unchanged. Battery green (254 + 79). ONE PNG moved
+  (`stadium-fill-contract.basic.png`, 24 px on the cap arcs) — eyeballed: box exact,
+  symmetry intact, one-pixel staircase difference on the arc quadrants (the §2.2 cap
+  class). Stale `StadiumOps` labels in `debug/` updated.
 - **B4 sweep** — pending.
 - **Phase C** — NOT STARTED (owner-attended session).
 

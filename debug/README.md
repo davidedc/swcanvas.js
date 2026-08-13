@@ -65,7 +65,7 @@ Debug utilities help developers:
 
 - `probe-circle-crisp.js` - Full spelling grid: fill/1px/thick at integer vs fractional centers and radii, crisp-box idiom discovery, alpha overdraw check, transform pre-multiplication exactness, cardinal-extreme (trig-noise class) check
 - `sweep-circle-hashes.js` - Parameter-grid render hasher over all three circle entry points incl. partially off-surface geometry (`SWCANVAS_DIST=<path>` runs it against a saved dist for baseline/after diffs)
-- `probe-stadium-roundrect-degenerate.js` - Why fillStadium is its own renderer: measures RoundedRectOpsAA at the degenerate radius r=min(w,h)/2 (horizontal apex-column loss), the composition's alpha double-blend, and the StadiumOps primitive against an analytic ideal stadium
+- `probe-stadium-roundrect-degenerate.js` - Why fillStadium is its own entry point: measures the direct roundRect arm at the degenerate radius r=min(w,h)/2 (horizontal apex-column loss), the composition's alpha double-blend, and fillStadium against an analytic ideal stadium. Written when fillStadium had a dedicated StadiumOps arm; that arm was removed on parity evidence (§9 entries 15-16) and the entry point now renders generically, so sections 1-5 are a historical measurement of arms that no longer exist while section 6 still measures the live entry point
 
 ### Hairline (Sub-Pixel) Stroke Rule
 
