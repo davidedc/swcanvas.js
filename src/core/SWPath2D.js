@@ -62,41 +62,76 @@ class SWPath2D {
     }
 
     /**
-     * Adds a rounded rectangle subpath to the current path.
-     * Follows the HTML5 Canvas roundRect() geometry (arcTo corners), with one
-     * documented divergence shared with the immediate-mode roundRect entries:
-     * a radii ARRAY is collapsed FIRST-ELEMENT-WINS to one uniform radius -
-     * NOT the spec's per-corner semantics (up to 4 entries, each optionally
-     * {x,y}); do not read [a, b] as per-corner or as rx/ry. See
-     * DIRECT-RENDERING-SUMMARY.MD §9 entry 11 for the recorded decision.
+     * Adds a rounded rectangle subpath, per HTML5 Canvas roundRect(): per-corner
+     * radii in CSS border-radius order, proportionally scaled down when they
+     * would overlap (RoundedRectUtils documents the full radii contract). Like
+     * HTML5, a non-finite coordinate or radius adds nothing, a negative radius or
+     * a list of other than 1-4 radii throws RangeError, and the current point
+     * afterwards is (x, y). The one divergence: elliptical ({x, y}) corner radii
+     * are rejected with a TypeError.
      * @param {number} x - X coordinate of the rectangle's top-left corner
      * @param {number} y - Y coordinate of the rectangle's top-left corner
      * @param {number} width - Width of the rectangle
      * @param {number} height - Height of the rectangle
-     * @param {number|number[]} radii - Corner radius (array: first element wins)
+     * @param {number|number[]} [radii=0] - Corner radius, or a list of 1-4 corner radii
      */
     roundRect(x, y, width, height, radii) {
-        // Normalize radii to a single value for simplicity
-        // HTML5 Canvas spec allows array of up to 4 values, but we simplify to single radius
-        let radius = Array.isArray(radii) ? radii[0] : radii || 0;
+        x = +x;
+        y = +y;
+        width = +width;
+        height = +height;
+        if (!isFinite(x) || !isFinite(y) || !isFinite(width) || !isFinite(height)) return;
+        const corners = RoundedRectUtils.parseCornerRadii(radii);
+        if (corners === null) return;
+        SWPath2D.appendRoundRect(this, x, y, width, height, corners);
+        // HTML5: the current point after roundRect() is (x, y), on a new subpath.
+        this.moveTo(x, y);
+    }
 
-        // Clamp radius to half the smaller dimension
-        if (width < 2 * radius) radius = width / 2;
-        if (height < 2 * radius) radius = height / 2;
+    /**
+     * Emit a rounded rectangle subpath through `sink`'s moveTo/arcTo/rect/
+     * closePath - the one geometry shared by SWPath2D.roundRect (user-space
+     * recording), Context2D.roundRect (whose own path methods bake the CTM) and
+     * the roundRect entries' generic fallbacks. Corners are arcTo corners; a
+     * zero-radius corner is arcTo's degenerate lineTo-the-corner, i.e. square.
+     * Ends on the closed subpath: the path METHODS then move the current point to
+     * (x, y) as HTML5 specifies, which a private one-shot fallback path needs not.
+     * @param {{moveTo: Function, arcTo: Function, rect: Function, closePath: Function}} sink
+     * @param {number} x - Rectangle x (finite)
+     * @param {number} y - Rectangle y (finite)
+     * @param {number} width - Rectangle width (finite, may be negative)
+     * @param {number} height - Rectangle height (finite, may be negative)
+     * @param {number|number[]} corners - RoundedRectUtils.parseCornerRadii's (non-null) result
+     */
+    static appendRoundRect(sink, x, y, width, height, corners) {
+        const fitted = RoundedRectUtils.scaleCornerRadiiToFit(corners, width, height);
+        let tl, tr, br, bl;
+        if (typeof fitted === 'number') {
+            tl = tr = br = bl = fitted;
+        } else {
+            tl = fitted[0];
+            tr = fitted[1];
+            br = fitted[2];
+            bl = fitted[3];
+        }
 
-        // Handle zero or negative radius - just draw a regular rect
-        if (radius <= 0) {
-            this.rect(x, y, width, height);
+        // No rounding at all - a plain rect (which also leaves the current point at (x, y)).
+        if (tl <= 0 && tr <= 0 && br <= 0 && bl <= 0) {
+            sink.rect(x, y, width, height);
             return;
         }
 
-        // Build path using arcTo for rounded corners
-        this.moveTo(x + radius, y);
-        this.arcTo(x + width, y, x + width, y + height, radius);
-        this.arcTo(x + width, y + height, x, y + height, radius);
-        this.arcTo(x, y + height, x, y, radius);
-        this.arcTo(x, y, x + radius, y, radius);
-        this.closePath();
+        // A negative width mirrors the rect about its (x, y) corner, so the top-left
+        // tangent point steps inward along the top edge's actual direction. (Every
+        // other tangent point is implied by arcTo's two lines.)
+        const sx = width < 0 ? -1 : 1;
+
+        sink.moveTo(x + sx * tl, y);
+        sink.arcTo(x + width, y, x + width, y + height, tr);
+        sink.arcTo(x + width, y + height, x, y + height, br);
+        sink.arcTo(x, y + height, x, y, bl);
+        sink.arcTo(x, y, x + sx * tl, y, tl);
+        sink.closePath();
     }
 
     arc(x, y, radius, startAngle, endAngle, counterclockwise) {

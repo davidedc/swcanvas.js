@@ -10,7 +10,7 @@
  * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
  *
  * Layer 1 (Helpers - used by rotated implementations):
- *   _normalizeRadius, _transform, _generateEdgePixels, _generateArcPixels, _generatePerimeter
+ *   RoundedRectUtils.normalizeRadius, _transform, _generateEdgePixels, _generateArcPixels, _generatePerimeter
  *
  * Layer 2 (Implementations - internal):
  *   _fill_Rot_Opaq                → SpanOps.fill_Opaq
@@ -47,6 +47,39 @@
  * Note: _fillStroke_Rot_1px includes assertion to catch axis-aligned cases that should
  * have been routed to RoundedRectOpsAA. Uses TRANSFORM_EPSILON (0.0001) aligned with
  * Transform2D.isAxisAligned for consistent threshold.
+ *
+ * UNIFORM RADIUS ONLY: every entry here takes one corner radius. Context2D sends
+ * per-corner radii under a non-axis-aligned rotation to the generic pipeline instead -
+ * correct, but measured ~8x slower for strokes (1px up to ~70x; fills are generic
+ * anyway), and left so deliberately because nothing draws that case
+ * (DIRECT-RENDERING-SUMMARY.MD §9 entry 17). If a caller ever needs it, the probable
+ * optimum is to make this family per-corner the way RoundedRectOpsAA already is,
+ * rather than to add anything new:
+ *   - Geometry: give RoundedRectUtils.getEdgeEndpoints / getCornerDefinitions the four
+ *     radii [topLeft, topRight, bottomRight, bottomLeft]. Each edge then runs between
+ *     the tangent points of ITS two corners (top: (-hw + rTL, -hh) to (hw - rTR, -hh));
+ *     each corner keeps its own center and radius, and a radius-0 corner has no arc, its
+ *     two edges simply meeting at the rect corner. The rotation is applied to this LOCAL
+ *     geometry, so corner identity survives any angle: no corner re-assignment is
+ *     needed (unlike the axis-aligned arm's quarter turns).
+ *   - Edge-buffer fills and thick strokes (_fill_Rot_*, _strokeThick_Rot_*,
+ *     _fillStroke_Rot_Unified, _generatePerimeter) only record per-row min/max x, so they
+ *     take per-corner radii almost for free. Per corner: outer radius
+ *     r > 0 ? r + halfStroke : 0 (a square outer corner, matching the axis-aligned arm and
+ *     strokeRect), inner radius max(0, r - halfStroke).
+ *   - _stroke1px_Rot_Opaq: skip the ArcOps call for radius-0 corners (opaque overdraw at
+ *     the meeting edges is harmless).
+ *   - _stroke1px_Rot_Alpha and _fillStroke_Rot_1px are the delicate part: for a radius-0
+ *     corner both junction pixels collapse to the corner pixel, which must still be
+ *     painted exactly ONCE (the edges skip junction pixels; the degenerate corner sweep
+ *     plus the cross-corner globalLastPos dedup should cover it - prove it).
+ *   - Context2D: pass the user-order radii scaled by t.scaleX and drop the uniform gate.
+ *   - Prove it the way the axis-aligned arm was proven: uniform byte-identity
+ *     (debug/sweep-roundrect-uniform-radii-ab.js), corner locality and the 1px-alpha
+ *     single-blend / closed-ring sweep with radius-0 corners (tests/core/071's pattern,
+ *     under rotation), and benchmark-session on roundrect-rot-corners-perf vs
+ *     roundrect-rot-perf (expect ~1x or better - the axis-aligned per-corner twin
+ *     measured 0.77x, square corners being cheaper than arcs).
  */
 
 // Module-level buffer pool for Int16Array span buffers (growth-only strategy)
@@ -233,7 +266,8 @@ class RoundedRectOpsRot {
      * @param {number} centerY - Center Y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number} cornerRadius - Uniform corner radius (per-corner radii never reach the
+     *   rotated renderers - Context2D sends them to the generic path)
      * @param {number} rotation - Rotation angle in radians
      * @param {Color} color - Fill color
      * @param {number} globalAlpha - Global alpha value
@@ -245,14 +279,14 @@ class RoundedRectOpsRot {
         centerY,
         width,
         height,
-        radii,
+        cornerRadius,
         rotation,
         color,
         globalAlpha,
         clipBuffer = null
     ) {
         // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(cornerRadius, width, height);
 
         // Fallback to RectOpsRot.fill_Rot_Any for zero radius
         if (radius <= 0) {
@@ -552,7 +586,8 @@ class RoundedRectOpsRot {
      * @param {number} centerY - Center Y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number} cornerRadius - Uniform corner radius (per-corner radii never reach the
+     *   rotated renderers - Context2D sends them to the generic path)
      * @param {number} rotation - Rotation angle in radians
      * @param {number} lineWidth - Stroke width
      * @param {Color} color - Stroke color
@@ -565,7 +600,7 @@ class RoundedRectOpsRot {
         centerY,
         width,
         height,
-        radii,
+        cornerRadius,
         rotation,
         lineWidth,
         color,
@@ -573,7 +608,7 @@ class RoundedRectOpsRot {
         clipBuffer = null
     ) {
         // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(cornerRadius, width, height);
 
         // Fallback to RectOpsRot.stroke_Rot_Any for zero radius (rounded rect becomes regular rect)
         if (radius <= 0) {
@@ -1448,7 +1483,8 @@ class RoundedRectOpsRot {
      * @param {number} centerY - Center Y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number} cornerRadius - Uniform corner radius (per-corner radii never reach the
+     *   rotated renderers - Context2D sends them to the generic path)
      * @param {number} rotation - Rotation angle in radians
      * @param {number} lineWidth - Stroke width
      * @param {Color} fillColor - Fill color (null/undefined to skip fill)
@@ -1462,7 +1498,7 @@ class RoundedRectOpsRot {
         centerY,
         width,
         height,
-        radii,
+        cornerRadius,
         rotation,
         lineWidth,
         fillColor,
@@ -1471,7 +1507,7 @@ class RoundedRectOpsRot {
         clipBuffer = null
     ) {
         // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        const radius = RoundedRectUtils.normalizeRadius(cornerRadius, width, height);
 
         // Check what we need to draw
         const hasFill = fillColor && fillColor.a > 0;
@@ -1487,7 +1523,7 @@ class RoundedRectOpsRot {
                 centerY,
                 width,
                 height,
-                radii,
+                cornerRadius,
                 rotation,
                 fillColor,
                 globalAlpha,
@@ -1504,7 +1540,7 @@ class RoundedRectOpsRot {
                 centerY,
                 width,
                 height,
-                radii,
+                cornerRadius,
                 rotation,
                 lineWidth,
                 strokeColor,

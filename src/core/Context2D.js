@@ -548,6 +548,31 @@ class Context2D {
         this._devSubStart = p0;
     }
 
+    /**
+     * Add a rounded rectangle subpath (HTML5 roundRect()): per-corner radii in CSS
+     * border-radius order, overlap-scaled; the corner curves are baked through
+     * this context's own arcTo, so they follow the CTM like every other path
+     * method. Validation, the radii contract and the one divergence (no
+     * elliptical {x, y} radii) are SWPath2D.roundRect's.
+     * @param {number} x - Rectangle x
+     * @param {number} y - Rectangle y
+     * @param {number} w - Rectangle width
+     * @param {number} h - Rectangle height
+     * @param {number|number[]} [radii=0] - Corner radius, or a list of 1-4 corner radii
+     */
+    roundRect(x, y, w, h, radii) {
+        x = +x;
+        y = +y;
+        w = +w;
+        h = +h;
+        if (!isFinite(x) || !isFinite(y) || !isFinite(w) || !isFinite(h)) return;
+        const corners = RoundedRectUtils.parseCornerRadii(radii);
+        if (corners === null) return;
+        SWPath2D.appendRoundRect(this, x, y, w, h, corners);
+        // HTML5: the current point after roundRect() is (x, y), on a new subpath.
+        this.moveTo(x, y);
+    }
+
     arc(x, y, radius, startAngle, endAngle, counterclockwise) {
         this._bakeArc({
             x: x,
@@ -1199,17 +1224,20 @@ class Context2D {
      * @param {number} y - Rectangle y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius. An array is collapsed
-     *   FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 roundRect()'s
-     *   per-corner semantics - do not read [a, b] as per-corner or as rx/ry),
-     *   and the renderer rounds it to an integer and clamps it to half the
-     *   smaller dimension (RoundedRectUtils.normalizeRadius).
+     * @param {number|number[]} radii - Corner radius, or a list of 1-4 corner
+     *   radii with HTML5 roundRect() semantics (RoundedRectUtils documents the
+     *   contract). The direct renderers round each fitted corner radius to an
+     *   integer; per-corner radii under a non-axis-aligned rotation take the
+     *   generic path.
      */
     strokeRoundRect(x, y, width, height, radii) {
         // Validate parameters
         if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
+        // Validated up front (RangeError/TypeError), so whether a call throws never
+        // depends on the dimensions or the paint.
+        const corners = RoundedRectUtils.parseCornerRadii(radii);
 
         if (width < 0 || height < 0) {
             return; // Nothing to draw for negative dimensions
@@ -1219,15 +1247,16 @@ class Context2D {
             return; // Nothing to draw for zero dimensions
         }
 
+        if (corners === null) {
+            return; // NaN/infinite radius draws nothing (HTML5)
+        }
+
         if (this._isInvisibleDraw(this._strokeStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
         }
 
-        // Normalize radius to check for zero
-        const radius = Array.isArray(radii) ? radii[0] : radii || 0;
-
-        // Fallback to strokeRect for zero radius (rounded rect becomes regular rect)
-        if (radius <= 0) {
+        // Fallback to strokeRect when no corner is rounded (rounded rect becomes regular rect)
+        if (corners === 0) {
             this.strokeRect(x, y, width, height);
             return;
         }
@@ -1249,7 +1278,6 @@ class Context2D {
                 const scaledH = height * t.scaleY;
                 const center = t.transformPoint({ x: x + width / 2, y: y + height / 2 });
                 const scaledLineWidth = t.getScaledLineWidth(this._lineWidth);
-                const scaledRadius = radius * t.scaleX;
                 const is1pxStroke = Math.abs(scaledLineWidth - 1) < STROKE_1PX_TOLERANCE;
                 const isOpaque = this._strokeStyle.a === 255 && this.globalAlpha >= 1.0;
                 // HAIRLINE (sub-pixel) stroke — see the class-level note at the
@@ -1270,7 +1298,7 @@ class Context2D {
                                 y,
                                 width,
                                 height,
-                                radii,
+                                corners,
                                 this._strokeStyle,
                                 clip,
                                 tier0ClipRect
@@ -1282,7 +1310,7 @@ class Context2D {
                                 y,
                                 width,
                                 height,
-                                radii,
+                                corners,
                                 this._strokeStyle,
                                 strokeAlpha,
                                 clip,
@@ -1297,7 +1325,7 @@ class Context2D {
                                 y,
                                 width,
                                 height,
-                                radii,
+                                corners,
                                 this._lineWidth,
                                 this._strokeStyle,
                                 clip,
@@ -1310,7 +1338,7 @@ class Context2D {
                                 y,
                                 width,
                                 height,
-                                radii,
+                                corners,
                                 this._lineWidth,
                                 this._strokeStyle,
                                 this.globalAlpha,
@@ -1323,11 +1351,12 @@ class Context2D {
                 }
 
                 if (t.isAxisAligned) {
-                    // Inline dimension swapping
+                    // Inline dimension swapping; the corner radii turn with the box
                     const finalW = t.is90DegreeRotated ? scaledH : scaledW;
                     const finalH = t.is90DegreeRotated ? scaledW : scaledH;
                     const tlX = center.x - finalW / 2;
                     const tlY = center.y - finalH / 2;
+                    const deviceCorners = RoundedRectUtils.deviceCornerRadii(corners, t);
 
                     if (is1pxStroke || isHairlineStroke) {
                         if (isOpaque && !isHairlineStroke) {
@@ -1337,7 +1366,7 @@ class Context2D {
                                 tlY,
                                 finalW,
                                 finalH,
-                                scaledRadius,
+                                deviceCorners,
                                 this._strokeStyle,
                                 clip,
                                 tier0ClipRect
@@ -1349,7 +1378,7 @@ class Context2D {
                                 tlY,
                                 finalW,
                                 finalH,
-                                scaledRadius,
+                                deviceCorners,
                                 this._strokeStyle,
                                 strokeAlpha,
                                 clip,
@@ -1364,7 +1393,7 @@ class Context2D {
                                 tlY,
                                 finalW,
                                 finalH,
-                                scaledRadius,
+                                deviceCorners,
                                 scaledLineWidth,
                                 this._strokeStyle,
                                 clip,
@@ -1377,7 +1406,7 @@ class Context2D {
                                 tlY,
                                 finalW,
                                 finalH,
-                                scaledRadius,
+                                deviceCorners,
                                 scaledLineWidth,
                                 this._strokeStyle,
                                 this.globalAlpha,
@@ -1387,7 +1416,7 @@ class Context2D {
                         }
                     }
                     return;
-                } else {
+                } else if (typeof corners === 'number') {
                     // Rotated with uniform scale: use strokeRotated.
                     // The hairline rule reaches this branch through strokeAlpha
                     // alone: stroke_Rot_Any already routes lineWidth <= 1 to its
@@ -1399,7 +1428,7 @@ class Context2D {
                         center.y,
                         scaledW,
                         scaledH,
-                        scaledRadius,
+                        corners * t.scaleX,
                         t.rotationAngle,
                         scaledLineWidth,
                         this._strokeStyle,
@@ -1408,6 +1437,11 @@ class Context2D {
                     );
                     return;
                 }
+                // Per-corner radii under a non-axis-aligned rotation: the rotated
+                // renderers are uniform-radius only (no caller needs more - see
+                // DIRECT-RENDERING-SUMMARY.MD §9 entry 17); the generic path below
+                // draws them exactly, ~8x slower for strokes. RoundedRectOpsRot's
+                // header notes how that family would go per-corner if ever needed.
             }
             // Non-uniform scale: fall through to path-based rendering
         }
@@ -1416,29 +1450,29 @@ class Context2D {
         // an external Path2D so it draws under the current CTM. (The current default
         // path bakes the CTM at build time — the wrong coordinate space here.)
         const fallbackPath = new SWPath2D();
-        fallbackPath.roundRect(x, y, width, height, radii);
+        SWPath2D.appendRoundRect(fallbackPath, x, y, width, height, corners);
         this.stroke(fallbackPath);
     }
 
     /**
      * Fill a rounded rectangle.
      * Always renders through the generic path pipeline (fill arms removed on
-     * parity evidence - §9 entries 15-16); radius <= 0 delegates to fillRect.
+     * parity evidence - §9 entries 15-16); no rounded corner delegates to fillRect.
      * @param {number} x - Rectangle x coordinate
      * @param {number} y - Rectangle y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius. An array is collapsed
-     *   FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 roundRect()'s
-     *   per-corner semantics - do not read [a, b] as per-corner or as rx/ry),
-     *   and the renderer rounds it to an integer and clamps it to half the
-     *   smaller dimension (RoundedRectUtils.normalizeRadius).
+     * @param {number|number[]} radii - Corner radius, or a list of 1-4 corner
+     *   radii with HTML5 roundRect() semantics (RoundedRectUtils documents the
+     *   contract).
      */
     fillRoundRect(x, y, width, height, radii) {
         // Validate parameters
         if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
+        // Validated up front - see strokeRoundRect.
+        const corners = RoundedRectUtils.parseCornerRadii(radii);
 
         if (width < 0 || height < 0) {
             return; // Nothing to draw for negative dimensions
@@ -1448,15 +1482,16 @@ class Context2D {
             return; // Nothing to draw for zero dimensions
         }
 
+        if (corners === null) {
+            return; // NaN/infinite radius draws nothing (HTML5)
+        }
+
         if (this._isInvisibleDraw(this._fillStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
         }
 
-        // Normalize radius to check for zero
-        const radius = Array.isArray(radii) ? radii[0] : radii || 0;
-
-        // Fallback to fillRect for zero radius (rounded rect becomes regular rect)
-        if (radius <= 0) {
+        // Fallback to fillRect when no corner is rounded (rounded rect becomes regular rect)
+        if (corners === 0) {
             this.fillRect(x, y, width, height);
             return;
         }
@@ -1472,7 +1507,7 @@ class Context2D {
         // external Path2D so it draws under the current CTM. (The current default
         // path bakes the CTM at build time — the wrong coordinate space here.)
         const fallbackPath = new SWPath2D();
-        fallbackPath.roundRect(x, y, width, height, radii);
+        SWPath2D.appendRoundRect(fallbackPath, x, y, width, height, corners);
         this.fill(fallbackPath);
     }
 
@@ -1483,17 +1518,19 @@ class Context2D {
      * @param {number} y - Rectangle y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius. An array is collapsed
-     *   FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 roundRect()'s
-     *   per-corner semantics - do not read [a, b] as per-corner or as rx/ry),
-     *   and the renderer rounds it to an integer and clamps it to half the
-     *   smaller dimension (RoundedRectUtils.normalizeRadius).
+     * @param {number|number[]} radii - Corner radius, or a list of 1-4 corner
+     *   radii with HTML5 roundRect() semantics (RoundedRectUtils documents the
+     *   contract). The direct renderers round each fitted corner radius to an
+     *   integer; per-corner radii under a non-axis-aligned rotation take the
+     *   generic path.
      */
     fillStrokeRoundRect(x, y, width, height, radii) {
         // Validate parameters
         if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
             throw new Error('Rectangle coordinates must be numbers');
         }
+        // Validated up front - see strokeRoundRect.
+        const corners = RoundedRectUtils.parseCornerRadii(radii);
 
         if (width < 0 || height < 0) {
             return; // Nothing to draw for negative dimensions
@@ -1503,15 +1540,16 @@ class Context2D {
             return; // Nothing to draw for zero dimensions
         }
 
+        if (corners === null) {
+            return; // NaN/infinite radius draws nothing (HTML5)
+        }
+
         if (this._isInvisibleDraw(this._fillStyle) && this._isInvisibleDraw(this._strokeStyle)) {
             return; // Neither half can change a pixel under source-over
         }
 
-        // Normalize radius to check for zero
-        const radius = Array.isArray(radii) ? radii[0] : radii || 0;
-
-        // Fallback to fillStrokeRect for zero radius
-        if (radius <= 0) {
+        // Fallback to fillStrokeRect when no corner is rounded
+        if (corners === 0) {
             this.fillStrokeRect(x, y, width, height);
             return;
         }
@@ -1538,7 +1576,6 @@ class Context2D {
                 const scaledH = height * t.scaleY;
                 const center = t.transformPoint({ x: x + width / 2, y: y + height / 2 });
                 const scaledLineWidth = t.getScaledLineWidth(this._lineWidth);
-                const scaledRadius = radius * t.scaleX;
 
                 if (t.isIdentity) {
                     // Axis-aligned, no transform: use top-left coordinates
@@ -1548,7 +1585,7 @@ class Context2D {
                         y,
                         width,
                         height,
-                        radii,
+                        corners,
                         this._lineWidth,
                         hasFill ? this._fillStyle : null,
                         hasStroke ? this._strokeStyle : null,
@@ -1560,7 +1597,7 @@ class Context2D {
                 }
 
                 if (t.isAxisAligned) {
-                    // Inline dimension swapping
+                    // Inline dimension swapping; the corner radii turn with the box
                     const finalW = t.is90DegreeRotated ? scaledH : scaledW;
                     const finalH = t.is90DegreeRotated ? scaledW : scaledH;
                     const tlX = center.x - finalW / 2;
@@ -1572,7 +1609,7 @@ class Context2D {
                         tlY,
                         finalW,
                         finalH,
-                        scaledRadius,
+                        RoundedRectUtils.deviceCornerRadii(corners, t),
                         scaledLineWidth,
                         hasFill ? this._fillStyle : null,
                         hasStroke ? this._strokeStyle : null,
@@ -1581,7 +1618,7 @@ class Context2D {
                         tier0ClipRect
                     );
                     return;
-                } else {
+                } else if (typeof corners === 'number') {
                     // Rotated with uniform scale: use rotated fill+stroke
                     RoundedRectOpsRot.fillStroke_Rot_Any(
                         this.surface,
@@ -1589,7 +1626,7 @@ class Context2D {
                         center.y,
                         scaledW,
                         scaledH,
-                        scaledRadius,
+                        corners * t.scaleX,
                         t.rotationAngle,
                         scaledLineWidth,
                         hasFill ? this._fillStyle : null,
@@ -1599,6 +1636,8 @@ class Context2D {
                     );
                     return;
                 }
+                // Per-corner radii under a non-axis-aligned rotation: decompose into
+                // the generic halves below (see strokeRoundRect).
             }
             // Non-uniform scale: fall through to path-based rendering
         }
@@ -1651,7 +1690,7 @@ class Context2D {
         // so ITS degenerate-radius output is a correct stadium), drawn as an
         // external Path2D under the current CTM.
         const fallbackPath = new SWPath2D();
-        fallbackPath.roundRect(x, y, width, height, Math.min(width, height) / 2);
+        SWPath2D.appendRoundRect(fallbackPath, x, y, width, height, Math.min(width, height) / 2);
         this.fill(fallbackPath);
     }
 

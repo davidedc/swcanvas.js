@@ -15,7 +15,7 @@ See [index page](https://davidedc.github.io/swcanvas.js/) for link to all browse
 - **Memory Efficient Clipping**: Stencil-based clipping system with proper intersection support
 - **Sub-pixel Stroke Rendering**: Thin strokes render with proportional opacity, works with all paint sources
 - **Full Porter-Duff Compositing**: Complete `globalCompositeOperation` support with all 10 standard operations working correctly
-- **Comprehensive Test Coverage**: 89 core tests + 154 visual tests + 79 direct rendering tests
+- **Comprehensive Test Coverage**: 92 core tests + 157 visual tests + 85 direct rendering tests
 - **Immutable Value Objects**: Point, Rectangle, Transform2D, Color prevent mutation bugs
 - **Cross-Platform**: Works in Node.js and browsers
 - **No Dependencies**: Pure JavaScript implementation
@@ -30,6 +30,7 @@ SWCanvas focuses on deterministic 2D graphics primitives and does not implement 
 - **Filter Effects**: No CSS-style filters or convolution matrices
 - **Canvas-to-Canvas Blitting**: Limited `drawImage()` support (works with ImageLike objects, not arbitrary Canvas elements)
 - **Pixel Manipulation Beyond ImageData**: No advanced pixel-level operations beyond `getImageData()/putImageData()`
+- **Elliptical `roundRect()` Corners**: Per-corner radii are supported, but each corner is circular - a `{x, y}` (DOMPointInit) radius throws a `TypeError` instead of drawing an elliptical corner
 
 ### Performance Limitations
 
@@ -59,8 +60,8 @@ This generates:
 - `dist/swcanvas.js` - Complete library for development
 - `dist/swcanvas.min.js` - Minified library for production (84% smaller)
 - `dist/swcanvas.min.js.map` - Source map for debugging
-- `tests/dist/core-functionality-tests.js` from 89 individual test files in `/tests/core/`
-- `tests/dist/visual-rendering-tests.js` from 154 individual test files in `/tests/visual/`
+- `tests/dist/core-functionality-tests.js` from 92 individual test files in `/tests/core/`
+- `tests/dist/visual-rendering-tests.js` from 157 individual test files in `/tests/visual/`
 
 ### Node.js Usage
 
@@ -160,15 +161,15 @@ npm test
 ```
 
 This runs:
-- 89 modular core functionality tests (automatically uses built tests from `/tests/core/`)
-- 154 visual rendering tests generating PNG files in `tests/output/`
+- 92 modular core functionality tests (automatically uses built tests from `/tests/core/`)
+- 157 visual rendering tests generating PNG files in `tests/output/`
 
 ### Browser Tests
 
 Open `tests/browser/index.html` in a web browser for:
 - Side-by-side HTML5 Canvas vs SWCanvas comparisons
 - Interactive visual tests
-- All 154 visual rendering tests comparisons (automatically uses built modular tests)
+- All 157 visual rendering tests comparisons (automatically uses built modular tests)
 - PNG/BMP download functionality
 
 ### Performance Tests
@@ -221,6 +222,12 @@ ctx.lineTo(150, 100);
 ctx.arcTo(200, 100, 200, 150, 25); // 25px radius rounded corner
 ctx.lineTo(200, 200);
 ctx.stroke();
+
+// Rounded rectangles: one radius, or per-corner radii in CSS border-radius order
+// [topLeft, topRight, bottomRight, bottomLeft] ([a, b] and [a, b, c] expand as in HTML5)
+ctx.beginPath();
+ctx.roundRect(10, 10, 160, 24, [8, 8, 0, 0]); // a title bar: rounded top, square bottom
+ctx.fill();
 
 // Path hit testing
 ctx.beginPath();
@@ -293,6 +300,7 @@ ctx.lineTo(x2, y2);
 ctx.arc(cx, cy, radius, startAngle, endAngle, counterclockwise);
 ctx.ellipse(cx, cy, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
 ctx.arcTo(x1, y1, x2, y2, radius); // Rounded corners between lines
+ctx.roundRect(x, y, w, h, radii);  // radii: r, or [tl, tr, br, bl] (1-4 entries, as HTML5)
 ctx.fill();
 ctx.stroke();
 

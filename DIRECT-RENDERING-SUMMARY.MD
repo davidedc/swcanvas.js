@@ -83,6 +83,15 @@ Notes:
 
 Notes:
 - Context2D calls RoundedRectOpsAA for axis-aligned (AA) operations and RoundedRectOpsRot directly for rotated operations.
+- **Per-corner radii** (HTML5 `roundRect()` semantics, `RoundedRectUtils` documents the contract):
+  every RoundedRectOpsAA entry renders them, each corner from its own radius only - a corner
+  of radius r is pixel-identical to the same corner of a uniform-r rect, and a radius-0 corner
+  is square (thick strokes: square outer corner, like `strokeRect`). Under a 90/180/270° CTM
+  Context2D re-assigns the user corners to the device corners they land on
+  (`RoundedRectUtils.deviceCornerRadii`) before handing the swapped box to the AA arm.
+  RoundedRectOpsRot is **uniform-radius only**: per-corner radii under a non-axis-aligned
+  rotation take the generic path (§9 entry 17). Uniform radii in any spelling (`r`, `[r]`,
+  `[r, r, r, r]`) render exactly as before.
 - **Plain `fillRoundRect` has no direct arm** - the dispatch ladder was removed on benchmark
   evidence (§9 entries 15-16), which left `RoundedRectOpsAA.fill_AA_Opaq/Alpha` with zero
   callers; both were DELETED. `RoundedRectOpsRot.fill_Rot_Any` survives as an internal of
@@ -252,7 +261,7 @@ any width also stay unwired (no `_Alpha` direct renderer; generic path).
 | Shape       | Additional Checks                                                         |
 |-------------|---------------------------------------------------------------------------|
 | Rectangle   | STROKES and the fused entry (fills are always generic). Transform: isAxisAligned OR isUniformScale. Generic ONLY when BOTH fail — a non-90°-multiple rotation combined with non-uniform scale, a SHEAR, or a mirror-with-rotation (produces a parallelogram/quad the rect renderers can't draw). NOTE isAxisAligned covers 0/90/180/270 incl. flips, so a 90°-ROTATED NON-UNIFORM CTM stays fully direct (AA arm, w/h swapped); a tilted UNIFORM CTM stays direct (Rot arm). |
-| RoundedRect | STROKES and the fused entry (fills are always generic). Transform: isUniformScale REQUIRED (non-uniform would need ellipse corners → generic; ⚠ stricter than plain rects — axis-aligned `scale(2,1)` goes generic here but stays direct for Rectangle; keeping that gate is a RECORDED decision — §9 entry 11). RADII CONTRACT: a `radii` array is collapsed FIRST-ELEMENT-WINS to one uniform radius (NOT HTML5 per-corner semantics), then rounded to an integer and clamped by `RoundedRectUtils.normalizeRadius`. Within it, a three-arm ladder: isIdentity (literal user coords) → isAxisAligned (device coords, 90° w/h swap) → rotated (`*_Rot_Any`). All arms are the same renderer family with numerically equivalent arguments at scale 1. |
+| RoundedRect | STROKES and the fused entry (fills are always generic). Transform: isUniformScale REQUIRED (non-uniform would need ellipse corners → generic; ⚠ stricter than plain rects — axis-aligned `scale(2,1)` goes generic here but stays direct for Rectangle; keeping that gate is a RECORDED decision — §9 entry 11). RADII CONTRACT: HTML5 `roundRect()` semantics — a number or a list of 1-4 corner radii in CSS border-radius order, validated up front (RangeError: negative radius or bad list length; TypeError: elliptical `{x, y}` radius; NaN/infinite: draws nothing), proportionally scaled when they overlap, then rounded to integers per corner (`RoundedRectUtils.normalizeCornerRadii`). Within it, a three-arm ladder: isIdentity (literal user coords) → isAxisAligned (device coords, 90° w/h swap, corners re-assigned to the device corners) → rotated (`*_Rot_Any`, UNIFORM radii only — per-corner radii go generic, §9 entry 17). All arms are the same renderer family with numerically equivalent arguments at scale 1. |
 | Circle      | Transform: isUniformScale (translate/rotate/uniform-scale go direct — pre-multiplication is byte-exact;      |
 |             | test 050; NON-uniform scale gates to the generic pipeline via an un-baked user-space path, so the caller      |
 |             | gets the correct ELLIPSE rather than the geometric-mean-radius circle the direct path would draw — test 054). |
@@ -275,9 +284,9 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `strokeRect` | isAxisAligned OR isUniformScale | Color, a>0, source-over, `_noShadow`, no dash | gradient/pattern · composite · shadow · shear/mirror-rot/rot+non-uniform · dash set | generic (honours `lineDash`; dims/types validated up front like fillRect) |
 | `fillStrokeRect` | isAxisAligned OR isUniformScale | both paints Color, source-over, `_noShadow`, something to draw | either paint non-Color · nothing to draw · composite · shadow · CTM | decomposes → `fillRect` (generic) + `strokeRect` (direct) |
 | `clearRect` | n/a (`b===0 && c===0` picks span loop vs inverse-transform loop) | none | NEVER — direct-only | — (ignores alpha/composite/shadow by design) |
-| `fillRoundRect` | NONE — always generic (fill ladder removed, §9 entries 15-16) | n/a | ALWAYS (a=0 → early return) | generic via external `SWPath2D` (radius≤0 → `fillRect`, itself generic) |
-| `strokeRoundRect` | isUniformScale | Color, a>0, source-over, `_noShadow`, no dash | non-Color · a=0 · composite · shadow · non-uniform scale · dash set | generic via `stroke(path)`, honours `lineDash` (radius≤0 → `strokeRect`) |
-| `fillStrokeRoundRect` | isUniformScale | both Color, source-over, `_noShadow`, something to draw | as `fillStrokeRect` + non-uniform | decomposes → `fillRoundRect` (generic) + `strokeRoundRect` (direct) (radius≤0 → `fillStrokeRect`) |
+| `fillRoundRect` | NONE — always generic (fill ladder removed, §9 entries 15-16) | n/a | ALWAYS (a=0 → early return) | generic via external `SWPath2D`, per-corner radii included (all radii 0 → `fillRect`, itself generic) |
+| `strokeRoundRect` | isUniformScale; per-corner radii also need isAxisAligned (§9 entry 17) | Color, a>0, source-over, `_noShadow`, no dash | non-Color · a=0 · composite · shadow · non-uniform scale · dash set · per-corner radii under a tilt | generic via `stroke(path)`, honours `lineDash` (all radii 0 → `strokeRect`) |
+| `fillStrokeRoundRect` | isUniformScale; per-corner radii also need isAxisAligned (§9 entry 17) | both Color, source-over, `_noShadow`, something to draw | as `fillStrokeRect` + non-uniform + per-corner radii under a tilt | decomposes → `fillRoundRect` (generic) + `strokeRoundRect` (direct, or generic for per-corner radii under a tilt) (all radii 0 → `fillStrokeRect`) |
 | `fillStadium` | NONE — always generic (`StadiumOps` deleted, §9 entries 15-16) | n/a | ALWAYS (a=0 → early return) | generic via external `SWPath2D` at r=min(w,h)/2 (no stroke API exists) |
 | `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over, `_noShadow` | non-Color · composite · shadow | generic via external `SWPath2D` |
 | `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow | generic via external `SWPath2D` (honours cap/join/dash) |
@@ -432,7 +441,7 @@ ctx.clip();
 | RoundedRect | Not available        | `roundRect()` + `clip()`            |
 | Line        | N/A (not fillable)   | N/A                                 |
 
-**Design rationale**: Direct rendering optimizes fill/stroke operations. Clip region definition is a path operation that works correctly via the existing `clip()` method with any path shape.
+**Design rationale**: Direct rendering optimizes fill/stroke operations. Clip region definition is a path operation that works correctly via the existing `clip()` method with any path shape. `roundRect()` is the HTML5 path method on both API layers (per-corner radii included); a roundRect clip region exposes exactly the pixels the same roundRect fill covers (pinned by `tests/core/072`).
 
 ### Bit Ordering Convention
 
@@ -908,13 +917,12 @@ current consumers:
    junction-exactness doctrine (tests 046–048 pin edge/arc junction pixels against ~1e-16
    trig noise at floor() boundaries) for two radii, plus the rotated/stadium delegations.
    Out of proportion for a case with a correct generic fallback and no known caller
-   (Fizzygum composes only similitudes). The radii-array collapse is now DOCUMENTED instead
-   (JSDoc at the three entries + the §3 RoundedRect row): first-element-wins to a uniform
-   radius, integer-rounded and clamped — deliberately NOT HTML5 per-corner semantics, and
-   `[a, b]` must never be reinterpreted as rx/ry (that would conflict with the spec meaning).
-   The collapse is ENGINE-WIDE and consistent: `SWPath2D.roundRect()` (the path method)
-   applies the same first-element-wins simplification (its JSDoc now says so too), so the
-   path and immediate-mode APIs cannot disagree about what a radii array means.
+   (Fizzygum composes only similitudes). The radii-array half of this entry - a documented
+   first-element-wins collapse to one uniform radius - is SUPERSEDED by entry 17 (per-corner
+   HTML5 radii, owner-requested for window title bars). What still stands: no ellipse
+   renderer, so elliptical corners from a non-uniform CTM stay generic, and an elliptical
+   `{x, y}` radius is rejected (TypeError) rather than read as rx/ry - `[a, b]` means
+   per-corner, exactly as in HTML5.
 12. **DECIDED (2026-08-13, re-affirming the P6 design): no `EllipseOps` direct family.**
    Circles/arcs under non-uniform scale are ellipses; all six entries route through the
    correct un-baked user-space path fallback (pinned by `tests/core/054`). A direct family
@@ -1003,6 +1011,53 @@ current consumers:
    their stroke/fused siblings stay direct). Do not re-add a fill fast path without fresh
    §2.1-grade benchmark evidence. Plan:
    `plans/one-rect-fill-pipeline-and-fill-arm-removal.md`.
+17. **DONE (2026-10-15): per-corner roundRect radii (HTML5 semantics), owner-requested for
+   window title bars - supersedes entry 11's radii collapse.** Every roundRect entry point
+   reads radii as HTML5 `roundRect()` does (`RoundedRectUtils` holds the contract: 1-4 radii
+   in CSS border-radius order, proportional overlap scaling, RangeError/TypeError/no-draw
+   validation, circular corners only), and `roundRect()` itself is new on both API layers.
+   Dispatch, by arm:
+   - **Axis-aligned direct arm (RoundedRectOpsAA): per-corner.** Identity, uniform scale and
+     the quarter turns (whose w/h swap now carries a corner re-assignment,
+     `RoundedRectUtils.deviceCornerRadii`). Each corner is rendered from its own radius only -
+     a corner of radius r is pixel-identical to that corner of a uniform-r rect (pinned by
+     `tests/core/071`), radius 0 is square (square outer stroke corner, like `strokeRect`).
+     Two guards exist only for per-corner radii and are inert for uniform ones: the 1px arcs
+     are clamped to the pixel frame (one corner may hold a whole side), and a single inner arc
+     too small to reach its band row (r - halfStroke <= 0.25px) no longer blanks that whole
+     row of the hole (uniform radii keep the historical whole-row rule).
+   - **Rotated direct arm (RoundedRectOpsRot): uniform radius only.** Per-corner radii under a
+     non-axis-aligned rotation take the generic path. MEASURED (benchmark-session, 12
+     super-measurements, CV <= ~1.5%; `roundrect-rot-corners-perf` vs `roundrect-rot-perf`,
+     identical seeded geometry with radii [r, r, 0, 0] vs r): strokes 7.8x slower geomean on the
+     generic path (1px: 27-72x, 5-10px: 8-22x, fill+stroke pairs 2.4-7.6x); fills unaffected
+     (generic either way - per-corner fills are even 0.79x, square corners flatten to fewer
+     segments). Kept generic on the entry-11/12 reasoning: correct fallback, no caller -
+     Fizzygum rotates through island buffers composited by `drawImage`, so its rounded rects
+     are always drawn axis-aligned. Revisit trigger: a caller stroking per-corner rects under
+     a tilt. The probable optimum - making `RoundedRectOpsRot` per-corner the way
+     RoundedRectOpsAA is, and how to prove it - is written up in that class's header.
+   - **Fills: unchanged** - always generic (entries 15-16).
+   - **Reflections** (`scale(-1, 1)` etc.) were never `isUniformScale`, so they stay generic
+     for uniform and per-corner radii alike.
+   Cost on the axis-aligned arm: per-corner [r, r, 0, 0] vs uniform r is 0.77x geomean
+   (`roundrect-aa-corners-perf` vs `roundrect-aa-perf`; square corners skip their arcs).
+   Uniform radii: BYTE-IDENTICAL in every spelling (`r`, `[r]` ... `[r, r, r, r]`) on every
+   entry point, CTM class, clip kind, width, opacity, dash and cap -
+   `debug/sweep-roundrect-uniform-radii-ab.js` over 20,000 seeded cases against the
+   pre-change dist gives diffs=0 (66 diffs when a non-uniform spelling is planted). Uniform
+   speed: a first cut cost +3.9% geomean on the AA family (up to +12% on small 1px/thick
+   strokes) from per-call arrays; uniform radii now travel as one number end to end, the
+   renderers read fitted radii from module-level scratch arrays, and the generic fallbacks
+   build their private path without re-parsing, and `_getXExtent` takes one sqrt when both
+   ends of a row sit on mirror-image arcs. Re-measured interleaved old/new over the same 42
+   configs: AA family 1.004x geomean (strokes 1.005x, fills 0.998x), rotated family 1.004x.
+   Residual, accepted: the cheapest OPAQUE AA strokes (1px, and 5-10px on the smallest
+   shapes) run 3-5% slower in the MINIFIED build only - the unminified build runs them at
+   0.97x, so it is terser code shape, not added work (absolute: ~0.1-0.3 us per call).
+   Pins: `tests/core/067` (the contract on all five entry points), `071` (direct-arm
+   invariants), `072` (clipped and clipping); visual 210-212; the `rrrCorner` direct-rendering
+   cases.
 
 ---
 
@@ -1112,8 +1167,8 @@ entries. `RoundedRectOpsAA.fill_AA_Opaq/Alpha` were deleted outright, and `Stadi
 | **Total** | **37** | **37 ✓** |
 
 **Test Suite Statistics:**
-- **79 test files** in `tests/direct-rendering/cases/`
-- **395 test runs passed** (79 tests × 5 iterations)
+- **85 test files** in `tests/direct-rendering/cases/`
+- **425 test runs passed** (85 tests × 5 iterations)
 - Run command: `node tests/direct-rendering/run-direct-rendering-tests.js -i 5`
 
 **Dispatch-contract pins (`tests/core/`, added 2026-08-13):** the DISPATCH layer's
@@ -1123,10 +1178,15 @@ byte-equal external-path renders), 060 fillCircle opaque+globalAlpha direct disp
 061 fillOuterStrokeArc non-Color fallback, 062 value-based `_noShadow`, 063 shadow
 routing through all seven hand-rolled gates, 064 entry validation / invisible-draw
 consistency, 065 dash gating to the generic path, 066 fillRect generic under EVERY CTM
-(the fill-arm-removal pin, §9 entries 15-16), 067 the radii-collapse contract (§9 entry
-11), 068 the fused hairline full-weight contract, 069 the three fill entries' inverted
-pin — fillRect/fillRoundRect/fillStadium all dispatch generic while their stroke and
-fused siblings stay direct (§9 entries 15-16).
+(the fill-arm-removal pin, §9 entries 15-16), 067 the per-corner radii contract on every
+roundRect entry point (§9 entries 11 and 17), 068 the fused hairline full-weight contract,
+069 the three fill entries' inverted pin — fillRect/fillRoundRect/fillStadium all dispatch
+generic while their stroke and fused siblings stay direct (§9 entries 15-16). Per-corner
+radii add two more (§9 entry 17): 071 the direct-arm invariants (corner locality, square
+corners, 1px-alpha junction exactness over every mix of rounded and square corners,
+containment, quarter turns against the generic path as oracle, dispatch) and 072 clipping
+in both directions (tier-0 === bitmask with no leaks; a roundRect clip === its fill).
+The direct-rendering cases carry a `rrrCorner` radius facet for per-corner radii.
 
 ### 11.3 Optional Future Edge Case Tests
 

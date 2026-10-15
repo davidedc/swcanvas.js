@@ -57,7 +57,7 @@ Facets are ordered from the most general to the most specific, following this se
 | **EdgeAlignment** | `crisp`, `not-crisp`, `mixed` | `edgeCrisp`, `edgeNotCrisp`, `edgeMix` |
 | **Orientation** | `horizontal`, `vertical`, `square` (axis-aligned), `45-degree`, `diagonal`, `random` | `ornHoriz`, `ornVert`, `ornAxial`, `ornDeg45`, `ornDiag`, `ornRand` |
 | **ArcAngleExtent**| `90-deg`, `randomized`, `mixed` | `arcADeg90`, `arcARand`, `arcAMix` |
-| **RoundRectRadius**| `large-cat`, `randomized`, `mixed`, `fixed-[N]` | `rrrLrg`, `rrrRand`, `rrrMix`, `rrrFix[N]` |
+| **RoundRectRadius**| `large-cat`, `randomized`, `mixed`, `fixed-[N]`, `per-corner` | `rrrLrg`, `rrrRand`, `rrrMix`, `rrrFix[N]`, `rrrCorner` |
 | **ContextTrans**| `none`, `fixed`, `random` | `(omitted)`, `ctxTransFixed`, `ctxTransRand` |
 | **ContextRot** | `none`, `fixed`, `random` | `(omitted)`, `ctxRotFixed`, `ctxRotRand` |
 | **ContextScale**| `none`, `fixed`, `random` | `(omitted)`, `ctxScaleFixed`, `ctxScaleRand` |

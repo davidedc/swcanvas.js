@@ -6006,55 +6006,292 @@
         });
 
 
-        // Test: roundRect radii-array collapse - the documented first-element-wins contract
+        // Test: roundRect radii - the HTML5 per-corner contract, on every roundRect entry point
         // This file will be concatenated into the main test suite
         //
-        // Contract pin for the 2026-08-13 radii decision (DIRECT-RENDERING-SUMMARY.MD
-        // §9 entry 11). The roundRect entries accept `number|number[]` radii; an array
-        // is collapsed FIRST-ELEMENT-WINS to one uniform radius (then integer-rounded
-        // and clamped by RoundedRectUtils.normalizeRadius). This is deliberately NOT
-        // HTML5 roundRect()'s per-corner semantics - and `[a, b]` must never be
-        // reinterpreted as per-corner radii or as rx/ry, which would silently CONFLICT
-        // with the spec meaning if per-corner support ever lands. Pinned here:
-        //   1. fillRoundRect with [12, 3] renders byte-identically to radius 12
-        //      (the trailing element is ignored, not averaged, not per-corner).
-        //   2. Same for strokeRoundRect and fillStrokeRoundRect.
+        // Contract pin for the per-corner radii decision (DIRECT-RENDERING-SUMMARY.MD §9
+        // entry 11, which records how the radii argument went from first-element-wins to
+        // HTML5 semantics). Every roundRect entry - the path methods
+        // (Context2D.roundRect, SWPath2D.roundRect) and the immediate-mode
+        // fillRoundRect / strokeRoundRect / fillStrokeRoundRect - reads radii the way
+        // HTML5 roundRect() does (CSS border-radius order). Pinned here:
+        //   1. list expansion: r | [r] | [a,b] | [a,b,c] | [a,b,c,d] land on the
+        //      right corners (TL, TR, BR, BL), probed by which bounding-box corner
+        //      pixels a fill/stroke leaves unpainted;
+        //   2. validation exactly as HTML5: RangeError for a negative radius or a list
+        //      of other than 1-4 entries, TypeError for an elliptical {x, y} radius
+        //      (the one divergence), a NaN/infinite radius draws nothing - and the
+        //      immediate-mode entries validate UP FRONT, so throwing never depends on
+        //      the paint or the dimensions;
+        //   3. every uniform spelling renders byte-identically to the scalar radius;
+        //   4. overlapping radii scale down PROPORTIONALLY (all four by one factor),
+        //      not by per-corner clamping;
+        //   5. the path method leaves the current point at (x, y) on a new subpath, and
+        //      a negative width mirrors the corners about (x, y) - both as HTML5.
 
-        test('roundRect radii array - first-element-wins collapse (documented contract)', () => {
-            const W = 80;
-            const H = 60;
+        test('roundRect radii - HTML5 per-corner contract on every entry point', () => {
+            const W = 60;
+            const H = 44;
+            const BOX = [10, 8, 40, 28]; // x, y, w, h (integer: the corner pixel is unambiguous)
 
-            function render(draw) {
+            function newCtx() {
                 const surface = SWCanvas.Core.Surface(W, H);
                 const ctx = new SWCanvas.Core.Context2D(surface);
                 ctx.setFillStyle(255, 255, 255, 255);
                 ctx.fillRect(0, 0, W, H);
-                ctx.setFillStyle(0, 128, 0, 255);
+                ctx.setFillStyle(0, 0, 255, 255);
                 ctx.setStrokeStyle(255, 0, 0, 255);
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 1;
+                return { surface, ctx };
+            }
+
+            function render(draw) {
+                const { surface, ctx } = newCtx();
                 draw(ctx);
                 return surface;
             }
 
-            const CASES = [
-                ['fillRoundRect', (r) => (ctx) => ctx.fillRoundRect(10, 10, 60, 40, r)],
-                ['strokeRoundRect', (r) => (ctx) => ctx.strokeRoundRect(10, 10, 60, 40, r)],
-                ['fillStrokeRoundRect', (r) => (ctx) => ctx.fillStrokeRoundRect(10, 10, 60, 40, r)]
-            ];
+            function isPainted(surface, x, y) {
+                const o = y * surface.stride + x * 4;
+                return !(surface.data[o] === 255 && surface.data[o + 1] === 255 && surface.data[o + 2] === 255);
+            }
 
-            for (const [label, mk] of CASES) {
-                const arr = render(mk([12, 3]));
-                const scalar = render(mk(12));
-                for (let i = 0; i < arr.data.length; i++) {
-                    if (arr.data[i] !== scalar.data[i]) {
-                        const pixel = Math.floor(i / 4);
-                        throw new Error(
-                            `${label} radii [12,3] differs from radius 12 at ` +
-                                `(${pixel % W},${Math.floor(pixel / W)}) - the first-element-wins collapse moved`
-                        );
+            function sameBytes(a, b) {
+                for (let i = 0; i < a.data.length; i++) {
+                    if (a.data[i] !== b.data[i]) return false;
+                }
+                return true;
+            }
+
+            function blank(surface) {
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        if (isPainted(surface, x, y)) return false;
                     }
                 }
-                log(`  ${label}: [12,3] === 12 (first-element-wins)`);
+                return true;
+            }
+
+            const [bx, by, bw, bh] = BOX;
+            // The four bounding-box corner pixels of the box, in TL, TR, BR, BL order. A
+            // fill covers pixel centers inside the path; a 1px stroke on the *.5 frame
+            // covers the same outer ring - either way a rounded corner leaves its
+            // bounding-box corner pixel unpainted and a square one paints it.
+            const fillCornerPixels = [
+                [bx, by],
+                [bx + bw - 1, by],
+                [bx + bw - 1, by + bh - 1],
+                [bx, by + bh - 1]
+            ];
+            const strokeCornerPixels = [
+                [bx, by],
+                [bx + bw, by],
+                [bx + bw, by + bh],
+                [bx, by + bh]
+            ];
+
+            const ENTRIES = [
+                ['fillRoundRect', fillCornerPixels, (ctx, r) => ctx.fillRoundRect(bx, by, bw, bh, r)],
+                ['strokeRoundRect (direct)', strokeCornerPixels, (ctx, r) => ctx.strokeRoundRect(bx + 0.5, by + 0.5, bw, bh, r)],
+                [
+                    'fillStrokeRoundRect (direct)',
+                    strokeCornerPixels,
+                    (ctx, r) => ctx.fillStrokeRoundRect(bx + 0.5, by + 0.5, bw, bh, r)
+                ],
+                [
+                    'ctx.roundRect + fill',
+                    fillCornerPixels,
+                    (ctx, r) => {
+                        ctx.beginPath();
+                        ctx.roundRect(bx, by, bw, bh, r);
+                        ctx.fill();
+                    }
+                ],
+                [
+                    'SWPath2D.roundRect + fill',
+                    fillCornerPixels,
+                    (ctx, r) => {
+                        const p = new SWCanvas.Core.SWPath2D();
+                        p.roundRect(bx, by, bw, bh, r);
+                        ctx.fill(p);
+                    }
+                ]
+            ];
+
+            // 1. List expansion - which corners come out rounded (true) vs square (false).
+            const EXPANSIONS = [
+                [8, [true, true, true, true]],
+                [[8], [true, true, true, true]],
+                [[8, 0], [true, false, true, false]],
+                [[0, 8], [false, true, false, true]],
+                [[8, 0, 0], [true, false, false, false]],
+                [[0, 8, 0], [false, true, false, true]],
+                [[0, 0, 8], [false, false, true, false]],
+                [[8, 0, 0, 0], [true, false, false, false]],
+                [[0, 8, 0, 0], [false, true, false, false]],
+                [[0, 0, 8, 0], [false, false, true, false]],
+                [[0, 0, 0, 8], [false, false, false, true]],
+                [[8, 8, 0, 0], [true, true, false, false]], // the title-bar spelling
+                [0, [false, false, false, false]],
+                [undefined, [false, false, false, false]]
+            ];
+            const CORNER_NAMES = ['TL', 'TR', 'BR', 'BL'];
+            for (const [label, cornerPixels, draw] of ENTRIES) {
+                for (const [radii, rounded] of EXPANSIONS) {
+                    const s = render((ctx) => draw(ctx, radii));
+                    for (let i = 0; i < 4; i++) {
+                        const [px, py] = cornerPixels[i];
+                        if (isPainted(s, px, py) === rounded[i]) {
+                            throw new Error(
+                                `${label} radii ${JSON.stringify(radii)}: corner ${CORNER_NAMES[i]} should be ` +
+                                    `${rounded[i] ? 'rounded' : 'square'}`
+                            );
+                        }
+                    }
+                }
+                log(`  ${label}: r | [a] | [a,b] | [a,b,c] | [a,b,c,d] land on TL,TR,BR,BL`);
+            }
+
+            // 2. Validation, exactly as HTML5 (the error TYPE matters: RangeError vs TypeError).
+            function expectError(label, fn, name) {
+                let thrown = null;
+                try {
+                    fn();
+                } catch (e) {
+                    thrown = e;
+                }
+                if (!thrown) throw new Error(`${label}: expected a ${name}, nothing was thrown`);
+                if (thrown.name !== name) throw new Error(`${label}: expected a ${name}, got ${thrown.name}: ${thrown.message}`);
+            }
+            const CALLS = [
+                ['ctx.roundRect', (ctx, r) => ctx.roundRect(bx, by, bw, bh, r)],
+                ['SWPath2D.roundRect', (ctx, r) => new SWCanvas.Core.SWPath2D().roundRect(bx, by, bw, bh, r)],
+                ['fillRoundRect', (ctx, r) => ctx.fillRoundRect(bx, by, bw, bh, r)],
+                ['strokeRoundRect', (ctx, r) => ctx.strokeRoundRect(bx, by, bw, bh, r)],
+                ['fillStrokeRoundRect', (ctx, r) => ctx.fillStrokeRoundRect(bx, by, bw, bh, r)]
+            ];
+            for (const [label, call] of CALLS) {
+                const { ctx } = newCtx();
+                expectError(`${label} radius -1`, () => call(ctx, -1), 'RangeError');
+                expectError(`${label} radii [4, -1]`, () => call(ctx, [4, -1]), 'RangeError');
+                expectError(`${label} radii []`, () => call(ctx, []), 'RangeError');
+                expectError(`${label} radii [1,2,3,4,5]`, () => call(ctx, [1, 2, 3, 4, 5]), 'RangeError');
+                expectError(`${label} radius {x, y}`, () => call(ctx, { x: 4, y: 4 }), 'TypeError');
+                expectError(`${label} radii [4, {x, y}]`, () => call(ctx, [4, { x: 4, y: 2 }]), 'TypeError');
+            }
+            log('  all five entry points: RangeError (negative / 0 or 5 radii), TypeError ({x, y})');
+
+            // Up-front validation: an invalid radius throws even when nothing would draw.
+            {
+                const { ctx } = newCtx();
+                ctx.setFillStyle(0, 0, 0, 0);
+                ctx.setStrokeStyle(0, 0, 0, 0);
+                expectError('fillRoundRect transparent paint', () => ctx.fillRoundRect(bx, by, bw, bh, -1), 'RangeError');
+                expectError('strokeRoundRect negative width', () => ctx.strokeRoundRect(bx, by, -5, bh, [1, 2, 3, 4, 5]), 'RangeError');
+                expectError('fillStrokeRoundRect zero height', () => ctx.fillStrokeRoundRect(bx, by, bw, 0, -2), 'RangeError');
+                log('  immediate-mode entries validate radii up front (paint/dimensions never decide a throw)');
+            }
+
+            // A NaN or infinite radius (or coordinate, for the path method) draws nothing, silently.
+            for (const bad of [NaN, Infinity, [4, NaN], [4, 4, -Infinity, 4]]) {
+                for (const [label, , draw] of ENTRIES) {
+                    const s = render((ctx) => draw(ctx, bad));
+                    if (!blank(s)) throw new Error(`${label} radii ${String(bad)}: a non-finite radius must draw nothing`);
+                }
+                const s = render((ctx) => {
+                    ctx.beginPath();
+                    ctx.rect(2, 2, 4, 4);
+                    ctx.roundRect(bx, by, NaN, bh, 4);
+                    ctx.roundRect(bx, by, bw, bh, bad);
+                    ctx.fill();
+                });
+                if (isPainted(s, bx + bw / 2, by + bh / 2)) {
+                    throw new Error(`ctx.roundRect: a NaN width / non-finite radius must add no subpath`);
+                }
+            }
+            log('  NaN / infinite radius (or coordinate): no throw, nothing drawn');
+
+            // 3. Uniform spellings are byte-identical to the scalar radius, on the direct
+            //    arms at identity, scale and a quarter turn, and on the generic fill.
+            const CTMS = [
+                ['identity', () => {}],
+                ['scale 2', (ctx) => ctx.scale(2, 2)],
+                ['quarter turn', (ctx) => ctx.setTransform(0, 1, -1, 0, 52, 2)]
+            ];
+            const SPELLINGS = [[6], [6, 6], [6, 6, 6], [6, 6, 6, 6]];
+            for (const [ctmLabel, applyCtm] of CTMS) {
+                for (const [label, , draw] of ENTRIES) {
+                    const scalar = render((ctx) => {
+                        applyCtm(ctx);
+                        ctx.lineWidth = 3;
+                        draw(ctx, 6);
+                    });
+                    for (const spelling of SPELLINGS) {
+                        const arr = render((ctx) => {
+                            applyCtm(ctx);
+                            ctx.lineWidth = 3;
+                            draw(ctx, spelling);
+                        });
+                        if (!sameBytes(arr, scalar)) {
+                            throw new Error(`${label} @${ctmLabel}: radii ${JSON.stringify(spelling)} differs from radius 6`);
+                        }
+                    }
+                }
+            }
+            log('  [r] / [r,r] / [r,r,r] / [r,r,r,r] === r, every entry, identity / scale / quarter turn');
+
+            // 4. Proportional overlap scaling. On the 40x28 box, [56, 0, 0, 0] overflows
+            //    the left side (56 > 28): every radius scales by 28/56, so TL becomes 28 -
+            //    per-corner clamping to half a side would give 14. [40, 40, 0, 0] overflows
+            //    the top (80 > 40): both scale by 40/80 to 20. (Power-of-two factors keep
+            //    the fitted radii exact.)
+            const OVERLAPS = [
+                [[56, 0, 0, 0], [28, 0, 0, 0]],
+                [[40, 40, 0, 0], [20, 20, 0, 0]],
+                [[100], [14]]
+            ];
+            for (const [given, fitted] of OVERLAPS) {
+                const fill = (r) => (ctx) => ctx.fillRoundRect(bx, by, bw, bh, r);
+                if (!sameBytes(render(fill(given)), render(fill(fitted)))) {
+                    throw new Error(`fillRoundRect radii ${JSON.stringify(given)} should fit to ${JSON.stringify(fitted)}`);
+                }
+                const stroke = (r) => (ctx) => ctx.strokeRoundRect(bx + 0.5, by + 0.5, bw, bh, r);
+                if (!sameBytes(render(stroke(given)), render(stroke(fitted)))) {
+                    throw new Error(`strokeRoundRect radii ${JSON.stringify(given)} should fit to ${JSON.stringify(fitted)}`);
+                }
+            }
+            log('  overlapping radii scale proportionally (HTML5), not per corner');
+
+            // 5a. The current point after roundRect() is (x, y), on a NEW subpath: a
+            //     following lineTo draws from (x, y), not from the rect's first point.
+            {
+                const s = render((ctx) => {
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.roundRect(bx, by, 20, 10, 4);
+                    ctx.lineTo(bx, by + 34);
+                    ctx.stroke();
+                });
+                // Below the rect the line from (x, y) runs down column x; one from the
+                // rect's first point (x + 4, y) would cross column x + 3 here instead.
+                if (!isPainted(s, bx, by + 12) || isPainted(s, bx + 3, by + 12)) {
+                    throw new Error('ctx.roundRect: the current point afterwards is not (x, y)');
+                }
+                log('  current point after roundRect() is (x, y)');
+            }
+
+            // 5b. A negative width mirrors the rect about (x, y): radii[0] stays on the
+            //     corner AT (x, y) - here the visual top-right.
+            {
+                const s = render((ctx) => {
+                    ctx.beginPath();
+                    ctx.roundRect(bx + bw, by, -bw, bh, [8, 0, 0, 0]);
+                    ctx.fill();
+                });
+                if (isPainted(s, bx + bw - 1, by) || !isPainted(s, bx, by)) {
+                    throw new Error('ctx.roundRect with a negative width: radii[0] must round the corner at (x, y)');
+                }
+                log('  negative width mirrors the corners about (x, y)');
             }
         });
 
@@ -6400,6 +6637,692 @@
                     throw new Error(`restore() did not bring back globalAlpha 0.25 (readback ${ctx.globalAlpha})`);
                 }
             }
+        });
+
+
+        // Test: per-corner roundRect radii on the direct arms - locality, square corners, junctions, containment, quarter turns, dispatch
+        // This file will be concatenated into the main test suite
+        //
+        // The axis-aligned direct family (RoundedRectOpsAA: stroke1px_AA_Opaq/Alpha,
+        // strokeThick_AA_Opaq/Alpha, fillStroke_AA_Any) renders per-corner radii
+        // (DIRECT-RENDERING-SUMMARY.MD §9 entry 17). Its contract, pinned here:
+        //   1. LOCALITY: a corner of radius r is pixel-identical to the same corner of
+        //      the uniform-r rounded rect - per-corner radii add no new corner shapes,
+        //      they only choose among the existing ones (the corner quadrants are
+        //      compared byte for byte, every stroke/fused style);
+        //   2. a radius-0 corner is SQUARE: the frame's corner pixel is painted, while a
+        //      rounded corner's is not;
+        //   3. 1px semi-transparent JUNCTIONS stay exact with any mix of rounded and
+        //      square corners: one blend per pixel (a single stroke colour) and a closed
+        //      ring (every pixel has >= 2 of 8 neighbours) - square corners have no arc
+        //      to own their pixel, so edge ownership there is explicit;
+        //   4. CONTAINMENT: one corner may hold a whole side ([w, 0, 0, 0] is legal);
+        //      nothing is ever painted outside the bounding box the same entry paints
+        //      for radius 1 (its corners reach the frame) - the 1px arcs are clamped to
+        //      the pixel frame for exactly this;
+        //   5. QUARTER TURNS: under a 90/180/270-degree CTM the axis-aligned arm draws a
+        //      device-space box, so the radii must turn with it; the generic path (which
+        //      just transforms user-space geometry) is the oracle for which device
+        //      corner ends up rounded;
+        //   6. DISPATCH: per-corner radii stay direct under identity / translate /
+        //      uniform scale / quarter turns, and go generic under a non-axis-aligned
+        //      rotation (the rotated family is uniform-radius only), where a uniform
+        //      radii LIST still goes direct.
+
+        test('roundRect per-corner radii - direct-arm invariants', () => {
+            const W = 96;
+            const H = 80;
+
+            function newCtx() {
+                const surface = SWCanvas.Core.Surface(W, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, W, H);
+                return { surface, ctx };
+            }
+
+            function render(draw) {
+                const { surface, ctx } = newCtx();
+                draw(ctx);
+                return surface;
+            }
+
+            function isPainted(surface, x, y) {
+                if (x < 0 || y < 0 || x >= W || y >= H) return false;
+                const o = y * surface.stride + x * 4;
+                return !(surface.data[o] === 255 && surface.data[o + 1] === 255 && surface.data[o + 2] === 255);
+            }
+
+            function paintedBBox(surface) {
+                let minX = W,
+                    minY = H,
+                    maxX = -1,
+                    maxY = -1;
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        if (!isPainted(surface, x, y)) continue;
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+                return { minX, minY, maxX, maxY };
+            }
+
+            // Each style: [label, paint setup, draw(ctx, x, y, w, h, radii)]
+            const STYLES = [
+                [
+                    'stroke 1px opaque',
+                    (ctx) => {
+                        ctx.setStrokeStyle(255, 0, 0, 255);
+                        ctx.lineWidth = 1;
+                    },
+                    (ctx, x, y, w, h, r) => ctx.strokeRoundRect(x, y, w, h, r)
+                ],
+                [
+                    'stroke 1px alpha',
+                    (ctx) => {
+                        ctx.setStrokeStyle(255, 0, 0, 128);
+                        ctx.lineWidth = 1;
+                    },
+                    (ctx, x, y, w, h, r) => ctx.strokeRoundRect(x, y, w, h, r)
+                ],
+                [
+                    'stroke hairline 0.5',
+                    (ctx) => {
+                        ctx.setStrokeStyle(255, 0, 0, 255);
+                        ctx.lineWidth = 0.5;
+                    },
+                    (ctx, x, y, w, h, r) => ctx.strokeRoundRect(x, y, w, h, r)
+                ],
+                [
+                    'stroke 3px opaque',
+                    (ctx) => {
+                        ctx.setStrokeStyle(255, 0, 0, 255);
+                        ctx.lineWidth = 3;
+                    },
+                    (ctx, x, y, w, h, r) => ctx.strokeRoundRect(x, y, w, h, r)
+                ],
+                [
+                    'stroke 4px alpha',
+                    (ctx) => {
+                        ctx.setStrokeStyle(255, 0, 0, 128);
+                        ctx.lineWidth = 4;
+                    },
+                    (ctx, x, y, w, h, r) => ctx.strokeRoundRect(x, y, w, h, r)
+                ],
+                [
+                    'fused opaque, 1px stroke',
+                    (ctx) => {
+                        ctx.setFillStyle(0, 0, 255, 255);
+                        ctx.setStrokeStyle(255, 0, 0, 255);
+                        ctx.lineWidth = 1;
+                    },
+                    (ctx, x, y, w, h, r) => ctx.fillStrokeRoundRect(x, y, w, h, r)
+                ],
+                [
+                    'fused semi fill, 3px semi stroke',
+                    (ctx) => {
+                        ctx.setFillStyle(0, 0, 255, 128);
+                        ctx.setStrokeStyle(255, 0, 0, 128);
+                        ctx.lineWidth = 3;
+                    },
+                    (ctx, x, y, w, h, r) => ctx.fillStrokeRoundRect(x, y, w, h, r)
+                ],
+                [
+                    'fused fill only',
+                    (ctx) => {
+                        ctx.setFillStyle(0, 0, 255, 255);
+                        ctx.setStrokeStyle(255, 0, 0, 0);
+                        ctx.lineWidth = 2;
+                    },
+                    (ctx, x, y, w, h, r) => ctx.fillStrokeRoundRect(x, y, w, h, r)
+                ]
+            ];
+
+            // 1. Locality - corner quadrants of a per-corner render equal the uniform renders'.
+            const BOX = [8.5, 6.5, 78, 66];
+            const [bx, by, bw, bh] = BOX;
+            const midX = Math.floor(bx + bw / 2);
+            const midY = Math.floor(by + bh / 2);
+            const QUADRANTS = [
+                (x, y) => x < midX && y < midY, // TL
+                (x, y) => x >= midX && y < midY, // TR
+                (x, y) => x >= midX && y >= midY, // BR
+                (x, y) => x < midX && y >= midY // BL
+            ];
+            const CORNER = ['TL', 'TR', 'BR', 'BL'];
+            const RADII_SETS = [
+                [3, 7, 11, 5],
+                [12, 2, 6, 9],
+                [1, 13, 4, 8],
+                [10, 10, 0, 0],
+                [0, 6, 0, 14]
+            ];
+            for (const [label, setup, draw] of STYLES) {
+                for (const radii of RADII_SETS) {
+                    const mixed = render((ctx) => {
+                        setup(ctx);
+                        draw(ctx, bx, by, bw, bh, radii);
+                    });
+                    for (let c = 0; c < 4; c++) {
+                        if (radii[c] === 0) continue; // square corners: section 2
+                        const uniform = render((ctx) => {
+                            setup(ctx);
+                            draw(ctx, bx, by, bw, bh, radii[c]);
+                        });
+                        for (let y = 0; y < H; y++) {
+                            for (let x = 0; x < W; x++) {
+                                if (!QUADRANTS[c](x, y)) continue;
+                                const o = y * mixed.stride + x * 4;
+                                for (let k = 0; k < 4; k++) {
+                                    if (mixed.data[o + k] !== uniform.data[o + k]) {
+                                        throw new Error(
+                                            `${label} radii ${JSON.stringify(radii)}: corner ${CORNER[c]} differs from ` +
+                                                `the uniform r=${radii[c]} corner at (${x},${y})`
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                log(`  ${label}: every rounded corner === the uniform-radius corner`);
+            }
+
+            // 1b. Locality survives an inner arc too small to reach its own band row (radius 1
+            //     under a 1.5-2px stroke: inner radius <= 0.25px). Uniform radii keep the
+            //     historical rule - that row of the hole is dropped whole - but with mixed
+            //     radii only the tiny corner may react: the other corners must still match
+            //     their uniform renders.
+            for (const lineWidth of [1.5, 1.75]) {
+                const radii = [1, 9, 0, 6];
+                const draw = (r) =>
+                    render((ctx) => {
+                        ctx.setStrokeStyle(255, 0, 0, 255);
+                        ctx.lineWidth = lineWidth;
+                        ctx.strokeRoundRect(bx, by, bw, bh, r);
+                    });
+                const mixed = draw(radii);
+                for (const c of [1, 3]) {
+                    const uniform = draw(radii[c]);
+                    for (let y = 0; y < H; y++) {
+                        for (let x = 0; x < W; x++) {
+                            if (!QUADRANTS[c](x, y)) continue;
+                            const o = y * mixed.stride + x * 4;
+                            if (mixed.data[o + 1] !== uniform.data[o + 1]) {
+                                throw new Error(
+                                    `stroke ${lineWidth}px ${JSON.stringify(radii)}: the radius-1 corner leaked into ` +
+                                        `corner ${CORNER[c]} at (${x},${y})`
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            log('  a sub-quarter-pixel inner corner arc stays local (1.5px / 1.75px strokes, radius 1)');
+
+            // 2. Square corners: the frame's corner pixel is painted for radius 0, not for a
+            //    rounded corner. The frame is the painted bounding box (radius-0 corners and
+            //    the straight edges reach it).
+            for (const [label, setup, draw] of STYLES) {
+                const radii = [9, 9, 0, 0]; // the window title bar: rounded top, square bottom
+                const s = render((ctx) => {
+                    setup(ctx);
+                    draw(ctx, bx, by, bw, bh, radii);
+                });
+                const b = paintedBBox(s);
+                const corners = [
+                    [b.minX, b.minY],
+                    [b.maxX, b.minY],
+                    [b.maxX, b.maxY],
+                    [b.minX, b.maxY]
+                ];
+                for (let c = 0; c < 4; c++) {
+                    const square = radii[c] === 0;
+                    if (isPainted(s, corners[c][0], corners[c][1]) !== square) {
+                        throw new Error(`${label} [9,9,0,0]: corner ${CORNER[c]} should be ${square ? 'square' : 'rounded'}`);
+                    }
+                }
+            }
+            log('  every style: [9,9,0,0] gives two rounded top corners and two square bottom ones');
+
+            // 3. 1px semi-transparent junction exactness across mixes of rounded and square
+            //    corners, at the integer and the pixel-centred (crisp) spellings.
+            {
+                const R = [0, 1, 2, 3, 5, 8];
+                let combos = 0;
+                for (const [x, y, w, h] of [
+                    [10, 9, 60, 50],
+                    [10.5, 9.5, 61, 47]
+                ]) {
+                    for (const a of R) {
+                        for (const b of R) {
+                            for (const c of R) {
+                                for (const d of R) {
+                                    if (a + b + c + d === 0) continue; // radius 0: the RectOps fallback
+                                    const radii = [a, b, c, d];
+                                    const s = render((ctx) => {
+                                        ctx.setStrokeStyle(255, 0, 0, 128);
+                                        ctx.lineWidth = 1;
+                                        ctx.strokeRoundRect(x, y, w, h, radii);
+                                    });
+                                    const pixels = new Set();
+                                    const colors = new Set();
+                                    for (let py = 0; py < H; py++) {
+                                        for (let px = 0; px < W; px++) {
+                                            if (!isPainted(s, px, py)) continue;
+                                            const o = py * s.stride + px * 4;
+                                            pixels.add(py * W + px);
+                                            colors.add((s.data[o] << 16) | (s.data[o + 1] << 8) | s.data[o + 2]);
+                                        }
+                                    }
+                                    if (colors.size !== 1) {
+                                        throw new Error(
+                                            `1px alpha ${JSON.stringify(radii)} at (${x},${y}): ${colors.size} stroke colours - ` +
+                                                'a pixel was blended more than once'
+                                        );
+                                    }
+                                    for (const p of pixels) {
+                                        const px = p % W;
+                                        const py = Math.floor(p / W);
+                                        let n = 0;
+                                        for (let dy = -1; dy <= 1; dy++) {
+                                            for (let dx = -1; dx <= 1; dx++) {
+                                                if ((dx || dy) && pixels.has((py + dy) * W + px + dx)) n++;
+                                            }
+                                        }
+                                        if (n < 2) {
+                                            throw new Error(
+                                                `1px alpha ${JSON.stringify(radii)} at (${x},${y}): ring broken at (${px},${py})`
+                                            );
+                                        }
+                                    }
+                                    combos++;
+                                }
+                            }
+                        }
+                    }
+                }
+                log(`  1px alpha: ${combos} radius mixes - single blend, closed ring`);
+            }
+
+            // 4. Containment: a corner holding a whole side stays inside the radius-1 bounding box.
+            {
+                let cases = 0;
+                for (const [label, setup, draw] of STYLES) {
+                    for (const [x, y, w, h] of [
+                        [10, 9, 40, 30],
+                        [10.5, 9.5, 40, 30],
+                        [10.25, 9.75, 39.6, 30.4]
+                    ]) {
+                        const ref = paintedBBox(
+                            render((ctx) => {
+                                setup(ctx);
+                                draw(ctx, x, y, w, h, 1);
+                            })
+                        );
+                        for (const radii of [
+                            [w, 0, 0, 0],
+                            [0, w, 0, 0],
+                            [0, 0, w, 0],
+                            [0, 0, 0, w],
+                            [0, h, 0, 0],
+                            [h, 0, h, 0],
+                            [w, w, 0, 0]
+                        ]) {
+                            const b = paintedBBox(
+                                render((ctx) => {
+                                    setup(ctx);
+                                    draw(ctx, x, y, w, h, radii);
+                                })
+                            );
+                            if (b.minX < ref.minX || b.minY < ref.minY || b.maxX > ref.maxX || b.maxY > ref.maxY) {
+                                throw new Error(
+                                    `${label} radii ${JSON.stringify(radii)} at (${x},${y},${w},${h}): painted ` +
+                                        `[${b.minX},${b.minY}..${b.maxX},${b.maxY}] outside the radius-1 box ` +
+                                        `[${ref.minX},${ref.minY}..${ref.maxX},${ref.maxY}]`
+                                );
+                            }
+                            cases++;
+                        }
+                    }
+                }
+                log(`  containment: ${cases} whole-side-radius cases inside the radius-1 bounding box`);
+            }
+
+            // 5. Quarter turns: which DEVICE corner is rounded must agree with the generic
+            //    path, which simply transforms the user-space geometry. Exact quarter-turn
+            //    matrices (no trig noise). [9, 0, 4, 0] tells all four orientations apart.
+            {
+                const QUARTER_TURNS = [
+                    ['0', [1, 0, 0, 1, 12, 10]],
+                    ['90', [0, 1, -1, 0, 70, 10]],
+                    ['180', [-1, 0, 0, -1, 80, 66]],
+                    ['270', [0, -1, 1, 0, 12, 76]]
+                ];
+                const radii = [9, 0, 4, 0];
+                const UW = 50;
+                const UH = 34;
+                for (const [turn, m] of QUARTER_TURNS) {
+                    const roundedness = (surface) => {
+                        const b = paintedBBox(surface);
+                        return [
+                            isPainted(surface, b.minX, b.minY),
+                            isPainted(surface, b.maxX, b.minY),
+                            isPainted(surface, b.maxX, b.maxY),
+                            isPainted(surface, b.minX, b.maxY)
+                        ].map((painted) => (painted ? 'square' : 'rounded'));
+                    };
+                    // Direct: the fused entry with an invisible stroke is the fill-only direct arm.
+                    // (Reset AFTER the fixture background, which is a generic fill.)
+                    let leftDirectArm = false;
+                    const direct = render((ctx) => {
+                        ctx.setTransform(...m);
+                        ctx.setFillStyle(0, 0, 255, 255);
+                        ctx.setStrokeStyle(255, 0, 0, 0);
+                        SWCanvas.Core.Context2D.resetPathBasedFlag();
+                        ctx.fillStrokeRoundRect(0, 0, UW, UH, radii);
+                        leftDirectArm = SWCanvas.Core.Context2D.wasPathBasedUsed();
+                    });
+                    if (leftDirectArm) {
+                        throw new Error(`quarter turn ${turn}: per-corner fillStrokeRoundRect left the direct arm`);
+                    }
+                    const generic = render((ctx) => {
+                        ctx.setTransform(...m);
+                        ctx.setFillStyle(0, 0, 255, 255);
+                        ctx.fillRoundRect(0, 0, UW, UH, radii);
+                    });
+                    const d = roundedness(direct).join(',');
+                    const g = roundedness(generic).join(',');
+                    if (d !== g) {
+                        throw new Error(`quarter turn ${turn}: direct device corners [${d}] but the generic path gives [${g}]`);
+                    }
+                    // And the stroke arm, on the crisp (pixel-centred) spelling.
+                    const stroke = render((ctx) => {
+                        ctx.setTransform(...m);
+                        ctx.setStrokeStyle(255, 0, 0, 255);
+                        ctx.lineWidth = 1;
+                        ctx.strokeRoundRect(0.5, 0.5, UW, UH, radii);
+                    });
+                    if (roundedness(stroke).join(',') !== g) {
+                        throw new Error(`quarter turn ${turn}: stroke device corners [${roundedness(stroke)}] vs generic [${g}]`);
+                    }
+                }
+                log('  quarter turns 0/90/180/270: device corners rounded exactly where the generic path rounds them');
+            }
+
+            // 6. Dispatch.
+            {
+                function dispatchOf(applyCtm, draw) {
+                    const { ctx } = newCtx();
+                    ctx.setFillStyle(0, 0, 255, 255);
+                    ctx.setStrokeStyle(255, 0, 0, 255);
+                    ctx.lineWidth = 2;
+                    applyCtm(ctx);
+                    SWCanvas.Core.Context2D.resetPathBasedFlag();
+                    draw(ctx);
+                    return SWCanvas.Core.Context2D.wasPathBasedUsed() ? 'generic' : 'direct';
+                }
+                const DIRECT_CTMS = [
+                    ['identity', () => {}],
+                    ['translate', (ctx) => ctx.translate(3.5, 2)],
+                    ['scale 2', (ctx) => ctx.scale(2, 2)],
+                    ['quarter turn', (ctx) => ctx.setTransform(0, 1, -1, 0, 60, 5)],
+                    ['half turn + scale', (ctx) => ctx.setTransform(-1.5, 0, 0, -1.5, 80, 70)]
+                ];
+                const TILTED = (ctx) => {
+                    ctx.translate(48, 40);
+                    ctx.rotate(0.5);
+                };
+                const ENTRIES = [
+                    ['strokeRoundRect', (ctx, r) => ctx.strokeRoundRect(-20, -15, 40, 30, r)],
+                    ['fillStrokeRoundRect', (ctx, r) => ctx.fillStrokeRoundRect(-20, -15, 40, 30, r)]
+                ];
+                for (const [label, draw] of ENTRIES) {
+                    for (const [ctmLabel, applyCtm] of DIRECT_CTMS) {
+                        if (dispatchOf(applyCtm, (ctx) => draw(ctx, [6, 6, 0, 0])) !== 'direct') {
+                            throw new Error(`${label} [6,6,0,0] @${ctmLabel}: expected the direct arm`);
+                        }
+                    }
+                    if (dispatchOf(TILTED, (ctx) => draw(ctx, [6, 6, 0, 0])) !== 'generic') {
+                        throw new Error(`${label} [6,6,0,0] tilted: per-corner radii must take the generic path`);
+                    }
+                    if (dispatchOf(TILTED, (ctx) => draw(ctx, [6, 6, 6, 6])) !== 'direct') {
+                        throw new Error(`${label} [6,6,6,6] tilted: a uniform radii list must stay on the rotated direct arm`);
+                    }
+                }
+                log('  dispatch: per-corner direct on identity/translate/scale/quarter turns; generic when tilted');
+            }
+        });
+
+
+        // Test: per-corner roundRects clipped (tier-0 === bitmask, no leaks) and clipping (clip region === fill)
+        // This file will be concatenated into the main test suite
+        //
+        // Both directions of clipping for per-corner radii (DIRECT-RENDERING-SUMMARY.MD
+        // §5 and §5.1):
+        //   1. BEING CLIPPED: the per-corner direct arms honour the tier-0 rect clip
+        //      exactly like the bitmask clip of the same region (byte-identical), and
+        //      never paint outside it - for 1px/thick strokes, opaque/alpha, the fused
+        //      arm, at identity, uniform scale and a quarter turn (the corner-permuting
+        //      branch), with the window-title-bar spelling [r, r, 0, 0] among the radii.
+        //      Same contract as tests/core/049 for uniform radii.
+        //   2. CLIPPING AT a per-corner roundRect: roundRect() + clip() exposes exactly
+        //      the pixels roundRect() + fill() covers (one geometry, one generic
+        //      rasterization), on both the Context2D path method and an external
+        //      SWPath2D, including under a non-uniform scale (elliptical corners).
+
+        test('roundRect per-corner radii - clipped (tier-0 === bitmask) and clipping (clip === fill)', () => {
+            const W = 90;
+            const H = 64;
+            const CLIP = { x: 14, y: 10, w: 34, h: 22 };
+
+            function newCtx() {
+                const surface = SWCanvas.Core.Surface(W, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, W, H);
+                return { surface, ctx };
+            }
+
+            function render(clipMode, drawFn) {
+                const { surface, ctx } = newCtx();
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(CLIP.x, CLIP.y, CLIP.w, CLIP.h);
+                if (clipMode === 'mask') {
+                    // A second identical rect: same exposed pixels, but no longer one
+                    // axis-aligned rect path, so the clip goes through the bitmask.
+                    ctx.rect(CLIP.x, CLIP.y, CLIP.w, CLIP.h);
+                }
+                ctx.clip();
+                drawFn(ctx);
+                ctx.restore();
+                return surface;
+            }
+
+            function isPainted(surface, x, y) {
+                const o = y * surface.stride + x * 4;
+                return !(surface.data[o] === 255 && surface.data[o + 1] === 255 && surface.data[o + 2] === 255);
+            }
+
+            // 1. Being clipped.
+            // Two DEVICE boxes, one ring crossing each pair of clip bounds: A's left and
+            // bottom edges run inside the clip (it crosses the top and right bounds), B's
+            // right and top edges do (it crosses the left and bottom bounds). Every CTM maps
+            // its user box onto the same device box.
+            const DEVICE_BOXES = [
+                ['A', [20.5, 4.5, 50, 22]],
+                ['B', [4.5, 14.5, 30, 30]]
+            ];
+            const CTMS = [
+                ['identity', () => {}, ([x, y, w, h]) => [x, y, w, h]],
+                ['scale 2', (ctx) => ctx.scale(2, 2), ([x, y, w, h]) => [x / 2, y / 2, w / 2, h / 2]],
+                [
+                    'quarter turn',
+                    (ctx) => ctx.setTransform(0, 1, -1, 0, 80, 2),
+                    // device (x', y') = (80 - y, x + 2): the user box is the device box turned back
+                    ([x, y, w, h]) => [y - 2, 80 - (x + w), h, w]
+                ]
+            ];
+            const RADII = [
+                [8, 8, 0, 0],
+                [0, 5, 9, 2],
+                [12, 0]
+            ];
+            const STYLES = [
+                [
+                    'stroke 1px opaque',
+                    (ctx) => {
+                        ctx.setStrokeStyle(255, 0, 0, 255);
+                        ctx.lineWidth = 1;
+                    },
+                    'strokeRoundRect'
+                ],
+                [
+                    'stroke 1px semi',
+                    (ctx) => {
+                        ctx.setStrokeStyle(255, 0, 0, 128);
+                        ctx.lineWidth = 1;
+                    },
+                    'strokeRoundRect'
+                ],
+                [
+                    'stroke 3px semi',
+                    (ctx) => {
+                        ctx.setStrokeStyle(255, 0, 0, 128);
+                        ctx.lineWidth = 3;
+                    },
+                    'strokeRoundRect'
+                ],
+                [
+                    'fused opaque 1px',
+                    (ctx) => {
+                        ctx.setFillStyle(0, 0, 255, 255);
+                        ctx.setStrokeStyle(255, 0, 0, 255);
+                        ctx.lineWidth = 1;
+                    },
+                    'fillStrokeRoundRect'
+                ],
+                [
+                    'fused semi 3px',
+                    (ctx) => {
+                        ctx.setFillStyle(0, 0, 255, 255);
+                        ctx.setStrokeStyle(255, 0, 0, 128);
+                        ctx.lineWidth = 3;
+                    },
+                    'fillStrokeRoundRect'
+                ]
+            ];
+            let cases = 0;
+            for (const [boxLabel, deviceBox] of DEVICE_BOXES) {
+              for (const [ctmLabel, applyCtm, toUser] of CTMS) {
+                const [x, y, w, h] = toUser(deviceBox);
+                for (const radii of RADII) {
+                    for (const [styleLabel, setup, entry] of STYLES) {
+                        const draw = (ctx) => {
+                            applyCtm(ctx);
+                            setup(ctx);
+                            ctx[entry](x, y, w, h, radii);
+                        };
+                        const label = `${styleLabel} ${JSON.stringify(radii)} box ${boxLabel} @${ctmLabel}`;
+                        const tier0 = render('tier0', draw);
+                        const mask = render('mask', draw);
+                        let anyInside = false;
+                        for (let py = 0; py < H; py++) {
+                            for (let px = 0; px < W; px++) {
+                                const o = py * tier0.stride + px * 4;
+                                for (let k = 0; k < 4; k++) {
+                                    if (tier0.data[o + k] !== mask.data[o + k]) {
+                                        throw new Error(`${label}: tier-0 and bitmask clips differ at (${px},${py})`);
+                                    }
+                                }
+                                if (!isPainted(tier0, px, py)) continue;
+                                const inside =
+                                    px >= CLIP.x && px < CLIP.x + CLIP.w && py >= CLIP.y && py < CLIP.y + CLIP.h;
+                                if (!inside) throw new Error(`${label}: painted outside the clip rect at (${px},${py})`);
+                                anyInside = true;
+                            }
+                        }
+                        if (!anyInside) throw new Error(`${label}: nothing painted inside the clip - fixture misses the clip`);
+                        cases++;
+                    }
+                }
+              }
+            }
+            log(`  being clipped: ${cases} per-corner cases - tier-0 === bitmask, no clip leak`);
+
+            // 2. Clipping AT a per-corner roundRect: clip coverage === fill coverage.
+            const SHAPES = [
+                ['[10, 10, 0, 0]', [10, 6, 60, 40], [10, 10, 0, 0], () => {}],
+                ['[0, 14, 3, 22]', [8.5, 5.5, 64, 50], [0, 14, 3, 22], () => {}],
+                ['[18, 4] under scale(1.5, 0.75)', [6, 8, 44, 56], [18, 4], (ctx) => ctx.scale(1.5, 0.75)],
+                ['[9, 0, 9] rotated', [-25, -18, 50, 36], [9, 0, 9], (ctx) => {
+                    ctx.translate(45, 32);
+                    ctx.rotate(0.4);
+                }]
+            ];
+            for (const [label, [x, y, w, h], radii, applyCtm] of SHAPES) {
+                // Like against like: the current path bakes its arcs at build time, an
+                // external Path2D flattens them at draw time.
+                const filledCurrentPath = (() => {
+                    const { surface, ctx } = newCtx();
+                    applyCtm(ctx);
+                    ctx.setFillStyle(0, 0, 0, 255);
+                    ctx.beginPath();
+                    ctx.roundRect(x, y, w, h, radii);
+                    ctx.fill();
+                    return surface;
+                })();
+                const filledPath2D = (() => {
+                    const { surface, ctx } = newCtx();
+                    applyCtm(ctx);
+                    ctx.setFillStyle(0, 0, 0, 255);
+                    const p = new SWCanvas.Core.SWPath2D();
+                    p.roundRect(x, y, w, h, radii);
+                    ctx.fill(p);
+                    return surface;
+                })();
+                const viaCurrentPath = (() => {
+                    const { surface, ctx } = newCtx();
+                    applyCtm(ctx);
+                    ctx.beginPath();
+                    ctx.roundRect(x, y, w, h, radii);
+                    ctx.clip();
+                    ctx.resetTransform();
+                    ctx.setFillStyle(0, 0, 0, 255);
+                    ctx.fillRect(0, 0, W, H);
+                    return surface;
+                })();
+                const viaPath2D = (() => {
+                    const { surface, ctx } = newCtx();
+                    applyCtm(ctx);
+                    const p = new SWCanvas.Core.SWPath2D();
+                    p.roundRect(x, y, w, h, radii);
+                    ctx.clip(p);
+                    ctx.resetTransform();
+                    ctx.setFillStyle(0, 0, 0, 255);
+                    ctx.fillRect(0, 0, W, H);
+                    return surface;
+                })();
+                let n = 0;
+                for (let py = 0; py < H; py++) {
+                    for (let px = 0; px < W; px++) {
+                        const f = isPainted(filledCurrentPath, px, py);
+                        if (f !== isPainted(viaCurrentPath, px, py)) {
+                            throw new Error(`clip AT ${label} (ctx.roundRect): clip and fill disagree at (${px},${py})`);
+                        }
+                        if (isPainted(filledPath2D, px, py) !== isPainted(viaPath2D, px, py)) {
+                            throw new Error(`clip AT ${label} (SWPath2D): clip and fill disagree at (${px},${py})`);
+                        }
+                        if (f) n++;
+                    }
+                }
+                if (n === 0) throw new Error(`clip AT ${label}: empty fixture`);
+            }
+            log('  clipping AT per-corner roundRects: clip region === fill coverage (path method and Path2D)');
         });
 
 

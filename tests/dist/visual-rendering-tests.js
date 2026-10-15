@@ -10193,6 +10193,215 @@
     });
 
 
+    // Test: roundRect per-corner radii - every radii form, square corners, overlap scaling
+    // This file will be concatenated into the main visual test suite
+    //
+    // The standard roundRect() path method with HTML5 radii (CSS border-radius order:
+    // [topLeft, topRight, bottomRight, bottomLeft], shorter lists expanded). Each cell
+    // is a fill plus a crisp 1px stroke of the same radii. The bottom row ends with the
+    // window composition this feature exists for: a uniformly rounded window body with
+    // a title bar rounded only at the top.
+
+    registerVisualTest('roundrect-per-corner-radii', {
+        name: 'roundRect per-corner radii - list forms, square corners, overlap scaling',
+        width: 420,
+        height: 230,
+        draw: function (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 420, 230);
+
+            const cases = [
+                12, // all four
+                [20, 4], // TL & BR = 20, TR & BL = 4
+                [20, 8, 0], // TL = 20, TR & BL = 8, BR = 0
+                [22, 12, 6, 0], // one radius per corner
+                [16, 16, 0, 0], // rounded top, square bottom
+                [0, 0, 16, 16], // square top, rounded bottom
+                [0, 26, 0, 26], // diagonal pair
+                [120, 0, 0, 0], // overflows: scaled down to fit (to 64 here, the box height)
+                [80, 80, 80, 80] // overflows uniformly: fully round ends
+            ];
+            cases.forEach((radii, i) => {
+                const col = i % 5;
+                const row = Math.floor(i / 5);
+                const x = 12 + col * 81;
+                const y = 12 + row * 104;
+                ctx.fillStyle = 'rgb(170, 195, 255)';
+                ctx.beginPath();
+                ctx.roundRect(x, y, 66, 64, radii);
+                ctx.fill();
+                ctx.strokeStyle = 'rgb(20, 40, 160)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.roundRect(x + 0.5, y + 0.5, 65, 63, radii);
+                ctx.stroke();
+            });
+
+            // The window: body rounded all round, title bar rounded only at the top.
+            const wx = 336;
+            const wy = 116;
+            ctx.fillStyle = 'rgb(240, 240, 240)';
+            ctx.beginPath();
+            ctx.roundRect(wx, wy, 72, 100, 8);
+            ctx.fill();
+            ctx.strokeStyle = 'rgb(120, 120, 120)';
+            ctx.beginPath();
+            ctx.roundRect(wx + 0.5, wy + 0.5, 71, 99, 8);
+            ctx.stroke();
+            ctx.fillStyle = 'rgb(70, 110, 200)';
+            ctx.beginPath();
+            ctx.roundRect(wx, wy, 72, 18, [8, 8, 0, 0]);
+            ctx.fill();
+            ctx.strokeStyle = 'rgb(30, 50, 120)';
+            ctx.beginPath();
+            ctx.roundRect(wx + 0.5, wy + 0.5, 71, 17, [8, 8, 0, 0]);
+            ctx.stroke();
+        }
+    });
+
+
+    // Test: roundRect per-corner radii under transforms, thick strokes and negative sizes
+    // This file will be concatenated into the main visual test suite
+    //
+    // The corner radii belong to the USER-space rect, so the CTM carries each rounded
+    // corner along with it: under quarter turns the rounded corners rotate around the
+    // box, under a tilt they tilt with it, and under a non-uniform scale they become
+    // elliptical. A negative width or height mirrors the rect about (x, y), and the
+    // radii stay attached to the corners as named from (x, y) - exactly as HTML5.
+
+    registerVisualTest('roundrect-per-corner-transformed', {
+        name: 'roundRect per-corner radii - quarter turns, tilt, non-uniform scale, negative size',
+        width: 400,
+        height: 250,
+        draw: function (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 400, 250);
+
+            const radii = [22, 6, 0, 12]; // every corner different
+
+            function shape(fill, stroke, lineWidth) {
+                ctx.fillStyle = fill;
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                ctx.roundRect(-40, -25, 80, 50, radii);
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            // Quarter turns 0, 90, 180, 270 degrees.
+            for (let k = 0; k < 4; k++) {
+                ctx.save();
+                ctx.translate(60 + k * 95, 60);
+                ctx.rotate((k * Math.PI) / 2);
+                shape('rgb(255, 210, 160)', 'rgb(180, 80, 0)', 2);
+                ctx.restore();
+            }
+
+            // Tilted, with a thick semi-transparent stroke.
+            ctx.save();
+            ctx.translate(70, 175);
+            ctx.rotate(0.45);
+            shape('rgba(120, 200, 120, 0.8)', 'rgba(0, 90, 0, 0.6)', 6);
+            ctx.restore();
+
+            // Non-uniform scale: elliptical corners.
+            ctx.save();
+            ctx.translate(195, 175);
+            ctx.scale(1.3, 0.7);
+            shape('rgb(200, 180, 255)', 'rgb(80, 40, 160)', 2);
+            ctx.restore();
+
+            // Negative width: the rect extends LEFT of x, and radii[0] rounds the corner at
+            // (x, y) - the visual top-RIGHT. Negative height likewise flips vertically.
+            ctx.fillStyle = 'rgb(255, 170, 190)';
+            ctx.strokeStyle = 'rgb(160, 0, 40)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(330.5, 145.5, -60, 40, [18, 0, 0, 0]);
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.roundRect(340.5, 235.5, 50, -40, [18, 0, 0, 0]);
+            ctx.fill();
+            ctx.stroke();
+        }
+    });
+
+
+    // Test: roundRect per-corner radii - clipping AT a per-corner roundRect, and being clipped
+    // This file will be concatenated into the main visual test suite
+    //
+    // Left: a per-corner roundRect used as the clip region (stripes are drawn through
+    // it, then its outline is stroked on top - the stripes must end exactly at the
+    // outline). Middle: a per-corner roundRect clipped BY a circle. Right: the
+    // intersection of a rect clip and a per-corner roundRect clip.
+
+    registerVisualTest('roundrect-per-corner-clip', {
+        name: 'roundRect per-corner radii - as a clip region, and clipped',
+        width: 420,
+        height: 170,
+        draw: function (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 420, 170);
+
+            function stripes(x0, y0, w, h, color) {
+                ctx.fillStyle = color;
+                for (let i = -h; i < w; i += 12) {
+                    ctx.beginPath();
+                    ctx.moveTo(x0 + i, y0 + h);
+                    ctx.lineTo(x0 + i + h, y0);
+                    ctx.lineTo(x0 + i + h + 6, y0);
+                    ctx.lineTo(x0 + i + 6, y0 + h);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+
+            // 1. Clip AT a per-corner roundRect.
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(15, 20, 120, 130, [50, 0, 30, 10]);
+            ctx.clip();
+            stripes(0, 0, 150, 170, 'rgb(60, 140, 220)');
+            ctx.restore();
+            ctx.strokeStyle = 'rgb(0, 40, 100)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(15.5, 20.5, 119, 129, [50, 0, 30, 10]);
+            ctx.stroke();
+
+            // 2. A per-corner roundRect clipped by a circle.
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(210, 85, 62, 0, 2 * Math.PI);
+            ctx.clip();
+            ctx.fillStyle = 'rgb(255, 200, 120)';
+            ctx.strokeStyle = 'rgb(170, 70, 0)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.roundRect(160, 40, 130, 110, [36, 36, 0, 0]);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+
+            // 3. Rect clip intersected with a per-corner roundRect clip.
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(300, 30, 70, 120);
+            ctx.clip();
+            ctx.beginPath();
+            ctx.roundRect(320, 15, 85, 100, [0, 40, 0, 40]);
+            ctx.clip();
+            stripes(290, 0, 130, 170, 'rgb(220, 60, 120)');
+            ctx.restore();
+        }
+    });
+
+
     const VisualRenderingTests = {
         getTests: function() { return visualTests; },
         getTest: function(name) { return visualTests[name]; },

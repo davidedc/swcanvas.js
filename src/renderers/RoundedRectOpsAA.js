@@ -13,6 +13,15 @@
  * NOTE: Rotated rounded rectangle rendering is handled by RoundedRectOpsRot (called
  * directly by Context2D). This class only handles axis-aligned (AA) rounded rectangles.
  *
+ * PER-CORNER RADII: every entry takes `radii` with HTML5 roundRect() semantics
+ * (RoundedRectUtils.normalizeCornerRadii → integer [topLeft, topRight,
+ * bottomRight, bottomLeft]), and every corner is rendered from its own radius
+ * only: a corner of radius r is pixel-identical to the same corner of a
+ * uniform-r rounded rect, and a radius-0 corner is square (the edges run into
+ * it; thick strokes get a square outer corner, like strokeRect). Context2D
+ * hands quarter-turned rects over with their corners already re-assigned to
+ * device corners (RoundedRectUtils.deviceCornerRadii).
+ *
  * CALL HIERARCHY:
  * ---------------
  * Layer 0 (Foundation): SpanOps.fill_Opaq, SpanOps.fill_Alpha, inline markers
@@ -29,56 +38,139 @@
  *   - Orientation: AA (axis-aligned)
  *   - Opacity: Opaq | Alpha | Any
  */
+// Shared outputs of RoundedRectOpsAA._strokeEdgeRadii (no allocation per draw call).
+const _rrOuterRadiiScratch = [0, 0, 0, 0];
+const _rrInnerRadiiScratch = [0, 0, 0, 0];
+
 class RoundedRectOpsAA {
     // =========================================================================
     // Private Static Helpers
     // =========================================================================
 
     /**
-     * Calculate X extent for rounded corner at a given scanline Y.
+     * Calculate X extent for rounded corners at a given scanline Y. The left end of
+     * the span follows the top-left corner's arc in its band, else the
+     * bottom-left's; the right end the top-right's, else the bottom-right's (top
+     * band first, as when the bands overlap after integer rounding). A radius-0
+     * corner has no band, so its side runs straight to the rect's corner.
+     *
+     * An arc can MISS its own band row: a radius of 0.25px or less (only ever an
+     * inner stroke edge, r - halfStroke, the stroke nearly swallowing the corner)
+     * does not reach the row's pixel centers. The row counts as outside only when
+     * BOTH ends miss - always the case for uniform radii, which keeps their
+     * rendering exactly the historical one. A single missed end stops at the
+     * arc's tangent column instead, so one tiny-radius corner cannot blank a
+     * whole row of the hole next to differently-rounded corners.
      * @param {number} py - Scanline Y coordinate
      * @param {number} rectX - Rectangle left X
      * @param {number} rectW - Rectangle width
      * @param {number} rectY - Rectangle top Y
      * @param {number} rectH - Rectangle height
-     * @param {number} radius - Corner radius
+     * @param {number[]} radii - Corner radii [topLeft, topRight, bottomRight, bottomLeft]
      * @param {number} [epsilon=0] - Epsilon for inset calculation
      * @returns {{leftX: number, rightX: number}} X extent or {-1, -1} if outside
      * @private
      */
-    static _getXExtent(py, rectX, rectW, rectY, rectH, radius, epsilon = 0) {
+    static _getXExtent(py, rectX, rectW, rectY, rectH, radii, epsilon = 0) {
         if (py < rectY || py >= rectY + rectH) {
             return { leftX: -1, rightX: -1 };
         }
-        if (radius <= 0) {
-            return { leftX: rectX, rightX: rectX + rectW - 1 };
+        const rTL = radii[0],
+            rTR = radii[1],
+            rBR = radii[2],
+            rBL = radii[3];
+
+        // The arc bounding each end on this row (radius 0: a straight side). Left: the
+        // top-left arc, else the bottom-left; right: the top-right, else the bottom-right.
+        let rL = 0,
+            dyL = 0;
+        if (py < rectY + rTL) {
+            rL = rTL;
+            dyL = rectY + rTL - py - 0.5;
+        } else if (py >= rectY + rectH - rBL) {
+            rL = rBL;
+            dyL = py - (rectY + rectH - rBL) + 0.5;
         }
+        let rR = 0,
+            dyR = 0;
+        if (py < rectY + rTR) {
+            rR = rTR;
+            dyR = rectY + rTR - py - 0.5;
+        } else if (py >= rectY + rectH - rBR) {
+            rR = rBR;
+            dyR = py - (rectY + rectH - rBR) + 0.5;
+        }
+
         let leftX = rectX,
             rightX = rectX + rectW - 1;
-        if (py < rectY + radius) {
-            const dy = rectY + radius - py - 0.5;
-            const dySquared = dy * dy,
-                radiusSquared = radius * radius;
-            if (dySquared < radiusSquared) {
-                const dx = Math.sqrt(radiusSquared - dySquared);
-                leftX = Math.ceil(rectX + radius - dx + epsilon);
-                rightX = Math.floor(rectX + rectW - radius + dx - 1 - epsilon);
+        let leftMissed = false,
+            rightMissed = false,
+            dxL = 0;
+        if (rL > 0) {
+            const dySquared = dyL * dyL,
+                radiusSquared = rL * rL;
+            leftMissed = dySquared >= radiusSquared;
+            dxL = leftMissed ? 0 : Math.sqrt(radiusSquared - dySquared);
+            leftX = Math.ceil(rectX + rL - dxL + epsilon);
+        }
+        if (rR > 0) {
+            let dxR;
+            if (rR === rL && dyR === dyL) {
+                // Both ends on mirror-image arcs (always so for uniform radii): one sqrt.
+                rightMissed = leftMissed;
+                dxR = dxL;
             } else {
-                return { leftX: -1, rightX: -1 };
+                const dySquared = dyR * dyR,
+                    radiusSquared = rR * rR;
+                rightMissed = dySquared >= radiusSquared;
+                dxR = rightMissed ? 0 : Math.sqrt(radiusSquared - dySquared);
             }
-        } else if (py >= rectY + rectH - radius) {
-            const dy = py - (rectY + rectH - radius) + 0.5;
-            const dySquared = dy * dy,
-                radiusSquared = radius * radius;
-            if (dySquared < radiusSquared) {
-                const dx = Math.sqrt(radiusSquared - dySquared);
-                leftX = Math.ceil(rectX + radius - dx + epsilon);
-                rightX = Math.floor(rectX + rectW - radius + dx - 1 - epsilon);
-            } else {
-                return { leftX: -1, rightX: -1 };
-            }
+            rightX = Math.floor(rectX + rectW - rR + dxR - 1 - epsilon);
+        }
+
+        if (leftMissed && rightMissed) {
+            return { leftX: -1, rightX: -1 };
         }
         return { leftX, rightX };
+    }
+
+    /**
+     * Outer (stroke outer edge) and inner (stroke inner edge) corner radii for a
+     * stroke of half-width `halfStroke` around path corners `radii`, written into
+     * the shared _rrOuterRadiiScratch / _rrInnerRadiiScratch (no allocation per
+     * draw call). A rounded corner's outer edge is its arc offset outward
+     * (r + halfStroke); a square corner stays square on both edges.
+     * @param {number[]} radii - Integer path radii [topLeft, topRight, bottomRight, bottomLeft]
+     * @param {number} halfStroke - Half the stroke width
+     * @private
+     */
+    static _strokeEdgeRadii(radii, halfStroke) {
+        for (let i = 0; i < 4; i++) {
+            const r = radii[i];
+            _rrOuterRadiiScratch[i] = r > 0 ? r + halfStroke : 0;
+            _rrInnerRadiiScratch[i] = Math.max(0, r - halfStroke);
+        }
+    }
+
+    /**
+     * Keep a 1px stroke's corner arcs inside its pixel frame. A corner arc of
+     * radius r reaches r pixels in from its own sides, so one corner holding a
+     * whole side (legal for per-corner radii: [w, 0, 0, 0]) can put its far
+     * tangent pixel one past the frame once its radius is rounded. Uniform radii
+     * never get there (r <= ~half a side), and are left untouched so their
+     * rendering stays exactly the historical one.
+     * @param {number[]} radii - Integer radii [topLeft, topRight, bottomRight, bottomLeft],
+     *   clamped IN PLACE (normalizeCornerRadii's shared scratch)
+     * @param {number} frameW - Frame width in pixels (rightX - leftX + 1)
+     * @param {number} frameH - Frame height in pixels (bottomY - topY + 1)
+     * @private
+     */
+    static _fitRadiiToFrame(radii, frameW, frameH) {
+        if (radii[0] === radii[1] && radii[0] === radii[2] && radii[0] === radii[3]) return;
+        const maxR = Math.max(0, Math.min(frameW, frameH) - 1);
+        for (let i = 0; i < 4; i++) {
+            if (radii[i] > maxR) radii[i] = maxR;
+        }
     }
 
     // =========================================================================
@@ -95,7 +187,7 @@ class RoundedRectOpsAA {
      * @param {number} y - Top-left Y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number|number[]} radii - Corner radius, or a list of 1-4 corner radii
      * @param {Color} color - Stroke color (must be opaque)
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
      */
@@ -104,11 +196,11 @@ class RoundedRectOpsAA {
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
 
-        // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        // Normalize radii
+        const corners = RoundedRectUtils.normalizeCornerRadii(radii, width, height);
 
-        // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
-        if (radius <= 0) {
+        // Fallback to RectOps when no corner is rounded (rounded rect becomes regular rect)
+        if (corners[0] <= 0 && corners[1] <= 0 && corners[2] <= 0 && corners[3] <= 0) {
             RectOpsAA.stroke1px_AA_Opaq(surface, x, y, width, height, color, clipBuffer, clipRect);
             return;
         }
@@ -132,12 +224,18 @@ class RoundedRectOpsAA {
         const topY = Math.floor(y);
         const rightX = Math.floor(x + width - 0.5);
         const bottomY = Math.floor(y + height - 0.5);
+        RoundedRectOpsAA._fitRadiiToFrame(corners, rightX - leftX + 1, bottomY - topY + 1);
+        const rTL = corners[0],
+            rTR = corners[1],
+            rBR = corners[2],
+            rBL = corners[3];
 
-        // Draw horizontal edges (top and bottom, excluding corners)
+        // Draw horizontal edges (top and bottom, excluding rounded corners; a
+        // square corner's pixel is covered by the edges running into it)
 
         // Top edge
         if (topY >= cy0 && topY < cy1) {
-            for (let xx = leftX + radius; xx < rightX + 1 - radius; xx++) {
+            for (let xx = leftX + rTL; xx < rightX + 1 - rTR; xx++) {
                 if (xx >= cx0 && xx < cx1) {
                     const pos = topY * surfaceWidth + xx;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
@@ -146,7 +244,7 @@ class RoundedRectOpsAA {
         }
         // Bottom edge
         if (bottomY >= cy0 && bottomY < cy1) {
-            for (let xx = leftX + radius; xx < rightX + 1 - radius; xx++) {
+            for (let xx = leftX + rBL; xx < rightX + 1 - rBR; xx++) {
                 if (xx >= cx0 && xx < cx1) {
                     const pos = bottomY * surfaceWidth + xx;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
@@ -154,11 +252,11 @@ class RoundedRectOpsAA {
             }
         }
 
-        // Draw vertical edges (left and right, excluding corners)
+        // Draw vertical edges (left and right, excluding rounded corners)
 
         // Left edge
         if (leftX >= cx0 && leftX < cx1) {
-            for (let yy = topY + radius; yy < bottomY + 1 - radius; yy++) {
+            for (let yy = topY + rTL; yy < bottomY + 1 - rBL; yy++) {
                 if (yy >= cy0 && yy < cy1) {
                     const pos = yy * surfaceWidth + leftX;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
@@ -167,7 +265,7 @@ class RoundedRectOpsAA {
         }
         // Right edge
         if (rightX >= cx0 && rightX < cx1) {
-            for (let yy = topY + radius; yy < bottomY + 1 - radius; yy++) {
+            for (let yy = topY + rTR; yy < bottomY + 1 - rBR; yy++) {
                 if (yy >= cy0 && yy < cy1) {
                     const pos = yy * surfaceWidth + rightX;
                     /*@inline:SET_OPAQUE_CLIPPED(data32, pos, packedColor, clipBuffer)*/
@@ -183,8 +281,9 @@ class RoundedRectOpsAA {
         // pixels the edge runs above rely on. Math.cos/sin carry ~1e-16 noise at the
         // 90°-multiples (true value 0); with the integer frame-derived centers that
         // noise sits exactly on a floor() boundary and would shift the junction pixel
-        // one unit — snap it to zero.
-        const drawCorner = (cx, cy, startAngle) => {
+        // one unit — snap it to zero. A square (radius-0) corner has no arc.
+        const drawCorner = (cx, cy, radius, startAngle) => {
+            if (radius <= 0) return;
             const sr = radius - 0.5;
             for (let i = 0; i <= 90; i++) {
                 const angle = startAngle + i * DEG_TO_RAD;
@@ -202,13 +301,13 @@ class RoundedRectOpsAA {
         };
 
         // Top-left corner (180° to 270°)
-        drawCorner(leftX + radius, topY + radius, Math.PI);
+        drawCorner(leftX + rTL, topY + rTL, rTL, Math.PI);
         // Top-right corner (270° to 360°)
-        drawCorner(rightX + 1 - radius, topY + radius, THREE_HALF_PI);
+        drawCorner(rightX + 1 - rTR, topY + rTR, rTR, THREE_HALF_PI);
         // Bottom-right corner (0° to 90°)
-        drawCorner(rightX + 1 - radius, bottomY + 1 - radius, 0);
+        drawCorner(rightX + 1 - rBR, bottomY + 1 - rBR, rBR, 0);
         // Bottom-left corner (90° to 180°)
-        drawCorner(leftX + radius, bottomY + 1 - radius, HALF_PI);
+        drawCorner(leftX + rBL, bottomY + 1 - rBL, rBL, HALF_PI);
     }
 
     /**
@@ -220,7 +319,7 @@ class RoundedRectOpsAA {
      * @param {number} y - Top-left Y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius (single value or array)
+     * @param {number|number[]} radii - Corner radius, or a list of 1-4 corner radii
      * @param {Color} color - Stroke color
      * @param {number} globalAlpha - Global alpha value
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to SpanOps or inline per-pixel)
@@ -241,11 +340,11 @@ class RoundedRectOpsAA {
         const surfaceHeight = surface.height;
         const data = surface.data;
 
-        // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        // Normalize radii
+        const corners = RoundedRectUtils.normalizeCornerRadii(radii, width, height);
 
-        // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
-        if (radius <= 0) {
+        // Fallback to RectOps when no corner is rounded (rounded rect becomes regular rect)
+        if (corners[0] <= 0 && corners[1] <= 0 && corners[2] <= 0 && corners[3] <= 0) {
             RectOpsAA.stroke1px_AA_Alpha(surface, x, y, width, height, color, globalAlpha, clipBuffer, clipRect);
             return;
         }
@@ -273,10 +372,18 @@ class RoundedRectOpsAA {
         const topY = Math.floor(y);
         const rightX = Math.floor(x + width - 0.5);
         const bottomY = Math.floor(y + height - 0.5);
+        RoundedRectOpsAA._fitRadiiToFrame(corners, rightX - leftX + 1, bottomY - topY + 1);
+        const rTL = corners[0],
+            rTR = corners[1],
+            rBR = corners[2],
+            rBL = corners[3];
 
         // Edge shortening strategy: shorten edges by 1 pixel at each end to avoid
         // junction overlap with corners. Corners naturally cover junction pixels.
         // This eliminates the need for a Set to prevent overdraw at junctions.
+        // A square (radius-0) corner has no arc to cover its pixel, so ownership is
+        // explicit there: the horizontal edge runs through it, the vertical edge
+        // stops one short.
 
         // Helper to blend a pixel directly
         const blendPixel = (px, py) => {
@@ -290,21 +397,29 @@ class RoundedRectOpsAA {
             /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
         };
 
-        // Draw horizontal edges (shortened by 1 pixel at each end to avoid junction overlap)
-        const horzStart = leftX + radius + 1; // Skip left junction pixel
-        const horzEnd = rightX + 1 - radius; // Stop before right junction pixel
-
-        for (let xx = horzStart; xx < horzEnd; xx++) {
+        // Draw horizontal edges (shortened by 1 pixel at each rounded end to avoid
+        // junction overlap; running through a square corner's pixel)
+        const topStart = rTL > 0 ? leftX + rTL + 1 : leftX; // Skip left junction pixel
+        const topEnd = rTR > 0 ? rightX + 1 - rTR : rightX + 1; // Stop before right junction pixel
+        for (let xx = topStart; xx < topEnd; xx++) {
             blendPixel(xx, topY);
+        }
+        const bottomStart = rBL > 0 ? leftX + rBL + 1 : leftX;
+        const bottomEnd = rBR > 0 ? rightX + 1 - rBR : rightX + 1;
+        for (let xx = bottomStart; xx < bottomEnd; xx++) {
             blendPixel(xx, bottomY);
         }
 
-        // Draw vertical edges (shortened by 1 pixel at each end to avoid junction overlap)
-        const vertStart = topY + radius + 1; // Skip top junction pixel
-        const vertEnd = bottomY + 1 - radius; // Stop before bottom junction pixel
-
-        for (let yy = vertStart; yy < vertEnd; yy++) {
+        // Draw vertical edges (shortened by 1 pixel at each end: at a rounded end the
+        // corner arc owns the junction pixel, at a square end the horizontal edge does)
+        const leftStart = topY + rTL + 1; // Skip top junction pixel
+        const leftEnd = rBL > 0 ? bottomY + 1 - rBL : bottomY; // Stop before bottom junction pixel
+        for (let yy = leftStart; yy < leftEnd; yy++) {
             blendPixel(leftX, yy);
+        }
+        const rightStart = topY + rTR + 1;
+        const rightEnd = rBR > 0 ? bottomY + 1 - rBR : bottomY;
+        for (let yy = rightStart; yy < rightEnd; yy++) {
             blendPixel(rightX, yy);
         }
 
@@ -314,7 +429,8 @@ class RoundedRectOpsAA {
         // Fixed 91-step quadrant sweep + quadrant-trig snap: see stroke1px_AA_Opaq —
         // here a missed quadrant endpoint is not overdraw slack but a junction GAP,
         // because the edges above deliberately stop one pixel short.
-        const drawCorner = (cx, cy, startAngle) => {
+        const drawCorner = (cx, cy, radius, startAngle) => {
+            if (radius <= 0) return;
             const sr = radius - 0.5;
             let lastPos = -1;
             for (let i = 0; i <= 90; i++) {
@@ -339,13 +455,13 @@ class RoundedRectOpsAA {
         };
 
         // Top-left corner (180° to 270°)
-        drawCorner(leftX + radius, topY + radius, Math.PI);
+        drawCorner(leftX + rTL, topY + rTL, rTL, Math.PI);
         // Top-right corner (270° to 360°)
-        drawCorner(rightX + 1 - radius, topY + radius, THREE_HALF_PI);
+        drawCorner(rightX + 1 - rTR, topY + rTR, rTR, THREE_HALF_PI);
         // Bottom-right corner (0° to 90°)
-        drawCorner(rightX + 1 - radius, bottomY + 1 - radius, 0);
+        drawCorner(rightX + 1 - rBR, bottomY + 1 - rBR, rBR, 0);
         // Bottom-left corner (90° to 180°)
-        drawCorner(leftX + radius, bottomY + 1 - radius, HALF_PI);
+        drawCorner(leftX + rBL, bottomY + 1 - rBL, rBL, HALF_PI);
     }
 
     /**
@@ -378,11 +494,11 @@ class RoundedRectOpsAA {
         const surfaceHeight = surface.height;
         const data32 = surface.data32;
 
-        // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        // Normalize radii
+        const corners = RoundedRectUtils.normalizeCornerRadii(radii, width, height);
 
-        // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
-        if (radius <= 0) {
+        // Fallback to RectOps when no corner is rounded (rounded rect becomes regular rect)
+        if (corners[0] <= 0 && corners[1] <= 0 && corners[2] <= 0 && corners[3] <= 0) {
             RectOpsAA.strokeThick_AA_Opaq(surface, x, y, width, height, lineWidth, color, clipBuffer, clipRect);
             return;
         }
@@ -404,20 +520,21 @@ class RoundedRectOpsAA {
         const outerY = Math.floor(y - halfStroke);
         const outerW = Math.ceil(width + lineWidth);
         const outerH = Math.ceil(height + lineWidth);
-        const outerRadius = radius + halfStroke;
+        RoundedRectOpsAA._strokeEdgeRadii(corners, halfStroke);
+        const outerRadii = _rrOuterRadiiScratch;
 
         const innerX = Math.floor(x + halfStroke);
         const innerY = Math.floor(y + halfStroke);
         const innerW = Math.floor(width - lineWidth);
         const innerH = Math.floor(height - lineWidth);
-        const innerRadius = Math.max(0, radius - halfStroke);
+        const innerRadii = _rrInnerRadiiScratch;
 
         // For each scanline in the outer bounds
         for (let py = outerY; py < outerY + outerH; py++) {
             if (py < cy0 || py >= cy1) continue;
 
             // Get outer extent
-            const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadius);
+            const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadii);
             if (outer.leftX < 0) continue; // Outside outer bounds
 
             // Clamp outer to the clip frame (surface bounds when unclipped)
@@ -427,7 +544,7 @@ class RoundedRectOpsAA {
 
             // Check if we're in the inner region (hollow part)
             if (innerW > 0 && innerH > 0 && py >= innerY && py < innerY + innerH) {
-                const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadius);
+                const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadii);
 
                 if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
                     // Draw left and right stroke spans around the inner region.
@@ -531,11 +648,11 @@ class RoundedRectOpsAA {
         const surfaceHeight = surface.height;
         const data = surface.data;
 
-        // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        // Normalize radii
+        const corners = RoundedRectUtils.normalizeCornerRadii(radii, width, height);
 
-        // Fallback to RectOps for zero radius (rounded rect becomes regular rect)
-        if (radius <= 0) {
+        // Fallback to RectOps when no corner is rounded (rounded rect becomes regular rect)
+        if (corners[0] <= 0 && corners[1] <= 0 && corners[2] <= 0 && corners[3] <= 0) {
             RectOpsAA.strokeThick_AA_Alpha(
                 surface,
                 x,
@@ -571,19 +688,20 @@ class RoundedRectOpsAA {
         const outerY = Math.floor(y - halfStroke);
         const outerW = Math.ceil(width + lineWidth);
         const outerH = Math.ceil(height + lineWidth);
-        const outerRadius = radius + halfStroke;
+        RoundedRectOpsAA._strokeEdgeRadii(corners, halfStroke);
+        const outerRadii = _rrOuterRadiiScratch;
 
         const innerX = Math.floor(x + halfStroke);
         const innerY = Math.floor(y + halfStroke);
         const innerW = Math.floor(width - lineWidth);
         const innerH = Math.floor(height - lineWidth);
-        const innerRadius = Math.max(0, radius - halfStroke);
+        const innerRadii = _rrInnerRadiiScratch;
 
         // For each scanline in the outer bounds
         for (let py = outerY; py < outerY + outerH; py++) {
             if (py < cy0 || py >= cy1) continue;
 
-            const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadius);
+            const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadii);
             if (outer.leftX < 0) continue;
 
             const outerLeft = Math.max(cx0, outer.leftX);
@@ -591,7 +709,7 @@ class RoundedRectOpsAA {
             if (outerLeft > outerRight) continue;
 
             if (innerW > 0 && innerH > 0 && py >= innerY && py < innerY + innerH) {
-                const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadius);
+                const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadii);
 
                 if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
                     const innerLeft = Math.min(cx1, Math.max(cx0, inner.leftX));
@@ -689,7 +807,7 @@ class RoundedRectOpsAA {
      * @param {number} y - Top-left Y coordinate
      * @param {number} width - Rectangle width
      * @param {number} height - Rectangle height
-     * @param {number|number[]} radii - Corner radius
+     * @param {number|number[]} radii - Corner radius, or a list of 1-4 corner radii
      * @param {number} lineWidth - Stroke width
      * @param {Color|null} fillColor - Fill color (null to skip fill)
      * @param {Color|null} strokeColor - Stroke color (null to skip stroke)
@@ -721,14 +839,14 @@ class RoundedRectOpsAA {
 
         if (!hasFill && !hasStroke) return;
 
-        // Normalize radius
-        const radius = RoundedRectUtils.normalizeRadius(radii, width, height);
+        // Normalize radii
+        const corners = RoundedRectUtils.normalizeCornerRadii(radii, width, height);
 
-        // Fallback to separate methods for zero radius. The clip args MUST be
-        // forwarded on every hand-off (the fill half historically dropped them
+        // Fallback to separate methods when no corner is rounded. The clip args MUST
+        // be forwarded on every hand-off (the fill half historically dropped them
         // and painted unclipped — the same clip-drop class the radius<1
         // fill/stroke fallbacks had).
-        if (radius <= 0) {
+        if (corners[0] <= 0 && corners[1] <= 0 && corners[2] <= 0 && corners[3] <= 0) {
             if (hasFill) {
                 if (fillColor.a === 255 && globalAlpha >= 1.0) {
                     RectOpsAA.fill_AA_Opaq(surface, x, y, width, height, fillColor, clipBuffer, clipRect);
@@ -780,11 +898,12 @@ class RoundedRectOpsAA {
         const pathY = Math.floor(y);
         const pathW = Math.floor(width);
         const pathH = Math.floor(height);
-        const pathRadius = radius;
+        const pathRadii = corners;
 
         // Radii for different boundaries
-        const outerRadius = pathRadius + halfStroke; // Stroke outer edge
-        const innerRadius = Math.max(0, pathRadius - halfStroke); // Stroke inner edge
+        RoundedRectOpsAA._strokeEdgeRadii(pathRadii, halfStroke);
+        const outerRadii = _rrOuterRadiiScratch; // Stroke outer edge
+        const innerRadii = _rrInnerRadiiScratch; // Stroke inner edge
 
         // Calculate scan bounds - use original coordinates (not floored pathX/pathY)
         const scanMinY = Math.floor(y - halfStroke);
@@ -877,13 +996,13 @@ class RoundedRectOpsAA {
 
             // Get outer stroke extent - uses calculated bounds from original coordinates
             const outerExtent = hasStroke
-                ? RoundedRectOpsAA._getXExtent(py, outerRectX, outerRectW, outerRectY, outerRectH, outerRadius, 0)
+                ? RoundedRectOpsAA._getXExtent(py, outerRectX, outerRectW, outerRectY, outerRectH, outerRadii, 0)
                 : { leftX: -1, rightX: -1 };
 
             // Get inner stroke extent - uses calculated bounds from original coordinates
             const innerExtent =
                 hasStroke && innerRectH > 0
-                    ? RoundedRectOpsAA._getXExtent(py, innerRectX, innerRectW, innerRectY, innerRectH, innerRadius, 0)
+                    ? RoundedRectOpsAA._getXExtent(py, innerRectX, innerRectW, innerRectY, innerRectH, innerRadii, 0)
                     : { leftX: -1, rightX: -1 };
 
             // Determine fill extent based on stroke transparency
@@ -902,7 +1021,7 @@ class RoundedRectOpsAA {
                             pathW,
                             pathY,
                             pathH,
-                            pathRadius,
+                            pathRadii,
                             FILL_EPSILON
                         );
                     } else {
@@ -915,7 +1034,7 @@ class RoundedRectOpsAA {
                     }
                 } else {
                     // Fill-only: use standard fill extent calculation
-                    fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, pathRadius, FILL_EPSILON);
+                    fillExtent = RoundedRectOpsAA._getXExtent(py, pathX, pathW, pathY, pathH, pathRadii, FILL_EPSILON);
                 }
             }
 

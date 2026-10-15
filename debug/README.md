@@ -58,6 +58,7 @@ Debug utilities help developers:
 - `probe-halfinteger-roundrect-full.js` - Full-shape dump: fast path (both spellings) vs generic 4-arc path
 - `probe-halfinteger-alpha-gap.js` - Semi-transparent variant junction gaps (shortened-edge hand-off)
 - `sweep-stroke1px-roundrect-hashes.js` - Parameter-grid render hasher for byte-level A/B of rasterizer changes (run at baseline and after a change, diff the JSONs)
+- `sweep-roundrect-uniform-radii-ab.js` - Seeded random A/B of two dists over every roundRect entry point, CTM class, clip kind, stroke width, opacity, dash and cap: every UNIFORM radii spelling (`r`, `[r]` ... `[r,r,r,r]`) must render byte-identically to the reference dist's scalar radius - the proof that per-corner radii left uniform rendering untouched (`diffs=0` passes)
 
 ### Circle Direct-Path Crisp Contract & Tier-0 Analysis
 

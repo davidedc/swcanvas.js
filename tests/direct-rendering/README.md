@@ -678,7 +678,7 @@ Test files use a parametrized naming scheme encoding test characteristics:
 |-------|-----------|--------|-------------|
 | Arc | `arcA` | `Rand`, `Deg90`, `Small` | Arc angle extent |
 | Arc | `quad` | `Rand` | Quadrant selection |
-| RoundedRect | `rrr` | `Rand`, `Mix`, `Lrg`, `Sm` | Corner radius |
+| RoundedRect | `rrr` | `Rand`, `Mix`, `Lrg`, `Sm`, `Corner` | Corner radius (`Corner`: per-corner radii lists) |
 
 ### Context Transform Suffixes
 
@@ -745,9 +745,12 @@ Tests are organized into five categories matching direct rendering shape types:
 - Crisp rendering depends on dimension/strokeWidth/center alignment
 
 #### Rounded Rectangles
-- Corner radius: small, medium, large, random
-- When radius=0, falls back to rectangle rendering
+- Corner radius: small, medium, large, random, or per-corner (`rrrCorner`: a radii list with
+  rounded and square corners mixed, HTML5 `roundRect()` semantics)
+- When every radius is 0, falls back to rectangle rendering
 - Complex crisp rendering rules for corners
+- Per-corner radii under a non-axis-aligned rotation take the generic path by design
+  (`allowPathBasedRendering: true` in that case)
 
 ---
 

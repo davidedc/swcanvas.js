@@ -115,6 +115,7 @@ class TestNameParser {
       'rrrLrg': 'Large Radius',
       'rrrRand': 'Random Radius',
       'rrrMix': 'Mixed Radius',
+      'rrrCorner': 'Per-Corner Radii',
 
       // Context Transformations
       'ctxTransFixed': 'Fixed Translation',

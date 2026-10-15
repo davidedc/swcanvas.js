@@ -718,14 +718,16 @@ Context2D dispatches to shape-specific renderer classes based on transform state
 
 ```
 Context2D                              # Orchestration and state management
-├── fillRect/strokeRect ─────────────→ RectOpsAA.*_AA_*()     [axis-aligned]
+├── strokeRect/fillStrokeRect ───────→ RectOpsAA.*_AA_*()     [axis-aligned]
 │                                    → RectOpsRot.*_Rot_*()   [rotated]
 ├── fillCircle/strokeCircle ─────────→ CircleOps.*()
 ├── strokeLine ──────────────────────→ LineOps.stroke_Any()
 ├── fillArc/outerStrokeArc ──────────→ ArcOps.*()
-└── fillRoundRect/strokeRoundRect ───→ RoundedRectOpsAA.*_AA_*()  [axis-aligned]
-                                     → RoundedRectOpsRot.*_Rot_*() [rotated]
+└── strokeRoundRect/fillStrokeRoundRect → RoundedRectOpsAA.*_AA_*()  [axis-aligned, per-corner radii]
+                                         → RoundedRectOpsRot.*_Rot_*() [rotated, uniform radius]
 ```
+
+Plain fills (`fillRect`, `fillRoundRect`, `fillStadium`) always take the generic path pipeline.
 
 ### Static Utility Classes
 
@@ -738,8 +740,8 @@ Context2D                              # Orchestration and state management
 | **CircleOps** | Circle fill and stroke (rotation-invariant) |
 | **LineOps** | Line stroke (Bresenham thin, polygon scan thick) |
 | **ArcOps** | Partial arc fill and stroke |
-| **RoundedRectOpsAA** | Axis-aligned rounded rectangle fill and stroke |
-| **RoundedRectOpsRot** | Rotated rounded rectangle fill and stroke |
+| **RoundedRectOpsAA** | Axis-aligned rounded rectangle stroke and fused fill+stroke (per-corner radii) |
+| **RoundedRectOpsRot** | Rotated rounded rectangle stroke and fused fill+stroke (uniform radius) |
 
 **Method naming convention**: `{operation}[Thickness]_{orientation}_{opacity}`
 - Orientation: `AA` (axis-aligned) or `Rot` (rotated)

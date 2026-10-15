@@ -375,6 +375,10 @@ class CanvasCompatibleContext2D {
         this._core.rect(x, y, w, h);
     }
 
+    roundRect(x, y, w, h, radii) {
+        this._core.roundRect(x, y, w, h, radii);
+    }
+
     arc(x, y, radius, startAngle, endAngle, counterclockwise = false) {
         this._core.arc(x, y, radius, startAngle, endAngle, counterclockwise);
     }
