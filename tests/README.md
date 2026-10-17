@@ -1,12 +1,12 @@
 # SWCanvas.js Test Suite
 
-This directory contains the comprehensive **modular test infrastructure** for SWCanvas, with 92 core tests + 157 visual tests + 85 direct rendering tests and cross-platform compatibility.
+This directory contains the comprehensive **modular test infrastructure** for SWCanvas, with 94 core tests + 157 visual tests + 85 direct rendering tests and cross-platform compatibility.
 
 ## Modular Test Architecture
 
 ```
 tests/
-├── core/                          # 92 individual core test files (001-072 + 3xx text + 4xx 3D)
+├── core/                          # 94 individual core test files (001-074 + 3xx text + 4xx 3D)
 │   ├── 001-surface-creation-valid.js
 │   ├── 015-alpha-blending-test.js  
 │   ├── 031-transform-matrix-order-dependency.js
@@ -61,7 +61,7 @@ npm run test:direct-rendering  # Runs 85 direct rendering path verification test
 
 ### Browser Tests
 1. Open `tests/browser/index.html` in a web browser (automatically runs all tests on page load)
-2. Automatically runs 92 modular core functionality tests from `/tests/core/` 
+2. Automatically runs 94 modular core functionality tests from `/tests/core/` 
 3. Automatically runs all 157 visual rendering tests with side-by-side HTML5 Canvas vs SWCanvas comparison
 4. Use interactive visual comparison tools for real-time testing
 5. Minimal example: Open `tests/browser/minimal-example.html` to see a minimal usage example
@@ -76,7 +76,7 @@ SWCanvas uses a **modular complementary dual test system** where individual test
 **Location**: `/tests/core/` (individual files) → `/tests/dist/core-functionality-tests.js` (concatenated)
 
 **Modular Structure**:
-- **92 individual test files** with descriptive names (001-072, plus the 3xx text and 4xx 3D ranges)
+- **94 individual test files** with descriptive names (001-074, plus the 3xx text and 4xx 3D ranges)
 - **Build-time concatenation** into single optimized file
 - **Smart test runner** automatically uses built version
 - **Development benefit**: No merge conflicts, focused editing
@@ -338,7 +338,7 @@ Add interactive tests to `tests/browser/index.html` for features requiring DOM i
 For architectural details about clipping systems and color handling, see ARCHITECTURE.md.
 
 ### Comprehensive Modular Test Coverage
-- **92 modular core tests** covering all API functionality with individual files
+- **94 modular core tests** covering all API functionality with individual files
 - **157 modular visual tests** covering all major Canvas2D features
 - **85 direct rendering tests** verifying optimized rendering path invocation
 - **Build-time concatenation** for optimal performance

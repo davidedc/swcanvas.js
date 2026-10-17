@@ -49,9 +49,9 @@ class PolygonFiller {
             }
         }
 
-        // Tier-0 rect clip (S3): clipMask is null here; clipRect clamps the scanline
-        // range (Y, via bounds) and each span (X) so the existing unclipped branches
-        // draw exactly the mask's visible pixels. Byte-identical (Stage-1 proof).
+        // Clip = clipMask AND clipRect (either may be null). clipRect clamps the
+        // scanline range (Y, via bounds) and each span (X); any clipMask is then
+        // still tested per pixel, so the pixels written are exactly mask ∧ rect.
         // Check if we can use direct rendering (opaque solid color with source-over)
         const canUseDirectRendering =
             paintSource instanceof Color &&
@@ -91,7 +91,7 @@ class PolygonFiller {
         const data32 = surface.data32;
         const width = surface.width;
         const clipBuffer = clipMask ? clipMask.buffer : null;
-        // Tier-0 rect clip: half-open [x0,x1)×[y0,y1); clamp span X and scanline Y.
+        // Clip rect: half-open [x0,x1)×[y0,y1); clamp span X and scanline Y.
         const clipX0 = clipRect ? clipRect.x0 : 0;
         const clipX1m1 = clipRect ? clipRect.x1 - 1 : (width - 1);
 
@@ -143,8 +143,8 @@ class PolygonFiller {
                     // / HTML5.
                     let startX = Math.max(0, Math.ceil(intersection.x - 0.5));
                     let endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
-                    // Tier-0 rect clip: clamp the span to the clip rect's X range;
-                    // clipBuffer is null so the unclipped write branch below runs.
+                    // Clip rect: clamp the span to the clip rect's X range; the
+                    // clipBuffer (if any) is still tested per pixel below.
                     if (startX < clipX0) startX = clipX0;
                     if (endX > clipX1m1) endX = clipX1m1;
 
@@ -214,7 +214,7 @@ class PolygonFiller {
         // Find bounding box for optimization
         const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
         let scanMinY = bounds.minY, scanMaxY = bounds.maxY;
-        if (clipRect) { // tier-0: only scanlines inside the clip rect's Y range
+        if (clipRect) { // only scanlines inside the clip rect's Y range
             if (clipRect.y0 > scanMinY) scanMinY = clipRect.y0;
             if (clipRect.y1 - 1 < scanMaxY) scanMaxY = clipRect.y1 - 1;
         }
@@ -382,8 +382,8 @@ class PolygonFiller {
         clipRect = null
     ) {
         if (intersections.length === 0) return;
-        // Tier-0 rect clip: clamp each span's X to the clip rect (clipMask is null;
-        // caller has already restricted Y to the rect). Byte-identical (Stage 1).
+        // Clip rect: clamp each span's X to the clip rect (the caller has already
+        // restricted Y to it); any clipMask is still tested per pixel.
         const clipX0 = clipRect ? clipRect.x0 : 0;
         const clipX1m1 = clipRect ? clipRect.x1 - 1 : (surface.width - 1);
 
@@ -902,12 +902,21 @@ class PolygonFiller {
      * Uses scanline algorithm identical to surface filling, but writes to 1-bit stencil buffer.
      * This centralizes clip buffer filling logic that was previously duplicated in Context2D.
      *
+     * With `bound`, only pixels inside that half-open device rect are written:
+     * scanlines outside [y0, y1) are never visited and every span is clamped to
+     * [x0, x1). Span membership is decided per pixel center from the same sorted
+     * intersections either way, so the bounded result is exactly the unbounded
+     * one ANDed with the rect — the path is just never rasterised where the rect
+     * would discard it (Context2D.clip passes its current clip rect here).
+     *
      * @param {ClipMask} clipMask - Target clip mask to render to
      * @param {Array} polygons - Array of polygons (each polygon is array of {x,y} points)
      * @param {string} fillRule - 'nonzero' or 'evenodd' winding rule
      * @param {Transform2D} transform - Transformation matrix to apply to polygons
+     * @param {{x0,y0,x1,y1}|null} [bound=null] - Optional half-open device rect,
+     *   pre-clamped to the mask; null = the whole mask
      */
-    static fillPolygonsToClipMask(clipMask, polygons, fillRule, transform) {
+    static fillPolygonsToClipMask(clipMask, polygons, fillRule, transform, bound = null) {
         if (polygons.length === 0) return;
 
         const width = clipMask.width;
@@ -926,9 +935,17 @@ class PolygonFiller {
             }
         }
 
-        // Clamp to clip mask bounds
+        // Clamp to clip mask bounds (and to the optional bound's rows)
         minY = Math.max(0, Math.floor(minY));
         maxY = Math.min(height - 1, Math.ceil(maxY));
+        let spanMinX = 0;
+        let spanMaxX = width - 1;
+        if (bound) {
+            if (bound.y0 > minY) minY = bound.y0;
+            if (bound.y1 - 1 < maxY) maxY = bound.y1 - 1;
+            spanMinX = bound.x0;
+            spanMaxX = bound.x1 - 1;
+        }
 
         // Process each scanline
         for (let y = minY; y <= maxY; y++) {
@@ -943,7 +960,7 @@ class PolygonFiller {
             intersections.sort((a, b) => a.x - b.x);
 
             // Fill spans to clip mask
-            PolygonFiller._fillClipMaskSpans(clipMask, y, intersections, fillRule, width);
+            PolygonFiller._fillClipMaskSpans(clipMask, y, intersections, fillRule, spanMinX, spanMaxX);
         }
     }
 
@@ -953,10 +970,11 @@ class PolygonFiller {
      * @param {number} y - Scanline y coordinate
      * @param {Array} intersections - Sorted intersections with winding info
      * @param {string} fillRule - 'evenodd' or 'nonzero'
-     * @param {number} width - Surface width for bounds clamping
+     * @param {number} minX - First writable column (0, or the bound's x0)
+     * @param {number} maxX - Last writable column, inclusive (width - 1, or the bound's x1 - 1)
      * @private
      */
-    static _fillClipMaskSpans(clipMask, y, intersections, fillRule, width) {
+    static _fillClipMaskSpans(clipMask, y, intersections, fillRule, minX, maxX) {
         if (intersections.length === 0) return;
 
         let windingNumber = 0;
@@ -991,8 +1009,8 @@ class PolygonFiller {
                 // while raster (drawImage/text) blits bounded by their own
                 // extent did not — leaving 1px "streaks" of erased raster
                 // content along the right edge of repainted regions.
-                const startX = Math.max(0, Math.ceil(intersection.x - 0.5));
-                const endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                const startX = Math.max(minX, Math.ceil(intersection.x - 0.5));
+                const endX = Math.min(maxX, Math.ceil(nextIntersection.x - 0.5) - 1);
 
                 for (let x = startX; x <= endX; x++) {
                     clipMask.setPixel(x, y, true); // Set pixel to visible

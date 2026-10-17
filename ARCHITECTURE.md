@@ -816,6 +816,28 @@ cat src/renderers/RoundedRectOpsRot.js >> dist/swcanvas.js
 cat src/renderers/RoundedRectOpsAA.js >> dist/swcanvas.js
 ```
 
+## Clip State: An Optional Immutable Mask AND a Rect
+
+The effective clip is `(_clipMask ?? all visible) AND (_clipRect ?? whole surface)`, the intersection of every `clip()` since the matching `save()`. It is held in two parts because nearly every real clip is an axis-aligned integer rect (4 ints), while a general clip needs a canvas-sized 1-bit `ClipMask`. The authoritative description is the CLIPPING header of `src/core/Context2D.js`.
+
+- **A rect `clip()`** is one whose device-space path is exactly an axis-aligned rect. `_detectAxisAlignedRect` returns the exact pixel set that path's mask would expose. Such a clip only intersects `_clipRect`. It never builds or touches a mask, whether or not one is installed.
+- **Any other `clip()`** rasterises its path into a fresh all-clipped `ClipMask`, and only inside the current `_clipRect`: `PolygonFiller.fillPolygonsToClipMask(..., bound)` yields path ∩ rect without a full-surface rect mask or a full-surface raster.
+  - It ANDs the previous mask into the fresh one over the rect's rows (`ClipMask.intersectWithRows`), then installs it.
+  - The rect stays, and keeps clamping draws.
+- **An installed mask is IMMUTABLE.** `clip()` swaps in a new mask instead of editing the old one. So `save()` shares the mask by reference, and `restore()` puts the reference back. Neither copies a bitmap.
+- **A draw gets the clip in one of two forms:**
+  - **The rect and the mask separately.** The renderer clamps its extent to the rect and tests the mask bit per pixel, which is exactly mask ∧ rect. This form is used only under source-over with no shadow (`_clipRectForDraw` / `_clipMaskForDraw`).
+  - **ONE combined mask** (`_combinedClipMask`). This form serves:
+    - the renderers whose only clip input is a buffer: `RectOpsAA.fillStroke_AA_Any`, `RectOpsRot`, `RoundedRectOpsRot`, `ArcOps`, and `LineOps`/`QuadScanOps`;
+    - `clearRect`;
+    - canvas-wide composite ops and shadows, whose passes read only the mask.
+- **The combined mask** is built on demand into a cache, `_combinedClip`, that belongs to the current (mask, rect) pair:
+  - every `clip()` drops it;
+  - `save()`/`restore()` carry it with the pair it was built from;
+  - it is never installed as `_clipMask`, because a rect would then turn into mask work for every later clip and save.
+- **Check once** (below) still holds: the rect is a bounds clamp, and the mask is the single per-pixel check.
+- **`Context2D._disableTier0Clip = true`** (tests only) switches `clip()` to the pure full-surface-mask model. That model is the byte-identity oracle that `tests/core/073` and `074` compare the rect + mask model against.
+
 ## Clipping Invariant: "Check Once, Check Correctly"
 
 SWCanvas enforces that every pixel write path checks clipping **EXACTLY ONCE**. This invariant prevents both security holes (missing checks) and performance waste (redundant checks).

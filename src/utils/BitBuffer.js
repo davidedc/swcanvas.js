@@ -34,9 +34,12 @@ class BitBuffer {
         this._numBytes = Math.ceil(this._numPixels / 8);
         this._defaultValue = defaultValue;
 
-        // Create buffer and initialize to default value
+        // Create buffer and initialize to default value. A fresh Uint8Array is
+        // already all 0s, so only the all-1s default needs a fill pass.
         this._buffer = new Uint8Array(this._numBytes);
-        this._initializeToDefault();
+        if (defaultValue === 1) {
+            this._initializeToDefault();
+        }
 
         // Make dimensions immutable
         Object.defineProperty(this, 'width', { value: width, writable: false });
@@ -143,6 +146,41 @@ class BitBuffer {
         // Perform bitwise AND on each byte
         for (let i = 0; i < this._numBytes; i++) {
             this._buffer[i] &= other._buffer[i];
+        }
+    }
+
+    /**
+     * Bitwise AND with another BitBuffer, restricted to the bytes that hold rows
+     * [y0, y1). Equal to a full and() ONLY when every bit of THIS buffer outside
+     * those rows is already 0 (0 AND anything stays 0) — the caller guarantees
+     * that; a buffer built all-0 and then written only inside the row range
+     * qualifies. The boundary bytes it touches may also hold pixels of the
+     * neighbouring rows (width need not be a multiple of 8); those bits are 0
+     * here by the same precondition, so ANDing them is harmless.
+     * @param {BitBuffer} other - Other BitBuffer to AND with (same dimensions)
+     * @param {number} y0 - First row (inclusive)
+     * @param {number} y1 - Last row (exclusive)
+     */
+    andRows(other, y0, y1) {
+        if (IS_DEBUG) {
+            if (!(other instanceof BitBuffer)) {
+                throw new Error('Argument must be a BitBuffer instance');
+            }
+            if (other._width !== this._width || other._height !== this._height) {
+                throw new Error('BitBuffer dimensions must match for AND operation');
+            }
+        }
+
+        const rowStart = Math.max(0, y0);
+        const rowEnd = Math.min(this._height, y1);
+        if (rowEnd <= rowStart) return;
+
+        const startByte = Math.floor((rowStart * this._width) / 8);
+        const endByte = Math.min(this._numBytes, Math.ceil((rowEnd * this._width) / 8));
+        const buffer = this._buffer;
+        const otherBuffer = other._buffer;
+        for (let i = startByte; i < endByte; i++) {
+            buffer[i] &= otherBuffer[i];
         }
     }
 

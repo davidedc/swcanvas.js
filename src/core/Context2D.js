@@ -1,20 +1,27 @@
 /**
- * STENCIL-BASED CLIPPING SYSTEM
+ * CLIPPING: AN OPTIONAL IMMUTABLE MASK AND AN ALWAYS-TRACKED RECT
  *
- * SWCanvas uses a 1-bit stencil buffer approach for memory-efficient clipping with
- * proper intersection semantics. This system matches HTML5 Canvas behavior exactly.
+ * The effective clip is (_clipMask ?? all visible) AND (_clipRect ?? whole
+ * surface) — the intersection of every clip() since the matching save(), as
+ * HTML5 Canvas defines it. It is split in two because nearly every real clip is
+ * an axis-aligned integer rect (4 ints), while a general clip needs a per-pixel
+ * mask (a canvas-sized bitmap: ClipMask, 1 bit per pixel, 1 = visible).
  *
- * Memory Layout:
- * - Each pixel is represented by 1 bit (1 = visible, 0 = clipped)
- * - Bits are packed into Uint8Array (8 pixels per byte)
- * - Memory usage: width × height ÷ 8 bytes (96.9% reduction vs RGBA coverage)
- * - Lazy allocation: only created when first clip() operation is performed
- *
- * Clipping Operations:
- * 1. First clip: Creates stencil buffer, renders clip path with 1s where path covers
- * 2. Subsequent clips: Renders to temp buffer, ANDs with existing stencil buffer
- * 3. Intersection semantics: Only pixels covered by ALL clips have bit = 1
- * 4. Save/restore: Stencil buffer is deep-copied during save() and restored
+ * - A clip() whose device-space path is exactly an axis-aligned rect
+ *   (_detectAxisAlignedRect) only intersects into _clipRect. It never builds,
+ *   reads or writes a mask, whether or not one is installed.
+ * - Any other clip() rasterises its path into a FRESH all-clipped mask, and only
+ *   inside the current _clipRect (the rect discards everything outside it
+ *   anyway); the previous mask is ANDed into the fresh one, which is then
+ *   installed. _clipRect stays set and keeps bounding every draw.
+ * - An installed mask is IMMUTABLE. clip() swaps in a new mask instead of
+ *   editing the old one, so save() shares the mask by reference and restore()
+ *   puts the reference back — no bitmap copy on either side.
+ * - A draw that can clamp its extent to the rect AND test the mask bit per pixel
+ *   gets both (_clipRectForDraw / _clipMaskForDraw), which is exactly
+ *   mask ∧ rect. A draw that takes ONE mask gets _combinedClipMask(): mask ∧ rect
+ *   built on demand into a cache that belongs to the current (mask, rect) pair
+ *   and is never installed as _clipMask.
  */
 
 /**
@@ -60,10 +67,11 @@ class Context2D {
     // Reset before each test, check after to verify direct rendering was used
     static _pathBasedRenderingUsed = false;
 
-    // Test-only escape hatch: when true, clip() always builds the legacy bitmask
-    // and never takes the tier-0 rect fast path. Lets a harness render the same
-    // scene both ways and assert the tier-0 path is byte-identical. Never set in
-    // production. (See plans/clipping-optimization.md §9 Stage 2.)
+    // Test-only oracle switch: when true, clip() runs the pure mask model — every
+    // clip, rect-shaped or not, becomes a full-surface mask ANDed with the whole
+    // prior clip, and no rect is tracked. Lets a harness render the same scene
+    // both ways and assert the rect + mask model is byte-identical to it. Never
+    // set in production. (See plans/clipping-optimization.md.)
     static _disableTier0Clip = false;
 
     /**
@@ -137,21 +145,20 @@ class Context2D {
         this._devCurrent = null; // current point (device space); null = no open subpath
         this._devSubStart = null; // current subpath start (device space)
 
-        // Stencil-based clipping system (only clipping mechanism)
-        this._clipMask = null; // ClipMask instance for 1-bit per pixel clipping
-
-        // Tier-0 rectangular-clip fast path (see plans/clipping-optimization.md §5).
-        // When the effective clip region is exactly an axis-aligned rectangle we
-        // track it analytically and skip the per-pixel bitmask entirely.
-        //   _clipRect  : { x0, y0, x1, y1 } device-space integer coords, half-open
-        //                [x0, x1) × [y0, y1), clamped to the surface; null = untracked.
-        //   _clipIsRect: true  ⇔ _clipRect describes the ENTIRE clip exactly
-        //                        (the bitmask need not be consulted).
-        //                false ⇔ non-rect clip in effect (bitmask is authoritative).
-        // NOTE (Stage 1): these are bookkeeping only — _clipMask remains the sole
-        // clip mechanism consulted by the renderers until Stage 2 wires them up.
+        // Clip state — see CLIPPING at the top of this file. Effective clip =
+        // (_clipMask ?? all visible) AND (_clipRect ?? whole surface).
+        //   _clipRect     : { x0, y0, x1, y1 } device-space integer coords, half-open
+        //                   [x0, x1) × [y0, y1), clamped to the surface; null = no
+        //                   rect bound. Replaced wholesale, never mutated.
+        //   _clipMask     : ClipMask or null. IMMUTABLE once installed: clip()
+        //                   installs a fresh mask rather than editing this one,
+        //                   because saved states share it by reference.
+        //   _combinedClip : cached _clipMask ∧ _clipRect as one ClipMask (see
+        //                   _combinedClipMask); null = not built. It belongs to the
+        //                   current pair: clip() drops it, save()/restore() carry it.
         this._clipRect = null;
-        this._clipIsRect = false;
+        this._clipMask = null;
+        this._combinedClip = null;
 
         // Cached state flags for direct rendering eligibility (performance optimization)
         this._noShadow = true; // Updated when shadow properties change
@@ -311,13 +318,11 @@ class Context2D {
             ]),
             fillStyle: this._fillStyle, // Paint sources are immutable, safe to share
             strokeStyle: this._strokeStyle, // Paint sources are immutable, safe to share
-            clipMask: this._clipMask ? this._clipMask.clone() : null, // Deep copy of clip mask
-            // Tier-0 rect state. _clipRect objects are immutable (replaced
-            // wholesale, never mutated in place), so the reference is safe to
-            // share across snapshots — no clone needed (Stage 3 will drop the
-            // clipMask clone above for the tier-0 case).
+            // Clip state: the mask, the rect and the combined-mask cache are all
+            // immutable once set, so the snapshot shares references — no copy.
+            clipMask: this._clipMask,
             clipRect: this._clipRect,
-            clipIsRect: this._clipIsRect,
+            combinedClip: this._combinedClip,
             lineWidth: this._lineWidth,
             lineJoin: this.lineJoin,
             lineCap: this.lineCap,
@@ -362,13 +367,12 @@ class Context2D {
         this._fillStyle = snapshot.fillStyle;
         this._strokeStyle = snapshot.strokeStyle;
 
-        // Restore clipMask (may be null)
-        this._clipMask = snapshot.clipMask;
-
-        // Restore tier-0 rect state (older snapshots predating this field restore
-        // to the no-tier-0 default).
-        this._clipRect = snapshot.clipRect !== undefined ? snapshot.clipRect : null;
-        this._clipIsRect = snapshot.clipIsRect !== undefined ? snapshot.clipIsRect : false;
+        // Restore the clip state as one unit: the combined-mask cache comes back
+        // with the very (mask, rect) pair it was built from, so a cache built
+        // after save() can never outlive its restore().
+        this._clipMask = snapshot.clipMask ?? null;
+        this._clipRect = snapshot.clipRect ?? null;
+        this._combinedClip = snapshot.combinedClip ?? null;
 
         this._lineWidth = snapshot.lineWidth;
         this.lineJoin = snapshot.lineJoin;
@@ -818,13 +822,12 @@ class Context2D {
         // a fill fast path without fresh benchmark evidence (tests/core pins this).
         // Direct rect machinery lives on in strokeRect/fillStrokeRect only.
         Context2D._markPathBasedRendering();
-        const tier0ClipRect = this._tier0ClipRect();
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: this._transform,
-            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
-            clipRect: tier0ClipRect,
+            clipMask: this._clipMaskForDraw(),
+            clipRect: this._clipRectForDraw(),
             fillStyle: this._fillStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
@@ -858,12 +861,12 @@ class Context2D {
         // solid runs only; the fallback honours lineDash (setLineDash support).
         if (this._canUseDirectRendering(this._strokeStyle) && this._lineDash.length === 0) {
             const t = this._transform;
-            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
-            // path; the rotated RectOpsRot branch materialises the bitmask on demand
-            // (see fillRect for the rationale). Within this branch _tier0ClipRect() =
-            // _clipIsRect ? _clipRect : null.
-            const tier0ClipRect = this._tier0ClipRect();
-            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
+            // The axis-aligned RectOpsAA arms take the clip rect and the mask
+            // separately (clamp to the rect, test the mask bits); the rotated
+            // RectOpsRot arm takes one buffer, the combined mask. This branch is
+            // source-over with no shadow, so the pair is (_clipRect, _clipMask).
+            const clipRect = this._clipRectForDraw();
+            const clip = this._clipBufferForDraw();
 
             // Fast access to pre-computed transform values
             const scaledW = width * t.scaleX;
@@ -898,7 +901,7 @@ class Context2D {
                             finalH,
                             this._strokeStyle,
                             clip,
-                            tier0ClipRect
+                            clipRect
                         );
                         return;
                     } else {
@@ -911,7 +914,7 @@ class Context2D {
                             this._strokeStyle,
                             strokeAlpha,
                             clip,
-                            tier0ClipRect
+                            clipRect
                         );
                         return;
                     }
@@ -926,7 +929,7 @@ class Context2D {
                             scaledLineWidth,
                             this._strokeStyle,
                             clip,
-                            tier0ClipRect
+                            clipRect
                         );
                         return;
                     } else {
@@ -940,14 +943,14 @@ class Context2D {
                             this._strokeStyle,
                             this.globalAlpha,
                             clip,
-                            tier0ClipRect
+                            clipRect
                         );
                         return;
                     }
                 }
             } else if (t.isUniformScale) {
-                // Rotated with uniform scale: use line-based stroke. Not tier-0-wired;
-                // materialises the bitmask on demand for a rect clip.
+                // Rotated with uniform scale: use line-based stroke. RectOpsRot takes
+                // one clip buffer, so it gets the combined mask (mask ∧ rect).
                 // The hairline rule reaches this branch through strokeAlpha alone:
                 // stroke_Rot_Any already routes lineWidth <= 1 to its 1px DDA and
                 // derives opaque-vs-alpha from the globalAlpha it is handed (the
@@ -963,7 +966,7 @@ class Context2D {
                     scaledLineWidth,
                     this._strokeStyle,
                     strokeAlpha,
-                    this._ensureClipBuffer()
+                    this._combinedClipBuffer()
                 );
                 return;
             }
@@ -977,13 +980,12 @@ class Context2D {
         rectPath.closePath();
 
         // Stroke the path using existing stroke infrastructure
-        const tier0ClipRect = this._tier0ClipRect();
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: this._transform,
-            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
-            clipRect: tier0ClipRect,
+            clipMask: this._clipMaskForDraw(),
+            clipRect: this._clipRectForDraw(),
             strokeStyle: this._strokeStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
@@ -1037,14 +1039,14 @@ class Context2D {
             this._lineDash.length === 0
         ) {
             const t = this._transform;
-            // Deliberately NOT tier-0-wired - the one AA rect-family arm left
-            // out: RectOpsAA.fillStroke_AA_Any's signature ends at clipBuffer,
-            // so a rect clip materialises the bitmask here (the single-purpose
-            // fillRect/strokeRect arms clamp extents instead). Wiring means
-            // threading the clipRect clamp through the fused fill+stroke
-            // composite; do it together with a benchmark-justified hot clipped
-            // caller (tier-0 design: plans/clipping-optimization.md).
-            const clip = this._ensureClipBuffer();
+            // The one AA rect-family arm that takes no clip rect:
+            // RectOpsAA.fillStroke_AA_Any's signature ends at clipBuffer (as does
+            // RectOpsRot.fillStroke_Rot_Any's), so both get the combined mask
+            // (mask ∧ rect) while the single-purpose strokeRect arms clamp extents
+            // instead. Taking the rect means threading the clamp through the
+            // fused fill+stroke composite; do it together with a
+            // benchmark-justified hot clipped caller (plans/clipping-optimization.md).
+            const clip = this._combinedClipBuffer();
 
             const hasFill = this._fillStyle.a > 0;
             const hasStroke = this._strokeStyle.a > 0 && this._lineWidth > 0;
@@ -1144,9 +1146,9 @@ class Context2D {
         const minY = Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y));
         const maxY = Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y));
 
-        // clearRect honours the clip; under the tier-0 mask-skip a rect clip keeps
-        // no bitmask, so materialise it on demand for the per-pixel test below.
-        const clipMask = this._ensureClipMask();
+        // clearRect honours the clip. Its per-pixel test below reads one mask, so
+        // it takes the combined mask (mask ∧ rect, built on demand).
+        const clipMask = this._combinedClipMask();
 
         // Handle simple axis-aligned case (no rotation/skew). Epsilon-ized via
         // the precomputed flags (raw b===0 && c===0 was the codebase's one
@@ -1266,11 +1268,11 @@ class Context2D {
         // solid runs only; the fallback honours lineDash (setLineDash support).
         if (this._canUseDirectRendering(this._strokeStyle) && this._lineDash.length === 0) {
             const t = this._transform;
-            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
-            // paths; the rotated branch materialises the bitmask on demand (see
-            // fillRect for the rationale).
-            const tier0ClipRect = this._tier0ClipRect();
-            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
+            // The axis-aligned RoundedRectOpsAA arms take the clip rect and the
+            // mask separately; the rotated branch takes the combined mask (see
+            // strokeRect).
+            const clipRect = this._clipRectForDraw();
+            const clip = this._clipBufferForDraw();
 
             // Rounded rects require uniform scale (non-uniform would make ellipses)
             if (t.isUniformScale) {
@@ -1301,7 +1303,7 @@ class Context2D {
                                 corners,
                                 this._strokeStyle,
                                 clip,
-                                tier0ClipRect
+                                clipRect
                             );
                         } else {
                             RoundedRectOpsAA.stroke1px_AA_Alpha(
@@ -1314,7 +1316,7 @@ class Context2D {
                                 this._strokeStyle,
                                 strokeAlpha,
                                 clip,
-                                tier0ClipRect
+                                clipRect
                             );
                         }
                     } else {
@@ -1329,7 +1331,7 @@ class Context2D {
                                 this._lineWidth,
                                 this._strokeStyle,
                                 clip,
-                                tier0ClipRect
+                                clipRect
                             );
                         } else {
                             RoundedRectOpsAA.strokeThick_AA_Alpha(
@@ -1343,7 +1345,7 @@ class Context2D {
                                 this._strokeStyle,
                                 this.globalAlpha,
                                 clip,
-                                tier0ClipRect
+                                clipRect
                             );
                         }
                     }
@@ -1369,7 +1371,7 @@ class Context2D {
                                 deviceCorners,
                                 this._strokeStyle,
                                 clip,
-                                tier0ClipRect
+                                clipRect
                             );
                         } else {
                             RoundedRectOpsAA.stroke1px_AA_Alpha(
@@ -1382,7 +1384,7 @@ class Context2D {
                                 this._strokeStyle,
                                 strokeAlpha,
                                 clip,
-                                tier0ClipRect
+                                clipRect
                             );
                         }
                     } else {
@@ -1397,7 +1399,7 @@ class Context2D {
                                 scaledLineWidth,
                                 this._strokeStyle,
                                 clip,
-                                tier0ClipRect
+                                clipRect
                             );
                         } else {
                             RoundedRectOpsAA.strokeThick_AA_Alpha(
@@ -1411,7 +1413,7 @@ class Context2D {
                                 this._strokeStyle,
                                 this.globalAlpha,
                                 clip,
-                                tier0ClipRect
+                                clipRect
                             );
                         }
                     }
@@ -1433,7 +1435,7 @@ class Context2D {
                         scaledLineWidth,
                         this._strokeStyle,
                         strokeAlpha,
-                        this._ensureClipBuffer()
+                        this._combinedClipBuffer()
                     );
                     return;
                 }
@@ -1561,11 +1563,11 @@ class Context2D {
             this._lineDash.length === 0
         ) {
             const t = this._transform;
-            // Tier-0 rect clip → clamp extent + clipBuffer=null on the axis-aligned
-            // paths; the rotated branch materialises the bitmask on demand (see
-            // fillRect for the rationale).
-            const tier0ClipRect = this._tier0ClipRect();
-            const clip = tier0ClipRect ? null : this._ensureClipBuffer();
+            // The axis-aligned RoundedRectOpsAA arms take the clip rect and the
+            // mask separately; the rotated branch takes the combined mask (see
+            // strokeRect).
+            const clipRect = this._clipRectForDraw();
+            const clip = this._clipBufferForDraw();
 
             const hasFill = this._fillStyle.a > 0;
             const hasStroke = this._strokeStyle.a > 0 && this._lineWidth > 0;
@@ -1591,7 +1593,7 @@ class Context2D {
                         hasStroke ? this._strokeStyle : null,
                         this.globalAlpha,
                         clip,
-                        tier0ClipRect
+                        clipRect
                     );
                     return;
                 }
@@ -1615,7 +1617,7 @@ class Context2D {
                         hasStroke ? this._strokeStyle : null,
                         this.globalAlpha,
                         clip,
-                        tier0ClipRect
+                        clipRect
                     );
                     return;
                 } else if (typeof corners === 'number') {
@@ -1632,7 +1634,7 @@ class Context2D {
                         hasFill ? this._fillStyle : null,
                         hasStroke ? this._strokeStyle : null,
                         this.globalAlpha,
-                        this._ensureClipBuffer()
+                        this._combinedClipBuffer()
                     );
                     return;
                 }
@@ -1802,13 +1804,12 @@ class Context2D {
         // Mark path-based rendering for testing (fill() has no direct rendering currently)
         Context2D._markPathBasedRendering();
 
-        const tier0ClipRect = this._tier0ClipRect();
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: opTransform,
-            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
-            clipRect: tier0ClipRect,
+            clipMask: this._clipMaskForDraw(),
+            clipRect: this._clipRectForDraw(),
             fillStyle: this._fillStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
@@ -1849,13 +1850,12 @@ class Context2D {
         // Direct rendering available via dedicated methods: strokeCircle(), strokeRect(), etc.
         Context2D._markPathBasedRendering();
 
-        const tier0ClipRect = this._tier0ClipRect();
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: opTransform,
-            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
-            clipRect: tier0ClipRect,
+            clipMask: this._clipMaskForDraw(),
+            clipRect: this._clipRectForDraw(),
             strokeStyle: this._strokeStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
@@ -2077,40 +2077,92 @@ class Context2D {
     }
 
     /**
-     * The tier-0 clip rect to hand a renderer for the CURRENT draw, or null if
-     * the draw must use the bitmask (_clipMask) instead.
+     * The clip rect to hand a renderer for the CURRENT draw, paired with
+     * _clipMaskForDraw(): the context's _clipRect when the draw may take the rect
+     * and the mask separately, else null (the mask then carries the rect too).
      *
-     * Tier-0 (clamp draw extent to the rect + pass clipBuffer=null) is byte-
-     * identical to the bitmask ONLY when the clip's sole effect is to restrict
-     * which pixels are written. That holds for source-over (and the other
-     * per-pixel Porter-Duff ops that touch only source-covered pixels) with no
-     * shadow. It does NOT hold for:
+     * A renderer that clamps its extent to the rect and tests the mask bit per
+     * pixel draws exactly mask ∧ rect ONLY when the clip's sole effect is to
+     * restrict which pixels the draw writes. That holds for source-over (and the
+     * other per-pixel Porter-Duff ops that touch only source-covered pixels) with
+     * no shadow. It does NOT hold for:
      *   - canvas-wide composite ops (copy / destination-atop / source-in /
      *     source-out / destination-in): these also CLEAR pixels the source
-     *     doesn't cover, so the clip must confine that erase — a real mask.
-     *   - shadows: the blurred shadow spreads beyond the shape and must be
-     *     clipped too; the mask handles that uniformly.
+     *     doesn't cover, in a whole-surface pass that reads only the mask;
+     *   - shadows: the blurred shadow spreads beyond the shape, and its
+     *     composite (ShadowPipeline) reads only the mask.
      * We gate on the cached _isSourceOver (⊂ non-canvas-wide) + _noShadow, which
-     * is conservative, correct, and covers 100% of Fizzygum's clipped traffic.
-     * Evaluated per-draw because composite/shadow can change after clip().
+     * is conservative, correct, and covers all of Fizzygum's clipped traffic.
+     * Evaluated per draw because composite/shadow can change after clip().
      * @private
      */
-    _tier0ClipRect() {
-        return this._clipIsRect && this._isSourceOver && this._noShadow ? this._clipRect : null;
+    _clipRectForDraw() {
+        return this._isSourceOver && this._noShadow ? this._clipRect : null;
+    }
+
+    /**
+     * The clip mask to hand a renderer for the CURRENT draw, paired with
+     * _clipRectForDraw(): the installed mask itself when the draw takes the rect
+     * separately, else the combined mask (_combinedClipMask). Null = nothing to
+     * test per pixel.
+     * @private
+     */
+    _clipMaskForDraw() {
+        return this._isSourceOver && this._noShadow ? this._clipMask : this._combinedClipMask();
+    }
+
+    /**
+     * As _clipMaskForDraw, as the raw buffer (or null) for the renderers that
+     * take a `Uint8Array` clip argument.
+     * @private
+     */
+    _clipBufferForDraw() {
+        const mask = this._clipMaskForDraw();
+        return mask ? mask.buffer : null;
+    }
+
+    /**
+     * The WHOLE clip as one mask: _clipMask ∧ _clipRect. For the consumers that
+     * cannot take the rect separately — renderers whose only clip input is a
+     * buffer (RectOpsAA.fillStroke_AA_Any, RectOpsRot, RoundedRectOpsRot, ArcOps,
+     * LineOps/QuadScanOps), clearRect's per-pixel test, and every draw that
+     * _clipRectForDraw() refuses (canvas-wide composite, shadow). With no rect it
+     * is the installed mask itself (null = no clip at all). Otherwise it is built
+     * on first use into _combinedClip, a SEPARATE field: installing it as
+     * _clipMask would turn every later rect clip() into mask work and make every
+     * later save() share a canvas-sized mask that a rect could describe.
+     * @private
+     */
+    _combinedClipMask() {
+        const rect = this._clipRect;
+        if (rect === null) return this._clipMask;
+        if (this._combinedClip === null) {
+            const combined = Context2D._rectToClipMask(rect, this.surface.width, this.surface.height);
+            // Outside the rect's rows the rect mask is all clipped already.
+            if (this._clipMask !== null) combined.intersectWithRows(this._clipMask, rect.y0, rect.y1);
+            this._combinedClip = combined;
+        }
+        return this._combinedClip;
+    }
+
+    /**
+     * As _combinedClipMask, as the raw buffer (or null).
+     * @private
+     */
+    _combinedClipBuffer() {
+        const mask = this._combinedClipMask();
+        return mask ? mask.buffer : null;
     }
 
     /**
      * Build a ClipMask whose visible pixels are EXACTLY the half-open rect
      * [x0,x1) × [y0,y1). Because `_clipRect` is defined as the exact pixel set
      * `fillPolygonsToClipMask` would expose for that rect, this reproduces the
-     * bitmask a rect `clip()` would have built — byte-for-byte. Used only to
-     * lazily materialise a tier-0 rect for a draw path that still reads the
-     * bitmask (see `_ensureClipMask`).
+     * mask a rect `clip()` would build under the pure mask model — byte-for-byte.
      * @private
      */
     static _rectToClipMask(rect, width, height) {
-        const mask = new ClipMask(width, height);
-        mask.clipAll();
+        const mask = new ClipMask(width, height, false);
         for (let y = rect.y0; y < rect.y1; y++) {
             for (let x = rect.x0; x < rect.x1; x++) {
                 mask.setPixel(x, y, true);
@@ -2120,42 +2172,14 @@ class Context2D {
     }
 
     /**
-     * Return the ClipMask for a draw that CANNOT take the tier-0 rect fast path
-     * (rotated/rounded/circle/arc primitives, canvas-wide composite ops, shadows,
-     * or a bitmask clip), materialising it on demand. Under the tier-0 mask-skip,
-     * a rect `clip()` keeps `_clipRect` but leaves `_clipMask` null; the first
-     * such draw builds the mask from the rect here. Wired tier-0 draws never call
-     * this (they consult `_tier0ClipRect()` and pass `clipBuffer=null`), so the
-     * all-tier-0 Fizzygum workload never allocates a mask. Returns null when
-     * there is no clip at all.
-     * @private
-     */
-    _ensureClipMask() {
-        if (this._clipMask === null && this._clipRect !== null) {
-            this._clipMask = Context2D._rectToClipMask(this._clipRect, this.surface.width, this.surface.height);
-        }
-        return this._clipMask;
-    }
-
-    /**
-     * As `_ensureClipMask`, but returns the raw clip buffer (or null) for the
-     * renderers that take a `Uint8Array` clip argument.
-     * @private
-     */
-    _ensureClipBuffer() {
-        const mask = this._ensureClipMask();
-        return mask ? mask.buffer : null;
-    }
-
-    /**
-     * Tier-0 clip detection: does this flattened path collapse to a single
+     * Rect clip detection: does this flattened path collapse to a single
      * axis-aligned rectangle in device space? If so, return the exact set of
-     * pixels the bitmask path WOULD expose, as a half-open integer rect
+     * pixels the path's mask WOULD expose, as a half-open integer rect
      * { x0, y0, x1, y1 } clamped to the surface. Otherwise return null.
      *
      * BYTE-IDENTICAL CONTRACT — the returned rect must expose EXACTLY the pixels
      * that PolygonFiller.fillPolygonsToClipMask would set for this path, so a
-     * downstream tier-0 draw is pixel-identical to a bitmask-clipped draw:
+     * draw clamped to the rect is pixel-identical to one tested against that mask:
      *   - X (per _fillClipMaskSpans): a span [left, right) sets columns
      *     [ceil(left − 0.5), ceil(right − 0.5)).
      *   - Y (per _findPolygonIntersections' half-open `y >= minY && y < maxY`
@@ -2199,8 +2223,8 @@ class Context2D {
 
         // Every edge (incl. the wrap-around) must be axis-aligned: exactly one of
         // dx/dy is zero. A diagonal edge means a rotated rect, a triangle, or a
-        // bowtie — all conservatively rejected to the bitmask path (their fill
-        // region is not their bounding box, so tier-0 would not be byte-identical).
+        // bowtie — all conservatively rejected to the mask path (their fill
+        // region is not their bounding box, so a rect would not be byte-identical).
         for (let i = 0; i < 4; i++) {
             const a = v[i],
                 b = v[(i + 1) % 4];
@@ -2241,11 +2265,9 @@ class Context2D {
     }
 
     /**
-     * Enhanced clipping support with stencil buffer intersection
-     *
-     * Implements HTML5 Canvas-compatible clipping with proper intersection semantics.
-     * Each clip() operation creates a new clip region that intersects with any existing
-     * clipping regions.
+     * Intersect the clip with a path (HTML5 Canvas clip() semantics: the new clip
+     * is the old one AND the path's fill region). See CLIPPING at the top of this
+     * file for the rect + immutable-mask model this maintains.
      *
      * @param {Path2D} path - Optional path to clip with (uses current path if not provided)
      * @param {string} rule - Fill rule: 'nonzero' (default) or 'evenodd'
@@ -2262,45 +2284,50 @@ class Context2D {
 
         // Flatten path.
         const polygons = PathFlattener.flattenPath(pathToClip);
+        const width = this.surface.width;
+        const height = this.surface.height;
 
-        // Tier-0 detection — evaluated BEFORE we mutate the clip state below, since
-        // it depends on whether the PRIOR clip was itself a pure rect.
-        const detectedRect = Context2D._detectAxisAlignedRect(
-            polygons,
-            opTransform,
-            this.surface.width,
-            this.surface.height
-        );
-        const priorWasPureRectOrEmpty = (this._clipMask === null && this._clipRect === null) || this._clipIsRect;
-
-        if (detectedRect && priorWasPureRectOrEmpty && !Context2D._disableTier0Clip) {
-            // TIER-0: the composed clip is exactly an axis-aligned rect. Track it
-            // and SKIP the bitmask build entirely — wired renderers consult
-            // _clipRect and pass clipBuffer=null (byte-identical, since _clipRect
-            // exposes exactly the pixels the mask would). Any draw that still needs
-            // a real bitmask (rotated/rounded/circle/arc primitives, canvas-wide
-            // composite ops, shadows) materialises it on demand via _ensureClipMask().
-            // The prior clip was itself a pure rect (priorWasPureRectOrEmpty),
-            // already captured in _clipRect, so no prior mask region is lost.
-            this._clipRect = this._clipRect ? Context2D._intersectRect(this._clipRect, detectedRect) : detectedRect;
-            this._clipIsRect = true;
-            this._clipMask = null; // freed / never built — the allocation win
-        } else {
-            // BITMASK path. If the PRIOR clip was a tier-0 rect (mask skipped),
-            // materialise it first so the intersection below preserves that region.
-            this._ensureClipMask();
-
-            const tempClipMask = new ClipMask(this.surface.width, this.surface.height);
-            tempClipMask.clipAll(); // Start with all pixels clipped
-            PolygonFiller.fillPolygonsToClipMask(tempClipMask, polygons, clipRule, opTransform);
-            if (this._clipMask) {
-                this._clipMask.intersectWith(tempClipMask); // AND with existing
-            } else {
-                this._clipMask = tempClipMask; // first clip
-            }
-            this._clipIsRect = false;
-            this._clipRect = null; // bitmask authoritative; no bbox tracked
+        if (Context2D._disableTier0Clip) {
+            // Test oracle — the pure mask model: a full-surface mask of the path,
+            // ANDed with the whole prior clip, and no rect tracked.
+            const mask = new ClipMask(width, height, false);
+            PolygonFiller.fillPolygonsToClipMask(mask, polygons, clipRule, opTransform);
+            const prior = this._combinedClipMask();
+            if (prior !== null) mask.intersectWith(prior);
+            this._clipMask = mask;
+            this._clipRect = null;
+            this._combinedClip = null;
+            return;
         }
+
+        const detectedRect = Context2D._detectAxisAlignedRect(polygons, opTransform, width, height);
+
+        if (detectedRect) {
+            // RECT clip: intersect into the rect and leave the mask alone, whether
+            // or not one is installed. detectedRect exposes exactly the pixels the
+            // path's mask would, and the half-open intersection is exact, so
+            // mask ∧ (rect ∩ detectedRect) is the HTML5 intersection.
+            this._clipRect = this._clipRect ? Context2D._intersectRect(this._clipRect, detectedRect) : detectedRect;
+        } else {
+            // NON-RECT clip: rasterise the path into a fresh all-clipped mask, but
+            // only inside the current rect — path ∩ rect, exactly what ANDing the
+            // path with the rect's own mask would give, without building either at
+            // full size. Then AND the previous mask INTO the fresh one and install
+            // it: the previous mask is never written, because saved states share it.
+            const rect = this._clipRect;
+            const mask = new ClipMask(width, height, false);
+            PolygonFiller.fillPolygonsToClipMask(mask, polygons, clipRule, opTransform, rect);
+            if (this._clipMask !== null) {
+                // Outside the rect's rows the fresh mask is all clipped already.
+                if (rect !== null) mask.intersectWithRows(this._clipMask, rect.y0, rect.y1);
+                else mask.intersectWith(this._clipMask);
+            }
+            this._clipMask = mask;
+            // _clipRect stays: the mask lies inside it, and it keeps clamping draws.
+        }
+
+        // The combined-mask cache belonged to the previous (mask, rect) pair.
+        this._combinedClip = null;
 
         // clip() does not auto-stroke the path (per HTML5 Canvas spec)
     }
@@ -2323,8 +2350,6 @@ class Context2D {
         // Mark path-based rendering for testing (drawImage() has no direct rendering currently)
         Context2D._markPathBasedRendering();
 
-        const tier0ClipRect = this._tier0ClipRect();
-
         // Set up rasterizer operation
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
@@ -2337,12 +2362,11 @@ class Context2D {
                 this._transform.e,
                 this._transform.f
             ]),
-            // Tier-0 rect clip: hand the renderer the rect (it clamps its extent)
-            // and null the mask; otherwise the bitmask path is unchanged. (Gated
-            // to source-over + no-shadow — see _tier0ClipRect; here _noShadow is
-            // still true, shadows are handled by the ShadowPipeline wrapper.)
-            clipMask: tier0ClipRect ? null : this._ensureClipMask(),
-            clipRect: tier0ClipRect,
+            // The rect and the mask separately (drawImage clamps its extent to the
+            // rect and tests each pixel's bit), or the combined mask alone when the
+            // composite op or a shadow rules the split out — see _clipRectForDraw.
+            clipMask: this._clipMaskForDraw(),
+            clipRect: this._clipRectForDraw(),
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
@@ -2651,9 +2675,9 @@ class Context2D {
             (hasFill || hasStroke)
         ) {
             // Use unified method for coordinated fill+stroke rendering (no gaps).
-            // Tier-0 rect clip → clamp extent + clipBuffer=null (see fillRect).
-            const tier0ClipRect = this._tier0ClipRect();
-            const clipBuffer = tier0ClipRect ? null : this._ensureClipBuffer();
+            // Clip rect and mask separately (see strokeRect).
+            const clipRect = this._clipRectForDraw();
+            const clipBuffer = this._clipBufferForDraw();
             CircleOps.fillStroke_Any(
                 this.surface,
                 center.x,
@@ -2664,7 +2688,7 @@ class Context2D {
                 hasStroke ? strokePaintSource : null,
                 this.globalAlpha,
                 clipBuffer,
-                tier0ClipRect
+                clipRect
             );
         } else {
             // Fallback to sequential rendering for gradients, patterns, or non-source-over
@@ -2727,15 +2751,6 @@ class Context2D {
 
         // Get paint source
         const paintSource = this._fillStyle;
-        // Deliberately NOT tier-0-wired (unlike fillCircle/strokeCircle): ArcOps'
-        // 1px-stroke writers bounds-check inside shared inline preprocessor
-        // templates (SET_OPAQUE_ARC_FAST_CLIPPED / BLEND_ALPHA_ARC_FAST_CLIPPED)
-        // and stroke1px_Opaq_Exact hoists its bounds check out of the loop, so a
-        // clipRect there means changing codegen, not a mechanical clamp — and no
-        // Fizzygum call site draws arcs directly today. A rect clip materialises
-        // the bitmask here. Wire the whole ArcOps family together when a hot
-        // clipped caller appears.
-        const clipBuffer = this._ensureClipBuffer();
 
         // Check for direct rendering conditions. _noShadow: the direct
         // renderers cannot draw a ctx shadow - an active shadow routes to the
@@ -2744,6 +2759,15 @@ class Context2D {
         const isSourceOver = this.globalCompositeOperation === 'source-over';
 
         if (isColor && isSourceOver && this._noShadow) {
+            // ArcOps takes no clip rect (unlike CircleOps): its 1px-stroke writers
+            // bounds-check inside shared inline preprocessor templates
+            // (SET_OPAQUE_ARC_FAST_CLIPPED / BLEND_ALPHA_ARC_FAST_CLIPPED) and
+            // stroke1px_Opaq_Exact hoists its bounds check out of the loop, so a
+            // clipRect there means changing codegen, not a mechanical clamp — and
+            // no Fizzygum call site draws arcs directly today. So the whole ArcOps
+            // family gets the combined mask (mask ∧ rect); wire the rect into the
+            // family as a whole, when a hot clipped caller appears.
+            const clipBuffer = this._combinedClipBuffer();
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
             if (isOpaque) {
                 ArcOps.fill_Opaq(
@@ -2824,8 +2848,6 @@ class Context2D {
 
         // Get paint source
         const paintSource = this._strokeStyle;
-        // Deliberately NOT tier-0-wired — see fillArc for the ArcOps-family reason.
-        const clipBuffer = this._ensureClipBuffer();
 
         // Check for direct rendering conditions
         const isColor = paintSource instanceof Color;
@@ -2835,6 +2857,8 @@ class Context2D {
 
         // _noShadow: see fillArc - shadows only render via the generic fallback.
         if (isColor && isSourceOver && isButtCap && this._noShadow && this._lineDash.length === 0) {
+            // ArcOps takes one clip buffer: the combined mask — see fillArc.
+            const clipBuffer = this._combinedClipBuffer();
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0;
             const is1pxStroke = Math.abs(scaledLineWidth - 1) < STROKE_1PX_TOLERANCE;
             // HAIRLINE (sub-pixel) stroke — see the class-level note at the top
@@ -2957,8 +2981,6 @@ class Context2D {
         // Get paint sources
         const fillPaintSource = this._fillStyle;
         const strokePaintSource = this._strokeStyle;
-        // Deliberately NOT tier-0-wired — see fillArc for the ArcOps-family reason.
-        const clipBuffer = this._ensureClipBuffer();
 
         // Check for unified direct rendering
         const fillIsColor = fillPaintSource instanceof Color;
@@ -2979,7 +3001,8 @@ class Context2D {
             this._lineDash.length === 0 &&
             (hasFill || hasStroke)
         ) {
-            // Use unified direct rendering
+            // Use unified direct rendering. ArcOps takes one clip buffer: the
+            // combined mask — see fillArc.
             ArcOps.fillStrokeOuter_Any(
                 this.surface,
                 center.x,
@@ -2991,7 +3014,7 @@ class Context2D {
                 hasFill ? fillPaintSource : null,
                 hasStroke ? strokePaintSource : null,
                 this.globalAlpha,
-                clipBuffer
+                this._combinedClipBuffer()
             );
             return;
         }
@@ -3101,17 +3124,17 @@ class Context2D {
             isColor && (paintSource.a < 255 || this.globalAlpha < 1.0) && isSourceOver && this._noShadow;
 
         if (isOpaqueColor || isSemiTransparentColor) {
-            // Tier-0 rect clip → clamp extent + clipBuffer=null (mirrors
-            // fillRoundRect); the path fallback below consults the context's
-            // own clip state, so nothing to forward there.
-            const tier0ClipRect = this._tier0ClipRect();
-            const clipBuffer = tier0ClipRect ? null : this._ensureClipBuffer();
+            // Clip rect and mask separately (see strokeRect); the path fallback
+            // below consults the context's own clip state, so nothing to forward
+            // there.
+            const clipRect = this._clipRectForDraw();
+            const clipBuffer = this._clipBufferForDraw();
             if (isOpaqueColor) {
                 // Direct rendering 1: 32-bit packed writes for opaque colors
-                CircleOps.fill_Opaq(surface, cx, cy, radius, paintSource, clipBuffer, tier0ClipRect);
+                CircleOps.fill_Opaq(surface, cx, cy, radius, paintSource, clipBuffer, clipRect);
             } else {
                 // Direct rendering 2: Bresenham scanlines with per-pixel alpha blending
-                CircleOps.fill_Alpha(surface, cx, cy, radius, paintSource, this.globalAlpha, clipBuffer, tier0ClipRect);
+                CircleOps.fill_Alpha(surface, cx, cy, radius, paintSource, this.globalAlpha, clipBuffer, clipRect);
             }
         } else {
             // Gradients/patterns/non-source-over: generic pipeline via an
@@ -3154,11 +3177,13 @@ class Context2D {
         // it is actually for: gradient and pattern strokes at any width.
         const isHairlineStroke = lineWidth > 0 && lineWidth < 1 && !is1pxStroke;
         const isSourceOver = this.globalCompositeOperation === 'source-over';
-        // Tier-0 rect clip → clamp extent + clipBuffer=null on the direct paths
-        // (mirrors strokeRoundRect); the path fallback consults the context's
-        // own clip state directly, so the pair below is simply unused there.
-        const tier0ClipRect = this._tier0ClipRect();
-        const clipBuffer = tier0ClipRect ? null : this._ensureClipBuffer();
+        // Both direct arms below run only under source-over with no shadow, and
+        // take the clip rect and the mask separately (see strokeRect). The path
+        // fallback consults the context's own clip state, so off those arms the
+        // pair is never fetched (fetching it there could build a combined mask).
+        const directArmsEligible = isSourceOver && this._noShadow;
+        const clipRect = directArmsEligible ? this._clipRectForDraw() : null;
+        const clipBuffer = directArmsEligible ? this._clipBufferForDraw() : null;
 
         // Direct rendering 1: 1px strokes using Bresenham algorithm.
         // _noShadow on both branches: shadows only render via the generic
@@ -3172,7 +3197,7 @@ class Context2D {
         ) {
             const isOpaque = paintSource.a === 255 && this.globalAlpha >= 1.0 && !isHairlineStroke;
             if (isOpaque) {
-                CircleOps.stroke1px_Opaq(this.surface, cx, cy, radius, paintSource, clipBuffer, tier0ClipRect);
+                CircleOps.stroke1px_Opaq(this.surface, cx, cy, radius, paintSource, clipBuffer, clipRect);
                 return;
             } else if (paintSource.a > 0) {
                 CircleOps.stroke1px_Alpha(
@@ -3183,7 +3208,7 @@ class Context2D {
                     paintSource,
                     isHairlineStroke ? this.globalAlpha * lineWidth : this.globalAlpha,
                     clipBuffer,
-                    tier0ClipRect
+                    clipRect
                 );
                 return;
             }
@@ -3200,16 +3225,7 @@ class Context2D {
         ) {
             const isOpaqueThick = paintSource.a === 255 && this.globalAlpha >= 1.0;
             if (isOpaqueThick) {
-                CircleOps.strokeThick_Opaq(
-                    this.surface,
-                    cx,
-                    cy,
-                    radius,
-                    lineWidth,
-                    paintSource,
-                    clipBuffer,
-                    tier0ClipRect
-                );
+                CircleOps.strokeThick_Opaq(this.surface, cx, cy, radius, lineWidth, paintSource, clipBuffer, clipRect);
             } else {
                 CircleOps.strokeThick_Alpha(
                     this.surface,
@@ -3220,7 +3236,7 @@ class Context2D {
                     paintSource,
                     this.globalAlpha,
                     clipBuffer,
-                    tier0ClipRect
+                    clipRect
                 );
             }
             return;
@@ -3252,15 +3268,6 @@ class Context2D {
      * @param {number} uy2 - User-space end y, for the generic fallback
      */
     _strokeLineDirect(x1, y1, x2, y2, lineWidth, paintSource, ux1, uy1, ux2, uy2) {
-        // Deliberately NOT tier-0-wired (unlike fillCircle/strokeCircle):
-        // LineOps.stroke_Any decides thin-vs-thick INSIDE the dispatcher, and its
-        // thick non-axis-aligned branch delegates to QuadScanOps, which has no
-        // clipRect concept — a partial wiring would silently drop the clip on
-        // that branch (the exact bug class 6b20dcc fixed in the roundRect
-        // fallbacks). A rect clip materialises the bitmask here. Wire LineOps +
-        // QuadScanOps together when a hot clipped caller appears.
-        const clipBuffer = this._ensureClipBuffer();
-
         // Direct rendering only supports butt line caps (open shapes need cap handling)
         const isButtCap = this.lineCap === 'butt';
 
@@ -3304,6 +3311,17 @@ class Context2D {
             this._noShadow &&
             this._lineDash.length === 0 &&
             isButtCap;
+
+        // LineOps takes no clip rect (unlike CircleOps): LineOps.stroke_Any
+        // decides thin-vs-thick INSIDE the dispatcher, and its thick
+        // non-axis-aligned branch delegates to QuadScanOps, which has no clipRect
+        // concept — a partial wiring would silently drop the clip on that branch
+        // (the exact bug class 6b20dcc fixed in the roundRect fallbacks). So it
+        // gets the combined mask (mask ∧ rect); wire the rect into LineOps and
+        // QuadScanOps together, when a hot clipped caller appears. stroke_Any declines
+        // (draws nothing, reads no clip) unless one of the two flags is set, so
+        // the combined mask is only fetched for a draw that can use it.
+        const clipBuffer = isOpaqueColor || isSemiTransparentColor ? this._combinedClipBuffer() : null;
 
         // Try direct rendering via LineOps. ⚠ `lineWidth` itself must stay
         // untouched — the gradient/pattern fallback below strokes at it.

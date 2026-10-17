@@ -291,7 +291,7 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `fillCircle` | isUniformScale (pre-gate, correct external-path fallback) | Color, source-over, `_noShadow` | non-Color · composite · shadow | generic via external `SWPath2D` |
 | `strokeCircle` | isUniformScale (pre-gate) | Color, a>0, source-over, `_noShadow` | non-Color · a=0 · composite · shadow | generic via external `SWPath2D` (honours cap/join/dash) |
 | `fillStrokeCircle` | isUniformScale (pre-gate) | both Color, source-over, `_noShadow`, something to draw | either non-Color · composite · shadow · nothing | sequential `_fillCircleDirect` + `_strokeCircleDirect` (still direct dispatchers) |
-| `fillArc` | isUniformScale (pre-gate) | Color, source-over, `_noShadow` | non-Color · composite · shadow (a=0 → early return, §3 Paint Alpha) | generic via external `SWPath2D`; never tier-0-clipped |
+| `fillArc` | isUniformScale (pre-gate) | Color, source-over, `_noShadow` | non-Color · composite · shadow (a=0 → early return, §3 Paint Alpha) | generic via external `SWPath2D`; the direct arm takes the combined clip mask, never the rect separately |
 | `outerStrokeArc` | isUniformScale (pre-gate) | Color, a>0, source-over, lineCap 'butt', `_noShadow` | non-Color · a=0 · composite · round/square cap · shadow | generic via external `SWPath2D` (honours the cap) |
 | `fillOuterStrokeArc` | isUniformScale (pre-gate) | both Color, source-over, lineCap 'butt', `_noShadow`, something to draw | either paint non-Color · composite · cap · shadow | sequential generic via external `SWPath2D` (both halves) |
 | `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt', `_noShadow` | non-Color · composite · round/square cap · shadow | generic via external `SWPath2D` (honours cap/dash; HTML5 anisotropic width under non-uniform CTM); alpha/CTM/clip never gate |
@@ -299,10 +299,10 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `strokeText` | — | — | ALWAYS throws | — |
 | `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer). SAMPLING is its own two-arm dispatch: NEAREST-NEIGHBOR iff the draw does not resample — axis-aligned AND effective sample step = 1 (per-device-pixel source step `invA*xScale`/`invD*yScale`, where CTM scale and src/dst rect ratio COMPOSE) — else BILINEAR; `imageSmoothingEnabled=false` (per HTML5: boolean-coerced, save/restored, both API layers) forces NN for every draw |
 
-Clip state is NOT a dispatch condition anywhere: no clip → raw fills; tier-0 rect clip → clamped
-extents (where wired — `fillStrokeRect`, all `*_Rot_*` arms, `ArcOps` and `LineOps` always
-materialise the bitmask instead, a perf loss only); path clip → per-pixel bitmask test INSIDE the
-direct renderers.
+Clip state is NOT a dispatch condition anywhere. With no clip, the renderers do raw fills. A
+clip rect means clamped extents where the rect is wired. `fillStrokeRect`, all `*_Rot_*` arms,
+`ArcOps` and `LineOps` take ONE combined mask (mask ∧ rect) instead, which costs speed only. A
+path clip means a per-pixel mask test INSIDE the direct renderers, on top of the rect clamp.
 
 ---
 
@@ -396,8 +396,8 @@ QuadScanOps.fillQuad() ───────────► SpanOps.fill_Opaq / 
 
 ## 5. Clipping TO Support (Respects Active Clip Mask)
 
-| Shape                   | Clipping TO Support | Bitmask Method            | Tier-0 rect clip (no bitmask) |
-|-------------------------|---------------------|---------------------------|-------------------------------|
+| Shape                   | Clipping TO Support | Bitmask Method            | Clip rect clamp (rect passed separately) |
+|-------------------------|---------------------|---------------------------|------------------------------------------|
 | Rectangle (stroke, fused) | YES               | clipBuffer per pixel      | YES                           |
 | RoundedRect (stroke, fused) | YES             | clipBuffer per pixel      | YES (stroke, fused fillStroke)  |
 | Circle (all)            | YES                 | clipBuffer per pixel      | YES (fill, 1px + thick stroke, fused fillStroke) |
@@ -406,9 +406,9 @@ QuadScanOps.fillQuad() ───────────► SpanOps.fill_Opaq / 
 
 All shapes take a `clipBuffer` parameter passed from Context2D to their respective *Ops methods. Plain
 rect/roundRect/stadium FILLS are not in this table: they run on the generic pipeline, which handles
-both the tier-0 clipRect and the bitmask itself.
+both the clipRect and the mask itself.
 
-**Tier-0 rect clip**: when the active clip collapses to a single axis-aligned rect, wired entry points skip the bitmask entirely — they consult `Context2D._tier0ClipRect()` and pass the rect down as a `clipRect` parameter; the renderer clamps its row/span/pixel extents to it (defaults = surface bounds, so unclipped output is byte-identical by construction). The byte-identical contract lives at `Context2D._tier0ClipRect`'s doc comment; equivalence is pinned by `tests/core/049` (RoundedRect) and `tests/core/051` (Circle). ⚠ `SpanOps` does NOT clamp — callers must keep spans inside the surface AND the clip rect (`tests/core/052` pins the off-surface containment contract for the fused circle path).
+**Clip rect and mask (§9 entry 18)**: the effective clip is an optional immutable mask AND an always-tracked rect (`ARCHITECTURE.md` "Clip State"). Under source-over with no shadow, wired entry points get both parts separately, through `Context2D._clipRectForDraw()` and `_clipBufferForDraw()`. The renderer clamps its row, span and pixel extents to the rect and tests the mask bit per pixel. With no rect, the defaults are the surface bounds, so unclipped output is byte-identical by construction. With a rect clip alone the mask is null, and the renderer skips the bit test entirely. Unwired arms, and every draw under a canvas-wide composite op or a shadow, get one combined mask (`_combinedClipBuffer()`). The contract lives at `Context2D._clipRectForDraw`'s doc comment. Equivalence is pinned by `tests/core/049` (RoundedRect), `051` (Circle), `073` (every draw kind under mask + rect, against the `_disableTier0Clip` pure-mask oracle) and `074` (save/restore with a shared mask and the combined-mask cache). ⚠ `SpanOps` does NOT clamp — callers must keep spans inside the surface AND the clip rect (`tests/core/052` pins the off-surface containment contract for the fused circle path).
 
 ---
 
@@ -1058,6 +1058,53 @@ current consumers:
    Pins: `tests/core/067` (the contract on all five entry points), `071` (direct-arm
    invariants), `072` (clipped and clipping); visual 210-212; the `rrrCorner` direct-rendering
    cases.
+18. **DONE (2026-10-17): the clip is an optional IMMUTABLE mask AND an always-tracked rect,
+   and a rect clip never touches the mask.** Asked for by Fizzygum's rounded-window clip, which cost
+   +7 % (dpr 1) and +12 % (dpr 2) of its suite time. Four costs drove it:
+   - A rect clip under an installed mask took the mask path: a canvas-sized allocation, two
+     fills, a rect raster and a canvas-sized AND.
+   - A non-rect clip after a rect materialised the rect as a canvas-sized mask, then rasterised
+     the WHOLE path.
+   - `save()` deep-cloned the mask.
+   - Draws under a mask lost the rect clamp.
+
+   The model now (`ARCHITECTURE.md` "Clip State"):
+   - A rect `clip()` only intersects `_clipRect`.
+   - A non-rect `clip()` rasterises its path only inside the rect, into a fresh mask, and ANDs
+     the old mask into it over the rect's rows.
+   - Installed masks are immutable and shared by reference across save/restore.
+   - Under source-over with no shadow, a draw gets the rect and the mask separately. Otherwise it
+     gets one combined mask, cached per (mask, rect) pair. Every `clip()` drops the cache, and
+     save/restore carry it with its pair.
+
+   Byte identity is pinned against the `_disableTier0Clip` pure-mask oracle:
+   - `tests/core/073` covers every draw entry; Fizzygum's corner pattern, 1920x880 included;
+     mask/rect sequences under evenodd and nonzero; rotated, off-surface and empty rects; nine
+     composite ops; and shadows.
+   - `tests/core/074` covers restore exactness at every depth, the stale combined-mask trap,
+     and shared-mask immutability.
+   - All 888 renders of 073/074 also equal the pre-change bundle (60e7e3e), unminified and
+     minified.
+   - Fault planting caught ten seeded defects. Among them: a stale cache across `clip()` or
+     `restore()`, an installed mask mutated in place, a rect clip replacing instead of
+     intersecting, an off-by-one row-ranged AND and an off-by-one bound clamp.
+
+   MEASURED:
+   - Fizzygum's suite with its rounded-window clip on: +0.16 % (dpr 1) / +1.87 % (dpr 2) busy
+     time, down from +7 % / +12 %. Every one of its 972 shots per run is identical to the
+     pre-change engine, with the clip on and off.
+   - Pattern micro-bench (4 corner pieces x 10 children under a radius-8 outline clip,
+     interleaved old/new): -99.3 % (dpr 1) / -99.4 % (dpr 2) with corner-sized damage, and
+     -69 % to -80 % with quadrant-sized damage.
+   - Rect-only save/clip/fill/restore: unchanged (0.97-1.00x).
+   - Unclipped families: within noise. In-process interleaved checks give 0.993-1.009x. The
+     benchmark-session pairs (circle 42 configs 1.003x geomean, rect 7 configs 1.012x) ran
+     under external load, so they bound the change rather than measure it.
+
+   Residual, accepted: the buffer-only arms (entry 13) and `clearRect` still allocate one
+   canvas-sized combined mask per (mask, rect) state they draw under. That is a cache now, never
+   installed. The "fused" bench rows show it: 1.5 ms vs 0.25 ms per corner scene at dpr 1.
+   Giving those arms the rect stays entry 13's decision.
 
 ---
 
@@ -1187,6 +1234,9 @@ corners, 1px-alpha junction exactness over every mix of rounded and square corne
 containment, quarter turns against the generic path as oracle, dispatch) and 072 clipping
 in both directions (tier-0 === bitmask with no leaks; a roundRect clip === its fill).
 The direct-rendering cases carry a `rrrCorner` radius facet for per-corner radii.
+The clip model (§9 entry 18) adds two: 073 every draw kind under mask + rect against the
+`_disableTier0Clip` pure-mask oracle (Fizzygum's corner pattern, mask/rect sequences, composite
+ops, shadows), and 074 save/restore exactness with a shared mask and the combined-mask cache.
 
 ### 11.3 Optional Future Edge Case Tests
 

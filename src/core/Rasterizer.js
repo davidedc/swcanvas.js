@@ -56,9 +56,12 @@ class Rasterizer {
             globalAlpha: params.globalAlpha !== undefined ? params.globalAlpha : 1.0,
             transform: params.transform || Transform2D.IDENTITY,
             clipMask: params.clipMask || null, // Stencil-based clipping
-            // Tier-0 rectangular clip (S3): { x0, y0, x1, y1 } half-open device
-            // ints, or null. When set, clipMask is null and the renderer clamps
-            // its draw extent to this rect instead of per-pixel bit-testing.
+            // Rect part of the clip: { x0, y0, x1, y1 } half-open device ints, or
+            // null. The effective clip is clipMask AND clipRect (either may be
+            // null): renderers clamp their draw extent to the rect and test the
+            // mask bit per pixel. Context2D only splits the clip this way for
+            // source-over without shadow; otherwise clipRect is null and
+            // clipMask carries the whole clip (see Context2D._clipRectForDraw).
             clipRect: params.clipRect || null,
             fillStyle: params.fillStyle || null,
             strokeStyle: params.strokeStyle || null,
@@ -651,10 +654,10 @@ class Rasterizer {
             Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y))
         );
 
-        // Tier-0 rect clip (S3): clamp the iteration extent to the clip rect and
-        // draw unconditionally (clipMask is null in this case). _clipRect is the
-        // half-open [x0,x1)×[y0,y1) set of visible pixels — byte-identical to the
-        // bitmask, which the inner loop would otherwise reject pixel-by-pixel.
+        // Rect part of the clip: clamp the iteration extent to the clip rect (the
+        // half-open [x0,x1)×[y0,y1) set of pixels it lets through). Any mask is
+        // still tested per pixel in the loop below, so the pixels drawn are
+        // exactly mask ∧ rect.
         const clipRect = this._currentOp.clipRect;
         if (clipRect) {
             if (clipRect.x0 > minX) minX = clipRect.x0;

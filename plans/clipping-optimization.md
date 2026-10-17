@@ -1,18 +1,20 @@
 # Clipping Optimisation Plan
 
-**Status**: STAGES 1–3 LANDED (refreshed 2026-08-13; validated GO 2026-07-07). The §5–6
-design shipped via `6b20dcc`/`277e8e3`/`7414c35`/`af9af84` — tier-0 rect clip detection,
-clamped extents on the wired arms, and the mask-skip. What remains OPEN is §9 Stage 4
-(Cohen-Sutherland endpoint clipping for 1px strokes in `LineOps` + the `CircleOps`
-bbox hoist), still gated on profiling showing 1px strokes hot, and Stage 5's optional
-items. The 2026-08-13 dispatch-audit close-out re-reviewed the tier-0-UNWIRED arms
-(`RectOpsRot`, `RoundedRectOpsRot`, `ArcOps`, `LineOps`, `QuadScanOps`,
-`RectOpsAA.fillStroke_AA_Any`) and left them standing with in-code notes at every
-dispatch site — wire only with a benchmark-justified hot clipped caller
-(`DIRECT-RENDERING-SUMMARY.MD` §9 entry 13). Historical validation data: the consumer
-profiling campaign found 100.000% of clips are axis-aligned integer rects (§8.5), and
-sequenced the drawImage debug-log removal + fast path first (both since landed
-consumer-side).
+**Status**: STAGES 1–3 LANDED (validated GO 2026-07-07), and the design is EXTENDED (2026-10-17).
+- **The model now:**
+  - The clip is an optional IMMUTABLE mask AND an always-tracked rect, and a rect clip never touches the mask.
+  - A non-rect clip is rasterised only inside the rect.
+  - `save()` shares the mask by reference.
+  - A draw gets the rect and the mask separately, or one combined mask from a cache. See `DIRECT-RENDERING-SUMMARY.MD` §9 entry 18 and `ARCHITECTURE.md` "Clip State".
+- **Superseded sections:**
+  - §5.1–5.2: "a rect clip under a mask takes the bitmask path", "`_clipRect = null` after a bitmask clip", and `_clipIsRect`.
+  - §5.4: the bbox derived from the mask. The rect now bounds every mask by construction.
+  - §6.6: "deep-clone when !clipIsRect".
+- **Still OPEN:**
+  - §9 Stage 4: Cohen-Sutherland endpoint clipping for 1px strokes in `LineOps`, and the `CircleOps` bbox hoist. Still gated on profiling showing 1px strokes hot.
+  - Stage 5's optional items.
+- **Arms that take one combined mask instead of the rect:** `RectOpsRot`, `RoundedRectOpsRot`, `ArcOps`, `LineOps`, `QuadScanOps` and `RectOpsAA.fillStroke_AA_Any`. Each has an in-code note at its dispatch site. Wire one only with a benchmark-justified hot clipped caller (`DIRECT-RENDERING-SUMMARY.MD` §9 entry 13).
+- **Historical validation data:** the consumer profiling campaign found 100.000% of clips are axis-aligned integer rects (§8.5). That held until Fizzygum's rounded-window clip, the trigger for entry 18.
 
 **Date**: 2026-05-23 (workload validation added 2026-07-07)
 

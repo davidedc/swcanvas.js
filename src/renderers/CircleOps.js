@@ -98,9 +98,10 @@ class CircleOps {
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
 
-        // Tier-0 rect clip bounds: with no clipRect the defaults are the surface
-        // bounds, so unclipped rendering below is byte-identical by construction
-        // (clipBuffer is null on the tier-0 path — see Context2D._tier0ClipRect).
+        // Clip rect bounds: with no clipRect the defaults are the surface bounds, so
+        // rendering without one is byte-identical by construction. Any clipBuffer
+        // is still tested per pixel (by SpanOps), so the pixels written are
+        // exactly mask ∧ rect (see Context2D._clipRectForDraw).
         const cx0 = clipRect ? clipRect.x0 : 0;
         const cy0 = clipRect ? clipRect.y0 : 0;
         const cx1 = clipRect ? clipRect.x1 : width;

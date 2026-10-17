@@ -46,8 +46,8 @@ class RectOpsAA {
 
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
 
-        // Tier-0 rect clip: clamp each edge's write extent + row/column guard to the
-        // clip rect (already within surface bounds), skip the per-pixel bit test.
+        // Clip rect: clamp each edge's write extent + row/column guard to the clip
+        // rect (already within surface bounds); any clipBuffer is still tested.
         const cx0 = clipRect ? clipRect.x0 : 0;
         const cy0 = clipRect ? clipRect.y0 : 0;
         const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
@@ -182,7 +182,8 @@ class RectOpsAA {
         const data32 = surface.data32;
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
 
-        // Tier-0 rect clip: clamp per-pixel guards to the clip rect, skip the bit test.
+        // Clip rect: clamp per-pixel guards to the clip rect; any clipBuffer is
+        // still tested.
         const cx0 = clipRect ? clipRect.x0 : 0;
         const cy0 = clipRect ? clipRect.y0 : 0;
         const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
@@ -262,7 +263,8 @@ class RectOpsAA {
             g = color.g,
             b = color.b;
 
-        // Tier-0 rect clip: clamp per-pixel guards to the clip rect, skip the bit test.
+        // Clip rect: clamp per-pixel guards to the clip rect; any clipBuffer is
+        // still tested.
         const cx0 = clipRect ? clipRect.x0 : 0;
         const cy0 = clipRect ? clipRect.y0 : 0;
         const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
@@ -374,9 +376,9 @@ class RectOpsAA {
         const data32 = surface.data32;
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
 
-        // Tier-0 rect clip: clamp the write extent to the clip rect (already within
-        // surface bounds) and skip the per-pixel bit test — the rect exposes exactly
-        // the mask's set pixels, so this is byte-identical. clipBuffer is null then.
+        // Clip rect: clamp the write extent to the clip rect (already within surface
+        // bounds); any clipBuffer is still tested per pixel, so the pixels written
+        // are exactly mask ∧ rect. With no clipBuffer each row is a plain run.
         const cx0 = clipRect ? clipRect.x0 : 0;
         const cy0 = clipRect ? clipRect.y0 : 0;
         const cx1 = clipRect ? clipRect.x1 : surfaceWidth;
@@ -449,7 +451,8 @@ class RectOpsAA {
             g = color.g,
             b = color.b;
 
-        // Tier-0 rect clip: clamp the write extent to the clip rect, skip the bit test.
+        // Clip rect: clamp the write extent to the clip rect; any clipBuffer is
+        // still tested per pixel.
         const cx0 = clipRect ? clipRect.x0 : 0;
         const cy0 = clipRect ? clipRect.y0 : 0;
         const cx1 = clipRect ? clipRect.x1 : surfaceWidth;

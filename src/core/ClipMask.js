@@ -15,11 +15,13 @@ class ClipMask {
      * Create a ClipMask
      * @param {number} width - Surface width in pixels
      * @param {number} height - Surface height in pixels
+     * @param {boolean} [visible=true] - Initial state of every pixel: true = all
+     *   visible (no clipping), false = all clipped (the blank a clip() rasterises
+     *   its path into — one zeroed allocation instead of a fill of 1s then 0s)
      */
-    constructor(width, height) {
+    constructor(width, height, visible = true) {
         // BitBuffer validates parameters and handles bit manipulation
-        // Default to 1 (no clipping by default)
-        this._bitBuffer = new BitBuffer(width, height, 1);
+        this._bitBuffer = new BitBuffer(width, height, visible ? 1 : 0);
 
         // Make dimensions immutable
         Object.defineProperty(this, 'width', { value: width, writable: false });
@@ -92,6 +94,25 @@ class ClipMask {
         }
 
         this._bitBuffer.and(other._bitBuffer);
+    }
+
+    /**
+     * Intersect with another clip mask over rows [y0, y1) only. Exact (equal to
+     * intersectWith) when every pixel of THIS mask outside those rows is already
+     * clipped — e.g. a mask built all-clipped and rasterised only inside a rect
+     * spanning those rows. See BitBuffer.andRows.
+     * @param {ClipMask} other - Other clip mask to intersect with
+     * @param {number} y0 - First row (inclusive)
+     * @param {number} y1 - Last row (exclusive)
+     */
+    intersectWithRows(other, y0, y1) {
+        if (IS_DEBUG) {
+            if (!(other instanceof ClipMask)) {
+                throw new Error('Argument must be a ClipMask instance');
+            }
+        }
+
+        this._bitBuffer.andRows(other._bitBuffer, y0, y1);
     }
 
     /**
