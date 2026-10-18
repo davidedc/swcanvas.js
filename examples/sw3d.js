@@ -1097,6 +1097,80 @@
         }
 
         /**
+         * Line segments one pixel wide, into a colour target, depth-tested
+         * against (but not written to) a depth buffer: rain streaks, wires,
+         * debug lines. Each segment is clipped to the near plane and blended
+         * over the target by `alpha`. Drawn after resolve(), they take no
+         * fog or outline.
+         *
+         * @param {Object} target - Surface or {width, height, data32}
+         * @param {DepthBuffer} depthBuffer - the scene's depth
+         * @param {Object} segs - {count, positions: Float32Array (6 per
+         *   segment: its two ends, world), colors: Uint32Array (packed, one
+         *   per segment)}
+         * @param {Object} [options]
+         * @param {number} [options.alpha=1] - opacity
+         * @returns {number} pixels drawn
+         */
+        function drawSegments(target, depthBuffer, segs, options) {
+            var o = options || {};
+            var alpha = o.alpha === undefined ? 1 : o.alpha;
+            var ia = Math.round(Math.max(0, Math.min(1, alpha)) * 256), ib = 256 - ia;
+            var out = target.data32, D = depthBuffer.data, W = width, H = height, m = glView;
+            var P = segs.positions, C = segs.colors;
+            var drawn = 0;
+            for (var s = 0; s < segs.count; s++) {
+                var k = s * 6;
+                var ax = m[0] * P[k] + m[1] * P[k + 1] + m[2] * P[k + 2] + m[3];
+                var ay = m[4] * P[k] + m[5] * P[k + 1] + m[6] * P[k + 2] + m[7];
+                var az = m[8] * P[k] + m[9] * P[k + 1] + m[10] * P[k + 2] + m[11];
+                var bx = m[0] * P[k + 3] + m[1] * P[k + 4] + m[2] * P[k + 5] + m[3];
+                var by = m[4] * P[k + 3] + m[5] * P[k + 4] + m[6] * P[k + 5] + m[7];
+                var bz = m[8] * P[k + 3] + m[9] * P[k + 4] + m[10] * P[k + 5] + m[11];
+                var sxa, sya, iza, sxb, syb, izb;
+                if (orthographic) {
+                    sxa = cx + ax * orthoScale; sya = cy - ay * orthoScale; iza = orthoFar + az;
+                    sxb = cx + bx * orthoScale; syb = cy - by * orthoScale; izb = orthoFar + bz;
+                } else {
+                    // clip to the near plane (in front: -z >= znear)
+                    var inA = -az >= znear, inB = -bz >= znear;
+                    if (!inA && !inB) continue;
+                    if (!inA || !inB) {
+                        var t = (-znear - az) / (bz - az);
+                        var cxp = ax + (bx - ax) * t, cyp = ay + (by - ay) * t;
+                        if (!inA) { ax = cxp; ay = cyp; az = -znear; } else { bx = cxp; by = cyp; bz = -znear; }
+                    }
+                    iza = -1 / az; sxa = cx + ax * focal * iza; sya = cy - ay * focal * iza;
+                    izb = -1 / bz; sxb = cx + bx * focal * izb; syb = cy - by * focal * izb;
+                }
+                // pixel centres along the longer axis; 1/z is linear in screen space
+                var dx = sxb - sxa, dy = syb - sya;
+                var n = Math.max(1, Math.ceil(Math.max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy)));
+                if (n > 4 * (W + H)) continue; // a segment through the camera's plane: skip
+                var c = C[s], cr = c & 0xff, cg = (c >>> 8) & 0xff, cb = (c >>> 16) & 0xff;
+                var last = -1;
+                for (var j = 0; j <= n; j++) {
+                    var u = j / n;
+                    var x = Math.floor(sxa + dx * u), y = Math.floor(sya + dy * u);
+                    if (x < 0 || y < 0 || x >= W || y >= H) continue;
+                    var i = y * W + x, iz = iza + (izb - iza) * u;
+                    if (i === last || iz <= D[i]) continue; // each pixel once (steps can land twice)
+                    last = i;
+                    if (ia >= 256) out[i] = c;
+                    else {
+                        var d = out[i];
+                        out[i] = (0xff000000 |
+                            ((((d >>> 16) & 0xff) * ib + cb * ia + 128) >> 8) << 16 |
+                            ((((d >>> 8) & 0xff) * ib + cg * ia + 128) >> 8) << 8 |
+                            (((d & 0xff) * ib + cr * ia + 128) >> 8)) >>> 0;
+                    }
+                    drawn++;
+                }
+            }
+            return drawn;
+        }
+
+        /**
          * The affine map from THIS engine's camera space to `light`'s screen
          * space (pixel x, pixel y, depth value), for resolve()'s shadow test.
          * `light` must be an orthographic engine; both views must be set.
@@ -1132,6 +1206,7 @@
             drawTriMesh: drawTriMesh,
             drawSprites: drawSprites,
             drawDome: drawDome,
+            drawSegments: drawSegments,
             shadowTransformTo: shadowTransformTo
         };
     }

@@ -25,7 +25,9 @@
  *   - drawDome paints a field on a sphere around the camera where it reaches
  *     the threshold, from the far side of the sphere, only on empty pixels;
  *   - resolve's surface option shades flagged entries per pixel from the
- *     surface point and the scene behind it, with no outline at their edges.
+ *     surface point and the scene behind it, with no outline at their edges;
+ *   - drawSegments draws a 1-pixel line in front of the scene and not
+ *     behind it, blends by alpha, and clips at the near plane.
  * Writes examples/3d-trimesh.png (a small toon scene) for eyeballing.
  *
  * Usage: node examples/3d-trimesh-node.js [output.png]   (exit 0 = passed)
@@ -378,6 +380,32 @@ console.log('sky dome OK');
     assert.strictEqual(ring, 0, 'no outline where the surface meets the scene behind it');
 }
 console.log('surface shading OK');
+
+// ---- line segments (rain streaks) ------------------------------------------------------------
+{
+    // the quad at z = 0, seen from z = 5; a vertical segment in front of it (z = 1) and one behind (z = -1)
+    clearAll();
+    engine.setView(SW3D.lookAt([0, 0, 5], [0, 0, 0], [0, 1, 0]));
+    engine.drawTriMesh(idTarget, depth, quadFront, null, { mode: 'id' });
+    surface.data32.fill(BLACK);
+    const RED = engine.packColor(255, 0, 0);
+    const segs = (a, b) => ({ count: 1, positions: new Float32Array([...a, ...b]), colors: new Uint32Array([RED]) });
+    let n = engine.drawSegments(surface, depth, segs([0.1, -0.5, 1], [0.1, 0.5, 1]));
+    assert.ok(n >= 15, `a segment in front of the quad is drawn (${n} px)`);
+    assert.strictEqual(engine.drawSegments(surface, depth, segs([0.1, -0.5, -1], [0.1, 0.5, -1])), 0, 'one behind it is hidden');
+    let column = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (surface.data32[y * W + x] === RED) column = Math.max(column, x);
+    assert.ok(n <= 30, `one pixel wide (${n} px)`);
+    // blending: half of red over black
+    surface.data32.fill(BLACK);
+    engine.drawSegments(surface, depth, segs([0.1, -0.5, 1], [0.1, 0.5, 1]), { alpha: 0.5 });
+    assert.deepStrictEqual(rgbAt(column, H >> 1), [128, 0, 0], 'alpha 0.5 blends half the colour');
+    // through the near plane: the part in front is drawn
+    surface.data32.fill(BLACK);
+    n = engine.drawSegments(surface, depth, segs([0.1, -0.2, 4], [0.1, -0.2, 6]));
+    assert.ok(n > 0, `a segment crossing the near plane is clipped, not dropped (${n} px)`);
+}
+console.log('segments OK');
 
 // ---- picture --------------------------------------------------------------------------------
 const PW = 320, PH = 200;
