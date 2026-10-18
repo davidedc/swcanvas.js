@@ -94,7 +94,7 @@ Witness and picture for SW3D's second path, made for large or animated meshes fr
 - **Deferred shading in software:** `drawTriMesh(..., {mode: 'id'})` writes `(faceId << 6) | quantized N·L` per pixel through `Triangle3DOps.fillTriangleZ` (the id is just the "colour"). `SW3D.resolve` then runs once per pixel, like a fragment shader, doing:
   - a palette lookup with a lit and a shadow tone, which gives toon shading, and, on a spherical world, an optional third tone for its night side;
   - a shadow-map test;
-  - outlines on id and depth edges, optionally fading with distance (`palette.noDepthEdges` keeps depth edges out of a group, e.g. foliage made of cards);
+  - outlines on id and depth edges, optionally wider than a pixel and fading with distance (`palette.noDepthEdges` keeps depth edges out of a group, e.g. foliage made of cards);
   - linear or exponential-squared fog;
   - a background colour per row.
 - **Shadow maps:** an orthographic engine (`projection: 'orthographic'`) draws depth from the light (`mode: 'depth'`, usually `cull: 'front'`), and `engine.shadowTransformTo(light)` maps camera space to the light's map.
@@ -103,7 +103,7 @@ Witness and picture for SW3D's second path, made for large or animated meshes fr
 - **Surfaces shaded per pixel (water):** `resolve`'s `surface` option takes palette entries to shade with a function instead of the palette, given the camera-space points of the surface and of the scene behind it (from a copy of the depth buffer made before the surfaces were drawn), so shallow water, foam at the shore and moving patterns can be worked out per pixel. Fog applies as usual; surface pixels take no outline, and their neighbours see through them.
 - **Sky dome:** `engine.drawDome` paints a thresholded field (clouds) mapped on a sphere around the camera onto the empty pixels, after `resolve`, at the cost of one bilinear sample per pixel.
 
-**Usage:** `node examples/3d-trimesh-node.js [output.png]`. It asserts orientation and culling, mirrored models, the id encoding, resolve's palette / night side / background / outline / fog / fading, a cast shadow, the normal cone, near clipping, sprites (mask, levels, cull, depth, push, bounding sphere, `noDepthEdges`), the sky dome and surface shading, then writes a small toon scene to `examples/3d-trimesh.png`.
+**Usage:** `node examples/3d-trimesh-node.js [output.png]`. It asserts orientation and culling, mirrored models, the id encoding, resolve's palette / night side / background / outline and its width / fog / fading, a cast shadow, the normal cone, near clipping, sprites (mask, levels, cull, depth, push, bounding sphere, `noDepthEdges`), the sky dome and surface shading, then writes a small toon scene to `examples/3d-trimesh.png`.
 
 This path drives a software-rendered port of a full WebGL game (a 380k-triangle planet in clusters, skinned characters, toon shading, shadows and outlines) at 60 fps at 640×360 in Chrome.
 

@@ -133,6 +133,11 @@ assert.deepStrictEqual(rgbAt(W >> 1, H >> 1), [200, 180, 60], 'lit face -> lit c
 let inkCount = 0;
 for (let i = 0; i < W * H; i++) if (surface.data32[i] === INK) inkCount++;
 assert.ok(inkCount > 40, `silhouette outline drawn (${inkCount} px)`);
+// a wider outline: each edge pixel also marks the 2 before it in its row and column
+SW3D.resolve(surface, ids, depth, engine, { palette, background: SKY, outline: { color: INK, width: 3 } });
+let wideInk = 0;
+for (let i = 0; i < W * H; i++) if (surface.data32[i] === INK) wideInk++;
+assert.ok(wideInk > inkCount * 2.5 && wideInk < inkCount * 3.5, `outline width 3 (${wideInk} px, against ${inkCount})`);
 // night on a spherical world: the lit quad (world z = 0) seen from a sphere centred at z = -10
 // has the light below its horizon for dir -z, above it for +z
 SW3D.resolve(surface, ids, depth, engine, { palette: night, background: SKY, night: { center: [0, 0, -10], dir: [0, 0, -1], below: 0 } });
@@ -154,7 +159,7 @@ for (let i = 0; i < W * H; i++) {
 assert.ok(halfInk > 40, `half-faded outline (${halfInk} px)`);
 SW3D.resolve(surface, ids, depth, engine, { palette, background: SKY, outline: { color: INK, fadeNear: 3, fadeFar: 4 } });
 for (let i = 0; i < W * H; i++) assert.notStrictEqual(surface.data32[i], INK, 'no outline beyond fadeFar');
-console.log('resolve OK (palette, night side, background, outline, fog, fading)');
+console.log('resolve OK (palette, night side, background, outline, width, fog, fading)');
 
 // ---- shadow map: a box above a ground plane --------------------------------------------
 function box(cx, cy, cz, h, id) {

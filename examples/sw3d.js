@@ -1430,7 +1430,9 @@
      * @param {Object} [params.fog] - {color: [r,g,b], near, far} or
      *   {color: [r,g,b], density} (camera units)
      * @param {Object} [params.outline] - {color: packed, depthRatio: 0.15,
-     *   fadeNear, fadeFar}
+     *   fadeNear, fadeFar, width: 1}; with width w > 1 each edge pixel also
+     *   marks the w - 1 pixels before it in its row and in its column, so
+     *   lines are w pixels wide
      * @param {Object} [params.night] - {center, dir, below}: a world point
      *   (the sphere's centre), the unit world direction toward the light, and
      *   a level: a pixel at world position p is in the night when
@@ -1449,6 +1451,7 @@
      *   pixels take no outline, and their neighbours see through them: they
      *   test depth edges against the scene behind and skip the group test.
      */
+    var resolveEdges = null; // resolve's wide-outline marks, reused between calls
     function resolve(target, ids, depthBuffer, engine, params) {
         var W = target.width, H = target.height;
         var out = target.data32, D = depthBuffer.data;
@@ -1492,6 +1495,7 @@
         var olFadeNear = ol && ol.fadeFar ? ol.fadeNear || 0 : Infinity;
         var olFadeFar = ol && ol.fadeFar ? ol.fadeFar : Infinity;
         var olR = olColor & 0xff, olG = (olColor >>> 8) & 0xff, olB = (olColor >>> 16) & 0xff;
+        var olWidth = ol && ol.width > 1 ? Math.round(ol.width) : 1;
 
         var sf = params.surface || null;
         var sfEntries = sf ? sf.entries : null, SD = sf ? sf.depth.data : null, shade = sf ? sf.shade : null;
@@ -1504,6 +1508,61 @@
             smh = sh.depth.height;
             T = sh.transform;
             bias = sh.bias !== undefined ? sh.bias : 0.05;
+        }
+
+        // Is pixel i (entry e, depth invZ) on an edge: does its right or lower
+        // neighbour belong to another group, or lie at another depth?
+        function edgeAt(i, x, y, e, invZ) {
+            var edge = false;
+            // past the group test, the neighbour is in the same group
+            var depthEdges = noDepthEdges === null || noDepthEdges[e] === 0;
+            if (x + 1 < W) {
+                var idR = ids[i + 1];
+                if (sfEntries !== null && idR !== 0 && sfEntries[idR >>> 6] === 1) {
+                    edge = depthEdges && Math.abs(SD[i + 1] - invZ) > olRatio * invZ;
+                } else {
+                    edge = idR === 0 || (group !== null && group[idR >>> 6] !== group[e]) ||
+                        (depthEdges && Math.abs(D[i + 1] - invZ) > olRatio * invZ);
+                }
+            }
+            if (!edge && y + 1 < H) {
+                var idD = ids[i + W];
+                if (sfEntries !== null && idD !== 0 && sfEntries[idD >>> 6] === 1) {
+                    edge = depthEdges && Math.abs(SD[i + W] - invZ) > olRatio * invZ;
+                } else {
+                    edge = idD === 0 || (group !== null && group[idD >>> 6] !== group[e]) ||
+                        (depthEdges && Math.abs(D[i + W] - invZ) > olRatio * invZ);
+                }
+            }
+            return edge;
+        }
+
+        // Wide outlines: the 1-pixel edges first (bit 1), then each marks the
+        // olWidth - 1 pixels before it in its row (bit 2) and its column (bit 4)
+        var wide = null;
+        if (ol !== null && olWidth > 1) {
+            if (!resolveEdges || resolveEdges.length < W * H) resolveEdges = new Uint8Array(W * H);
+            wide = resolveEdges;
+            for (var ey = 0; ey < H; ey++) {
+                for (var ex = 0, ei = ey * W; ex < W; ex++, ei++) {
+                    var eid = ids[ei], ee = eid >>> 6;
+                    wide[ei] = eid !== 0 && !(sfEntries !== null && sfEntries[ee] === 1) && edgeAt(ei, ex, ey, ee, D[ei]) ? 1 : 0;
+                }
+            }
+            for (var ry = 0; ry < H; ry++) {
+                for (var rx = W - 1, ri = ry * W + W - 1, run = 0; rx >= 0; rx--, ri--) {
+                    if (wide[ri] & 1) run = olWidth;
+                    else if (run > 0) wide[ri] |= 2;
+                    if (run > 0) run--;
+                }
+            }
+            for (var cx2 = 0; cx2 < W; cx2++) {
+                for (var cy2 = H - 1, ci = cy2 * W + cx2, crun = 0; cy2 >= 0; cy2--, ci -= W) {
+                    if (wide[ci] & 1) crun = olWidth;
+                    else if (crun > 0) wide[ci] |= 4;
+                    if (crun > 0) crun--;
+                }
+            }
         }
 
         for (var y = 0; y < H; y++) {
@@ -1550,27 +1609,7 @@
                     color = lit ? litC[e] : dark ? nightC[e] : shadowC[e];
                 }
                 if (ol !== null && !surface) {
-                    var edge = false;
-                    // past the group test, the neighbour is in the same group
-                    var depthEdges = noDepthEdges === null || noDepthEdges[e] === 0;
-                    if (x + 1 < W) {
-                        var idR = ids[i + 1];
-                        if (sfEntries !== null && idR !== 0 && sfEntries[idR >>> 6] === 1) {
-                            edge = depthEdges && Math.abs(SD[i + 1] - invZ) > olRatio * invZ;
-                        } else {
-                            edge = idR === 0 || (group !== null && group[idR >>> 6] !== group[e]) ||
-                                (depthEdges && Math.abs(D[i + 1] - invZ) > olRatio * invZ);
-                        }
-                    }
-                    if (!edge && y + 1 < H) {
-                        var idD = ids[i + W];
-                        if (sfEntries !== null && idD !== 0 && sfEntries[idD >>> 6] === 1) {
-                            edge = depthEdges && Math.abs(SD[i + W] - invZ) > olRatio * invZ;
-                        } else {
-                            edge = idD === 0 || (group !== null && group[idD >>> 6] !== group[e]) ||
-                                (depthEdges && Math.abs(D[i + W] - invZ) > olRatio * invZ);
-                        }
-                    }
+                    var edge = wide !== null ? wide[i] !== 0 : edgeAt(i, x, y, e, invZ);
                     if (edge && z < olFadeFar) {
                         if (z <= olFadeNear) {
                             color = olColor;
