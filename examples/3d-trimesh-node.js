@@ -27,7 +27,11 @@
  *   - resolve's surface option shades flagged entries per pixel from the
  *     surface point and the scene behind it, with no outline at their edges;
  *   - drawSegments draws a 1-pixel line in front of the scene and not
- *     behind it, blends by alpha, and clips at the near plane.
+ *     behind it, blends by alpha, and clips at the near plane;
+ *   - drawStars draws a direction ahead where it projects, not one behind,
+ *     only on empty pixels still showing their row's colour, blends by its
+ *     alpha byte and options.alpha, covers size x size pixels, and turns
+ *     with options.rotation.
  * Writes examples/3d-trimesh.png (a small toon scene) for eyeballing.
  *
  * Usage: node examples/3d-trimesh-node.js [output.png]   (exit 0 = passed)
@@ -406,6 +410,36 @@ console.log('surface shading OK');
     assert.ok(n > 0, `a segment crossing the near plane is clipped, not dropped (${n} px)`);
 }
 console.log('segments OK');
+
+// ---- stars ----------------------------------------------------------------------------------
+{
+    // looking down -z from z = 5: a star straight ahead lands on the middle pixel
+    engine.setView(SW3D.lookAt([0, 0, 5], [0, 0, 0], [0, 1, 0]));
+    const RED = engine.packColor(255, 0, 0);
+    const mid = (H >> 1) * W + (W >> 1);
+    const one = (dir, size) => ({ count: 1, dirs: new Float32Array(dir), colors: new Uint32Array([RED]), sizes: size ? new Uint8Array([size]) : undefined });
+    const rows = new Uint32Array(H).fill(BLACK);
+    ids.fill(0); surface.data32.fill(BLACK);
+    assert.strictEqual(engine.drawStars(surface, ids, one([0, 0, -1])), 1, 'a star ahead covers one pixel');
+    assert.strictEqual(surface.data32[mid], RED, '... the middle one');
+    surface.data32.fill(BLACK);
+    assert.strictEqual(engine.drawStars(surface, ids, one([0, 0, 1])), 0, 'one behind is not drawn');
+    ids.fill(1);
+    assert.strictEqual(engine.drawStars(surface, ids, one([0, 0, -1])), 0, 'nor where something was drawn');
+    ids.fill(0);
+    surface.data32[mid] = SKY;
+    assert.strictEqual(engine.drawStars(surface, ids, one([0, 0, -1]), { rows }), 0, "nor where the pixel isn't its row's colour (a cloud)");
+    surface.data32.fill(BLACK);
+    engine.drawStars(surface, ids, one([0, 0, -1]), { alpha: 0.5, rows });
+    assert.deepStrictEqual(rgbAt(W >> 1, H >> 1), [128, 0, 0], 'alpha 0.5 blends half the colour');
+    surface.data32.fill(BLACK);
+    assert.strictEqual(engine.drawStars(surface, ids, one([0, 0, -1], 2)), 4, 'size 2 covers 2 x 2 pixels');
+    // a star toward +x, the sky turned so that +x goes to -z
+    surface.data32.fill(BLACK);
+    engine.drawStars(surface, ids, one([1, 0, 0]), { rotation: [0, 0, 0, 0, 1, 0, -1, 0, 0] });
+    assert.strictEqual(surface.data32[mid], RED, 'the rotation turns the stars');
+}
+console.log('stars OK');
 
 // ---- picture --------------------------------------------------------------------------------
 const PW = 320, PH = 200;

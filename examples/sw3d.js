@@ -1171,6 +1171,68 @@
         }
 
         /**
+         * Points at infinity (stars) on the sky, after resolve() and drawDome():
+         * each star is a world direction, drawn where nothing was drawn (ids 0)
+         * and, with `rows`, where the pixel still shows its row's colour (not
+         * a cloud the dome painted). A star covers size x size pixels from
+         * where it projects (1 by default), blended over the pixel by its
+         * colour's alpha byte times options.alpha. Perspective engines only.
+         *
+         * @param {Object} target - Surface or {width, height, data32}
+         * @param {Uint32Array} ids - the id buffer (0: nothing drawn)
+         * @param {Object} stars - {count, dirs: Float32Array (3 per star,
+         *   unit directions), colors: Uint32Array (packed, the alpha byte its
+         *   opacity), sizes: Uint8Array (optional, pixels across)}
+         * @param {Object} [options]
+         * @param {number} [options.alpha=1] - opacity of them all (a fade)
+         * @param {number[]} [options.rotation] - 3x3 row-major, the stars'
+         *   frame -> world (a turning sky)
+         * @param {Uint32Array} [options.rows] - the background colour of each
+         *   pixel row, as given to resolve(): only those pixels are drawn on
+         * @returns {number} pixels drawn
+         */
+        function drawStars(target, ids, stars, options) {
+            var o = options || {};
+            var alpha = o.alpha === undefined ? 1 : o.alpha;
+            if (!(alpha > 0) || orthographic) return 0;
+            var out = target.data32, W = width, H = height, m = glView;
+            var rows = o.rows || null, R = o.rotation || null;
+            var P = stars.dirs, C = stars.colors, S = stars.sizes || null;
+            var drawn = 0;
+            for (var s = 0; s < stars.count; s++) {
+                var dx = P[s * 3], dy = P[s * 3 + 1], dz = P[s * 3 + 2];
+                if (R !== null) {
+                    var rx = R[0] * dx + R[1] * dy + R[2] * dz, ry = R[3] * dx + R[4] * dy + R[5] * dz;
+                    dz = R[6] * dx + R[7] * dy + R[8] * dz;
+                    dx = rx; dy = ry;
+                }
+                // a direction: the view's rotation only
+                var vz = m[8] * dx + m[9] * dy + m[10] * dz;
+                if (vz > -1e-3) continue;
+                var iz = -1 / vz;
+                var x0 = Math.floor(cx + (m[0] * dx + m[1] * dy + m[2] * dz) * focal * iz);
+                var y0 = Math.floor(cy - (m[4] * dx + m[5] * dy + m[6] * dz) * focal * iz);
+                var size = S !== null ? S[s] : 1;
+                if (x0 + size <= 0 || y0 + size <= 0 || x0 >= W || y0 >= H) continue;
+                var c = C[s], ia = Math.round(((c >>> 24) / 255) * Math.min(1, alpha) * 256);
+                if (ia <= 0) continue;
+                var ib = 256 - ia, cr = c & 0xff, cg = (c >>> 8) & 0xff, cb = (c >>> 16) & 0xff;
+                for (var y = Math.max(0, y0); y < Math.min(H, y0 + size); y++) {
+                    for (var x = Math.max(0, x0), i = y * W + x; x < Math.min(W, x0 + size); x++, i++) {
+                        if (ids[i] !== 0 || (rows !== null && out[i] !== rows[y])) continue;
+                        var d = out[i];
+                        out[i] = (0xff000000 |
+                            ((((d >>> 16) & 0xff) * ib + cb * ia + 128) >> 8) << 16 |
+                            ((((d >>> 8) & 0xff) * ib + cg * ia + 128) >> 8) << 8 |
+                            (((d & 0xff) * ib + cr * ia + 128) >> 8)) >>> 0;
+                        drawn++;
+                    }
+                }
+            }
+            return drawn;
+        }
+
+        /**
          * The affine map from THIS engine's camera space to `light`'s screen
          * space (pixel x, pixel y, depth value), for resolve()'s shadow test.
          * `light` must be an orthographic engine; both views must be set.
@@ -1207,6 +1269,7 @@
             drawSprites: drawSprites,
             drawDome: drawDome,
             drawSegments: drawSegments,
+            drawStars: drawStars,
             shadowTransformTo: shadowTransformTo
         };
     }
