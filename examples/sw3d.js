@@ -1487,8 +1487,10 @@
         mesh.coneSin = 2;
         if (sl === 0) return mesh;
         sx /= sl; sy /= sl; sz /= sl;
+        // (faces without area have no normal: they are never drawn, and don't widen the cone)
         var minDot = 1;
         for (f = 0; f < nf; f++) {
+            if (normals[f * 3] === 0 && normals[f * 3 + 1] === 0 && normals[f * 3 + 2] === 0) continue;
             var d = normals[f * 3] * sx + normals[f * 3 + 1] * sy + normals[f * 3 + 2] * sz;
             if (d < minDot) minDot = d;
         }

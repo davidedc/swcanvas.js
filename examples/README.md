@@ -98,7 +98,7 @@ Witness and picture for SW3D's second path, made for large or animated meshes fr
   - linear or exponential-squared fog;
   - a background colour per row.
 - **Shadow maps:** an orthographic engine (`projection: 'orthographic'`) draws depth from the light (`mode: 'depth'`, usually `cull: 'front'`), and `engine.shadowTransformTo(light)` maps camera space to the light's map.
-- **Culling:** bounding-sphere and normal-cone rejects per mesh (`makeTriMesh({cone: true})`), screen-space back-face culling, and a 3D near-plane clipper.
+- **Culling:** bounding-sphere and normal-cone rejects per mesh (`makeTriMesh({cone: true})`; faces without area don't count), screen-space back-face culling, and a 3D near-plane clipper.
 - **Point sprites:** `engine.drawSprites` draws camera-facing cards cut out by a mask (leaves, particles) into the id, colour or depth buffer, with N·L from each card's normal, culling by normal and by the set's bounding sphere, and a depth push (for shadow maps). `SW3D.makeSpriteMask` keeps halved levels of a mask, like mipmaps, so small cards don't twinkle.
 - **Surfaces shaded per pixel (water):** `resolve`'s `surface` option takes palette entries to shade with a function instead of the palette, given the camera-space points of the surface and of the scene behind it (from a copy of the depth buffer made before the surfaces were drawn), so shallow water, foam at the shore and moving patterns can be worked out per pixel. Fog applies as usual; surface pixels take no outline, and their neighbours see through them.
 - **Sky dome:** `engine.drawDome` paints a thresholded field (clouds) mapped on a sphere around the camera onto the empty pixels, after `resolve`, at the cost of one bilinear sample per pixel.

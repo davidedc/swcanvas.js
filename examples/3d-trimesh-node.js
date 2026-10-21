@@ -13,7 +13,7 @@
  *     world takes the night colours;
  *   - a box above a ground plane casts a shadow (via an orthographic depth
  *     pass and shadowTransformTo) on the ground below it, and not elsewhere;
- *   - a mesh facing away is rejected whole by its normal cone;
+ *   - a mesh facing away is rejected whole by its normal cone (faces without area left out of it);
  *   - a triangle crossing the near plane is clipped, not dropped;
  *   - a mirrored model keeps its front faces;
  *   - drawSprites: a card covers its (rotated) square, the mask cuts it,
@@ -238,6 +238,14 @@ clearAll();
 assert.ok(engine.drawTriMesh(idTarget, depth, patch, null, { mode: 'id' }) > 0, 'patch facing the camera is drawn');
 engine.setView(SW3D.lookAt([0, 0, -5], [0, 0, 0], [0, 1, 0]));
 assert.strictEqual(engine.drawTriMesh(idTarget, depth, patch, null, { mode: 'id' }), 0, 'patch facing away is cone-rejected');
+// a face without area (an emptied slot) has no normal: the cone ignores it
+const emptied = SW3D.makeTriMesh({
+    positions: [-1, -1, 0, 1, -1, 0, 1, 1, 0.2, -1, 1, 0.2],
+    indices: [0, 1, 2, 0, 0, 0, 0, 2, 3],
+    faceIds: new Uint32Array([3, 3, 3]),
+    cone: true
+});
+assert.strictEqual(emptied.coneSin, patch.coneSin, 'a face without area leaves the cone as it was');
 console.log('normal cone OK');
 
 // ---- near-plane clipping ------------------------------------------------------------------
