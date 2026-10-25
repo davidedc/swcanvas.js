@@ -118,8 +118,10 @@ class SWCanvasElement {
      * HTMLCanvasElement.toDataURL. Always emits image/png; the type/quality
      * arguments are accepted but ignored (SWCanvas only produces PNG).
      *
-     * Uses the bundled stored-DEFLATE PngEncoder, so identical pixels always
-     * yield identical bytes (deterministic snapshots). All PNG machinery stays
+     * Uses the bundled PngEncoder at its default level (compressed, lossless,
+     * alpha kept), never the platform's encoder or compressor: identical pixels
+     * always yield identical bytes, in every engine (deterministic snapshots).
+     * Synchronous, like HTMLCanvasElement.toDataURL. All PNG machinery stays
      * inside the SWCanvas bundle — callers just get a string.
      * @returns {string} "data:image/png;base64,<...>"
      */

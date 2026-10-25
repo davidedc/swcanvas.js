@@ -16,14 +16,12 @@ class PngEncodingOptions {
      * Create PngEncodingOptions instance
      * @param {Object} config - Configuration object
      * @param {boolean} config.preserveTransparency - Whether to preserve transparency (default: true)
-     * @param {number} config.compressionLevel - Future placeholder for compression (0 = none, currently unused)
+     * @param {number} config.compressionLevel - 0 = no compression (stored blocks); 1-9 = DEFLATE, a higher level
+     *     searching longer for matches (default: PngEncodingOptions.DEFAULT_COMPRESSION_LEVEL)
      */
     constructor(config = {}) {
         // Set defaults
-        const {
-            preserveTransparency = true,
-            compressionLevel = 0 // 0 = no compression (stored blocks)
-        } = config;
+        const { preserveTransparency = true, compressionLevel = PngEncodingOptions.DEFAULT_COMPRESSION_LEVEL } = config;
 
         // Validate parameters
         if (typeof preserveTransparency !== 'boolean') {
@@ -31,10 +29,8 @@ class PngEncodingOptions {
         }
 
         Validators.range(compressionLevel, 'compressionLevel', 0, 9);
-
-        // Currently only support compression level 0 (stored blocks)
-        if (compressionLevel !== 0) {
-            throw new Error('Only compression level 0 (no compression) is currently supported');
+        if (!Number.isInteger(compressionLevel)) {
+            throw new Error('compressionLevel must be an integer');
         }
 
         // Store immutable configuration
@@ -57,14 +53,14 @@ class PngEncodingOptions {
 
     /**
      * Get compression level
-     * @returns {number} Compression level (0-9, currently only 0 supported)
+     * @returns {number} Compression level (0 = stored blocks, 1-9 = DEFLATE)
      */
     get compressionLevel() {
         return this._config.compressionLevel;
     }
 
     /**
-     * Create default options (transparency preserved, no compression)
+     * Create default options (transparency preserved, DEFAULT_COMPRESSION_LEVEL)
      * @returns {PngEncodingOptions} Default options instance
      */
     static withDefaults() {
@@ -89,8 +85,8 @@ class PngEncodingOptions {
     }
 
     /**
-     * Create options with specific compression level (future extensibility)
-     * @param {number} level - Compression level (0-9, currently only 0 supported)
+     * Create options with specific compression level
+     * @param {number} level - Compression level (0 = stored blocks, 1-9 = DEFLATE)
      * @returns {PngEncodingOptions} Options with specified compression level
      */
     static withCompressionLevel(level) {
@@ -150,7 +146,7 @@ class PngEncodingOptions {
 
     /**
      * Create a new options instance with modified compression level
-     * @param {number} compressionLevel - Compression level (0-9, currently only 0 supported)
+     * @param {number} compressionLevel - Compression level (0 = stored blocks, 1-9 = DEFLATE)
      * @returns {PngEncodingOptions} New options instance
      */
     withCompression(compressionLevel) {
@@ -161,5 +157,7 @@ class PngEncodingOptions {
     }
 }
 
-// Default options instance - preserve transparency, no compression (maintains simplicity)
+// The level a default options instance encodes at (see PngEncoder.MAX_CHAIN)
+PngEncodingOptions.DEFAULT_COMPRESSION_LEVEL = 6;
+// Default options instance - preserve transparency, DEFAULT_COMPRESSION_LEVEL
 PngEncodingOptions.DEFAULT = new PngEncodingOptions();
