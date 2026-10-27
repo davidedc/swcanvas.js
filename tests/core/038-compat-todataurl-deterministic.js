@@ -11,7 +11,9 @@ test('toDataURL returns a data:image/png URL with a valid PNG signature', () => 
     const url = canvas.toDataURL();
     assertEquals(url.indexOf('data:image/png;base64,'), 0, 'must be a PNG data URL');
 
-    const bytes = Buffer.from(url.slice('data:image/png;base64,'.length), 'base64');
+    // atob, not Node's Buffer: the same test runs in the browser page.
+    const binary = atob(url.slice('data:image/png;base64,'.length));
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
     // PNG signature: 137 80 78 71 13 10 26 10
     assertEquals(bytes[0], 137, 'PNG sig byte 0');
     assertEquals(bytes[1], 80, 'PNG sig byte 1');

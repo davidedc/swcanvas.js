@@ -82,6 +82,16 @@ class SWCanvasConstants {
     /** Curve flattening tolerance for deterministic behavior */
     static PATH_FLATTENING_TOLERANCE = 0.25;
 
+    /**
+     * Float-noise allowance when rounding a fractional curve SEGMENT COUNT up
+     * (PathFlattener.segmentCount): a count a hair above a whole number is that
+     * number. An exact quarter-turn arcTo corner - 16 segments by design - has
+     * its count arrive from atan2 as 16.000000000000004 at some canvas
+     * positions; a bare ceil would give 17 there, so a rounded rect's corner
+     * pixels would depend on where it is drawn.
+     */
+    static SEGMENT_COUNT_EPSILON = 1e-9;
+
     // ═══════════════════════════════════════════════════════════════════════
     // LINE/STROKE THRESHOLDS
     // ═══════════════════════════════════════════════════════════════════════
@@ -109,6 +119,7 @@ const ARC_FULLCIRCLE_TOLERANCE = SWCanvasConstants.ARC_FULLCIRCLE_TOLERANCE;
 const MIN_EDGE_LENGTH = SWCanvasConstants.MIN_EDGE_LENGTH;
 const MIN_EDGE_LENGTH_SQUARED = SWCanvasConstants.MIN_EDGE_LENGTH_SQUARED;
 const PATH_FLATTENING_TOLERANCE = SWCanvasConstants.PATH_FLATTENING_TOLERANCE;
+const SEGMENT_COUNT_EPSILON = SWCanvasConstants.SEGMENT_COUNT_EPSILON;
 const THIN_LINE_THRESHOLD = SWCanvasConstants.THIN_LINE_THRESHOLD;
 const DEFAULT_MITER_LIMIT = SWCanvasConstants.DEFAULT_MITER_LIMIT;
 
@@ -7581,7 +7592,8 @@ if (__outA > 0) {
 /**
  * QuadScanOps - Static methods for quadrilateral scanline filling
  *
- * Specialized utility for filling 4-vertex convex shapes using scanline DDA.
+ * Specialized utility for filling 4-vertex convex shapes, sampling pixel centres exactly as
+ * PolygonFiller does (so a direct thick line paints what stroke() of the same line paints).
  * Used by LineOps (thick diagonal lines) and RectOpsRot (semi-transparent strokes).
  *
  * NOT for general polygons - use PolygonFiller for arbitrary N-vertex shapes
@@ -7598,10 +7610,10 @@ if (__outA > 0) {
 class QuadScanOps {
     // Static pools - reused across calls to eliminate GC pressure
     static _edges = [
-        { p1: null, p2: null, invDeltaY: 0, deltaX: 0, slope: 0, currentX: 0 },
-        { p1: null, p2: null, invDeltaY: 0, deltaX: 0, slope: 0, currentX: 0 },
-        { p1: null, p2: null, invDeltaY: 0, deltaX: 0, slope: 0, currentX: 0 },
-        { p1: null, p2: null, invDeltaY: 0, deltaX: 0, slope: 0, currentX: 0 }
+        { ux: 0, uy: 0, ly: 0, dx: 0, dy: 0 },
+        { ux: 0, uy: 0, ly: 0, dx: 0, dy: 0 },
+        { ux: 0, uy: 0, ly: 0, dx: 0, dy: 0 },
+        { ux: 0, uy: 0, ly: 0, dx: 0, dy: 0 }
     ];
     static _edgeCount = 0;
 
@@ -7684,100 +7696,48 @@ class QuadScanOps {
         const minY = Math.max(0, Math.floor(Math.min(corners[0].y, corners[1].y, corners[2].y, corners[3].y)));
         const maxY = Math.min(height - 1, Math.ceil(Math.max(corners[0].y, corners[1].y, corners[2].y, corners[3].y)));
 
-        // Pre-compute edge data using static pool (no allocation)
-        // Includes slope and initial currentX for incremental DDA
+        // Each non-horizontal edge by its UPPER end and its differences - exactly what
+        // PolygonFiller._scanRow interpolates with (no allocation)
         QuadScanOps._edgeCount = 0;
         for (let i = 0; i < 4; i++) {
             const p1 = corners[i];
             const p2 = corners[(i + 1) % 4];
-
-            if (p1.y !== p2.y) {
-                // Skip horizontal edges
-                const edge = QuadScanOps._edges[QuadScanOps._edgeCount++];
-                edge.p1 = p1;
-                edge.p2 = p2;
-                edge.invDeltaY = 1 / (p2.y - p1.y);
-                edge.deltaX = p2.x - p1.x;
-                edge.slope = edge.deltaX * edge.invDeltaY;
-                // Compute initial currentX at edge's first active scanline
-                const edgeMinY = Math.min(p1.y, p2.y);
-                const firstActiveY = Math.max(minY, Math.ceil(edgeMinY));
-                edge.currentX = p1.x + (firstActiveY - p1.y) * edge.slope;
-            }
+            if (p1.y === p2.y) continue; // exactly horizontal, as PolygonFiller skips
+            const edge = QuadScanOps._edges[QuadScanOps._edgeCount++];
+            const upper = p2.y > p1.y ? p1 : p2;
+            const lower = p2.y > p1.y ? p2 : p1;
+            edge.ux = upper.x;
+            edge.uy = upper.y;
+            edge.ly = lower.y;
+            edge.dx = lower.x - upper.x;
+            edge.dy = lower.y - upper.y;
         }
 
         // Determine rendering mode
         const usePerPixel = collectTo !== null || skipFrom !== null;
         const intersections = [];
 
-        // Scanline fill with incremental DDA
+        // Scanlines sampled at pixel centres (y + 0.5) with the half-open [upper, lower) edge
+        // test, each crossing interpolated from the edge's upper end: the quad paints exactly
+        // the pixels PolygonFiller paints for the same four corners (a stroke() of the line)
         for (let y = minY; y <= maxY; y++) {
             intersections.length = 0;
-
-            // Find x-intersections using incremental currentX
+            const sample = y + 0.5;
             for (let i = 0; i < QuadScanOps._edgeCount; i++) {
                 const edge = QuadScanOps._edges[i];
-                const p1 = edge.p1;
-                const p2 = edge.p2;
-
-                if ((y >= p1.y && y < p2.y) || (y >= p2.y && y < p1.y)) {
-                    intersections.push(edge.currentX);
-                    edge.currentX += edge.slope; // Incremental update (was: t * deltaX)
+                if (sample >= edge.uy && sample < edge.ly) {
+                    intersections.push(edge.ux + ((sample - edge.uy) / edge.dy) * edge.dx);
                 }
             }
 
-            if (intersections.length === 1) {
-                // Single intersection - draw one pixel (edge case)
-                const x = intersections[0] | 0;
-                if (x >= 0 && x < width) {
-                    const pixelIndex = y * width + x;
-
-                    // Skip if in skipFrom Set
-                    if (skipFrom && skipFrom.has(pixelIndex)) continue;
-
-                    // Add to collectTo Set
-                    if (collectTo) collectTo.add(pixelIndex);
-
-                    // Check clipping
-                    if (clipBuffer) {
-                        const byteIndex = pixelIndex >> 3;
-                        const bitIndex = pixelIndex & 7;
-                        if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
-                    }
-
-                    // Render pixel
-                    if (isOpaque) {
-                        data32[pixelIndex] = packedColor;
-                    } else {
-                        const __off = pixelIndex * 4;
-const __dstA = data[__off + 3] / 255;
-const __dstAScaled = __dstA * invAlpha;
-const __outA = effectiveAlpha + __dstAScaled;
-if (__outA > 0) {
-    const __blend = 1 / __outA;
-    data[__off]     = (r * effectiveAlpha + data[__off] * __dstAScaled) * __blend;
-    data[__off + 1] = (g * effectiveAlpha + data[__off + 1] * __dstAScaled) * __blend;
-    data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
-    data[__off + 3] = __outA * 255;
-}
-                    }
-                }
-            } else if (intersections.length >= 2) {
+            if (intersections.length >= 2) {
                 // Two or more intersections - draw span between min and max
                 const x1i = intersections[0];
                 const x2i = intersections[1];
-                // Half-open right edge, consistent with this filler's
-                // leftX = ceil(min) grid-line convention (a column x is in the
-                // span iff min <= x < max), and with the same fix in
-                // PolygonFiller: the rightmost column is the largest integer
-                // < max, i.e. ceil(max) - 1. The old floor(max) with the
-                // inclusive (rightX - leftX + 1) span over-included the right
-                // column by 1px whenever the right intersection landed on an
-                // integer. Only integer-aligned edges change; for fractional
-                // intersections ceil(max) - 1 === floor(max), so rotated fills
-                // are unaffected.
-                const leftX = Math.max(0, Math.ceil(Math.min(x1i, x2i)));
-                const rightX = Math.min(width - 1, Math.ceil(Math.max(x1i, x2i)) - 1);
+                // Pixel-centre columns, as PolygonFiller: a column x is in the span
+                // [min, max) iff min <= x + 0.5 < max
+                const leftX = Math.max(0, Math.ceil(Math.min(x1i, x2i) - 0.5));
+                const rightX = Math.min(width - 1, Math.ceil(Math.max(x1i, x2i) - 0.5) - 1);
                 const spanLength = rightX - leftX + 1;
 
                 if (spanLength > 0) {
@@ -9012,7 +8972,7 @@ class Triangle3DOps {
  * Layer 0 (Foundation): QuadScanOps.fillQuad, QuadScanOps.fillSquare
  *
  * Layer 1 (Primitives - do atomic rendering):
- *   fill_Rot_Any (scanline DDA via QuadScanOps)
+ *   fill_Rot_Any (pixel-centre scanline via QuadScanOps)
  *   _stroke_Rot_Alpha (internal, uses QuadScanOps with Set tracking)
  *
  * Layer 2 (Composites - call other *Ops methods):
@@ -10597,8 +10557,13 @@ if (__outA > 0) {
  * Path-based circles (beginPath() + arc() + fill()/stroke()) use the
  * generic polygon pipeline for consistent, predictable behavior.
  *
- * Algorithm notes: Uses a Bresenham circle variant with specific adjustments
- * (center offset, +1 boundary corrections) for correct extreme pixel rendering.
+ * Coverage rule (fills): PIXEL-CENTER SAMPLING - a pixel is filled iff its
+ * center (x + 0.5, y + 0.5) lies strictly inside the circle (row extents by
+ * sqrt, contracted by FILL_EPSILON so a center on the boundary stays out).
+ * fill_Opaq, fill_Alpha and fillStroke_Any's fill share that one rule, so a
+ * fill is pixel-identical to the fill half of the fused entry. The 1px
+ * strokes stay Bresenham rings (their own center convention - see
+ * tests/core/050); thick strokes sample the closed annulus.
  *
  * CALL HIERARCHY:
  * ---------------
@@ -10623,55 +10588,25 @@ if (__outA > 0) {
  *   - (No orientation suffix - circles are rotation-invariant)
  */
 class CircleOps {
+    // Per-row span scratch of the fills' two passes (fill_Opaq / fill_Alpha): grown on
+    // demand, never shrunk, shared by every call
+    static _spanStarts = new Int32Array(64);
+    static _spanEnds = new Int32Array(64);
+
     /**
-     * Generate horizontal extents for each scanline of a circle using Bresenham
-     * Uses Bresenham circle algorithm variant optimized for correct extreme pixel rendering
-     * @param {number} radius - Circle radius (can be float)
-     * @returns {object|null} { extents, intRadius, xOffset, yOffset } or null for invalid radius
+     * Grow the fills' span scratch to hold at least `rows` rows.
+     * @param {number} rows - Rows needed
+     * @private
      */
-    static generateExtents(radius) {
-        const intRadius = Math.floor(radius);
-        if (intRadius < 0) return null;
-
-        // Determine offsets for .5 radius case (affects boundary calculations)
-        let xOffset = 0,
-            yOffset = 0;
-        if (radius > 0 && (radius * 2) % 2 === 1) {
-            xOffset = 1;
-            yOffset = 1;
-        }
-
-        // Handle zero radius (single pixel)
-        if (intRadius === 0) {
-            return { extents: [0], intRadius: 0, xOffset, yOffset };
-        }
-
-        // Bresenham initialization (midpoint circle algorithm variant)
-        const extents = new Array(intRadius + 1).fill(0);
-        let x = 0;
-        let y = intRadius;
-        let d = 3 - 2 * intRadius;
-
-        while (x <= y) {
-            // Record extents using max to handle octant overlap
-            extents[y] = Math.max(extents[y], x);
-            extents[x] = Math.max(extents[x], y);
-
-            if (d < 0) {
-                d = d + 4 * x + 6;
-            } else {
-                d = d + 4 * (x - y) + 10;
-                y--;
-            }
-            x++;
-        }
-
-        return { extents, intRadius, xOffset, yOffset };
+    static _growSpanScratch(rows) {
+        let capacity = CircleOps._spanStarts.length * 2;
+        while (capacity < rows) capacity *= 2;
+        CircleOps._spanStarts = new Int32Array(capacity);
+        CircleOps._spanEnds = new Int32Array(capacity);
     }
 
     /**
-     * Optimized opaque circle fill using Bresenham scanlines with 32-bit packed writes
-     * Uses Bresenham variant with pixel corrections for accurate rendering
+     * Opaque circle fill: pixel-center-sampled scanlines (class header), 32-bit packed writes
      * @param {Surface} surface - Target surface
      * @param {number} cx - Center X
      * @param {number} cy - Center Y
@@ -10696,58 +10631,49 @@ class CircleOps {
         const cx1 = clipRect ? clipRect.x1 : width;
         const cy1 = clipRect ? clipRect.y1 : height;
 
-        // Generate extents with Bresenham algorithm
-        const extentData = CircleOps.generateExtents(radius);
-        if (!extentData) return;
-        const { extents, intRadius, xOffset, yOffset } = extentData;
+        // Pixel-center sampling (class header): row y's centers sit at
+        // dy = y - cY from the center, and the row's span is the centers
+        // strictly within xDist of cX. Same arithmetic as fillStroke_Any's fill.
+        const cX = cx - 0.5;
+        const cY = cy - 0.5;
+        const radiusSquared = radius * radius;
+        const minY = Math.max(cy0, Math.ceil(cY - radius));
+        const maxY = Math.min(cy1 - 1, Math.floor(cY + radius));
+        if (!(minY <= maxY)) return;
+        // From here every row and span bound is held as an int32: the rows lie in the clip rect's
+        // rows, and each span is clamped to its columns (one past either side when the row is
+        // empty, which keeps startX > endX exactly when no column is inside)
+        const firstRow = minY | 0;
+        const lastRow = maxY | 0;
 
-        // Center adjustment for pixel-perfect rendering
-        const adjCenterX = Math.floor(cx - 0.5);
-        const adjCenterY = Math.floor(cy - 0.5);
-
-        // Fill scanlines - iterate through ALL rows (no skipping)
-        for (let rel_y = 0; rel_y <= intRadius; rel_y++) {
-            const max_rel_x = extents[rel_y];
-
-            // +1 corrections on min boundaries for pixel accuracy
-            const abs_x_min = adjCenterX - max_rel_x - xOffset + 1;
-            const abs_x_max = adjCenterX + max_rel_x;
-            const abs_y_bottom = adjCenterY + rel_y;
-            const abs_y_top = adjCenterY - rel_y - yOffset + 1;
-
-            // Clamp X coordinates to canvas/clip bounds to prevent memory wrap-around
-            const clampedStartX = Math.max(cx0, abs_x_min);
-            const clampedEndX = Math.min(cx1 - 1, abs_x_max);
-            const spanWidth = clampedEndX - clampedStartX + 1;
-
-            // Skip if span is entirely off-screen
-            if (spanWidth <= 0) continue;
-
-            // Draw bottom scanline
-            if (abs_y_bottom >= cy0 && abs_y_bottom < cy1) {
-                SpanOps.fill_Opaq(
-                    data32,
-                    width,
-                    height,
-                    clampedStartX,
-                    abs_y_bottom,
-                    spanWidth,
-                    packedColor,
-                    clipBuffer
-                );
+        // Two passes. First every row's span into the int32 scratch - rows are independent, so
+        // their square roots and roundings pipeline, with no call between them - then the spans.
+        const rows = lastRow - firstRow + 1;
+        if (CircleOps._spanStarts.length < rows) CircleOps._growSpanScratch(rows);
+        const starts = CircleOps._spanStarts;
+        const ends = CircleOps._spanEnds;
+        for (let i = 0; i < rows; i++) {
+            const dy = firstRow + i - cY;
+            const distSquared = radiusSquared - dy * dy;
+            if (distSquared < 0) {
+                starts[i] = 1;
+                ends[i] = 0;
+                continue;
             }
-
-            // Draw top scanline (skip overdraw conditions)
-            const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
-            if (drawTop && abs_y_top >= cy0 && abs_y_top < cy1) {
-                SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_top, spanWidth, packedColor, clipBuffer);
-            }
+            const xDist = Math.sqrt(distSquared);
+            starts[i] = Math.min(cx1, Math.max(cx0, Math.ceil(cX - xDist + FILL_EPSILON)));
+            ends[i] = Math.max(cx0 - 1, Math.min(cx1 - 1, Math.floor(cX + xDist - FILL_EPSILON)));
+        }
+        for (let i = 0; i < rows; i++) {
+            const startX = starts[i];
+            const endX = ends[i];
+            if (startX > endX) continue;
+            SpanOps.fill_Opaq(data32, width, height, startX, firstRow + i, endX - startX + 1, packedColor, clipBuffer);
         }
     }
 
     /**
-     * Optimized circle fill with alpha blending using Bresenham scanlines
-     * Uses Bresenham variant with pixel corrections for accurate rendering
+     * Circle fill with alpha blending: pixel-center-sampled scanlines (class header)
      * @param {Surface} surface - Target surface
      * @param {number} cx - Center X
      * @param {number} cy - Center Y
@@ -10777,69 +10703,55 @@ class CircleOps {
         const cx1 = clipRect ? clipRect.x1 : width;
         const cy1 = clipRect ? clipRect.y1 : height;
 
-        // Generate extents with Bresenham algorithm
-        const extentData = CircleOps.generateExtents(radius);
-        if (!extentData) return;
-        const { extents, intRadius, xOffset, yOffset } = extentData;
+        // Pixel-center sampling - see fill_Opaq.
+        const cX = cx - 0.5;
+        const cY = cy - 0.5;
+        const radiusSquared = radius * radius;
+        const minY = Math.max(cy0, Math.ceil(cY - radius));
+        const maxY = Math.min(cy1 - 1, Math.floor(cY + radius));
+        if (!(minY <= maxY)) return;
+        // From here every row and span bound is held as an int32: the rows lie in the clip rect's
+        // rows, and each span is clamped to its columns (one past either side when the row is
+        // empty, which keeps startX > endX exactly when no column is inside)
+        const firstRow = minY | 0;
+        const lastRow = maxY | 0;
 
-        // Center adjustment for pixel-perfect rendering
-        const adjCenterX = Math.floor(cx - 0.5);
-        const adjCenterY = Math.floor(cy - 0.5);
-
-        // Fill scanlines - iterate through ALL rows (no skipping)
-        for (let rel_y = 0; rel_y <= intRadius; rel_y++) {
-            const max_rel_x = extents[rel_y];
-
-            // +1 corrections on min boundaries for pixel accuracy
-            const abs_x_min = adjCenterX - max_rel_x - xOffset + 1;
-            const abs_x_max = adjCenterX + max_rel_x;
-            const abs_y_bottom = adjCenterY + rel_y;
-            const abs_y_top = adjCenterY - rel_y - yOffset + 1;
-
-            // Clamp X coordinates to canvas/clip bounds to prevent memory wrap-around
-            const clampedStartX = Math.max(cx0, abs_x_min);
-            const clampedEndX = Math.min(cx1 - 1, abs_x_max);
-            const spanWidth = clampedEndX - clampedStartX + 1;
-
-            // Skip if span is entirely off-screen
-            if (spanWidth <= 0) continue;
-
-            // Draw bottom scanline
-            if (abs_y_bottom >= cy0 && abs_y_bottom < cy1) {
-                SpanOps.fill_Alpha(
-                    data,
-                    width,
-                    height,
-                    clampedStartX,
-                    abs_y_bottom,
-                    spanWidth,
-                    r,
-                    g,
-                    b,
-                    effectiveAlpha,
-                    invAlpha,
-                    clipBuffer
-                );
+        // Two passes. First every row's span into the int32 scratch - rows are independent, so
+        // their square roots and roundings pipeline, with no call between them - then the spans.
+        const rows = lastRow - firstRow + 1;
+        if (CircleOps._spanStarts.length < rows) CircleOps._growSpanScratch(rows);
+        const starts = CircleOps._spanStarts;
+        const ends = CircleOps._spanEnds;
+        for (let i = 0; i < rows; i++) {
+            const dy = firstRow + i - cY;
+            const distSquared = radiusSquared - dy * dy;
+            if (distSquared < 0) {
+                starts[i] = 1;
+                ends[i] = 0;
+                continue;
             }
-
-            // Draw top scanline (skip overdraw conditions)
-            const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
-            if (drawTop && abs_y_top >= cy0 && abs_y_top < cy1) {
-                SpanOps.fill_Alpha(
-                    data,
-                    width,
-                    height,
-                    clampedStartX,
-                    abs_y_top,
-                    spanWidth,
-                    r,
-                    g,
-                    b,
-                    effectiveAlpha,
-                    invAlpha,
-                    clipBuffer
-                );
-            }
+            const xDist = Math.sqrt(distSquared);
+            starts[i] = Math.min(cx1, Math.max(cx0, Math.ceil(cX - xDist + FILL_EPSILON)));
+            ends[i] = Math.max(cx0 - 1, Math.min(cx1 - 1, Math.floor(cX + xDist - FILL_EPSILON)));
+        }
+        for (let i = 0; i < rows; i++) {
+            const startX = starts[i];
+            const endX = ends[i];
+            if (startX > endX) continue;
+            SpanOps.fill_Alpha(
+                data,
+                width,
+                height,
+                startX,
+                firstRow + i,
+                endX - startX + 1,
+                r,
+                g,
+                b,
+                effectiveAlpha,
+                invAlpha,
+                clipBuffer
+            );
         }
     }
 
@@ -11650,10 +11562,10 @@ if (__outA > 0) {
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), inline markers
+ * Layer 0 (Foundation): CircleOps.fill_Opaq/fill_Alpha (full circles), SpanOps, inline markers
  *
  * Layer 1 (Primitives - do atomic rendering):
- *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering via isAngleInRange_Fast)
+ *   fill_Opaq, fill_Alpha (full circle -> CircleOps; else sqrt row extents + angle filtering via isAngleInRange_Fast)
  *   stroke1px_Opaq (uses SET_OPAQUE_ARC_FAST_CLIPPED inline template)
  *   stroke1px_Alpha (uses BLEND_ALPHA_ARC_FAST_CLIPPED inline template)
  *   stroke1px_Opaq_Exact (uses angle-based iteration for exact endpoints)
@@ -13303,20 +13215,19 @@ class LineOps {
             }
             return true;
         } else if (isOpaqueColor) {
-            // Direct rendering for thick axis-aligned lines: render as rectangle
-            const x1i = Math.floor(x1);
-            const y1i = Math.floor(y1);
-            const x2i = Math.floor(x2);
-            const y2i = Math.floor(y2);
+            // Direct rendering for thick axis-aligned lines: render as rectangle. Only an EXACTLY
+            // horizontal or vertical line is a rectangle; it covers the pixels whose centres lie in
+            // it, under the half-open rule every filler uses (a coordinate v starts or ends a run at
+            // ceil(v - 0.5)), so it paints what stroke() paints for the same line
             const data32 = surface.data32;
 
-            if (y1i === y2i) {
+            if (y1 === y2) {
                 // Horizontal thick line - render as filled rectangle
                 const halfWidth = lineWidth / 2;
-                const topY = Math.floor(y1 - halfWidth);
-                const bottomY = Math.floor(y1 + halfWidth);
-                const leftX = Math.min(x1i, x2i);
-                const rightX = Math.max(x1i, x2i) - 1;
+                const topY = Math.ceil(y1 - halfWidth - 0.5);
+                const bottomY = Math.ceil(y1 + halfWidth - 0.5);
+                const leftX = Math.ceil(Math.min(x1, x2) - 0.5);
+                const rightX = Math.ceil(Math.max(x1, x2) - 0.5) - 1;
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 // Y bounds clamping for the loop
@@ -13334,13 +13245,13 @@ class LineOps {
                     SpanOps.fill_Opaq(data32, width, height, clampedLeftX, y, spanLength, packedColor, clipBuffer);
                 }
                 return true;
-            } else if (x1i === x2i) {
+            } else if (x1 === x2) {
                 // Vertical thick line - render as filled rectangle
                 const halfWidth = lineWidth / 2;
-                const leftX = Math.floor(x1 - halfWidth);
-                const rightX = Math.floor(x1 + halfWidth);
-                const topY = Math.min(y1i, y2i);
-                const bottomY = Math.max(y1i, y2i);
+                const leftX = Math.ceil(x1 - halfWidth - 0.5);
+                const rightX = Math.ceil(x1 + halfWidth - 0.5); // exclusive
+                const topY = Math.ceil(Math.min(y1, y2) - 0.5);
+                const bottomY = Math.ceil(Math.max(y1, y2) - 0.5); // exclusive
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 // Y bounds clamping for the loop
@@ -13348,11 +13259,9 @@ class LineOps {
                 const clampedBottomY = Math.min(height, bottomY);
                 if (clampedTopY >= clampedBottomY) return true;
 
-                // X bounds clamping (for span width)
-                // Note: rightX - leftX is the span width (not +1) because leftX/rightX
-                // are computed from floor(x - halfWidth) / floor(x + halfWidth)
+                // X bounds clamping (rightX is exclusive)
                 const clampedLeftX = Math.max(0, leftX);
-                const clampedRightX = Math.min(width, rightX); // Use width (not width-1) since rightX is already exclusive
+                const clampedRightX = Math.min(width, rightX);
                 const spanLength = clampedRightX - clampedLeftX;
                 if (spanLength <= 0) return true;
 
@@ -16099,6 +16008,22 @@ class RoundedRectOpsAA {
      * rendering exactly the historical one. A single missed end stops at the
      * arc's tangent column instead, so one tiny-radius corner cannot blank a
      * whole row of the hole next to differently-rounded corners.
+     *
+     * Both axes sample pixel CENTERS, as the polygon filler and CircleOps do: the
+     * row is taken at py + 0.5 (dyL / dyR below), and a column x is inside iff its
+     * center x + 0.5 lies in [left edge, right edge) of the shape on that row. So
+     * the ring a thick stroke leaves (outer extent minus inner extent) is the exact
+     * pixel-center coverage of the stroke, the same along a vertical side as along
+     * the transposed horizontal one.
+     *
+     * A row with no columns (outside the shape, or both arcs missed) is the EMPTY
+     * interval, rightX < leftX - never a marker coordinate: a legal extent can start
+     * at any x, negative ones included (a shape past the surface's left edge), so
+     * callers test rightX < leftX, never the sign of leftX. Every return is a fresh
+     * { leftX, rightX } literal of that one shape, and should stay so: inlined, the
+     * call's result can be scalar-replaced, so a row allocates nothing - a shared
+     * empty constant would be a real heap object, and module-level output variables
+     * measured slower on this per-row path.
      * @param {number} py - Scanline Y coordinate
      * @param {number} rectX - Rectangle left X
      * @param {number} rectW - Rectangle width
@@ -16106,12 +16031,13 @@ class RoundedRectOpsAA {
      * @param {number} rectH - Rectangle height
      * @param {number[]} radii - Corner radii [topLeft, topRight, bottomRight, bottomLeft]
      * @param {number} [epsilon=0] - Epsilon for inset calculation
-     * @returns {{leftX: number, rightX: number}} X extent or {-1, -1} if outside
+     * @returns {{leftX: number, rightX: number}} The row's columns, inclusive (any x,
+     *   negative included); rightX < leftX when the row has no columns
      * @private
      */
     static _getXExtent(py, rectX, rectW, rectY, rectH, radii, epsilon = 0) {
         if (py < rectY || py >= rectY + rectH) {
-            return { leftX: -1, rightX: -1 };
+            return { leftX: 0, rightX: -1 };
         }
         const rTL = radii[0],
             rTR = radii[1],
@@ -16149,7 +16075,7 @@ class RoundedRectOpsAA {
                 radiusSquared = rL * rL;
             leftMissed = dySquared >= radiusSquared;
             dxL = leftMissed ? 0 : Math.sqrt(radiusSquared - dySquared);
-            leftX = Math.ceil(rectX + rL - dxL + epsilon);
+            leftX = Math.ceil(rectX + rL - dxL - 0.5 + epsilon);
         }
         if (rR > 0) {
             let dxR;
@@ -16163,11 +16089,11 @@ class RoundedRectOpsAA {
                 rightMissed = dySquared >= radiusSquared;
                 dxR = rightMissed ? 0 : Math.sqrt(radiusSquared - dySquared);
             }
-            rightX = Math.floor(rectX + rectW - rR + dxR - 1 - epsilon);
+            rightX = Math.ceil(rectX + rectW - rR + dxR - 0.5 - epsilon) - 1;
         }
 
         if (leftMissed && rightMissed) {
-            return { leftX: -1, rightX: -1 };
+            return { leftX: 0, rightX: -1 };
         }
         return { leftX, rightX };
     }
@@ -16603,7 +16529,7 @@ if (__outA > 0) {
 
             // Get outer extent
             const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadii);
-            if (outer.leftX < 0) continue; // Outside outer bounds
+            if (outer.rightX < outer.leftX) continue; // Outside outer bounds
 
             // Clamp outer to the clip frame (surface bounds when unclipped)
             const outerLeft = Math.max(cx0, outer.leftX);
@@ -16614,7 +16540,7 @@ if (__outA > 0) {
             if (innerW > 0 && innerH > 0 && py >= innerY && py < innerY + innerH) {
                 const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadii);
 
-                if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
+                if (inner.rightX >= inner.leftX) {
                     // Draw left and right stroke spans around the inner region.
                     // Dual clamp: the left span ends at innerLeft - 1 and the right span
                     // starts at innerRight + 1, so innerLeft must not exceed cx1 and
@@ -16770,7 +16696,7 @@ if (__outA > 0) {
             if (py < cy0 || py >= cy1) continue;
 
             const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadii);
-            if (outer.leftX < 0) continue;
+            if (outer.rightX < outer.leftX) continue;
 
             const outerLeft = Math.max(cx0, outer.leftX);
             const outerRight = Math.min(cx1 - 1, outer.rightX);
@@ -16779,7 +16705,7 @@ if (__outA > 0) {
             if (innerW > 0 && innerH > 0 && py >= innerY && py < innerY + innerH) {
                 const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadii);
 
-                if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
+                if (inner.rightX >= inner.leftX) {
                     const innerLeft = Math.min(cx1, Math.max(cx0, inner.leftX));
                     const innerRight = Math.max(cx0 - 1, Math.min(cx1 - 1, inner.rightX));
 
@@ -17065,16 +16991,16 @@ if (__outA > 0) {
             // Get outer stroke extent - uses calculated bounds from original coordinates
             const outerExtent = hasStroke
                 ? RoundedRectOpsAA._getXExtent(py, outerRectX, outerRectW, outerRectY, outerRectH, outerRadii, 0)
-                : { leftX: -1, rightX: -1 };
+                : { leftX: 0, rightX: -1 };
 
             // Get inner stroke extent - uses calculated bounds from original coordinates
             const innerExtent =
                 hasStroke && innerRectH > 0
                     ? RoundedRectOpsAA._getXExtent(py, innerRectX, innerRectW, innerRectY, innerRectH, innerRadii, 0)
-                    : { leftX: -1, rightX: -1 };
+                    : { leftX: 0, rightX: -1 };
 
             // Determine fill extent based on stroke transparency
-            let fillExtent = { leftX: -1, rightX: -1 };
+            let fillExtent = { leftX: 0, rightX: -1 };
             if (hasFill) {
                 if (hasStroke) {
                     // Check if stroke is semi-transparent (needs overlap blending)
@@ -17095,7 +17021,7 @@ if (__outA > 0) {
                     } else {
                         // Opaque OR 1px semi-transparent: fill to inner extent
                         // (1px has no visible overlap area; opaque stroke covers fill anyway)
-                        if (innerExtent.leftX >= 0 && innerExtent.rightX >= innerExtent.leftX) {
+                        if (innerExtent.rightX >= innerExtent.leftX) {
                             fillExtent.leftX = innerExtent.leftX;
                             fillExtent.rightX = innerExtent.rightX;
                         }
@@ -17107,17 +17033,17 @@ if (__outA > 0) {
             }
 
             // STEP 1: Render fill first (uses path extent or inner extent based on stroke type)
-            if (hasFill && fillExtent.leftX >= 0 && fillExtent.leftX <= fillExtent.rightX) {
+            if (hasFill && fillExtent.leftX <= fillExtent.rightX) {
                 renderFillSpan(fillExtent.leftX, fillExtent.rightX, py);
             }
 
             // STEP 2: Render stroke on top (covers any micro-gaps at boundary)
-            if (hasStroke && outerExtent.leftX >= 0) {
+            if (hasStroke && outerExtent.rightX >= outerExtent.leftX) {
                 const outerLeft = Math.max(0, outerExtent.leftX);
                 const outerRight = Math.min(surfaceWidth - 1, outerExtent.rightX);
 
                 if (outerLeft <= outerRight) {
-                    if (innerExtent.leftX >= 0 && innerExtent.rightX >= innerExtent.leftX) {
+                    if (innerExtent.rightX >= innerExtent.leftX) {
                         // Has inner region - draw left and right stroke segments
                         const innerLeft = Math.max(0, innerExtent.leftX);
                         const innerRight = Math.min(surfaceWidth - 1, innerExtent.rightX);
@@ -17374,10 +17300,25 @@ class CompositeOperations {
         const srcAlpha = srcA / 255;
         const invSrcAlpha = 1 - srcAlpha;
 
+        if (dstA === 255) {
+            return {
+                r: Math.round(srcR * srcAlpha + dstR * invSrcAlpha),
+                g: Math.round(srcG * srcAlpha + dstG * invSrcAlpha),
+                b: Math.round(srcB * srcAlpha + dstB * invSrcAlpha),
+                a: Math.round(srcA + dstA * invSrcAlpha)
+            };
+        }
+        // Translucent destination: the surface holds straight RGBA, so the
+        // destination's colour counts in proportion to its own alpha, and the mix
+        // is divided by the result's alpha. (Over an opaque destination this
+        // reduces to the plain mix above, which is kept for it byte-for-byte; an
+        // empty destination gets the source unchanged.)
+        const dstWeight = (dstA / 255) * invSrcAlpha;
+        const outAlpha = srcAlpha + dstWeight;
         return {
-            r: Math.round(srcR * srcAlpha + dstR * invSrcAlpha),
-            g: Math.round(srcG * srcAlpha + dstG * invSrcAlpha),
-            b: Math.round(srcB * srcAlpha + dstB * invSrcAlpha),
+            r: Math.round((srcR * srcAlpha + dstR * dstWeight) / outAlpha),
+            g: Math.round((srcG * srcAlpha + dstG * dstWeight) / outAlpha),
+            b: Math.round((srcB * srcAlpha + dstB * dstWeight) / outAlpha),
             a: Math.round(srcA + dstA * invSrcAlpha)
         };
     }
@@ -18815,6 +18756,12 @@ class PathFlattener {
                         cmd.endAngle,
                         cmd.counterclockwise
                     );
+                    // An ellipse that opens a subpath starts it (as an arc does)
+                    if (currentPoly.length === 0 && ellipsePoints.length > 0) {
+                        currentPoly.push({ x: ellipsePoints[0].x, y: ellipsePoints[0].y });
+                        subpathStart = new Point(ellipsePoints[0].x, ellipsePoints[0].y);
+                        currentPoint = subpathStart;
+                    }
                     PathFlattener._handleEllipsePoints(ellipsePoints, currentPoly, currentPoint);
                     if (ellipsePoints.length > 0) {
                         currentPoint = new Point(
@@ -19003,7 +18950,10 @@ class PathFlattener {
         // Check if curve is flat enough
         const dx = x2 - x0;
         const dy = y2 - y0;
-        const d = Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / Math.sqrt(dx * dx + dy * dy);
+        const len = Math.sqrt(dx * dx + dy * dy);
+        // Ends that coincide: the control point's distance from them measures flatness (a
+        // distance from the zero-length chord's line is 0 / 0, and would split forever)
+        const d = len === 0 ? Math.hypot(x1 - x0, y1 - y0) : Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / len;
 
         if (d <= tolerance || points.length > 1000) {
             // Safety limit
@@ -19063,13 +19013,9 @@ class PathFlattener {
         const dy = y3 - y0;
         const len = Math.sqrt(dx * dx + dy * dy);
 
-        if (len === 0) {
-            points.push({ x: x3, y: y3 });
-            return;
-        }
-
-        const d1 = Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / len;
-        const d2 = Math.abs((x2 - x0) * dy - (y2 - y0) * dx) / len;
+        // Ends that coincide (a loop): the control points' distances from them measure flatness
+        const d1 = len === 0 ? Math.hypot(x1 - x0, y1 - y0) : Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / len;
+        const d2 = len === 0 ? Math.hypot(x2 - x0, y2 - y0) : Math.abs((x2 - x0) * dy - (y2 - y0) * dx) / len;
 
         if (d1 + d2 <= tolerance || points.length > 1000) {
             // Safety limit
@@ -19096,6 +19042,23 @@ class PathFlattener {
         // Recursively flatten both halves
         PathFlattener._flattenCubicBezierRecursive(x0, y0, x01, y01, x012, y012, x0123, y0123, points, tolerance);
         PathFlattener._flattenCubicBezierRecursive(x0123, y0123, x123, y123, x23, y23, x3, y3, points, tolerance);
+    }
+
+    /**
+     * Whole number of segments covering a fractional count q (>= 1): ceil(q),
+     * except that a q within SEGMENT_COUNT_EPSILON above a whole number IS that
+     * number. Every curve segment count goes through here (the arc, ellipse and
+     * arcTo flatteners, Context2D's baking twins, and the stroker's round joins
+     * and arc rims), so a count never depends on float noise: an exact
+     * quarter-turn arcTo corner (16 by the per-90° floor) arrives from atan2 of
+     * position-dependent tangent points as 16.000000000000004 at some canvas
+     * positions, and a bare ceil would flatten it with 17 segments there - a
+     * rounded rect's corner pixels would then depend on where it is drawn.
+     * @param {number} q - Fractional segment count
+     * @returns {number} Segment count, at least 1
+     */
+    static segmentCount(q) {
+        return Math.max(1, Math.ceil(q - SEGMENT_COUNT_EPSILON));
     }
 
     /**
@@ -19126,7 +19089,7 @@ class PathFlattener {
 
         // Calculate number of segments needed for tolerance
         const maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / radius));
-        const segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
+        const segments = PathFlattener.segmentCount(totalAngle / maxAngleStep);
 
         const points = [];
         const angleStep = (end - start) / segments;
@@ -19173,7 +19136,7 @@ class PathFlattener {
         // Calculate number of segments - use smaller radius for tolerance calculation
         const minRadius = Math.min(radiusX, radiusY);
         const maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / minRadius));
-        const segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
+        const segments = PathFlattener.segmentCount(totalAngle / maxAngleStep);
 
         const points = [];
         const angleStep = (end - start) / segments;
@@ -19229,9 +19192,9 @@ class PathFlattener {
         // Calculate number of segments needed for tolerance with minimum segments for smooth curves
         const maxAngleStep = 2 * Math.acos(Math.max(0, 1 - tolerance / radius));
         const minSegmentsFor90Deg = 16; // Minimum segments for a 90-degree arc
-        const minSegments = Math.ceil((totalAngle / HALF_PI) * minSegmentsFor90Deg);
-        const toleranceSegments = Math.ceil(totalAngle / maxAngleStep);
-        const segments = Math.max(1, Math.max(minSegments, toleranceSegments));
+        const minSegments = PathFlattener.segmentCount((totalAngle / HALF_PI) * minSegmentsFor90Deg);
+        const toleranceSegments = PathFlattener.segmentCount(totalAngle / maxAngleStep);
+        const segments = Math.max(minSegments, toleranceSegments);
 
         const points = [];
         const angleStep = (end - start) / segments;
@@ -19408,7 +19371,8 @@ class PathFlattener {
  * PolygonFiller class for SWCanvas
  *
  * Implements scanline polygon filling with nonzero and evenodd winding rules.
- * Handles stencil-based clipping integration and premultiplied alpha blending.
+ * Handles stencil-based clipping integration and alpha blending onto the
+ * surface's straight (non-premultiplied) RGBA.
  *
  * Provides dual rendering approaches:
  * - Optimized path: 32-bit packed writes for opaque solid colors
@@ -19420,6 +19384,9 @@ class PathFlattener {
  * - Immutable color handling with Color class integration
  */
 class PolygonFiller {
+    // The active-edge scan's scratch (_beginScan): grown on demand, shared by every fill
+    static _scanScratch = null;
+
     /**
      * Fill polygons using scanline algorithm with stencil-based clipping
      * Routes to optimized rendering when possible for optimal performance
@@ -19512,26 +19479,19 @@ class PolygonFiller {
             if (clipRect.y1 - 1 < scanMaxY) scanMaxY = clipRect.y1 - 1;
         }
 
-        // Process each scanline
+        // Process each scanline: its crossings, sorted, from the active edges only
+        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY, scanMaxY);
+        const crossX = scan.cx;
+        const crossW = scan.cw;
         for (let y = scanMinY; y <= scanMaxY; y++) {
-            // Find all intersections with this scanline
-            const intersections = [];
-            for (const poly of transformedPolygons) {
-                PolygonFiller._findPolygonIntersections(poly, y + 0.5, intersections);
-            }
-
-            // Sort intersections by x coordinate
-            intersections.sort((a, b) => a.x - b.x);
+            const count = PolygonFiller._scanRow(scan, y);
 
             // Fill spans using optimized rendering
             let windingNumber = 0;
             let inside = false;
 
-            for (let i = 0; i < intersections.length; i++) {
-                const intersection = intersections[i];
-                const nextIntersection = intersections[i + 1];
-
-                windingNumber += intersection.winding;
+            for (let i = 0; i < count; i++) {
+                windingNumber += crossW[i];
 
                 if (fillRule === 'evenodd') {
                     inside = windingNumber % 2 !== 0;
@@ -19539,7 +19499,7 @@ class PolygonFiller {
                     inside = windingNumber !== 0;
                 }
 
-                if (inside && nextIntersection) {
+                if (inside && i + 1 < count) {
                     // Pixel-center sampling on X (see _fillClipMaskSpans for the
                     // full rationale): a column x is in span [left, right) iff
                     // its center x+0.5 is inside it (left <= x+0.5 < right). This
@@ -19547,8 +19507,8 @@ class PolygonFiller {
                     // ceil(left)..floor(right) inclusive endX made a path-filled
                     // rect 1px wider on the right than fillRect / clip / drawImage
                     // / HTML5.
-                    let startX = Math.max(0, Math.ceil(intersection.x - 0.5));
-                    let endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                    let startX = Math.max(0, Math.ceil(crossX[i] - 0.5));
+                    let endX = Math.min(width - 1, Math.ceil(crossX[i + 1] - 0.5) - 1);
                     // Clip rect: clamp the span to the clip rect's X range; the
                     // clipBuffer (if any) is still tested per pixel below.
                     if (startX < clipX0) startX = clipX0;
@@ -19625,12 +19585,15 @@ class PolygonFiller {
             if (clipRect.y1 - 1 < scanMaxY) scanMaxY = clipRect.y1 - 1;
         }
 
-        // Process each scanline
+        // Process each scanline: its crossings, sorted, from the active edges only
+        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY, scanMaxY);
         for (let y = scanMinY; y <= scanMaxY; y++) {
-            PolygonFiller._fillScanline(
+            PolygonFiller._fillSpans(
                 surface,
                 y,
-                transformedPolygons,
+                scan.cx,
+                scan.cw,
+                PolygonFiller._scanRow(scan, y),
                 paintSource,
                 fillRule,
                 clipMask,
@@ -19670,99 +19633,239 @@ class PolygonFiller {
     }
 
     /**
-     * Fill a single scanline using polygon intersection and winding rules
-     * @param {Surface} surface - Target surface
-     * @param {number} y - Scanline y coordinate
-     * @param {Array} polygons - Transformed polygons
-     * @param {Color|Gradient|Pattern} paintSource - Paint source
-     * @param {string} fillRule - Winding rule
-     * @param {ClipMask|null} clipMask - Clipping mask
-     * @param {Transform2D} transform - Canvas transform (for gradients/patterns)
-     * @param {number} globalAlpha - Global alpha value (0-1)
-     * @param {number} subPixelOpacity - Sub-pixel opacity for thin strokes (0-1)
-     * @param {string} composite - Composite operation
-     * @param {SourceMask|null} sourceMask - Optional source coverage mask
+     * Start an active-edge scan of device polygons over rows [y0, y1]. Every non-horizontal
+     * edge goes into an edge table (structure of arrays, in polygon order then edge order) with
+     * its UPPER end, its extent and its winding, and the table is ordered by the first row
+     * whose sample y + 0.5 can reach the edge. An edge no row in [y0, y1] can cross is left
+     * out. The scratch arrays are kept between calls and only ever grow.
+     * @param {Array} polygons - Device-space polygons
+     * @param {number} y0 - First row
+     * @param {number} y1 - Last row
+     * @returns {Object} The scan state, read by _scanRow
      * @private
      */
-    static _fillScanline(
-        surface,
-        y,
-        polygons,
-        paintSource,
-        fillRule,
-        clipMask,
-        transform,
-        globalAlpha,
-        subPixelOpacity = 1.0,
-        composite = 'source-over',
-        sourceMask = null,
-        clipRect = null
-    ) {
-        const intersections = [];
-
-        // Find all intersections with this scanline
-        for (const poly of polygons) {
-            PolygonFiller._findPolygonIntersections(poly, y + 0.5, intersections);
+    static _beginScan(polygons, y0, y1) {
+        let vertices = 0;
+        for (const poly of polygons) vertices += poly.length;
+        let scan = PolygonFiller._scanScratch;
+        if (scan === null || scan.capacity < vertices) {
+            let capacity = 64;
+            while (capacity < vertices) capacity *= 2;
+            scan = PolygonFiller._scanScratch = {
+                capacity,
+                ux: new Float64Array(capacity),
+                uy: new Float64Array(capacity),
+                ly: new Float64Array(capacity),
+                dx: new Float64Array(capacity),
+                dy: new Float64Array(capacity),
+                w: new Int8Array(capacity),
+                start: new Float64Array(capacity),
+                keys: new Float64Array(capacity),
+                order: new Int32Array(capacity),
+                active: new Int32Array(capacity),
+                waiting: new Int32Array(capacity),
+                bx: new Float64Array(capacity),
+                bw: new Int8Array(capacity),
+                bi: new Int32Array(capacity),
+                cx: new Float64Array(capacity),
+                cw: new Int8Array(capacity),
+                ci: new Int32Array(capacity),
+                n: 0,
+                next: 0,
+                activeCount: 0,
+                keptCount: 0
+            };
         }
-
-        // Sort intersections by x coordinate
-        intersections.sort((a, b) => a.x - b.x);
-
-        // Fill spans based on winding rule
-        PolygonFiller._fillSpans(
-            surface,
-            y,
-            intersections,
-            paintSource,
-            fillRule,
-            clipMask,
-            transform,
-            globalAlpha,
-            subPixelOpacity,
-            composite,
-            sourceMask,
-            clipRect
-        );
+        const ux = scan.ux;
+        const uy = scan.uy;
+        const ly = scan.ly;
+        const dx = scan.dx;
+        const dy = scan.dy;
+        const w = scan.w;
+        const start = scan.start;
+        const firstSample = y0 + 0.5;
+        const lastSample = y1 + 0.5;
+        let n = 0;
+        for (const poly of polygons) {
+            for (let i = 0; i < poly.length; i++) {
+                const p1 = poly[i];
+                const p2 = poly[(i + 1) % poly.length];
+                // Skip exactly horizontal edges (no crossing, and a zero divisor). A merely
+                // NEAR-horizontal one is the only edge covering its sliver [upper.y, lower.y), so a
+                // scanline there needs its crossing: skipping it drops the whole row.
+                if (p1.y === p2.y) continue;
+                // The upper end, whichever way the polygon runs the edge, and the differences
+                // _scanRow interpolates with
+                let upper, lower;
+                if (p2.y > p1.y) {
+                    upper = p1;
+                    lower = p2;
+                    w[n] = 1;
+                } else {
+                    upper = p2;
+                    lower = p1;
+                    w[n] = -1;
+                }
+                // No sample in [y0 + 0.5, y1 + 0.5] lies in [upper.y, lower.y)
+                if (lower.y <= firstSample || upper.y > lastSample) continue;
+                ux[n] = upper.x;
+                uy[n] = upper.y;
+                ly[n] = lower.y;
+                dx[n] = lower.x - upper.x;
+                dy[n] = lower.y - upper.y;
+                // floor(upper.y - 0.5) is never later than the first row whose sample reaches
+                // the edge (rounding is monotonic), so the edge is active by then; _scanRow
+                // still tests the exact half-open condition
+                const first = Math.floor(upper.y - 0.5);
+                start[n] = first < y0 ? y0 : first;
+                n++;
+            }
+        }
+        // Order by first row, ties by table position. A few edges (a rect has two): a stable
+        // insertion sort; many: keys first * 2^k + index, sorted numerically
+        const order = scan.order;
+        if (n <= 32) {
+            for (let e = 0; e < n; e++) {
+                let j = e;
+                while (j > 0 && start[order[j - 1]] > start[e]) {
+                    order[j] = order[j - 1];
+                    j--;
+                }
+                order[j] = e;
+            }
+        } else {
+            let span = 1;
+            while (span <= n) span *= 2;
+            const keys = scan.keys;
+            for (let e = 0; e < n; e++) keys[e] = (start[e] - y0) * span + e;
+            const sorted = keys.subarray(0, n).sort();
+            for (let e = 0; e < n; e++) order[e] = sorted[e] % span;
+        }
+        scan.n = n;
+        scan.next = 0;
+        scan.activeCount = 0;
+        scan.keptCount = 0;
+        return scan;
     }
 
     /**
-     * Find intersections between a polygon and a horizontal scanline
-     * @param {Array} polygon - Array of {x, y} points
-     * @param {number} y - Scanline y coordinate
-     * @param {Array} intersections - Array to append intersections to
+     * The crossings of row y with the scanned edges, in scan.cx / scan.cw. The row is sampled at
+     * y + 0.5 and an edge crosses it when upper.y <= y + 0.5 < lower.y: half-open, so a vertex
+     * between two edges is counted once. The crossing is interpolated from the edge's UPPER end
+     * whichever way the polygon runs it, so an edge two polygons share (each traversing it the
+     * other way) crosses the row at the bit-identical x: their spans then meet exactly, with no
+     * 1-ulp gap for a pixel center lying on the edge to fall into. The crossings are sorted by x
+     * and, between equal x, by edge-table order.
+     * Only the active edges are visited: those whose first row has come and whose lower end the
+     * sample has not passed. The previous row's crossing edges come first, in that row's order,
+     * so their insertion sort mostly confirms an order it already has; the edges reached just
+     * now are sorted apart and merged in.
+     * @param {Object} scan - The state _beginScan returned
+     * @param {number} y - Row
+     * @returns {number} How many crossings
      * @private
      */
-    static _findPolygonIntersections(polygon, y, intersections) {
-        for (let i = 0; i < polygon.length; i++) {
-            const p1 = polygon[i];
-            const p2 = polygon[(i + 1) % polygon.length];
+    static _scanRow(scan, y) {
+        const sample = y + 0.5;
+        const ux = scan.ux;
+        const uy = scan.uy;
+        const ly = scan.ly;
+        const dx = scan.dx;
+        const dy = scan.dy;
+        const w = scan.w;
+        const active = scan.active;
+        const order = scan.order;
+        const start = scan.start;
+        const cx = scan.cx;
+        const cw = scan.cw;
+        const ci = scan.ci;
+        const n = scan.n;
+        let next = scan.next;
+        let activeCount = scan.activeCount;
+        while (next < n && start[order[next]] <= y) active[activeCount++] = order[next++];
+        scan.next = next;
 
-            // Skip horizontal edges (avoid division by zero)
-            if (Math.abs(p1.y - p2.y) < FLOAT_EPSILON) continue;
-
-            // Check if scanline crosses this edge
-            const minY = Math.min(p1.y, p2.y);
-            const maxY = Math.max(p1.y, p2.y);
-
-            if (y >= minY && y < maxY) {
-                // Note: < maxY to avoid double-counting vertices
-                // Calculate intersection point using linear interpolation
-                const t = (y - p1.y) / (p2.y - p1.y);
-                const x = p1.x + t * (p2.x - p1.x);
-
-                // Determine winding direction
-                const winding = p2.y > p1.y ? 1 : -1;
-
-                intersections.push({ x: x, winding: winding });
+        // Visit the active edges: drop the passed ones, set aside the ones not reached yet, insert
+        // each crossing in (x, table position) order - the previous row's crossing edges into
+        // cx/cw/ci, the late ones into bx/bw/bi
+        const kept = scan.keptCount;
+        const waiting = scan.waiting;
+        const bx = scan.bx;
+        const bw = scan.bw;
+        const bi = scan.bi;
+        let pending = 0;
+        let count = 0;
+        let late = 0;
+        for (let k = 0; k < activeCount; k++) {
+            const e = active[k];
+            if (sample >= ly[e]) continue;
+            if (sample < uy[e]) {
+                waiting[pending++] = e;
+                continue;
+            }
+            const x = ux[e] + ((sample - uy[e]) / dy[e]) * dx[e];
+            if (k < kept) {
+                let j = count;
+                while (j > 0 && (cx[j - 1] > x || (cx[j - 1] === x && ci[j - 1] > e))) {
+                    cx[j] = cx[j - 1];
+                    cw[j] = cw[j - 1];
+                    ci[j] = ci[j - 1];
+                    j--;
+                }
+                cx[j] = x;
+                cw[j] = w[e];
+                ci[j] = e;
+                count++;
+            } else {
+                let j = late;
+                while (j > 0 && (bx[j - 1] > x || (bx[j - 1] === x && bi[j - 1] > e))) {
+                    bx[j] = bx[j - 1];
+                    bw[j] = bw[j - 1];
+                    bi[j] = bi[j - 1];
+                    j--;
+                }
+                bx[j] = x;
+                bw[j] = w[e];
+                bi[j] = e;
+                late++;
             }
         }
+        // Merge the late crossings in, from the back (cx has room for all of them)
+        if (late > 0) {
+            let a = count - 1;
+            let b = late - 1;
+            let out = count + late - 1;
+            while (b >= 0) {
+                if (a >= 0 && (cx[a] > bx[b] || (cx[a] === bx[b] && ci[a] > bi[b]))) {
+                    cx[out] = cx[a];
+                    cw[out] = cw[a];
+                    ci[out] = ci[a];
+                    a--;
+                } else {
+                    cx[out] = bx[b];
+                    cw[out] = bw[b];
+                    ci[out] = bi[b];
+                    b--;
+                }
+                out--;
+            }
+            count += late;
+        }
+        // Next row visits this row's crossing edges in this row's order, then the waiting ones
+        for (let j = 0; j < count; j++) active[j] = ci[j];
+        for (let j = 0; j < pending; j++) active[count + j] = waiting[j];
+        scan.activeCount = count + pending;
+        scan.keptCount = count;
+        return count;
     }
 
     /**
      * Fill spans on a scanline based on winding rule
      * @param {Surface} surface - Target surface
      * @param {number} y - Scanline y coordinate
-     * @param {Array} intersections - Sorted intersections with winding info
+     * @param {Float64Array} crossX - The row's crossings, sorted (see _scanRow)
+     * @param {Int8Array} crossW - Their windings
+     * @param {number} count - How many crossings
      * @param {Color|Gradient|Pattern} paintSource - Paint source
      * @param {string} fillRule - 'evenodd' or 'nonzero'
      * @param {ClipMask|null} clipMask - Stencil clipping mask
@@ -19776,7 +19879,9 @@ class PolygonFiller {
     static _fillSpans(
         surface,
         y,
-        intersections,
+        crossX,
+        crossW,
+        count,
         paintSource,
         fillRule,
         clipMask,
@@ -19787,7 +19892,7 @@ class PolygonFiller {
         sourceMask = null,
         clipRect = null
     ) {
-        if (intersections.length === 0) return;
+        if (count === 0) return;
         // Clip rect: clamp each span's X to the clip rect (the caller has already
         // restricted Y to it); any clipMask is still tested per pixel.
         const clipX0 = clipRect ? clipRect.x0 : 0;
@@ -19796,12 +19901,9 @@ class PolygonFiller {
         let windingNumber = 0;
         let inside = false;
 
-        for (let i = 0; i < intersections.length; i++) {
-            const intersection = intersections[i];
-            const nextIntersection = intersections[i + 1];
-
+        for (let i = 0; i < count; i++) {
             // Update winding number
-            windingNumber += intersection.winding;
+            windingNumber += crossW[i];
 
             // Determine if we're inside based on fill rule
             if (fillRule === 'evenodd') {
@@ -19812,15 +19914,15 @@ class PolygonFiller {
             }
 
             // Fill span if we're inside
-            if (inside && nextIntersection) {
+            if (inside && i + 1 < count) {
                 // Pixel-center sampling on X (see _fillClipMaskSpans). This is
                 // the standard path (patterns, gradients, alpha<255,
                 // non-source-over): the old ceil(left)..floor(right) inclusive
                 // endX made e.g. an unclipped desktop PATTERN fill reach one
                 // column past the clipped morphs drawn over it. A column x is in
                 // [left, right) iff left <= x+0.5 < right.
-                let startX = Math.max(0, Math.ceil(intersection.x - 0.5));
-                let endX = Math.min(surface.width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                let startX = Math.max(0, Math.ceil(crossX[i] - 0.5));
+                let endX = Math.min(surface.width - 1, Math.ceil(crossX[i + 1] - 0.5) - 1);
                 if (startX < clipX0) startX = clipX0;
                 if (endX > clipX1m1) endX = clipX1m1;
 
@@ -19888,7 +19990,9 @@ class PolygonFiller {
         //   srcA===0   -> dest unchanged (so a transparent span is a whole no-op)
         //   srcA===255 -> write source
         //   dstA===0   -> write source
-        //   else       -> Math.round(src*a + dst*(1-a)) per channel, a = srcA/255
+        //   dstA===255 -> Math.round(src*a + dst*(1-a)) per channel, a = srcA/255
+        //   else       -> the same with dst weighted by its own alpha, over the
+        //                 result alpha (Porter-Duff on straight RGBA)
         // sourceMask is only ever set for canvas-wide (non-source-over) ops, so the
         // !sourceMask guard is belt-and-suspenders (source-over => sourceMask null).
         if (solidColor !== null && composite === 'source-over' && !sourceMask) {
@@ -19911,10 +20015,19 @@ class PolygonFiller {
                         data[offset + 1] = sg;
                         data[offset + 2] = sb;
                         data[offset + 3] = sa;
-                    } else {
+                    } else if (dstA === 255) {
                         data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
                         data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
                         data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                        data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                    } else {
+                        // Both translucent: the destination's colour counts in proportion
+                        // to its own alpha (Porter-Duff over straight RGBA).
+                        const dstWeight = (dstA / 255) * invSrcAlpha;
+                        const outAlpha = srcAlpha + dstWeight;
+                        data[offset] = Math.round((sr * srcAlpha + data[offset] * dstWeight) / outAlpha);
+                        data[offset + 1] = Math.round((sg * srcAlpha + data[offset + 1] * dstWeight) / outAlpha);
+                        data[offset + 2] = Math.round((sb * srcAlpha + data[offset + 2] * dstWeight) / outAlpha);
                         data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
                     }
                 }
@@ -19932,16 +20045,70 @@ class PolygonFiller {
         // source-over arithmetic as CompositeOperations.blendPixel.
         if (paintSource instanceof Pattern && composite === 'source-over' && !sourceMask) {
             const inv = paintSource.inverseForDevice(transform);
+            const map = paintSource.centreMapForDevice(transform);
             const pdata = paintSource._imageData.data;
+
+            // W3 — the mapping RESAMPLES (rotation, skew or a non-unit step) under
+            // imageSmoothingEnabled: the filtered arm, decided once per transform
+            // (Pattern.isFilteredUnder). The general path below filters through
+            // the same Pattern.filterAt; the alpha and source-over
+            // arithmetic are W1's.
+            if (paintSource.isFilteredUnder(transform)) {
+                const texel = paintSource._sampling.texel;
+                for (let x = startX; x <= endX; x++) {
+                    if (clipMask && clipMask.isPixelClipped(x, y)) continue;
+                    if (!paintSource.filterAt(map, x, y, texel)) continue; // transparent → dest unchanged
+                    let sa = Math.round(texel.a * globalAlpha);
+                    if (subPixelOpacity < 1.0) sa = Math.round(sa * subPixelOpacity);
+                    if (sa === 0) continue;
+                    const sr = texel.r;
+                    const sg = texel.g;
+                    const sb = texel.b;
+                    const offset = y * stride + x * 4;
+                    if (sa === 255) {
+                        data[offset] = sr;
+                        data[offset + 1] = sg;
+                        data[offset + 2] = sb;
+                        data[offset + 3] = 255;
+                    } else {
+                        const dstA = data[offset + 3];
+                        if (dstA === 0) {
+                            data[offset] = sr;
+                            data[offset + 1] = sg;
+                            data[offset + 2] = sb;
+                            data[offset + 3] = sa;
+                        } else if (dstA === 255) {
+                            const srcAlpha = sa / 255;
+                            const invSrcAlpha = 1 - srcAlpha;
+                            data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
+                            data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
+                            data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                            data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                        } else {
+                            // Both translucent: the destination's colour counts in proportion
+                            // to its own alpha (Porter-Duff over straight RGBA).
+                            const srcAlpha = sa / 255;
+                            const invSrcAlpha = 1 - srcAlpha;
+                            const dstWeight = (dstA / 255) * invSrcAlpha;
+                            const outAlpha = srcAlpha + dstWeight;
+                            data[offset] = Math.round((sr * srcAlpha + data[offset] * dstWeight) / outAlpha);
+                            data[offset + 1] = Math.round((sg * srcAlpha + data[offset + 1] * dstWeight) / outAlpha);
+                            data[offset + 2] = Math.round((sb * srcAlpha + data[offset + 2] * dstWeight) / outAlpha);
+                            data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                        }
+                    }
+                }
+                return;
+            }
 
             // W2 — axis-aligned 1:1 integer 'repeat' mapping (the desktop wallpaper:
             // a device-space fill of a 'repeat' pattern under an integer translate).
             // The tile ROW is constant across the scanline and the tile COLUMN is an
             // integer that increments and wraps, so the per-pixel transform + modulo +
             // floor + clamp all disappear. Byte-identical to the general branch below:
-            // for integer in-range coords _sampleOffset's floor/clamp are no-ops and
-            // _repeatCoordinate(v,size) === ((v % size)+size)%size, which is exactly
-            // the incrementing/wrapping column index here.
+            // the pixel centre x + 0.5 + e floors to the same integer column, so
+            // _sampleOffset's floor/clamp yield exactly the incrementing/wrapping
+            // index here (_repeatCoordinate(v,size) === ((v % size)+size)%size).
             if (inv !== null && inv.b === 0 && inv.c === 0 && inv.a === 1 && inv.d === 1 &&
                 Number.isInteger(inv.e) && Number.isInteger(inv.f) &&
                 paintSource._repetition === 'repeat') {
@@ -19970,12 +20137,27 @@ class PolygonFiller {
                                     data[offset + 1] = sg;
                                     data[offset + 2] = sb;
                                     data[offset + 3] = sa;
-                                } else {
+                                } else if (dstA === 255) {
                                     const srcAlpha = sa / 255;
                                     const invSrcAlpha = 1 - srcAlpha;
                                     data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
                                     data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
                                     data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                                    data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                                } else {
+                                    // Both translucent: the destination's colour counts in proportion
+                                    // to its own alpha (Porter-Duff over straight RGBA).
+                                    const srcAlpha = sa / 255;
+                                    const invSrcAlpha = 1 - srcAlpha;
+                                    const dstWeight = (dstA / 255) * invSrcAlpha;
+                                    const outAlpha = srcAlpha + dstWeight;
+                                    data[offset] = Math.round((sr * srcAlpha + data[offset] * dstWeight) / outAlpha);
+                                    data[offset + 1] = Math.round(
+                                        (sg * srcAlpha + data[offset + 1] * dstWeight) / outAlpha
+                                    );
+                                    data[offset + 2] = Math.round(
+                                        (sb * srcAlpha + data[offset + 2] * dstWeight) / outAlpha
+                                    );
                                     data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
                                 }
                             }
@@ -19986,11 +20168,12 @@ class PolygonFiller {
                 return;
             }
 
-            // W1 — general hoisted-inverse pattern fill (rotated / scaled / fractional
-            // translate / non-'repeat'): still one inversion per span, sampled by offset.
+            // W1 — general hoisted-inverse nearest-neighbour pattern fill (fractional
+            // translate / non-'repeat', or any mapping with smoothing off): still one
+            // inversion per span, sampled by offset.
             for (let x = startX; x <= endX; x++) {
                 if (clipMask && clipMask.isPixelClipped(x, y)) continue;
-                const so = paintSource.sampleOffsetWithInverse(inv, x, y);
+                const so = paintSource.sampleOffsetAt(map, x, y);
                 if (so < 0) continue; // transparent sample → dest unchanged
                 // withGlobalAlpha (+ sub-pixel opacity for thin strokes), matching
                 // _evaluatePaintSource: alpha only, source channels untouched.
@@ -20011,12 +20194,23 @@ class PolygonFiller {
                         data[offset + 1] = sg;
                         data[offset + 2] = sb;
                         data[offset + 3] = sa;
-                    } else {
+                    } else if (dstA === 255) {
                         const srcAlpha = sa / 255;
                         const invSrcAlpha = 1 - srcAlpha;
                         data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
                         data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
                         data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                        data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                    } else {
+                        // Both translucent: the destination's colour counts in proportion
+                        // to its own alpha (Porter-Duff over straight RGBA).
+                        const srcAlpha = sa / 255;
+                        const invSrcAlpha = 1 - srcAlpha;
+                        const dstWeight = (dstA / 255) * invSrcAlpha;
+                        const outAlpha = srcAlpha + dstWeight;
+                        data[offset] = Math.round((sr * srcAlpha + data[offset] * dstWeight) / outAlpha);
+                        data[offset + 1] = Math.round((sg * srcAlpha + data[offset + 1] * dstWeight) / outAlpha);
+                        data[offset + 2] = Math.round((sb * srcAlpha + data[offset + 2] * dstWeight) / outAlpha);
                         data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
                     }
                 }
@@ -20227,8 +20421,9 @@ class PolygonFiller {
                 const p1 = polygon[i];
                 const p2 = polygon[(i + 1) % polygon.length];
 
-                // Skip horizontal edges (no intersection with horizontal ray)
-                if (Math.abs(p1.y - p2.y) < epsilon) continue;
+                // Skip exactly horizontal edges (no intersection with horizontal ray); a
+                // near-horizontal one still owns its sliver of y (see _beginScan)
+                if (p1.y === p2.y) continue;
 
                 // Check if ray crosses this edge
                 const minY = Math.min(p1.y, p2.y);
@@ -20237,7 +20432,8 @@ class PolygonFiller {
                 // Ray is at y level, check if it intersects the edge
                 if (y >= minY && y < maxY) {
                     // Note: < maxY to avoid double-counting vertices
-                    // Calculate intersection point using linear interpolation
+                    // Calculate intersection point using linear interpolation - from p1, in the
+                    // polygon's own order (the fills interpolate from the upper end: _scanRow)
                     const t = (y - p1.y) / (p2.y - p1.y);
                     const intersectionX = p1.x + t * (p2.x - p1.x);
 
@@ -20353,20 +20549,12 @@ class PolygonFiller {
             spanMaxX = bound.x1 - 1;
         }
 
-        // Process each scanline
+        // Process each scanline: its crossings, sorted, from the active edges only (the same
+        // scan as the surface fills)
+        const scan = PolygonFiller._beginScan(transformedPolygons, minY, maxY);
         for (let y = minY; y <= maxY; y++) {
-            const intersections = [];
-
-            // Find all intersections with this scanline (reuse existing method)
-            for (const poly of transformedPolygons) {
-                PolygonFiller._findPolygonIntersections(poly, y + 0.5, intersections);
-            }
-
-            // Sort intersections by x coordinate
-            intersections.sort((a, b) => a.x - b.x);
-
-            // Fill spans to clip mask
-            PolygonFiller._fillClipMaskSpans(clipMask, y, intersections, fillRule, spanMinX, spanMaxX);
+            const count = PolygonFiller._scanRow(scan, y);
+            PolygonFiller._fillClipMaskSpans(clipMask, y, scan.cx, scan.cw, count, fillRule, spanMinX, spanMaxX);
         }
     }
 
@@ -20374,24 +20562,23 @@ class PolygonFiller {
      * Fill spans on a scanline into a ClipMask based on winding rule
      * @param {ClipMask} clipMask - Target clip mask
      * @param {number} y - Scanline y coordinate
-     * @param {Array} intersections - Sorted intersections with winding info
+     * @param {Float64Array} crossX - The row's crossings, sorted (see _scanRow)
+     * @param {Int8Array} crossW - Their windings
+     * @param {number} count - How many crossings
      * @param {string} fillRule - 'evenodd' or 'nonzero'
      * @param {number} minX - First writable column (0, or the bound's x0)
      * @param {number} maxX - Last writable column, inclusive (width - 1, or the bound's x1 - 1)
      * @private
      */
-    static _fillClipMaskSpans(clipMask, y, intersections, fillRule, minX, maxX) {
-        if (intersections.length === 0) return;
+    static _fillClipMaskSpans(clipMask, y, crossX, crossW, count, fillRule, minX, maxX) {
+        if (count === 0) return;
 
         let windingNumber = 0;
         let inside = false;
 
-        for (let i = 0; i < intersections.length; i++) {
-            const intersection = intersections[i];
-            const nextIntersection = intersections[i + 1];
-
+        for (let i = 0; i < count; i++) {
             // Update winding number
-            windingNumber += intersection.winding;
+            windingNumber += crossW[i];
 
             // Determine if we're inside based on fill rule
             if (fillRule === 'evenodd') {
@@ -20402,7 +20589,7 @@ class PolygonFiller {
             }
 
             // Fill span if we're inside
-            if (inside && nextIntersection) {
+            if (inside && i + 1 < count) {
                 // Pixel-center sampling on X, to match the scanline's Y
                 // convention: scanlines are sampled at y+0.5 with a half-open
                 // [minY, maxY) edge test, so a column x belongs to the span
@@ -20415,8 +20602,8 @@ class PolygonFiller {
                 // while raster (drawImage/text) blits bounded by their own
                 // extent did not — leaving 1px "streaks" of erased raster
                 // content along the right edge of repainted regions.
-                const startX = Math.max(minX, Math.ceil(intersection.x - 0.5));
-                const endX = Math.min(maxX, Math.ceil(nextIntersection.x - 0.5) - 1);
+                const startX = Math.max(minX, Math.ceil(crossX[i] - 0.5));
+                const endX = Math.min(maxX, Math.ceil(crossX[i + 1] - 0.5) - 1);
 
                 for (let x = startX; x <= endX; x++) {
                     clipMask.setPixel(x, y, true); // Set pixel to visible
@@ -20443,10 +20630,13 @@ class StrokeGenerator {
      * Generate stroke polygons for a path with given stroke properties
      * @param {Path2D} path - Path to stroke
      * @param {Object} strokeProps - Stroke properties
+     * @param {number} [deviceScale=1] - Device pixels per path unit (the transform's larger axis
+     *   scale): round joins and caps are flattened for the size they are drawn at
      * @returns {Array<Array<Point>>} Array of stroke polygons
      */
-    static generateStrokePolygons(path, strokeProps) {
+    static generateStrokePolygons(path, strokeProps, deviceScale = 1) {
         const validatedProps = StrokeGenerator._validateStrokeProperties(strokeProps);
+        validatedProps.deviceScale = deviceScale;
 
         if (validatedProps.lineWidth <= 0) return [];
 
@@ -20708,17 +20898,18 @@ class StrokeGenerator {
         const segments = StrokeGenerator._generateSegments(points, halfWidth);
         if (segments.length === 0) return [];
 
-        // Add segment bodies to stroke parts
-        for (const segment of segments) {
-            strokeParts.push(segment.body);
-        }
-
         // Generate joins between adjacent segments
         StrokeGenerator._generateJoins(segments, strokeParts, strokeProps, isClosed);
 
         // Generate caps for open paths
         if (!isClosed && segments.length > 0) {
             StrokeGenerator._generateCaps(segments, strokeParts, strokeProps, halfWidth);
+        }
+
+        // Add segment bodies to stroke parts - last, as a join marks the end edges it shares
+        // with them (_bodyOutline)
+        for (const segment of segments) {
+            strokeParts.push(StrokeGenerator._bodyOutline(segment));
         }
 
         return strokeParts;
@@ -20791,8 +20982,31 @@ class StrokeGenerator {
             p2: p2,
             tangent: direction,
             normal: normal,
-            length: length
+            length: length,
+            startJoin: null, // the join point on the start edge, when a join attaches there
+            endJoin: null // the join point on the end edge, when a join attaches there
         };
+    }
+
+    /**
+     * A segment's body as filled: its four corners, with the join point inserted on each end
+     * edge a join attaches to. Every join polygon has edges from the join point to the outer
+     * (or inner) corners, i.e. along HALF of the body's end edge; with the join point a vertex
+     * of the body too, join and body share those half edges with the same two endpoints, which
+     * the filler crosses at the bit-identical x from both sides - no gap for a pixel center on
+     * the seam to fall into, where the full edge and its half could round 1 ulp apart.
+     * @param {Object} seg - Segment
+     * @returns {Array<Object>} The body polygon
+     * @private
+     */
+    static _bodyOutline(seg) {
+        const b = seg.body;
+        if (seg.startJoin === null && seg.endJoin === null) return b;
+        const outline = [b[0], b[1]];
+        if (seg.endJoin !== null) outline.push(seg.endJoin.toObject());
+        outline.push(b[2], b[3]);
+        if (seg.startJoin !== null) outline.push(seg.startJoin.toObject());
+        return outline;
     }
 
     /**
@@ -20810,6 +21024,8 @@ class StrokeGenerator {
             const seg2 = segments[i + 1];
             const joinPolygons = StrokeGenerator._generateJoin(seg1, seg2, strokeProps);
             strokeParts.push(...joinPolygons);
+            seg1.endJoin = seg2.p1;
+            seg2.startJoin = seg2.p1;
         }
 
         // Handle closed path joining (last segment to first segment)
@@ -20818,6 +21034,8 @@ class StrokeGenerator {
             const firstSeg = segments[0];
             const joinPolygons = StrokeGenerator._generateJoin(lastSeg, firstSeg, strokeProps);
             strokeParts.push(...joinPolygons);
+            lastSeg.endJoin = firstSeg.p1;
+            firstSeg.startJoin = firstSeg.p1;
         }
     }
 
@@ -20837,7 +21055,7 @@ class StrokeGenerator {
 
         // Check for 180-degree turn (parallel segments)
         if (Math.abs(cross) < FLOAT_EPSILON) {
-            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
+            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint, strokeProps.lineWidth / 2);
         }
 
         // Generate appropriate join type
@@ -20845,11 +21063,34 @@ class StrokeGenerator {
             case 'miter':
                 return StrokeGenerator._generateMiterJoin(seg1, seg2, joinPoint, strokeProps.miterLimit);
             case 'round':
-                return StrokeGenerator._generateRoundJoin(seg1, seg2, joinPoint);
+                return StrokeGenerator._generateRoundJoin(seg1, seg2, joinPoint, strokeProps.deviceScale);
             case 'bevel':
             default:
-                return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
+                return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint, strokeProps.lineWidth / 2);
         }
+    }
+
+    /**
+     * Whether a miter or bevel join needs its INNER triangle [joinPoint, inner2, inner1] - the
+     * inner half of the connecting area between the two bodies' end edges. Every point of that
+     * triangle is within both bodies' widths, lies some b behind seg1's end edge and some f
+     * ahead of seg2's start edge, with b + f <= halfWidth * |sin(turn)| (0 at joinPoint, the
+     * whole amount along inner1-inner2), so it is inside seg1's body where b <= seg1.length or
+     * inside seg2's where f <= seg2.length. Whenever seg1.length + seg2.length reaches
+     * halfWidth * |sin(turn)| the two bodies therefore cover the whole triangle, and a part
+     * inside parts wound the same way adds nothing to a nonzero fill. Only two segments shorter
+     * than that together (a thick stroke on a tightly flattened curve, short polyline segments)
+     * leave some of it bare, and there it is emitted. (The round join relies on the bodies
+     * alone, as these joins then do.)
+     * @param {Object} seg1 - First segment
+     * @param {Object} seg2 - Second segment
+     * @param {number} halfWidth - Half line width
+     * @param {number} cross - seg1.tangent x seg2.tangent, = +/-sin(turn)
+     * @returns {boolean} True if the two bodies leave part of the inner triangle uncovered
+     * @private
+     */
+    static _innerTriangleUncovered(seg1, seg2, halfWidth, cross) {
+        return seg1.length + seg2.length < halfWidth * Math.abs(cross);
     }
 
     /**
@@ -20896,7 +21137,7 @@ class StrokeGenerator {
 
         if (!miterPoint) {
             // Fallback to bevel if no intersection
-            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
+            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint, halfWidth);
         }
 
         // Check miter limit
@@ -20907,10 +21148,18 @@ class StrokeGenerator {
 
         if (miterRatio > miterLimit) {
             // Exceeds miter limit - use bevel
-            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
+            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint, halfWidth);
         }
 
-        // For miter join, we need to fill both the miter triangle and the inner area
+        // The connecting area [outer1, outer2, inner2, inner1] is two triangles meeting at the
+        // join point (its long edges cross there, so as one polygon its halves would wind
+        // opposite ways): the outer one joins the miter triangle into one convex kite; the
+        // inner one is emitted only where no body covers it (_innerTriangleUncovered)
+        const jp = joinPoint.toObject();
+        const kite = StrokeGenerator._windLikeBodies([jp, outer1, miterPoint, outer2]);
+        if (!StrokeGenerator._innerTriangleUncovered(seg1, seg2, halfWidth, cross)) {
+            return [kite];
+        }
         let inner1, inner2;
         if (cross > 0) {
             // Left turn - left sides are inner
@@ -20921,12 +21170,7 @@ class StrokeGenerator {
             inner1 = seg1.body[2]; // Right side of seg1 end
             inner2 = seg2.body[3]; // Right side of seg2 start
         }
-
-        // Create miter triangle and inner quadrilateral
-        return [
-            [outer1, miterPoint, outer2], // Miter triangle
-            [outer1, outer2, inner2, inner1] // Inner connecting area
-        ];
+        return [kite, StrokeGenerator._windLikeBodies([jp, inner2, inner1])];
     }
 
     /**
@@ -20934,26 +21178,39 @@ class StrokeGenerator {
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {Point} joinPoint - Join point
-     * @returns {Array} Array containing single bevel polygon
+     * @param {number} halfWidth - Half line width (decides whether the inner triangle is needed)
+     * @returns {Array} The bevel triangle, plus the inner triangle where no body covers it
      * @private
      */
-    static _generateBevelJoin(seg1, seg2, joinPoint) {
+    static _generateBevelJoin(seg1, seg2, joinPoint, halfWidth) {
         const cross = seg1.tangent.cross(seg2.tangent);
         const outerSides = StrokeGenerator._getOuterSides(seg1, seg2, cross);
-        const innerSides = StrokeGenerator._getInnerSides(seg1, seg2, cross);
 
-        return [[outerSides.outer1, outerSides.outer2, innerSides.inner2, innerSides.inner1]];
+        // [outer1, outer2, inner2, inner1] is two triangles meeting at the join point (its long
+        // edges cross there - see _generateMiterJoin): the outer one is the bevel, the inner one
+        // is emitted only where no body covers it (_innerTriangleUncovered)
+        const jp = joinPoint.toObject();
+        const bevel = StrokeGenerator._windLikeBodies([jp, outerSides.outer1, outerSides.outer2]);
+        if (!StrokeGenerator._innerTriangleUncovered(seg1, seg2, halfWidth, cross)) {
+            return [bevel];
+        }
+        const innerSides = StrokeGenerator._getInnerSides(seg1, seg2, cross);
+        return [bevel, StrokeGenerator._windLikeBodies([jp, innerSides.inner2, innerSides.inner1])];
     }
 
     /**
-     * Generate round join
+     * Generate round join as ONE pie polygon [joinPoint, outer1, rim..., outer2] whose rim ends
+     * are the bodies' own corner objects: its two straight sides are the outer halves of the
+     * bodies' end edges, with the same endpoints as the bodies' (_bodyOutline), so no sliver
+     * opens between join and body for a pixel center on the seam to fall into
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {Point} joinPoint - Join point
-     * @returns {Array} Array of triangular fan polygons
+     * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
+     * @returns {Array} The pie polygon
      * @private
      */
-    static _generateRoundJoin(seg1, seg2, joinPoint) {
+    static _generateRoundJoin(seg1, seg2, joinPoint, deviceScale) {
         // Calculate half width from segment body (distance between top and bottom edges)
         const halfWidth =
             Math.sqrt(Math.pow(seg1.body[0].x - seg1.body[3].x, 2) + Math.pow(seg1.body[0].y - seg1.body[3].y, 2)) / 2;
@@ -20988,7 +21245,8 @@ class StrokeGenerator {
         }
 
         // We want to go the convex way (positive turn)
-        if (angleDiff < 0) {
+        const swapped = angleDiff < 0;
+        if (swapped) {
             // Swap to go positive direction
             const temp = startAngle;
             startAngle = endAngle;
@@ -20996,27 +21254,45 @@ class StrokeGenerator {
             angleDiff = -angleDiff;
         }
 
-        const segments = Math.max(2, Math.ceil(angleDiff / QUARTER_PI)); // At least 2 segments
+        const segments = StrokeGenerator._roundSegments(angleDiff, halfWidth, deviceScale);
         const angleStep = angleDiff / segments;
 
-        const triangles = [];
-        for (let i = 0; i < segments; i++) {
-            const a1 = startAngle + i * angleStep;
-            const a2 = startAngle + (i + 1) * angleStep;
-
-            const p1 = {
-                x: joinPoint.x + halfWidth * Math.cos(a1),
-                y: joinPoint.y + halfWidth * Math.sin(a1)
-            };
-            const p2 = {
-                x: joinPoint.x + halfWidth * Math.cos(a2),
-                y: joinPoint.y + halfWidth * Math.sin(a2)
-            };
-
-            triangles.push([joinPoint.toObject(), p1, p2]);
+        // The rim from startAngle; its two ends are the corners themselves
+        const pie = [joinPoint.toObject()];
+        for (let i = 0; i <= segments; i++) {
+            const a = startAngle + i * angleStep;
+            pie.push({
+                x: joinPoint.x + halfWidth * Math.cos(a),
+                y: joinPoint.y + halfWidth * Math.sin(a)
+            });
         }
+        pie[1] = swapped ? outer2 : outer1;
+        pie[segments + 1] = swapped ? outer1 : outer2;
 
-        return triangles;
+        return [StrokeGenerator._windLikeBodies(pie)];
+    }
+
+    /**
+     * How many chords flatten a round join's or cap's arc of `angle` radians and radius
+     * `halfWidth`, drawn at `deviceScale` device pixels per unit: as many as keep every chord
+     * within PATH_FLATTENING_TOLERANCE device pixels of the circle (like a path's own arcs,
+     * Context2D._arcSegmentCount), and never fewer than one per quarter-PI (nor than 2) - so
+     * small round parts keep their shape and large ones stay round. Both quotients go through
+     * PathFlattener.segmentCount, so the rounding noise of an angle read back from
+     * position-dependent corners (a right angle's 2 + noise) cannot add a chord.
+     * @param {number} angle - Arc angle in radians (non-negative)
+     * @param {number} halfWidth - Arc radius in path units
+     * @param {number} deviceScale - Device pixels per path unit
+     * @returns {number} Chord count
+     * @private
+     */
+    static _roundSegments(angle, halfWidth, deviceScale) {
+        const quarters = PathFlattener.segmentCount(angle / QUARTER_PI);
+        const radius = Math.max(halfWidth * deviceScale, TRANSFORM_EPSILON);
+        let maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / radius));
+        if (!(maxAngleStep > TRANSFORM_EPSILON)) maxAngleStep = TRANSFORM_EPSILON;
+        const byTolerance = PathFlattener.segmentCount(angle / maxAngleStep);
+        return Math.max(2, quarters, byTolerance);
     }
 
     /**
@@ -21028,26 +21304,33 @@ class StrokeGenerator {
      * @private
      */
     static _generateCaps(segments, strokeParts, strokeProps, halfWidth) {
-        // Start cap
+        // Start cap (closing on the first body's start edge, body[3] -> body[0])
+        const firstSeg = segments[0];
         const startCaps = StrokeGenerator._generateCap(
-            segments[0].p1,
-            segments[0].tangent,
+            firstSeg.p1,
+            firstSeg.tangent,
             halfWidth,
             strokeProps.lineCap,
-            true
+            true,
+            firstSeg.body[0],
+            firstSeg.body[3],
+            strokeProps.deviceScale
         );
         if (startCaps) {
             strokeParts.push(...(Array.isArray(startCaps[0]) ? startCaps : [startCaps]));
         }
 
-        // End cap
+        // End cap (closing on the last body's end edge, body[1] -> body[2])
         const lastSeg = segments[segments.length - 1];
         const endCaps = StrokeGenerator._generateCap(
             lastSeg.p2,
             lastSeg.tangent,
             halfWidth,
             strokeProps.lineCap,
-            false
+            false,
+            lastSeg.body[1],
+            lastSeg.body[2],
+            strokeProps.deviceScale
         );
         if (endCaps) {
             strokeParts.push(...(Array.isArray(endCaps[0]) ? endCaps : [endCaps]));
@@ -21061,17 +21344,28 @@ class StrokeGenerator {
      * @param {number} halfWidth - Half line width
      * @param {string} lineCap - Cap type
      * @param {boolean} isStart - Whether this is start cap
+     * @param {Object} plusCorner - The body's corner at point + normal * halfWidth
+     * @param {Object} minusCorner - The body's corner at point - normal * halfWidth
+     * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
      * @returns {Array|null} Cap polygons or null for butt caps
      * @private
      */
-    static _generateCap(point, tangent, halfWidth, lineCap, isStart) {
+    static _generateCap(point, tangent, halfWidth, lineCap, isStart, plusCorner, minusCorner, deviceScale) {
         const normal = new Point(-tangent.y, tangent.x);
 
         switch (lineCap) {
             case 'square':
                 return StrokeGenerator._generateSquareCap(point, tangent, normal, halfWidth, isStart);
             case 'round':
-                return StrokeGenerator._generateRoundCap(point, normal, halfWidth, isStart);
+                return StrokeGenerator._generateRoundCap(
+                    point,
+                    normal,
+                    halfWidth,
+                    isStart,
+                    plusCorner,
+                    minusCorner,
+                    deviceScale
+                );
             case 'butt':
             default:
                 return null; // No cap geometry needed
@@ -21092,27 +21386,42 @@ class StrokeGenerator {
         const extension = isStart ? point.subtract(tangent.scale(halfWidth)) : point.add(tangent.scale(halfWidth));
 
         return [
-            [
+            StrokeGenerator._windLikeBodies([
                 extension.add(normal.scale(halfWidth)).toObject(),
                 extension.subtract(normal.scale(halfWidth)).toObject(),
                 point.subtract(normal.scale(halfWidth)).toObject(),
                 point.add(normal.scale(halfWidth)).toObject()
-            ]
+            ])
         ];
     }
 
     /**
-     * Generate round cap as semicircular fan
+     * Generate round cap as ONE half-disc polygon whose diameter IS the body's end edge: its two
+     * ends are the body's own corner objects, so cap and body meet along one edge with the same
+     * two endpoints - not along two separately computed lines, and with no fan edges inside the
+     * cap - leaving no sliver between them for a pixel center on the seam to fall into.
      * @param {Point} point - Cap center point
      * @param {Point} normal - Normal direction
      * @param {number} halfWidth - Half line width
      * @param {boolean} isStart - Whether this is start cap
-     * @returns {Array} Array of triangular fan segments
+     * @param {Object} plusCorner - The body's corner at point + normal * halfWidth
+     * @param {Object} minusCorner - The body's corner at point - normal * halfWidth
+     * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
+     * @returns {Array} One polygon
      * @private
      */
-    static _generateRoundCap(point, normal, halfWidth, isStart) {
+    static _generateRoundCap(point, normal, halfWidth, isStart, plusCorner, minusCorner, deviceScale) {
         const startAngle = Math.atan2(normal.y, normal.x);
-        return StrokeGenerator._generateArcFan(point, halfWidth, startAngle, startAngle + Math.PI * (isStart ? 1 : -1));
+        const rim = StrokeGenerator._generateArcRim(
+            point,
+            halfWidth,
+            startAngle,
+            startAngle + Math.PI * (isStart ? 1 : -1),
+            deviceScale
+        );
+        rim[0] = plusCorner;
+        rim[rim.length - 1] = minusCorner;
+        return [StrokeGenerator._windLikeBodies(rim)];
     }
 
     // Helper methods
@@ -21190,15 +21499,17 @@ class StrokeGenerator {
     }
 
     /**
-     * Generate triangular fan for arcs (used by round joins and caps)
+     * The rim of an arc as its flattened points p(a0) ... p(an), a0 = startAngle, an = endAngle
+     * (a round cap closes it with the diameter)
      * @param {Point} center - Arc center
      * @param {number} radius - Arc radius
      * @param {number} startAngle - Start angle in radians
      * @param {number} endAngle - End angle in radians
-     * @returns {Array} Array of triangles
+     * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
+     * @returns {Array<Object>} The rim points {x, y}
      * @private
      */
-    static _generateArcFan(center, radius, startAngle, endAngle) {
+    static _generateArcRim(center, radius, startAngle, endAngle, deviceScale) {
         let angleDiff = endAngle - startAngle;
 
         // Normalize angle difference. The epsilon tolerance is essential for round
@@ -21213,28 +21524,48 @@ class StrokeGenerator {
         while (angleDiff > Math.PI + FLOAT_EPSILON) angleDiff -= TAU;
         while (angleDiff < -Math.PI - FLOAT_EPSILON) angleDiff += TAU;
 
-        const absAngle = Math.abs(angleDiff);
-        const segments = Math.max(2, Math.ceil(absAngle / QUARTER_PI));
+        // A cap's half turn is exactly 4 quarter-PIs up to the rounding of startAngle +/- PI.
+        const segments = StrokeGenerator._roundSegments(Math.abs(angleDiff), radius, deviceScale);
         const angleStep = angleDiff / segments;
 
-        const triangles = [];
-        for (let i = 0; i < segments; i++) {
-            const a1 = startAngle + i * angleStep;
-            const a2 = startAngle + (i + 1) * angleStep;
-
-            const p1 = {
-                x: center.x + radius * Math.cos(a1),
-                y: center.y + radius * Math.sin(a1)
-            };
-            const p2 = {
-                x: center.x + radius * Math.cos(a2),
-                y: center.y + radius * Math.sin(a2)
-            };
-
-            triangles.push([center.toObject(), p1, p2]);
+        const rim = [];
+        for (let i = 0; i <= segments; i++) {
+            const a = startAngle + i * angleStep;
+            rim.push({
+                x: center.x + radius * Math.cos(a),
+                y: center.y + radius * Math.sin(a)
+            });
         }
 
-        return triangles;
+        return rim;
+    }
+
+    /**
+     * Wind a stroke part the way every segment body winds, reversing it in place if needed.
+     * A stroke covers the union of its swept parts (the HTML spec's traced path is "the edge of
+     * the areas that would be covered" by the swept line), and SWCanvas fills the parts together
+     * under the nonzero rule: a part wound against the others subtracts instead of adding, so
+     * where it overlaps another part of the same stroke() - a round or square cap on a crossing
+     * line, a join on a short neighbour - the overlap sums to winding 0 and is left unpainted.
+     * A body [p1+n, p2+n, p2-n, p1-n] (n = the tangent turned +90deg) has a negative signed area
+     * (shoelace sum); the decision reads the whole polygon's signed area, not one corner's, so a
+     * near-collinear first corner (a kite at a near-straight join) cannot flip it. The sum is
+     * taken relative to the first point, so a small part far from the origin keeps its sign.
+     * @param {Array<Object>} poly - Simple polygon points {x, y} (a part: 3 to ~6 points)
+     * @returns {Array<Object>} The same array, wound like the bodies
+     * @private
+     */
+    static _windLikeBodies(poly) {
+        const x0 = poly[0].x,
+            y0 = poly[0].y;
+        let twiceArea = 0;
+        for (let i = 1, n = poly.length - 1; i < n; i++) {
+            const p = poly[i],
+                q = poly[i + 1];
+            twiceArea += (p.x - x0) * (q.y - y0) - (q.x - x0) * (p.y - y0);
+        }
+        if (twiceArea > 0) poly.reverse();
+        return poly;
     }
 }
 
@@ -22491,19 +22822,17 @@ class BoxBlur {
             return new Float32Array(data); // Return copy
         }
 
-        // Calculate equivalent box filter width for Gaussian approximation
-        // Based on Central Limit Theorem: multiple box filters -> Gaussian
-        const sigma = blurRadius / 2.0;
-        const boxWidth = Math.floor(Math.max(Math.sqrt((12 * sigma * sigma) / passes + 1), 3));
-
-        // Ensure odd width for symmetric filter
-        const finalBoxWidth = boxWidth % 2 === 0 ? boxWidth + 1 : boxWidth;
-
-        // Apply multiple blur passes
+        // Multiple box filters approximate a Gaussian (Central Limit Theorem);
+        // the widths (boxWidths) make the passes' combined variance that of
+        // the HTML5 shadow blur, sigma = blurRadius / 2. A width of 1 is the
+        // identity and is skipped.
+        const widths = BoxBlur.boxWidths(blurRadius, passes);
         let currentData = new Float32Array(data);
 
         for (let pass = 0; pass < passes; pass++) {
-            currentData = BoxBlur._singleBoxBlurPass(currentData, width, height, finalBoxWidth);
+            if (widths[pass] > 1) {
+                currentData = BoxBlur._singleBoxBlurPass(currentData, width, height, widths[pass]);
+            }
         }
 
         return currentData;
@@ -22531,7 +22860,11 @@ class BoxBlur {
     }
 
     /**
-     * Apply horizontal box blur using running sum
+     * Apply horizontal box blur using running sum. Each output is the mean of
+     * the 2r+1 samples centred on it, a sample beyond the row counting as
+     * transparent (0): the divisor never shrinks at the edges, so the pass
+     * conserves the row's total alpha (the caller pads the buffer by the
+     * blur's reach, so nothing falls off it).
      * @param {Float32Array} data - Input image data
      * @param {number} width - Image width
      * @param {number} height - Image height
@@ -22541,40 +22874,23 @@ class BoxBlur {
      */
     static _horizontalBoxBlur(data, width, height, radius) {
         const result = new Float32Array(data.length);
+        const box = 2 * radius + 1;
 
         for (let y = 0; y < height; y++) {
             const rowOffset = y * width;
 
-            // Initialize running sum for first pixel
+            // The box around x = 0: samples 0..radius (the rest lie beyond the row)
             let sum = 0;
-            let count = 0;
-
-            // Build initial sum
-            for (let x = -radius; x <= radius; x++) {
-                const srcX = Math.max(0, Math.min(width - 1, x));
-                sum += data[rowOffset + srcX];
-                count++;
+            for (let x = 0; x <= radius && x < width; x++) {
+                sum += data[rowOffset + x];
             }
-
-            result[rowOffset] = sum / count;
+            result[rowOffset] = sum / box;
 
             // Slide the box across the row
             for (let x = 1; x < width; x++) {
-                // Remove leftmost pixel from sum
-                const leftX = Math.max(0, Math.min(width - 1, x - radius - 1));
-                const rightX = Math.max(0, Math.min(width - 1, x + radius));
-
-                if (x - radius - 1 >= 0) {
-                    sum -= data[rowOffset + leftX];
-                    count--;
-                }
-
-                if (x + radius < width) {
-                    sum += data[rowOffset + rightX];
-                    count++;
-                }
-
-                result[rowOffset + x] = sum / count;
+                if (x - radius - 1 >= 0) sum -= data[rowOffset + x - radius - 1];
+                if (x + radius < width) sum += data[rowOffset + x + radius];
+                result[rowOffset + x] = sum / box;
             }
         }
 
@@ -22582,7 +22898,8 @@ class BoxBlur {
     }
 
     /**
-     * Apply vertical box blur using running sum
+     * Apply vertical box blur using running sum (the vertical twin of
+     * _horizontalBoxBlur: transparent beyond the column, fixed divisor).
      * @param {Float32Array} data - Input image data
      * @param {number} width - Image width
      * @param {number} height - Image height
@@ -22592,38 +22909,21 @@ class BoxBlur {
      */
     static _verticalBoxBlur(data, width, height, radius) {
         const result = new Float32Array(data.length);
+        const box = 2 * radius + 1;
 
         for (let x = 0; x < width; x++) {
-            // Initialize running sum for first pixel
+            // The box around y = 0: samples 0..radius (the rest lie beyond the column)
             let sum = 0;
-            let count = 0;
-
-            // Build initial sum
-            for (let y = -radius; y <= radius; y++) {
-                const srcY = Math.max(0, Math.min(height - 1, y));
-                sum += data[srcY * width + x];
-                count++;
+            for (let y = 0; y <= radius && y < height; y++) {
+                sum += data[y * width + x];
             }
-
-            result[x] = sum / count;
+            result[x] = sum / box;
 
             // Slide the box down the column
             for (let y = 1; y < height; y++) {
-                // Remove topmost pixel from sum
-                const topY = Math.max(0, Math.min(height - 1, y - radius - 1));
-                const bottomY = Math.max(0, Math.min(height - 1, y + radius));
-
-                if (y - radius - 1 >= 0) {
-                    sum -= data[topY * width + x];
-                    count--;
-                }
-
-                if (y + radius < height) {
-                    sum += data[bottomY * width + x];
-                    count++;
-                }
-
-                result[y * width + x] = sum / count;
+                if (y - radius - 1 >= 0) sum -= data[(y - radius - 1) * width + x];
+                if (y + radius < height) sum += data[(y + radius) * width + x];
+                result[y * width + x] = sum / box;
             }
         }
 
@@ -22727,6 +23027,43 @@ class BoxBlur {
     }
 
     /**
+     * The box width of each pass of blur(): odd widths wl and wl + 2, the first
+     * m passes taking wl, chosen so the passes' summed variance
+     * (sum of (w^2 - 1) / 12) comes closest to sigma^2, sigma = blurRadius / 2
+     * (P. Kovesi, "Fast Almost-Gaussian Filtering", 2010). A single odd
+     * width for every pass overshoots sigma; this split does not.
+     * @param {number} blurRadius - The shadow blur (HTML5 shadowBlur)
+     * @param {number} passes - Number of blur passes (default: 3)
+     * @returns {number[]} One odd width per pass (1 = no blur)
+     */
+    static boxWidths(blurRadius, passes = 3) {
+        const sigma = blurRadius / 2.0;
+        const ideal = Math.sqrt((12 * sigma * sigma) / passes + 1);
+        let wl = Math.floor(ideal);
+        if (wl % 2 === 0) wl--;
+        if (wl < 1) wl = 1;
+        const wu = wl + 2;
+        const mIdeal = (12 * sigma * sigma - passes * wl * wl - 4 * passes * wl - 3 * passes) / (-4 * wl - 4);
+        const m = Math.max(0, Math.min(passes, Math.round(mIdeal)));
+        const widths = [];
+        for (let i = 0; i < passes; i++) widths.push(i < m ? wl : wu);
+        return widths;
+    }
+
+    /**
+     * How far (pixels) blur() carries alpha from where it starts: every pass
+     * widens the reach by half its box. The shadow buffer is padded by this,
+     * so the blur's tails are not cut off.
+     * @param {number} blurRadius - The shadow blur (HTML5 shadowBlur)
+     * @param {number} passes - Number of blur passes (default: 3)
+     * @returns {number}
+     */
+    static spread(blurRadius, passes = 3) {
+        if (blurRadius === 0) return 0;
+        return BoxBlur.boxWidths(blurRadius, passes).reduce((sum, w) => sum + Math.floor(w / 2), 0);
+    }
+
+    /**
      * Calculate optimal box width for Gaussian approximation
      * @param {number} sigma - Standard deviation of desired Gaussian
      * @param {number} passes - Number of box blur passes
@@ -22786,7 +23123,8 @@ class ShadowPipeline {
 
         const surface = rasterizer.surface;
         const op = rasterizer.currentOp;
-        const maxBlurRadius = Math.ceil(op.shadowBlur);
+        // Padded by the blur's full reach (every pass widens it), so no tail is cut off
+        const maxBlurRadius = BoxBlur.spread(op.shadowBlur);
         const shadowBuffer = new ShadowBuffer(surface.width, surface.height, maxBlurRadius);
 
         // Step 1: Render shape to shadow buffer
@@ -22805,7 +23143,6 @@ class ShadowPipeline {
             op.shadowColor,
             op.shadowOffsetX,
             op.shadowOffsetY,
-            op.globalAlpha,
             op.clipMask
         );
 
@@ -22893,7 +23230,7 @@ class ShadowPipeline {
         const blurredBuffer = new ShadowBuffer(
             shadowBuffer.originalWidth,
             shadowBuffer.originalHeight,
-            Math.ceil(blurRadius)
+            BoxBlur.spread(blurRadius)
         );
         blurredBuffer.fromDenseArray(
             blurredData,
@@ -22913,13 +23250,14 @@ class ShadowPipeline {
      * @param {Color} shadowColor - Shadow color
      * @param {number} offsetX - Shadow X offset
      * @param {number} offsetY - Shadow Y offset
-     * @param {number} globalAlpha - Global alpha value
      * @param {ClipMask} clipMask - Clipping mask (can be null)
      * @private
      */
-    static _compositeShadowToSurface(surface, shadowBuffer, shadowColor, offsetX, offsetY, globalAlpha, clipMask) {
-        // Apply global alpha to shadow color
-        const effectiveShadowColor = shadowColor.withGlobalAlpha(globalAlpha);
+    static _compositeShadowToSurface(surface, shadowBuffer, shadowColor, offsetX, offsetY, clipMask) {
+        // The buffer holds the shape's coverage as drawn — globalAlpha already
+        // applied by _renderToShadowBuffer's render — so the shadow colour's own
+        // alpha is the only factor left (globalAlpha counted once).
+        const effectiveShadowColor = shadowColor;
 
         // Iterate over shadow pixels and composite to surface
         for (const pixel of shadowBuffer.getPixels()) {
@@ -22937,15 +23275,9 @@ class ShadowPipeline {
                 continue;
             }
 
-            // Calculate final shadow alpha
-            // The 8x multiplier compensates for alpha dilution caused by box blur averaging.
-            // When blur spreads a single pixel over a larger area, the average alpha drops
-            // significantly. The multiplier restores visual intensity to match HTML5 Canvas.
-            const BLUR_DILUTION_COMPENSATION = 8;
-            const finalShadowAlpha = Math.min(
-                255,
-                Math.round(pixel.alpha * effectiveShadowColor.a * BLUR_DILUTION_COMPENSATION)
-            );
+            // Shadow alpha = coverage x shadow colour alpha. The blur conserves
+            // coverage (BoxBlur), so no compensation factor belongs here.
+            const finalShadowAlpha = Math.min(255, Math.round(pixel.alpha * effectiveShadowColor.a));
 
             if (finalShadowAlpha <= 0) continue;
 
@@ -23644,6 +23976,11 @@ class Gradient {
     constructor() {
         this._colorStops = [];
         this._sorted = false;
+        // _toGradientSpace's per-transform inverse cache and its scalar output.
+        this._inverseOf = null;
+        this._inverse = null;
+        this._ux = 0;
+        this._uy = 0;
     }
 
     /**
@@ -23746,8 +24083,11 @@ class Gradient {
     }
 
     /**
-     * Calculate color for a pixel position (must be implemented by subclasses)
-     * Subclasses should use the transform to map pixel coordinates to gradient space.
+     * Calculate color for a pixel position (must be implemented by subclasses).
+     * Every subclass evaluates its gradient in GRADIENT (user) space: the device
+     * pixel is mapped back through the inverse CTM by _toGradientSpace, so the
+     * CTM transforms the whole gradient - radii, angles and isolines included -
+     * exactly as HTML5 specifies, under any affine CTM.
      * @param {number} x - Pixel x coordinate in canvas space (integer)
      * @param {number} y - Pixel y coordinate in canvas space (integer)
      * @param {Transform2D} transform - Current canvas transform (used to invert pixel to gradient coords)
@@ -23756,6 +24096,33 @@ class Gradient {
      */
     getColorForPixel(x, y, transform) {
         throw new Error('getColorForPixel must be implemented by subclass');
+    }
+
+    /**
+     * Map device pixel (x, y), sampled at its centre, into gradient space; the
+     * result lands in this._ux / this._uy (scalars - no per-pixel allocation).
+     * The inverse CTM is cached per transform OBJECT: Transform2D is frozen, so
+     * one identity test per pixel replaces a matrix inversion. Returns false
+     * when the CTM is singular (a zero-area mapping paints nothing).
+     * @private
+     */
+    _toGradientSpace(x, y, transform) {
+        if (transform !== this._inverseOf) {
+            this._inverseOf = transform;
+            try {
+                this._inverse = transform.invert();
+            } catch (e) {
+                this._inverse = null;
+            }
+        }
+        const inv = this._inverse;
+        if (inv === null) return false;
+        // The pixel CENTRE (HTML5 semantics), as the polygon scanlines sample.
+        const px = x + 0.5;
+        const py = y + 0.5;
+        this._ux = inv.a * px + inv.c * py + inv.e;
+        this._uy = inv.b * px + inv.d * py + inv.f;
+        return true;
     }
 }
 
@@ -23785,39 +24152,27 @@ class LinearGradient extends Gradient {
     }
 
     /**
-     * Calculate color for a pixel position
+     * Calculate color for a pixel position: project the gradient-space point
+     * onto the start→end line. A zero-length line paints nothing (HTML5).
      * @param {number} x - Pixel x coordinate in canvas space
      * @param {number} y - Pixel y coordinate in canvas space
-     * @param {Transform2D} transform - Current canvas transform (applied to gradient)
+     * @param {Transform2D} transform - Current canvas transform
      * @returns {Color} Color for this pixel
      */
     getColorForPixel(x, y, transform) {
-        // Transform gradient coordinates by current transform
-        // Gradients work in transformed coordinate space
-        const p0 = transform.transformPoint(new Point(this._x0, this._y0));
-        const p1 = transform.transformPoint(new Point(this._x1, this._y1));
-
-        const dx = p1.x - p0.x;
-        const dy = p1.y - p0.y;
-        const lengthSquared = dx * dx + dy * dy;
-
-        if (lengthSquared === 0) {
-            // Degenerate gradient (same start/end points)
-            return this._getColorAt(0);
+        if (this._lengthSquared === 0 || !this._toGradientSpace(x, y, transform)) {
+            return Color.transparent;
         }
-
-        // Calculate parameter t along gradient line
-        // Project pixel onto gradient line
-        const px = x - p0.x;
-        const py = y - p0.y;
-        const t = (px * dx + py * dy) / lengthSquared;
-
+        const t = ((this._ux - this._x0) * this._dx + (this._uy - this._y0) * this._dy) / this._lengthSquared;
         return this._getColorAt(t);
     }
 }
 
 /**
- * Radial Gradient implementation
+ * Radial Gradient implementation - the HTML5 two-circle CONE: circles
+ * c(ω) = c0 + ω(c1 − c0), r(ω) = r0 + ω(r1 − r0); a point takes the colour
+ * at the LARGEST ω whose circle passes through it with r(ω) ≥ 0, and a point
+ * no such circle reaches (outside the cone) stays transparent black.
  */
 class RadialGradient extends Gradient {
     /**
@@ -23836,17 +24191,23 @@ class RadialGradient extends Gradient {
         Validators.nonNegative(r0, 'Inner radius');
         Validators.nonNegative(r1, 'Outer radius');
 
-        // Check for identical circles (would paint nothing)
-        if (x0 === x1 && y0 === y1 && r0 === r1) {
-            throw new Error('Radial gradient circles must not be identical');
-        }
-
         this._x0 = x0;
         this._y0 = y0;
         this._r0 = r0;
         this._x1 = x1;
         this._y1 = y1;
         this._r1 = r1;
+
+        // |p − c(ω)| = r(ω) is the quadratic  a·ω² − 2·b·ω + c = 0  with
+        // a = |c1 − c0|² − (r1 − r0)², b = (p − c0)·(c1 − c0) + r0(r1 − r0),
+        // c = |p − c0|² − r0²; a and the per-gradient terms are constant.
+        this._cdx = x1 - x0;
+        this._cdy = y1 - y0;
+        this._dr = r1 - r0;
+        this._a = this._cdx * this._cdx + this._cdy * this._cdy - this._dr * this._dr;
+        this._concentric = this._cdx === 0 && this._cdy === 0;
+        // Identical circles paint nothing (HTML5).
+        this._paintsNothing = this._concentric && this._dr === 0;
     }
 
     /**
@@ -23857,29 +24218,41 @@ class RadialGradient extends Gradient {
      * @returns {Color} Color for this pixel
      */
     getColorForPixel(x, y, transform) {
-        // Transform gradient coordinates by current transform
-        const p0 = transform.transformPoint(new Point(this._x0, this._y0));
-        const p1 = transform.transformPoint(new Point(this._x1, this._y1));
+        if (this._paintsNothing || !this._toGradientSpace(x, y, transform)) {
+            return Color.transparent;
+        }
+        const pdx = this._ux - this._x0;
+        const pdy = this._uy - this._y0;
 
-        // For simplicity, we'll use distance-based calculation
-        // More accurate would be solving the cone intersection equation
-        const d0 = Math.sqrt((x - p0.x) ** 2 + (y - p0.y) ** 2);
-        const d1 = Math.sqrt((x - p1.x) ** 2 + (y - p1.y) ** 2);
-
-        // Simple linear interpolation based on distance ratio
-        const maxDistance = Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2) + this._r1;
-
-        let t;
-        if (d0 <= this._r0) {
-            t = 0; // Inside inner circle
-        } else if (d1 >= this._r1) {
-            t = 1; // Outside outer circle
-        } else {
-            // Simple distance-based calculation
-            t = (d0 - this._r0) / (maxDistance - this._r0);
+        if (this._concentric) {
+            // One root survives r(ω) ≥ 0: ω = (|p − c0| − r0) / (r1 − r0).
+            const t = (Math.sqrt(pdx ** 2 + pdy ** 2) - this._r0) / this._dr;
+            return this._getColorAt(t);
         }
 
-        return this._getColorAt(Math.max(0, Math.min(1, t)));
+        const r0 = this._r0;
+        const dr = this._dr;
+        const b = pdx * this._cdx + pdy * this._cdy + r0 * dr;
+        const c = pdx * pdx + pdy * pdy - r0 * r0;
+        let omega;
+        if (this._a === 0) {
+            // One circle touches the other internally: the quadratic is linear.
+            if (b === 0) return Color.transparent;
+            omega = c / (2 * b);
+            if (r0 + omega * dr < 0) return Color.transparent;
+        } else {
+            const disc = b * b - this._a * c;
+            if (disc < 0) return Color.transparent; // outside the cone
+            const root = Math.sqrt(disc);
+            const w1 = (b + root) / this._a;
+            const w2 = (b - root) / this._a;
+            const hi = w1 > w2 ? w1 : w2;
+            const lo = w1 > w2 ? w2 : w1;
+            if (r0 + hi * dr >= 0) omega = hi;
+            else if (r0 + lo * dr >= 0) omega = lo;
+            else return Color.transparent;
+        }
+        return this._getColorAt(omega);
     }
 }
 
@@ -23902,18 +24275,20 @@ class ConicGradient extends Gradient {
     }
 
     /**
-     * Calculate color for a pixel position
+     * Calculate color for a pixel position: the gradient-space angle around the
+     * centre, measured from the start angle.
      * @param {number} x - Pixel x coordinate in canvas space
      * @param {number} y - Pixel y coordinate in canvas space
      * @param {Transform2D} transform - Current canvas transform
      * @returns {Color} Color for this pixel
      */
     getColorForPixel(x, y, transform) {
-        // Transform gradient center by current transform
-        const center = transform.transformPoint(new Point(this._x, this._y));
+        if (!this._toGradientSpace(x, y, transform)) {
+            return Color.transparent;
+        }
 
         // Calculate angle from center to pixel
-        let pixelAngle = Math.atan2(y - center.y, x - center.x) - this._angle;
+        let pixelAngle = Math.atan2(this._uy - this._y, this._ux - this._x) - this._angle;
 
         // Normalize angle to [0, 2π)
         while (pixelAngle < 0) {
@@ -23938,6 +24313,11 @@ class ConicGradient extends Gradient {
  *
  * Patterns are paint sources that tile ImageLike objects and can replace solid colors.
  * They work in canvas coordinate space and support repetition modes.
+ *
+ * A pattern samples its image by the same rule as drawImage: nearest-neighbour
+ * when the device→image mapping does not resample (Rasterizer.imageResamples),
+ * bilinear at the pixel centre (Rasterizer.filterBilinear) when it does and the
+ * drawing context's imageSmoothingEnabled is true.
  */
 class Pattern {
     /**
@@ -23946,8 +24326,15 @@ class Pattern {
      * @param {string} repetition - Repetition mode: 'repeat', 'repeat-x', 'repeat-y', 'no-repeat'
      */
     constructor(image, repetition = 'repeat') {
-        // Validate and convert image to standard format
-        this._imageData = ImageProcessor.validateAndConvert(image);
+        // Validate and convert image to standard format. The pattern paints the
+        // image as it is NOW (HTML5: modifying the image after createPattern must
+        // not affect the pattern), so it keeps its own copy of the pixels — unless
+        // the conversion already built a fresh buffer (RGB → RGBA).
+        const imageData = ImageProcessor.validateAndConvert(image);
+        this._imageData =
+            imageData.data === image.data
+                ? { width: imageData.width, height: imageData.height, data: new Uint8ClampedArray(imageData.data) }
+                : imageData;
 
         // Validate repetition mode
         const validRepetitions = ['repeat', 'repeat-x', 'repeat-y', 'no-repeat'];
@@ -23960,7 +24347,35 @@ class Pattern {
         // Pattern-specific transform (initially identity)
         this._patternTransform = Transform2D.IDENTITY;
 
+        // The imageSmoothingEnabled this pattern samples under (the HTML5 default).
+        // A context draws with withSmoothing(its own flag).
+        this._smoothing = true;
+
+        this._sampling = Pattern._newSampling(this);
+
         Object.freeze(this);
+    }
+
+    /**
+     * The per-pattern memo shared by a pattern and its smoothing twin: the
+     * device→pattern inverse for the last canvas transform seen (see
+     * _inverseFor) and its pixel-centre map (centreMapForDevice), whether that
+     * mapping resamples, the twin patterns, and the filtered texel scratch.
+     * Object.freeze is shallow: this memo stays writable while every observable
+     * field of the pattern is frozen.
+     * @param {Pattern} smoothed - The pattern sampling with smoothing on
+     * @private
+     */
+    static _newSampling(smoothed) {
+        return {
+            canvasTransform: null,
+            inverse: null,
+            centre: null,
+            resamples: false,
+            smoothed: smoothed,
+            unsmoothed: null,
+            texel: { r: 0, g: 0, b: 0, a: 0 }
+        };
     }
 
     /**
@@ -23969,11 +24384,14 @@ class Pattern {
      */
     setTransform(matrix) {
         if (matrix instanceof Transform2D) {
-            // Create new Pattern with updated transform (immutable)
+            // Create new Pattern with updated transform (immutable). It shares the
+            // pixel snapshot.
             const newPattern = Object.create(Object.getPrototypeOf(this));
             newPattern._imageData = this._imageData;
             newPattern._repetition = this._repetition;
             newPattern._patternTransform = matrix;
+            newPattern._smoothing = true;
+            newPattern._sampling = Pattern._newSampling(newPattern);
             Object.freeze(newPattern);
             return newPattern;
         } else if (matrix && typeof matrix.a === 'number') {
@@ -23986,6 +24404,30 @@ class Pattern {
     }
 
     /**
+     * This pattern as sampled under the given imageSmoothingEnabled: itself when
+     * the flag matches, else its twin — same pixels, repetition and transform,
+     * created once and memoized, so binding the flag per draw allocates nothing.
+     * @param {boolean} enabled - The drawing context's imageSmoothingEnabled
+     * @returns {Pattern}
+     */
+    withSmoothing(enabled) {
+        if (enabled === this._smoothing) return this;
+        const sampling = this._sampling;
+        if (enabled) return sampling.smoothed;
+        if (sampling.unsmoothed === null) {
+            const twin = Object.create(Object.getPrototypeOf(this));
+            twin._imageData = this._imageData;
+            twin._repetition = this._repetition;
+            twin._patternTransform = this._patternTransform;
+            twin._smoothing = false;
+            twin._sampling = sampling;
+            Object.freeze(twin);
+            sampling.unsmoothed = twin;
+        }
+        return sampling.unsmoothed;
+    }
+
+    /**
      * Calculate color for a pixel position
      * @param {number} x - Pixel x coordinate in canvas space
      * @param {number} y - Pixel y coordinate in canvas space
@@ -23993,30 +24435,17 @@ class Pattern {
      * @returns {Color} Color for this pixel
      */
     getColorForPixel(x, y, canvasTransform) {
-        // Apply inverse pattern transform, then inverse canvas transform
-        // to map pixel coordinates to pattern image space
-        try {
-            const combinedTransform = canvasTransform.multiply(this._patternTransform);
-            const inverseTransform = combinedTransform.invert();
-            const patternPoint = inverseTransform.transformPoint(new Point(x, y));
-
-            // Sample pattern image at calculated coordinates
-            return this._samplePattern(patternPoint.x, patternPoint.y);
-        } catch (error) {
-            // If transform is not invertible, return transparent
-            return Color.transparent;
+        // The pixel centre, through the inverse pattern transform and then the
+        // inverse canvas transform, into pattern image space; a non-invertible
+        // transform paints nothing. Filtered or nearest per isFilteredUnder,
+        // which is decided once per transform.
+        const map = this.centreMapForDevice(canvasTransform);
+        if (this._smoothing && this._sampling.resamples) {
+            const texel = this._sampling.texel;
+            if (!this.filterAt(map, x, y, texel)) return Color.transparent;
+            return new Color(texel.r, texel.g, texel.b, texel.a);
         }
-    }
-
-    /**
-     * Sample pattern image at given coordinates with repetition logic
-     * @param {number} x - X coordinate in pattern space
-     * @param {number} y - Y coordinate in pattern space
-     * @returns {Color} Sampled color
-     * @private
-     */
-    _samplePattern(x, y) {
-        const offset = this._sampleOffset(x, y);
+        const offset = this.sampleOffsetAt(map, x, y);
         if (offset < 0) return Color.transparent;
         const data = this._imageData.data;
         return new Color(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
@@ -24025,10 +24454,10 @@ class Pattern {
     /**
      * Byte offset into `_imageData.data` for pattern-space coordinate (x, y),
      * applying the repetition + nearest-neighbour + clamp logic. Returns -1 when
-     * the sample is transparent (a non-repeat axis out of bounds). This is the
-     * shared core of `_samplePattern` and the hoisted-inverse fast path
-     * (`sampleOffsetWithInverse`) — keeping ONE copy of the sampling arithmetic
-     * so the fast path is byte-identical to the per-pixel path.
+     * the sample is transparent (a non-repeat axis out of bounds). Every device
+     * pixel reaches it through `sampleOffsetAt` — ONE copy of the
+     * sampling arithmetic, so the fill fast path is byte-identical to the
+     * per-pixel path.
      * @private
      */
     _sampleOffset(x, y) {
@@ -24075,38 +24504,158 @@ class Pattern {
     }
 
     /**
-     * Precompute the CONSTANT device→pattern inverse transform for a fill, so the
-     * per-pixel sampler doesn't recompute a matrix multiply + inversion for every
-     * pixel (they are invariant across a fill). Returns null when the combined
-     * transform is non-invertible — matching `getColorForPixel`'s catch, which
-     * yields a fully transparent fill. Hoist this out of the pixel loop.
+     * The CONSTANT device→pattern inverse transform for a fill, so the per-pixel
+     * sampler doesn't recompute a matrix multiply + inversion for every pixel
+     * (they are invariant across a fill). Returns null when the combined
+     * transform is non-invertible, which paints nothing. Hoist this out of the
+     * pixel loop.
      * @param {Transform2D} canvasTransform
      * @returns {Transform2D|null}
      */
     inverseForDevice(canvasTransform) {
-        try {
-            return canvasTransform.multiply(this._patternTransform).invert();
-        } catch (error) {
-            return null;
-        }
+        return this._inverseFor(canvasTransform);
     }
 
     /**
-     * Byte offset into `_imageData.data` for DEVICE pixel (x, y), using a
-     * precomputed inverse from `inverseForDevice`. Returns -1 for a transparent
-     * sample (null inverse, or a non-repeat axis out of bounds). Byte-identical to
-     * `getColorForPixel` → `_samplePattern`, minus the per-pixel transform work.
-     * @param {Transform2D|null} inverse
+     * The map from a device pixel's INDEX (x, y) to the pattern-image point of
+     * its CENTRE: the device→pattern inverse with the (0.5, 0.5) centre offset
+     * folded into its translation (Rasterizer.centreTranslation — drawImage's
+     * centre, so both sample at the same point). Cached with the inverse;
+     * null when the transform is non-invertible, which paints nothing.
+     * @param {Transform2D} canvasTransform
+     * @returns {{a: number, b: number, c: number, d: number, e: number, f: number}|null}
+     */
+    centreMapForDevice(canvasTransform) {
+        this._inverseFor(canvasTransform);
+        return this._sampling.centre;
+    }
+
+    /**
+     * Does a fill under this canvas transform take the FILTERED arm
+     * (filterAt) rather than the nearest-neighbour one
+     * (sampleOffsetAt)? True iff smoothing is on and the device→pattern
+     * mapping resamples (Rasterizer.imageResamples) — decided once per
+     * transform and cached with the inverse.
+     * @param {Transform2D} canvasTransform
+     * @returns {boolean}
+     */
+    isFilteredUnder(canvasTransform) {
+        this._inverseFor(canvasTransform);
+        return this._smoothing && this._sampling.resamples;
+    }
+
+    /**
+     * The device→pattern inverse, cached per canvas transform OBJECT (the same
+     * mechanism as Gradient._toGradientSpace): Transform2D is frozen, and so is
+     * this pattern's own transform, so the cached inverse stays valid for as
+     * long as the identity matches. Caches with it whether the mapping
+     * resamples: its step per device pixel is the inverse's diagonal.
+     * @private
+     */
+    _inverseFor(canvasTransform) {
+        const sampling = this._sampling;
+        if (sampling.canvasTransform !== canvasTransform) {
+            sampling.canvasTransform = canvasTransform;
+            try {
+                const inverse = canvasTransform.multiply(this._patternTransform).invert();
+                sampling.inverse = inverse;
+                sampling.centre = {
+                    a: inverse.a,
+                    b: inverse.b,
+                    c: inverse.c,
+                    d: inverse.d,
+                    e: Rasterizer.centreTranslation(inverse.a, inverse.c, inverse.e),
+                    f: Rasterizer.centreTranslation(inverse.b, inverse.d, inverse.f)
+                };
+                sampling.resamples = Rasterizer.imageResamples(inverse.b, inverse.c, inverse.a, inverse.d);
+            } catch (error) {
+                sampling.inverse = null;
+                sampling.centre = null;
+                sampling.resamples = false;
+            }
+        }
+        return sampling.inverse;
+    }
+
+    /**
+     * Byte offset into `_imageData.data` of the texel under DEVICE pixel (x, y)'s
+     * CENTRE (HTML5 semantics; drawImage's nearest neighbour), through the map
+     * from `centreMapForDevice`. Returns -1 for a transparent sample (null
+     * map, or a non-repeat axis out of bounds). `getColorForPixel` samples
+     * through this too, so both paths read the same texel.
+     * @param {Object|null} map - From centreMapForDevice
      * @param {number} x
      * @param {number} y
      * @returns {number}
      */
-    sampleOffsetWithInverse(inverse, x, y) {
-        if (inverse === null) return -1;
-        // Inline transformPoint (a*x + c*y + e, b*x + d*y + f) — no Point alloc.
-        const px = inverse.a * x + inverse.c * y + inverse.e;
-        const py = inverse.b * x + inverse.d * y + inverse.f;
+    sampleOffsetAt(map, x, y) {
+        if (map === null) return -1;
+        const px = map.a * x + map.c * y + map.e;
+        const py = map.b * x + map.d * y + map.f;
         return this._sampleOffset(px, py);
+    }
+
+    /**
+     * The bilinearly filtered paint of DEVICE pixel (x, y): its centre mapped
+     * through the map from `centreMapForDevice`, the four texels
+     * around it filtered by Rasterizer.filterBilinear — drawImage's filter. The
+     * edge rule is the pattern's own: a tap on a repeating axis wraps to the
+     * opposite edge of the image, and a tap beyond the image on a non-repeating
+     * axis is transparent (where drawImage clamps to the edge texel), so a
+     * 'no-repeat' image fades out over half a texel at its border.
+     * `getColorForPixel` filters through this too, so both paths take the same
+     * filtered texel.
+     * @param {Object} map - From centreMapForDevice; non-null (a singular
+     *   transform never resamples)
+     * @param {number} x
+     * @param {number} y
+     * @param {{r: number, g: number, b: number, a: number}} out - Receives the
+     *   filtered straight RGBA
+     * @returns {boolean} false (out untouched) when the sample is transparent
+     */
+    filterAt(map, x, y, out) {
+        // Texel centres sit at +0.5: split into the top-left tap and fractions.
+        const gx = map.a * x + map.c * y + map.e - 0.5;
+        const gy = map.b * x + map.d * y + map.f - 0.5;
+        const x0 = Math.floor(gx);
+        const y0 = Math.floor(gy);
+        const fx = gx - x0;
+        const fy = gy - y0;
+        const width = this._imageData.width;
+        const height = this._imageData.height;
+        const repetition = this._repetition;
+
+        let tx0, tx1, wx0, wx1;
+        if (repetition === 'repeat' || repetition === 'repeat-x') {
+            tx0 = x0 % width;
+            if (tx0 < 0) tx0 += width;
+            tx1 = tx0 + 1 === width ? 0 : tx0 + 1;
+            wx0 = 1 - fx;
+            wx1 = fx;
+        } else {
+            wx0 = x0 >= 0 && x0 < width ? 1 - fx : 0;
+            wx1 = x0 + 1 >= 0 && x0 + 1 < width ? fx : 0;
+            if (wx0 === 0 && wx1 === 0) return false;
+            tx0 = x0 < 0 ? 0 : x0 < width ? x0 : width - 1;
+            tx1 = x0 + 1 < 0 ? 0 : x0 + 1 < width ? x0 + 1 : width - 1;
+        }
+
+        let ty0, ty1, wy0, wy1;
+        if (repetition === 'repeat' || repetition === 'repeat-y') {
+            ty0 = y0 % height;
+            if (ty0 < 0) ty0 += height;
+            ty1 = ty0 + 1 === height ? 0 : ty0 + 1;
+            wy0 = 1 - fy;
+            wy1 = fy;
+        } else {
+            wy0 = y0 >= 0 && y0 < height ? 1 - fy : 0;
+            wy1 = y0 + 1 >= 0 && y0 + 1 < height ? fy : 0;
+            if (wy0 === 0 && wy1 === 0) return false;
+            ty0 = y0 < 0 ? 0 : y0 < height ? y0 : height - 1;
+            ty1 = y0 + 1 < 0 ? 0 : y0 + 1 < height ? y0 + 1 : height - 1;
+        }
+
+        return Rasterizer.filterBilinear(this._imageData.data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, out);
     }
 
     /**
@@ -24675,6 +25224,134 @@ class Rasterizer {
 
         this._surface = surface;
         this._currentOp = null;
+        // Out-parameter of filterBilinear for drawImage's filtered taps, reused
+        // by every draw so the pixel loop allocates nothing.
+        this._texel = { r: 0, g: 0, b: 0, a: 0 };
+    }
+
+    /**
+     * The ONE image-sampling decision, shared by drawImage and pattern paint:
+     * does a draw RESAMPLE its image? It does not when the device→image mapping
+     * is axis-aligned and steps exactly one texel per device pixel on both axes;
+     * every other mapping resamples. A resampling draw filters bilinearly
+     * (filterBilinear) unless imageSmoothingEnabled is false; a draw that does
+     * not resample takes the nearest texel, byte-for-byte. Callers decide once
+     * per draw or per fill transform, never per pixel.
+     * @param {number} b - Off-diagonal term of the mapping (zero in the forward
+     *   mapping iff zero in its inverse, so either direction may be passed)
+     * @param {number} c - The other off-diagonal term
+     * @param {number} stepX - Texels advanced per device pixel along x
+     * @param {number} stepY - Texels advanced per device pixel along y
+     * @returns {boolean}
+     */
+    static imageResamples(b, c, stepX, stepY) {
+        return b !== 0 || c !== 0 || stepX !== 1 || stepY !== 1;
+    }
+
+    /**
+     * Translation of the map that takes a device pixel's INDEX (x, y) to the
+     * image-space point of its CENTRE (x + 0.5, y + 0.5): the device→image
+     * mapping's own translation plus its linear part applied to (0.5, 0.5).
+     * Every image draw (drawImage and pattern paint, nearest and filtered)
+     * samples at the point a*x + c*y + centreTranslation(a, c, e), so the
+     * pixel centre costs no per-pixel work; call once per draw / per fill
+     * transform for each axis (a, c, e) and (b, d, f).
+     * @param {number} a - Linear coefficient applied to x
+     * @param {number} c - Linear coefficient applied to y
+     * @param {number} e - Translation
+     * @returns {number}
+     */
+    static centreTranslation(a, c, e) {
+        return e + (a + c) * 0.5;
+    }
+
+    /**
+     * Bilinear filter of the four texels around a sample point — the tap
+     * arithmetic of every filtered image draw (drawImage and pattern paint).
+     * Filtered PREMULTIPLIED: source texels are straight RGBA and fully
+     * transparent texels carry arbitrary RGB, so a straight-alpha lerp would
+     * bleed that RGB into edges (dark fringes). Each texel's RGB is weighted by
+     * its alpha, accumulated, and un-premultiplied at the end. Plain double
+     * arithmetic in a fixed accumulation order (00, 10, 01, 11) — byte-identical
+     * on V8 and JSC.
+     *
+     * The caller applies its edge rule through the arguments: it resolves the
+     * tap columns/rows (drawImage clamps to the edge texel, a pattern wraps a
+     * repeating axis), and passes the per-axis weights (1 - fx, fx, 1 - fy, fy),
+     * zeroing the weight of a tap that reads nothing (a pattern's non-repeating
+     * axis beyond the image). A zero-weight tap is never read.
+     * @param {Uint8ClampedArray} data - Straight RGBA texels
+     * @param {number} width - Image width in texels
+     * @param {number} tx0 - Column of the left taps
+     * @param {number} tx1 - Column of the right taps
+     * @param {number} ty0 - Row of the top taps
+     * @param {number} ty1 - Row of the bottom taps
+     * @param {number} wx0 - Weight of the left column
+     * @param {number} wx1 - Weight of the right column
+     * @param {number} wy0 - Weight of the top row
+     * @param {number} wy1 - Weight of the bottom row
+     * @param {{r: number, g: number, b: number, a: number}} out - Receives the
+     *   filtered straight RGBA
+     * @returns {boolean} false (out untouched) when every weighted tap is
+     *   transparent
+     */
+    static filterBilinear(data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, out) {
+        const w00 = wx0 * wy0;
+        const w10 = wx1 * wy0;
+        const w01 = wx0 * wy1;
+        const w11 = wx1 * wy1;
+        let aSum = 0;
+        let rSum = 0;
+        let gSum = 0;
+        let bSum = 0;
+        if (w00 !== 0) {
+            const o = (ty0 * width + tx0) * 4;
+            const wa = w00 * data[o + 3];
+            if (wa !== 0) {
+                aSum += wa;
+                rSum += wa * data[o];
+                gSum += wa * data[o + 1];
+                bSum += wa * data[o + 2];
+            }
+        }
+        if (w10 !== 0) {
+            const o = (ty0 * width + tx1) * 4;
+            const wa = w10 * data[o + 3];
+            if (wa !== 0) {
+                aSum += wa;
+                rSum += wa * data[o];
+                gSum += wa * data[o + 1];
+                bSum += wa * data[o + 2];
+            }
+        }
+        if (w01 !== 0) {
+            const o = (ty1 * width + tx0) * 4;
+            const wa = w01 * data[o + 3];
+            if (wa !== 0) {
+                aSum += wa;
+                rSum += wa * data[o];
+                gSum += wa * data[o + 1];
+                bSum += wa * data[o + 2];
+            }
+        }
+        if (w11 !== 0) {
+            const o = (ty1 * width + tx1) * 4;
+            const wa = w11 * data[o + 3];
+            if (wa !== 0) {
+                aSum += wa;
+                rSum += wa * data[o];
+                gSum += wa * data[o + 1];
+                bSum += wa * data[o + 2];
+            }
+        }
+        if (aSum === 0) return false; // all taps transparent
+        // Un-premultiply back to straight RGBA (the alpha weights cancel out of
+        // the RGB average).
+        out.r = Math.round(rSum / aSum);
+        out.g = Math.round(gSum / aSum);
+        out.b = Math.round(bSum / aSum);
+        out.a = Math.round(aSum);
+        return true;
     }
 
     /**
@@ -25159,8 +25836,14 @@ class Rasterizer {
             adjustedStrokeProps = { ...strokeProps, lineWidth: 1.0 };
         }
 
-        // Generate stroke polygons using geometric approach
-        const strokePolygons = StrokeGenerator.generateStrokePolygons(path, adjustedStrokeProps);
+        // Generate stroke polygons using geometric approach, round parts flattened for the device
+        // size the op transform gives them
+        const transform = this._currentOp.transform;
+        const strokePolygons = StrokeGenerator.generateStrokePolygons(
+            path,
+            adjustedStrokeProps,
+            Math.max(transform.scaleX, transform.scaleY)
+        );
 
         if (this._requiresCanvasWideCompositing(this._currentOp.composite)) {
             // Canvas-wide compositing path: build source mask then perform canvas-wide compositing
@@ -25213,10 +25896,78 @@ class Rasterizer {
     drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh) {
         this._requireActiveOp();
 
+        // A canvas-wide composite also acts where the image is not
+        // (_drawImageCanvasWide). Plain source-over blits skip the lookup.
+        const composite = this._currentOp.composite;
+        const canvasWide = composite !== 'source-over' && this._requiresCanvasWideCompositing(composite);
+
         // Wrap the actual image drawing logic with shadow pipeline
         ShadowPipeline.renderWithShadow(this, () => {
-            this._drawImageInternal.apply(this, arguments);
+            if (canvasWide) {
+                this._drawImageCanvasWide(arguments);
+            } else {
+                this._drawImageInternal.apply(this, arguments);
+            }
         });
+    }
+
+    /**
+     * drawImage under a canvas-wide composite (copy, source-in, source-out,
+     * destination-in, destination-atop). These operators act on every pixel
+     * the clip lets through, and where the source is transparent — outside
+     * the image and under its fully transparent texels — they give what the
+     * operator gives for a transparent source. So the image is drawn
+     * source-over into a transparent layer the size of the surface (the source
+     * as it would land), and that layer is composited over every unclipped
+     * pixel, as the fill path's _performCanvasWideCompositing composites its
+     * paint with a transparent source wherever the coverage mask is empty.
+     * @param {Arguments} args - drawImage's arguments
+     * @private
+     */
+    _drawImageCanvasWide(args) {
+        const op = this._currentOp;
+        const surface = this._surface;
+        const layer = new Surface(surface.width, surface.height);
+        this._surface = layer;
+        this._currentOp = Object.assign({}, op, { composite: 'source-over', clipMask: null, clipRect: null });
+        try {
+            this._drawImageInternal.apply(this, args);
+        } finally {
+            this._surface = surface;
+            this._currentOp = op;
+        }
+
+        const composite = op.composite;
+        const clipMask = op.clipMask;
+        const clipRect = op.clipRect;
+        const x0 = clipRect ? Math.max(0, clipRect.x0) : 0;
+        const y0 = clipRect ? Math.max(0, clipRect.y0) : 0;
+        const x1 = clipRect ? Math.min(surface.width, clipRect.x1) : surface.width;
+        const y1 = clipRect ? Math.min(surface.height, clipRect.y1) : surface.height;
+        const src = layer.data;
+        const dst = surface.data;
+        for (let y = y0; y < y1; y++) {
+            for (let x = x0; x < x1; x++) {
+                if (clipMask && clipMask.isPixelClipped(x, y)) continue;
+                const so = y * layer.stride + x * 4;
+                const o = y * surface.stride + x * 4;
+                const result = CompositeOperations.blendPixel(
+                    composite,
+                    src[so],
+                    src[so + 1],
+                    src[so + 2],
+                    src[so + 3],
+                    dst[o],
+                    dst[o + 1],
+                    dst[o + 2],
+                    dst[o + 3]
+                );
+                dst[o] = result.r;
+                dst[o + 1] = result.g;
+                dst[o + 2] = result.b;
+                dst[o + 3] = result.a;
+            }
+        }
     }
 
     /**
@@ -25274,14 +26025,61 @@ class Rasterizer {
             throw new Error('Invalid number of arguments for drawImage');
         }
 
-        // Validate source rectangle bounds
+        // HTML5 rectangle semantics. A negative width or height names the same
+        // rectangle from its opposite corner and is drawn in the original
+        // direction (never mirrored), so both rects are normalised first.
+        if (sourceWidth < 0) {
+            sourceX += sourceWidth;
+            sourceWidth = -sourceWidth;
+        }
+        if (sourceHeight < 0) {
+            sourceY += sourceHeight;
+            sourceHeight = -sourceHeight;
+        }
+        if (destWidth < 0) {
+            destX += destWidth;
+            destWidth = -destWidth;
+        }
+        if (destHeight < 0) {
+            destY += destHeight;
+            destHeight = -destHeight;
+        }
+
+        // A zero-size source rect paints nothing. A source rect reaching outside
+        // the image is clipped to it, and the destination rect in the same
+        // proportion; one wholly outside paints nothing.
+        if (sourceWidth === 0 || sourceHeight === 0) return;
         if (
             sourceX < 0 ||
             sourceY < 0 ||
             sourceX + sourceWidth > imageData.width ||
             sourceY + sourceHeight > imageData.height
         ) {
-            throw new Error('Source rectangle is outside image bounds');
+            const destPerSourceX = destWidth / sourceWidth;
+            const destPerSourceY = destHeight / sourceHeight;
+            if (sourceX < 0) {
+                destX -= sourceX * destPerSourceX;
+                destWidth += sourceX * destPerSourceX;
+                sourceWidth += sourceX;
+                sourceX = 0;
+            }
+            if (sourceY < 0) {
+                destY -= sourceY * destPerSourceY;
+                destHeight += sourceY * destPerSourceY;
+                sourceHeight += sourceY;
+                sourceY = 0;
+            }
+            const overX = sourceX + sourceWidth - imageData.width;
+            if (overX > 0) {
+                destWidth -= overX * destPerSourceX;
+                sourceWidth -= overX;
+            }
+            const overY = sourceY + sourceHeight - imageData.height;
+            if (overY > 0) {
+                destHeight -= overY * destPerSourceY;
+                sourceHeight -= overY;
+            }
+            if (sourceWidth <= 0 || sourceHeight <= 0) return;
         }
 
         // Apply transform to destination rectangle corners
@@ -25318,9 +26116,9 @@ class Rasterizer {
         // Get inverse transform for mapping device pixels back to source
         const inverseTransform = transform.invert();
         // Hoist the inverse-transform coefficients and apply them as scalars inside
-        // the loop (destPoint = inv * (deviceX, deviceY)) so no {x,y} object is
-        // allocated per pixel. Byte-identical to inverseTransform.transformPoint,
-        // which computes a*x + c*y + e / b*x + d*y + f in exactly this order.
+        // the loop (a*x + c*y + e / b*x + d*y + f, the order of
+        // inverseTransform.transformPoint) so no {x,y} object is allocated per
+        // pixel.
         const invA = inverseTransform.a, invB = inverseTransform.b, invC = inverseTransform.c;
         const invD = inverseTransform.d, invE = inverseTransform.e, invF = inverseTransform.f;
 
@@ -25344,7 +26142,7 @@ class Rasterizer {
         // (the same-size 1:1 blit, e.g., the per-glyph + scratch-to-main
         // drawImage calls BitmapText emits for colored text), the ratio is
         // exactly 1.0 in IEEE 754 and the inner-loop mapping reduces to
-        // `sourceX + (destPoint.x - destX)` — bit-exact integer arithmetic.
+        // `sourceX + (centerPointX - destX)` — exact arithmetic.
         // Critical: do NOT compute the mapping as `(d / dW) * sW` inside the
         // loop. For many denominators (e.g. dW=191), `((d/191)*191)` rounds
         // to d−ε (e.g. 27.999...) for some integer d, then `Math.floor`
@@ -25352,13 +26150,16 @@ class Rasterizer {
         // column for an adjacent one — sometimes a transparent neighbour —
         // dropping or duplicating pixels in an FP-precision-of-the-denominator
         // pattern. Multiplication by a precomputed ratio sidesteps the issue
-        // entirely.
+        // entirely. (The same rounding through a non-power-of-two CTM scale —
+        // 1/3 under scale(3) — is why samples are taken at pixel CENTRES: a
+        // centre sits half a texel from every texel edge in a step-1 draw, so
+        // no rounding can carry it across one.)
         const xScale = (destWidth === sourceWidth) ? 1 : sourceWidth / destWidth;
         const yScale = (destHeight === sourceHeight) ? 1 : sourceHeight / destHeight;
 
         // Sampling policy: smooth (bilinear) whenever the draw actually
-        // RESAMPLES the source; keep the historical nearest-neighbor sample,
-        // byte-for-byte, when it does not. Two ways a draw resamples:
+        // RESAMPLES the source; take the nearest texel when it does not. Two
+        // ways a draw resamples:
         //  - a NON-axis-aligned transform (rotation/skew): under rotation the
         //    floor-quantized NN sample point periodically lands on the texel
         //    BESIDE a thin source feature, so 1-2px features (hairline
@@ -25380,30 +26181,36 @@ class Rasterizer {
         // transform — including rotation, per the HTML5 property's semantics
         // (the user's explicit opt-out, e.g. pixel art; it re-admits the
         // rotated thin-feature dashing bilinear exists to prevent).
+        // The decision is Rasterizer.imageResamples, shared with pattern paint.
         const smoothingEnabled = this._currentOp.imageSmoothingEnabled !== false;
         const stepX = invA * xScale;
         const stepY = invD * yScale;
-        const useBilinear = smoothingEnabled &&
-            (transform.b !== 0 || transform.c !== 0 || stepX !== 1 || stepY !== 1);
-        // Bilinear samples at the DEST PIXEL CENTER (native semantics): the
-        // corner-mapped destPoint below (kept for containment and for the NN
-        // path, byte-compat) plus this constant device-space (0.5, 0.5) offset
-        // pushed through the inverse transform. Texel centers live at +0.5, so
-        // a 90°-style composite with integer translation lands samples exactly
-        // ON texel centers -> the zero-fraction fast path -> crisp pure texels
-        // (no blur), while arbitrary angles reconstruct without the half-texel
-        // shift a floor-anchored kernel would smear into every resample.
-        const centerOffX = (invA + invC) * 0.5;
-        const centerOffY = (invB + invD) * 0.5;
-        // Bilinear tap bounds: the texel range of the sx/sy/sw/sh source
-        // sub-rect, clamped to the image. A tap OUTSIDE these bounds
-        // contributes transparent black — never clamped edge content — so a
-        // sub-rect blit cannot smear pixels that were never part of the
-        // source rect.
-        const tapMinX = Math.max(0, Math.floor(sourceX));
-        const tapMaxX = Math.min(imgWidth - 1, Math.ceil(sourceX + sourceWidth) - 1);
-        const tapMinY = Math.max(0, Math.floor(sourceY));
-        const tapMaxY = Math.min(imgHeight - 1, Math.ceil(sourceY + sourceHeight) - 1);
+        const useBilinear = smoothingEnabled && Rasterizer.imageResamples(transform.b, transform.c, stepX, stepY);
+        // Every pixel is decided at its DEST PIXEL CENTER (native semantics):
+        // the device pixel's index through the inverse, with the (0.5, 0.5)
+        // centre offset folded into the translation (centreTranslation, shared
+        // with pattern paint), so the centre costs no per-pixel work. The centre
+        // decides containment (the pixels whose centre lies inside the
+        // destination rect, the fill rule) and both samplers: nearest takes the
+        // texel the centre lands in, so a plain blit — step 1, offsets on the
+        // device grid — keeps its texels exactly, and an offset or scale that
+        // puts texel edges on pixel CORNERS (an integer zoom) cannot misround;
+        // bilinear filters around it. Texel centers live at +0.5, so a
+        // 90°-style composite with integer translation lands samples exactly ON
+        // texel centers -> the zero-fraction fast path -> crisp pure texels (no
+        // blur), while arbitrary angles reconstruct without the half-texel shift
+        // a floor-anchored kernel would smear into every resample.
+        const centreE = Rasterizer.centreTranslation(invA, invC, invE);
+        const centreF = Rasterizer.centreTranslation(invB, invD, invF);
+        // Bilinear taps follow HTML5's filtering rule: a tap outside the
+        // sx/sy/sw/sh source rect but inside the image reads the image ("scaling
+        // an image in parts or in whole will have the same effect"), and a tap
+        // outside the image takes the nearest edge texel (clamp-to-edge). So an
+        // opaque image stays opaque to its edges at any scale, and two abutting
+        // sub-rect draws meet seamlessly.
+        const lastTexelX = imgWidth - 1;
+        const lastTexelY = imgHeight - 1;
+        const texel = this._texel;
 
         // Render each pixel in the bounding box
         for (let deviceY = minY; deviceY <= maxY; deviceY++) {
@@ -25413,34 +26220,31 @@ class Rasterizer {
                     continue;
                 }
 
-                // Transform device pixel back to destination space (scalar form of
-                // inverseTransform.transformPoint — same a*x+c*y+e / b*x+d*y+f order)
-                const destPointX = invA * deviceX + invC * deviceY + invE;
-                const destPointY = invB * deviceX + invD * deviceY + invF;
+                // The device pixel CENTRE in destination space (scalar form of
+                // transformPoint with the centre folded into the translation —
+                // see centreE/centreF). It drives containment and sampling on
+                // both arms.
+                const centerPointX = invA * deviceX + invC * deviceY + centreE;
+                const centerPointY = invB * deviceX + invD * deviceY + centreF;
+                if (
+                    centerPointX < destX ||
+                    centerPointX >= destXMax ||
+                    centerPointY < destY ||
+                    centerPointY >= destYMax
+                ) {
+                    continue;
+                }
+                // The centre in source (image) space. See the xScale/yScale
+                // comment above for why this form is FP-stable in the
+                // same-size case.
+                const sampleXf = sourceX + (centerPointX - destX) * xScale;
+                const sampleYf = sourceY + (centerPointY - destY) * yScale;
 
                 let srcR, srcG, srcB, srcA;
                 if (!useBilinear) {
-                    // Check if we're inside the destination rectangle
-                    // (corner-mapped point — the historical inclusion rule)
-                    if (
-                        destPointX < destX ||
-                        destPointX >= destXMax ||
-                        destPointY < destY ||
-                        destPointY >= destYMax
-                    ) {
-                        continue;
-                    }
-
-                    // Map destination coordinates to source coordinates.
-                    // See the xScale/yScale comment above for why this form is
-                    // FP-stable in the same-size case.
-                    const sourceXf = sourceX + (destPointX - destX) * xScale;
-                    const sourceYf = sourceY + (destPointY - destY) * yScale;
-
-                    // Nearest-neighbor sampling (axis-aligned transforms — the
-                    // historical path, byte-for-byte)
-                    const sourcePX = Math.floor(sourceXf);
-                    const sourcePY = Math.floor(sourceYf);
+                    // Nearest neighbour: the texel the centre lands in.
+                    const sourcePX = Math.floor(sampleXf);
+                    const sourcePY = Math.floor(sampleYf);
 
                     // Bounds check for source coordinates
                     if (sourcePX < 0 || sourcePY < 0 || sourcePX >= imgWidth || sourcePY >= imgHeight) {
@@ -25454,29 +26258,10 @@ class Rasterizer {
                     srcB = imgData[sourceOffset + 2];
                     srcA = imgData[sourceOffset + 3];
                 } else {
-                    // Bilinear: the DEST PIXEL CENTER (see centerOffX/Y above)
-                    // drives BOTH containment and sampling — one convention per
-                    // path. (Mixing corner containment with center sampling
-                    // shifts the included window one pixel against the sampled
-                    // window under a 90°-style transform, dropping an edge
-                    // row/column.)
-                    const centerPointX = destPointX + centerOffX;
-                    const centerPointY = destPointY + centerOffY;
-                    if (
-                        centerPointX < destX ||
-                        centerPointX >= destXMax ||
-                        centerPointY < destY ||
-                        centerPointY >= destYMax
-                    ) {
-                        continue;
-                    }
-
                     // Put texel centers at +0.5 and split into floor texel +
                     // fractions. A sample landing exactly on a texel center has
                     // fractions 0/0 and takes the pure-texel fast path —
                     // bit-exact with a NN sample of that point.
-                    const sampleXf = sourceX + (centerPointX - destX) * xScale;
-                    const sampleYf = sourceY + (centerPointY - destY) * yScale;
                     const gx = sampleXf - 0.5;
                     const gy = sampleYf - 0.5;
                     const x0 = Math.floor(gx);
@@ -25484,66 +26269,43 @@ class Rasterizer {
                     const fx = gx - x0;
                     const fy = gy - y0;
 
+                    // Clamp-to-edge tap coordinates (see lastTexelX/Y above).
+                    const tx0 = x0 < 0 ? 0 : x0 > lastTexelX ? lastTexelX : x0;
+                    const ty0 = y0 < 0 ? 0 : y0 > lastTexelY ? lastTexelY : y0;
+
                     if (fx === 0 && fy === 0) {
                         // Pure-texel fast path (zero-fraction exactness)
-                        if (x0 < tapMinX || x0 > tapMaxX || y0 < tapMinY || y0 > tapMaxY) {
-                            continue;
-                        }
-                        const sourceOffset = (y0 * imgWidth + x0) * 4;
+                        const sourceOffset = (ty0 * imgWidth + tx0) * 4;
                         srcR = imgData[sourceOffset];
                         srcG = imgData[sourceOffset + 1];
                         srcB = imgData[sourceOffset + 2];
                         srcA = imgData[sourceOffset + 3];
                     } else {
-                        // Bilinear over the 4 neighboring texels, filtered
-                        // PREMULTIPLIED: source texels are straight RGBA and fully
-                        // transparent texels carry arbitrary RGB, so a straight-alpha
-                        // lerp would bleed that RGB into edges (dark fringes). Weight
-                        // each texel's RGB by its alpha, accumulate, un-premultiply at
-                        // the end. Plain double arithmetic in a fixed accumulation
-                        // order (00, 10, 01, 11) — byte-identical on V8 and JSC.
-                        const x1 = x0 + 1;
-                        const y1 = y0 + 1;
-                        const w00 = (1 - fx) * (1 - fy);
-                        const w10 = fx * (1 - fy);
-                        const w01 = (1 - fx) * fy;
-                        const w11 = fx * fy;
-                        let aSum = 0, rSum = 0, gSum = 0, bSum = 0;
-                        if (w00 !== 0 && x0 >= tapMinX && x0 <= tapMaxX && y0 >= tapMinY && y0 <= tapMaxY) {
-                            const o = (y0 * imgWidth + x0) * 4;
-                            const wa = w00 * imgData[o + 3];
-                            if (wa !== 0) {
-                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
-                            }
+                        // Bilinear over the 4 neighboring texels (filterBilinear,
+                        // shared with pattern paint), clamped to the edge.
+                        const tx1 = x0 + 1 > lastTexelX ? lastTexelX : x0 + 1 < 0 ? 0 : x0 + 1;
+                        const ty1 = y0 + 1 > lastTexelY ? lastTexelY : y0 + 1 < 0 ? 0 : y0 + 1;
+                        if (
+                            !Rasterizer.filterBilinear(
+                                imgData,
+                                imgWidth,
+                                tx0,
+                                tx1,
+                                ty0,
+                                ty1,
+                                1 - fx,
+                                fx,
+                                1 - fy,
+                                fy,
+                                texel
+                            )
+                        ) {
+                            continue; // all taps transparent
                         }
-                        if (w10 !== 0 && x1 >= tapMinX && x1 <= tapMaxX && y0 >= tapMinY && y0 <= tapMaxY) {
-                            const o = (y0 * imgWidth + x1) * 4;
-                            const wa = w10 * imgData[o + 3];
-                            if (wa !== 0) {
-                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
-                            }
-                        }
-                        if (w01 !== 0 && x0 >= tapMinX && x0 <= tapMaxX && y1 >= tapMinY && y1 <= tapMaxY) {
-                            const o = (y1 * imgWidth + x0) * 4;
-                            const wa = w01 * imgData[o + 3];
-                            if (wa !== 0) {
-                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
-                            }
-                        }
-                        if (w11 !== 0 && x1 >= tapMinX && x1 <= tapMaxX && y1 >= tapMinY && y1 <= tapMaxY) {
-                            const o = (y1 * imgWidth + x1) * 4;
-                            const wa = w11 * imgData[o + 3];
-                            if (wa !== 0) {
-                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
-                            }
-                        }
-                        if (aSum === 0) continue; // all taps transparent
-                        // Un-premultiply back to straight RGBA (the alpha weights
-                        // cancel out of the RGB average).
-                        srcR = Math.round(rSum / aSum);
-                        srcG = Math.round(gSum / aSum);
-                        srcB = Math.round(bSum / aSum);
-                        srcA = Math.round(aSum);
+                        srcR = texel.r;
+                        srcG = texel.g;
+                        srcB = texel.b;
+                        srcA = texel.a;
                     }
                 }
 
@@ -25571,12 +26333,29 @@ class Rasterizer {
                             surfaceData[destOffset + 1] = srcG;
                             surfaceData[destOffset + 2] = srcB;
                             surfaceData[destOffset + 3] = finalSrcA;
-                        } else {
+                        } else if (dstA === 255) {
                             const srcAlpha = finalSrcA / 255;
                             const invSrcAlpha = 1 - srcAlpha;
                             surfaceData[destOffset] = Math.round(srcR * srcAlpha + surfaceData[destOffset] * invSrcAlpha);
                             surfaceData[destOffset + 1] = Math.round(srcG * srcAlpha + surfaceData[destOffset + 1] * invSrcAlpha);
                             surfaceData[destOffset + 2] = Math.round(srcB * srcAlpha + surfaceData[destOffset + 2] * invSrcAlpha);
+                            surfaceData[destOffset + 3] = Math.round(finalSrcA + dstA * invSrcAlpha);
+                        } else {
+                            // Both translucent: Porter-Duff over straight RGBA (see
+                            // CompositeOperations._sourceOver).
+                            const srcAlpha = finalSrcA / 255;
+                            const invSrcAlpha = 1 - srcAlpha;
+                            const dstWeight = (dstA / 255) * invSrcAlpha;
+                            const outAlpha = srcAlpha + dstWeight;
+                            surfaceData[destOffset] = Math.round(
+                                (srcR * srcAlpha + surfaceData[destOffset] * dstWeight) / outAlpha
+                            );
+                            surfaceData[destOffset + 1] = Math.round(
+                                (srcG * srcAlpha + surfaceData[destOffset + 1] * dstWeight) / outAlpha
+                            );
+                            surfaceData[destOffset + 2] = Math.round(
+                                (srcB * srcAlpha + surfaceData[destOffset + 2] * dstWeight) / outAlpha
+                            );
                             surfaceData[destOffset + 3] = Math.round(finalSrcA + dstA * invSrcAlpha);
                         }
                     }
@@ -25739,13 +26518,13 @@ class Context2D {
         this.shadowOffsetY = 0; // No vertical offset
 
         // Image smoothing (HTML5 imageSmoothingEnabled, default true). When true,
-        // drawImage samples BILINEAR whenever the draw actually resamples the
-        // source (any rotation/skew, or an axis-aligned draw whose effective
-        // sample step != 1); step-1 axis-aligned draws are nearest-neighbor
-        // byte-exact either way. When false, every draw samples nearest-neighbor
-        // — including rotation, matching the HTML5 property's semantics (which
-        // re-admits the thin-feature dashing bilinear exists to prevent; that is
-        // the user's explicit choice, e.g. pixel art).
+        // drawImage and pattern paint sample BILINEAR whenever the draw actually
+        // resamples the image (any rotation/skew, or an axis-aligned draw whose
+        // effective sample step != 1); step-1 axis-aligned draws are
+        // nearest-neighbor byte-exact either way. When false, every draw samples
+        // nearest-neighbor — including rotation, matching the HTML5 property's
+        // semantics (which re-admits the thin-feature dashing bilinear exists to
+        // prevent; that is the user's explicit choice, e.g. pixel art).
         this._imageSmoothingEnabled = true;
 
         // Internal path and clipping. The current default path holds DEVICE-space
@@ -25888,6 +26667,18 @@ class Context2D {
      */
     _canUseDirectRendering(paintSource) {
         return this._isSourceOver && this._noShadow && paintSource instanceof Color && paintSource.a > 0;
+    }
+
+    /**
+     * The paint source an op draws with. A pattern samples under the context's
+     * imageSmoothingEnabled at draw time, so the op gets the pattern's twin for
+     * the current flag (Pattern.withSmoothing — memoized, no allocation per draw).
+     * @param {Color|Gradient|Pattern} paintSource - fillStyle or strokeStyle
+     * @returns {Color|Gradient|Pattern}
+     * @private
+     */
+    _paintForOp(paintSource) {
+        return paintSource instanceof Pattern ? paintSource.withSmoothing(this._imageSmoothingEnabled) : paintSource;
     }
 
     /**
@@ -26382,7 +27173,7 @@ class Context2D {
         const deviceRadius = Math.max(radius * deviceScale, TRANSFORM_EPSILON);
         let maxAngleStep = 2 * Math.acos(Math.max(0, 1 - tolerance / deviceRadius));
         if (!(maxAngleStep > TRANSFORM_EPSILON)) maxAngleStep = TRANSFORM_EPSILON;
-        let segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
+        let segments = PathFlattener.segmentCount(totalAngle / maxAngleStep);
         if (segments > 4096) segments = 4096; // defensive cap for pathological radii
         return segments;
     }
@@ -26401,7 +27192,7 @@ class Context2D {
             totalAngle,
             Math.min(0.1, PATH_FLATTENING_TOLERANCE) // matches _handleArcTo
         );
-        const minSegments = Math.ceil((totalAngle / (Math.PI / 2)) * 16); // 16 per 90°
+        const minSegments = PathFlattener.segmentCount((totalAngle / (Math.PI / 2)) * 16); // 16 per 90°
         return Math.max(toleranceSegments, minSegments);
     }
 
@@ -26431,13 +27222,14 @@ class Context2D {
         // a fill fast path without fresh benchmark evidence (tests/core pins this).
         // Direct rect machinery lives on in strokeRect/fillStrokeRect only.
         Context2D._markPathBasedRendering();
+        const fillStyle = this._paintForOp(this._fillStyle);
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: this._transform,
             clipMask: this._clipMaskForDraw(),
             clipRect: this._clipRectForDraw(),
-            fillStyle: this._fillStyle,
+            fillStyle: fillStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
@@ -26445,7 +27237,7 @@ class Context2D {
             shadowOffsetY: this.shadowOffsetY
         });
 
-        this.rasterizer.fillRect(x, y, width, height, this._fillStyle);
+        this.rasterizer.fillRect(x, y, width, height, fillStyle);
         this.rasterizer.endOp();
     }
 
@@ -26595,7 +27387,7 @@ class Context2D {
             transform: this._transform,
             clipMask: this._clipMaskForDraw(),
             clipRect: this._clipRectForDraw(),
-            strokeStyle: this._strokeStyle,
+            strokeStyle: this._paintForOp(this._strokeStyle),
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
@@ -27297,9 +28089,10 @@ class Context2D {
         // Do not re-add a fill fast path without fresh benchmark evidence.
         //
         // Path-based rendering: an un-baked, user-space rounded-rect path at
-        // the degenerate radius (the generic pipeline samples pixel centers,
-        // so ITS degenerate-radius output is a correct stadium), drawn as an
-        // external Path2D under the current CTM.
+        // the degenerate radius, drawn as an external Path2D under the current
+        // CTM. The generic pipeline samples pixel centres, so the stadium is
+        // its flattened outline (caps as inscribed chords, within the
+        // flattening tolerance) sampled exactly.
         const fallbackPath = new SWPath2D();
         SWPath2D.appendRoundRect(fallbackPath, x, y, width, height, Math.min(width, height) / 2);
         this.fill(fallbackPath);
@@ -27357,35 +28150,16 @@ class Context2D {
     }
 
     fill(path, rule) {
-        let pathToFill, fillRule;
-
-        // Handle different argument combinations:
-        // fill() -> path = undefined, rule = undefined
-        // fill('evenodd') -> path = 'evenodd', rule = undefined
-        // fill(path2d) -> path = path2d object, rule = undefined
-        // fill(path2d, 'evenodd') -> path = path2d object, rule = 'evenodd'
-
-        if (arguments.length === 0) {
-            // fill() - use current path, nonzero rule
-            pathToFill = this._currentPath;
-            fillRule = 'nonzero';
-        } else if (arguments.length === 1) {
-            if (typeof path === 'string') {
-                // fill('evenodd') - use current path, specified rule
-                pathToFill = this._currentPath;
-                fillRule = path;
-            } else {
-                // fill(path2d) - use specified path, nonzero rule
-                pathToFill = path;
-                fillRule = 'nonzero';
-            }
-        } else {
-            // fill(path2d, 'evenodd') - use specified path and rule
-            pathToFill = path;
-            fillRule = rule;
+        // The HTML5 (path?, fillRule?) overload, dispatched by TYPE so an
+        // explicitly passed undefined means "omitted", as WebIDL has it:
+        // fill(), fill(rule), fill(path2d), fill(path2d, rule). A rule string
+        // other than 'evenodd' fills nonzero (lenient, where WebIDL throws).
+        if (typeof path === 'string') {
+            rule = path;
+            path = undefined;
         }
-
-        fillRule = fillRule || 'nonzero';
+        let pathToFill = path || this._currentPath;
+        const fillRule = rule || 'nonzero';
 
         // The current default path holds device-space geometry. Filling it under
         // IDENTITY would starve a gradient/pattern fillStyle of the CTM: a paint
@@ -27419,7 +28193,7 @@ class Context2D {
             transform: opTransform,
             clipMask: this._clipMaskForDraw(),
             clipRect: this._clipRectForDraw(),
-            fillStyle: this._fillStyle,
+            fillStyle: this._paintForOp(this._fillStyle),
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
@@ -27465,7 +28239,7 @@ class Context2D {
             transform: opTransform,
             clipMask: this._clipMaskForDraw(),
             clipRect: this._clipRectForDraw(),
-            strokeStyle: this._strokeStyle,
+            strokeStyle: this._paintForOp(this._strokeStyle),
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
@@ -27508,7 +28282,9 @@ class Context2D {
             path = this._currentPath;
             fillRule = 'nonzero';
         } else if (arguments.length === 3) {
-            if (typeof arguments[2] === 'string') {
+            // Told apart by the FIRST argument, as WebIDL resolves it: a number
+            // selects (x, y, fillRule), whose fillRule may be passed undefined.
+            if (typeof arguments[0] !== 'object') {
                 // isPointInPath(x, y, fillRule)
                 [x, y, fillRule] = arguments;
                 path = this._currentPath;
@@ -27634,7 +28410,8 @@ class Context2D {
             }
             const strokePolygons = StrokeGenerator.generateStrokePolygons(
                 this._transformPathPoints(path, inv),
-                strokeProps
+                strokeProps,
+                Math.max(drawT.scaleX, drawT.scaleY)
             );
             if (strokePolygons.length === 0) {
                 return false;
@@ -27642,7 +28419,11 @@ class Context2D {
             testPolygons = strokePolygons.map(poly => poly.map(point => drawT.transformPoint(point)));
         } else {
             // External user-space path: stroke, then map by the current CTM.
-            const strokePolygons = StrokeGenerator.generateStrokePolygons(path, strokeProps);
+            const strokePolygons = StrokeGenerator.generateStrokePolygons(
+                path,
+                strokeProps,
+                Math.max(this._transform.scaleX, this._transform.scaleY)
+            );
             if (strokePolygons.length === 0) {
                 return false;
             }
@@ -27791,8 +28572,8 @@ class Context2D {
      * draw clamped to the rect is pixel-identical to one tested against that mask:
      *   - X (per _fillClipMaskSpans): a span [left, right) sets columns
      *     [ceil(left − 0.5), ceil(right − 0.5)).
-     *   - Y (per _findPolygonIntersections' half-open `y >= minY && y < maxY`
-     *     edge test sampled at y+0.5): rows [ceil(top − 0.5), ceil(bottom − 0.5)).
+     *   - Y (per PolygonFiller._scanRow's half-open `upper.y <= y+0.5 < lower.y`
+     *     edge test): rows [ceil(top − 0.5), ceil(bottom − 0.5)).
      * Both axes therefore round with ceil(v − 0.5). (This supersedes the
      * `ceil(min)/floor(max)+1` sketch in the plan's §5.2, which encoded the older
      * inclusive-endX mask that over-exposed the right/bottom edge column.)
@@ -27882,7 +28663,12 @@ class Context2D {
      * @param {string} rule - Fill rule: 'nonzero' (default) or 'evenodd'
      */
     clip(path, rule) {
-        // If no path provided, use the current default path.
+        // The same (path?, fillRule?) overload as fill(): a leading string is
+        // the fill rule, and no path means the current default path.
+        if (typeof path === 'string') {
+            rule = path;
+            path = undefined;
+        }
         const pathToClip = path || this._currentPath;
         const clipRule = rule || 'nonzero';
 
@@ -28140,7 +28926,9 @@ class Context2D {
      * @param {number} radius - Circle radius
      */
     fillCircle(centerX, centerY, radius) {
-        if (radius <= 0) return;
+        // Non-positive, NaN and infinite radii draw nothing (an infinite radius
+        // would otherwise sample every pixel center as inside).
+        if (!(radius > 0 && radius < Infinity)) return;
 
         if (this._isInvisibleDraw(this._fillStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
@@ -28180,7 +28968,7 @@ class Context2D {
      * @param {number} radius - Circle radius
      */
     strokeCircle(centerX, centerY, radius) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._strokeStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
@@ -28231,7 +29019,7 @@ class Context2D {
      * @param {number} radius - Circle radius
      */
     fillStrokeCircle(centerX, centerY, radius) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._fillStyle) && this._isInvisibleDraw(this._strokeStyle)) {
             return; // Neither half can change a pixel under source-over
@@ -28329,7 +29117,7 @@ class Context2D {
      * @param {boolean} [anticlockwise=false] - Direction
      */
     fillArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._fillStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
@@ -28427,7 +29215,7 @@ class Context2D {
      * @param {boolean} [anticlockwise=false] - Direction
      */
     outerStrokeArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._strokeStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
@@ -28554,7 +29342,7 @@ class Context2D {
      * @param {boolean} [anticlockwise=false] - Direction
      */
     fillOuterStrokeArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._fillStyle) && this._isInvisibleDraw(this._strokeStyle)) {
             return; // Neither half can change a pixel under source-over
@@ -28742,7 +29530,7 @@ class Context2D {
                 // Direct rendering 1: 32-bit packed writes for opaque colors
                 CircleOps.fill_Opaq(surface, cx, cy, radius, paintSource, clipBuffer, clipRect);
             } else {
-                // Direct rendering 2: Bresenham scanlines with per-pixel alpha blending
+                // Direct rendering 2: pixel-center scanlines with per-pixel alpha blending
                 CircleOps.fill_Alpha(surface, cx, cy, radius, paintSource, this.globalAlpha, clipBuffer, clipRect);
             }
         } else {
@@ -28976,6 +29764,10 @@ class Context2D {
 // HTMLImageElements drawn via drawImage/createPattern, keyed by the element.
 // Never used for videos or canvases (their pixels change).
 const _swElementImageLikeCache = new WeakMap();
+// What _toImageLike answers for a DOM image source that has no pixels yet and that
+// HTML5 draws nothing from (an image not yet decoded or without a src, a video with
+// no frame yet): drawImage then draws nothing and createPattern returns null.
+const _swNothingToDraw = Object.freeze({});
 
 class CanvasCompatibleContext2D {
     // ===== STATIC PATH-BASED RENDERING TRACKING (for testing) =====
@@ -29459,7 +30251,11 @@ class CanvasCompatibleContext2D {
     // ===== IMAGE DRAWING =====
 
     drawImage(image, ...args) {
-        this._core.drawImage(CanvasCompatibleContext2D._toImageLike(image), ...args);
+        const source = CanvasCompatibleContext2D._toImageLike(image);
+        if (source === _swNothingToDraw) {
+            return;
+        }
+        this._core.drawImage(source, ...args);
     }
 
     /**
@@ -29471,6 +30267,8 @@ class CanvasCompatibleContext2D {
      *  - HTMLImageElement / HTMLVideoElement / ImageBitmap → rasterized into a
      *    scratch DOM canvas; image results are cached (immutable), video/bitmap
      *    are re-grabbed each call (frames change)
+     *  - a DOM source with no pixels → _swNothingToDraw, or HTML5's throw
+     *    (see _domSourceWithoutPixels)
      *  - anything else → returned as-is so the Core can throw its own error
      * @private
      */
@@ -29483,6 +30281,9 @@ class CanvasCompatibleContext2D {
         }
         if (typeof image.getContext === 'function') {
             // HTMLCanvasElement (or any canvas-like with a 2d context)
+            if ((image.width === 0 || image.height === 0) && typeof document !== 'undefined') {
+                return CanvasCompatibleContext2D._domSourceWithoutPixels(image);
+            }
             const ctx = image.getContext('2d');
             return ctx.getImageData(0, 0, image.width, image.height);
         }
@@ -29524,6 +30325,9 @@ class CanvasCompatibleContext2D {
         if (typeof document === 'undefined') {
             throw new Error('SWCanvas: cannot rasterize an element image source without a DOM canvas');
         }
+        if (w === 0 || h === 0) {
+            return CanvasCompatibleContext2D._domSourceWithoutPixels(image);
+        }
         const scratch = document.createElement('canvas');
         scratch.width = w;
         scratch.height = h;
@@ -29536,6 +30340,23 @@ class CanvasCompatibleContext2D {
             _swElementImageLikeCache.set(image, imageLike);
         }
         return imageLike;
+    }
+
+    /**
+     * A DOM image source with a zero dimension has no pixels. HTML5 draws nothing
+     * from an image not yet decoded (or without a src) or a video with no frame
+     * yet, and throws InvalidStateError for a broken image or a zero-size canvas.
+     * The platform canvas knows which state the element is in, so it is asked:
+     * drawing the source onto a 1x1 scratch canvas throws exactly when HTML5 does.
+     * @returns {Object} _swNothingToDraw, when the platform did not throw
+     * @private
+     */
+    static _domSourceWithoutPixels(image) {
+        const scratch = document.createElement('canvas');
+        scratch.width = 1;
+        scratch.height = 1;
+        scratch.getContext('2d').drawImage(image, 0, 0);
+        return _swNothingToDraw;
     }
 
     // ===== TEXT RENDERING =====
@@ -29696,13 +30517,20 @@ class CanvasCompatibleContext2D {
     }
 
     /**
-     * Create a pattern from an image
-     * @param {Object} image - ImageLike object (canvas, surface, imagedata)
+     * Create a pattern from an image: any source drawImage accepts (resolved by
+     * _toImageLike; the Pattern copies the resolved pixels, so later changes to
+     * the source do not reach it). A DOM source with nothing to draw yet gives
+     * null, as in HTML5.
+     * @param {Object} image - SWCanvasElement, DOM canvas/image/video/ImageBitmap, or ImageLike
      * @param {string} repetition - Repetition mode: 'repeat', 'repeat-x', 'repeat-y', 'no-repeat'
-     * @returns {Pattern} New pattern object
+     * @returns {Pattern|null} New pattern object
      */
     createPattern(image, repetition) {
-        return this._core.createPattern(image, repetition);
+        const source = CanvasCompatibleContext2D._toImageLike(image);
+        if (source === _swNothingToDraw) {
+            return null;
+        }
+        return this._core.createPattern(source, repetition);
     }
 
     // ===== CORE ACCESS FOR ADVANCED USERS =====

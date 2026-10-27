@@ -1,5 +1,5 @@
-const SWCanvas = require('./dist/swcanvas.js');
-const fs = require('fs');
+const SWCanvas = require('../dist/swcanvas.js');
+const saveDebugImage = require('./save-debug-image.js');
 
 console.log('=== COPY OPERATION COLOR DEBUG ===');
 
@@ -63,5 +63,4 @@ testColors.forEach(color => {
 // Save debug image
 const surface = canvas._coreSurface;
 const pngData = SWCanvas.Core.PngEncoder.encode(surface);
-fs.writeFileSync('debug-copy-color.basic.png', Buffer.from(pngData));
-console.log('\n✅ Debug image saved: debug-copy-color.basic.png');
+console.log('\n✅ Debug image saved: ' + saveDebugImage('debug-copy-color.basic.png', pngData));

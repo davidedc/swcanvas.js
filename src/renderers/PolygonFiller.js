@@ -2,7 +2,8 @@
  * PolygonFiller class for SWCanvas
  *
  * Implements scanline polygon filling with nonzero and evenodd winding rules.
- * Handles stencil-based clipping integration and premultiplied alpha blending.
+ * Handles stencil-based clipping integration and alpha blending onto the
+ * surface's straight (non-premultiplied) RGBA.
  *
  * Provides dual rendering approaches:
  * - Optimized path: 32-bit packed writes for opaque solid colors
@@ -14,6 +15,9 @@
  * - Immutable color handling with Color class integration
  */
 class PolygonFiller {
+    // The active-edge scan's scratch (_beginScan): grown on demand, shared by every fill
+    static _scanScratch = null;
+
     /**
      * Fill polygons using scanline algorithm with stencil-based clipping
      * Routes to optimized rendering when possible for optimal performance
@@ -106,26 +110,19 @@ class PolygonFiller {
             if (clipRect.y1 - 1 < scanMaxY) scanMaxY = clipRect.y1 - 1;
         }
 
-        // Process each scanline
+        // Process each scanline: its crossings, sorted, from the active edges only
+        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY, scanMaxY);
+        const crossX = scan.cx;
+        const crossW = scan.cw;
         for (let y = scanMinY; y <= scanMaxY; y++) {
-            // Find all intersections with this scanline
-            const intersections = [];
-            for (const poly of transformedPolygons) {
-                PolygonFiller._findPolygonIntersections(poly, y + 0.5, intersections);
-            }
-
-            // Sort intersections by x coordinate
-            intersections.sort((a, b) => a.x - b.x);
+            const count = PolygonFiller._scanRow(scan, y);
 
             // Fill spans using optimized rendering
             let windingNumber = 0;
             let inside = false;
 
-            for (let i = 0; i < intersections.length; i++) {
-                const intersection = intersections[i];
-                const nextIntersection = intersections[i + 1];
-
-                windingNumber += intersection.winding;
+            for (let i = 0; i < count; i++) {
+                windingNumber += crossW[i];
 
                 if (fillRule === 'evenodd') {
                     inside = windingNumber % 2 !== 0;
@@ -133,7 +130,7 @@ class PolygonFiller {
                     inside = windingNumber !== 0;
                 }
 
-                if (inside && nextIntersection) {
+                if (inside && i + 1 < count) {
                     // Pixel-center sampling on X (see _fillClipMaskSpans for the
                     // full rationale): a column x is in span [left, right) iff
                     // its center x+0.5 is inside it (left <= x+0.5 < right). This
@@ -141,8 +138,8 @@ class PolygonFiller {
                     // ceil(left)..floor(right) inclusive endX made a path-filled
                     // rect 1px wider on the right than fillRect / clip / drawImage
                     // / HTML5.
-                    let startX = Math.max(0, Math.ceil(intersection.x - 0.5));
-                    let endX = Math.min(width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                    let startX = Math.max(0, Math.ceil(crossX[i] - 0.5));
+                    let endX = Math.min(width - 1, Math.ceil(crossX[i + 1] - 0.5) - 1);
                     // Clip rect: clamp the span to the clip rect's X range; the
                     // clipBuffer (if any) is still tested per pixel below.
                     if (startX < clipX0) startX = clipX0;
@@ -219,12 +216,15 @@ class PolygonFiller {
             if (clipRect.y1 - 1 < scanMaxY) scanMaxY = clipRect.y1 - 1;
         }
 
-        // Process each scanline
+        // Process each scanline: its crossings, sorted, from the active edges only
+        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY, scanMaxY);
         for (let y = scanMinY; y <= scanMaxY; y++) {
-            PolygonFiller._fillScanline(
+            PolygonFiller._fillSpans(
                 surface,
                 y,
-                transformedPolygons,
+                scan.cx,
+                scan.cw,
+                PolygonFiller._scanRow(scan, y),
                 paintSource,
                 fillRule,
                 clipMask,
@@ -264,99 +264,239 @@ class PolygonFiller {
     }
 
     /**
-     * Fill a single scanline using polygon intersection and winding rules
-     * @param {Surface} surface - Target surface
-     * @param {number} y - Scanline y coordinate
-     * @param {Array} polygons - Transformed polygons
-     * @param {Color|Gradient|Pattern} paintSource - Paint source
-     * @param {string} fillRule - Winding rule
-     * @param {ClipMask|null} clipMask - Clipping mask
-     * @param {Transform2D} transform - Canvas transform (for gradients/patterns)
-     * @param {number} globalAlpha - Global alpha value (0-1)
-     * @param {number} subPixelOpacity - Sub-pixel opacity for thin strokes (0-1)
-     * @param {string} composite - Composite operation
-     * @param {SourceMask|null} sourceMask - Optional source coverage mask
+     * Start an active-edge scan of device polygons over rows [y0, y1]. Every non-horizontal
+     * edge goes into an edge table (structure of arrays, in polygon order then edge order) with
+     * its UPPER end, its extent and its winding, and the table is ordered by the first row
+     * whose sample y + 0.5 can reach the edge. An edge no row in [y0, y1] can cross is left
+     * out. The scratch arrays are kept between calls and only ever grow.
+     * @param {Array} polygons - Device-space polygons
+     * @param {number} y0 - First row
+     * @param {number} y1 - Last row
+     * @returns {Object} The scan state, read by _scanRow
      * @private
      */
-    static _fillScanline(
-        surface,
-        y,
-        polygons,
-        paintSource,
-        fillRule,
-        clipMask,
-        transform,
-        globalAlpha,
-        subPixelOpacity = 1.0,
-        composite = 'source-over',
-        sourceMask = null,
-        clipRect = null
-    ) {
-        const intersections = [];
-
-        // Find all intersections with this scanline
-        for (const poly of polygons) {
-            PolygonFiller._findPolygonIntersections(poly, y + 0.5, intersections);
+    static _beginScan(polygons, y0, y1) {
+        let vertices = 0;
+        for (const poly of polygons) vertices += poly.length;
+        let scan = PolygonFiller._scanScratch;
+        if (scan === null || scan.capacity < vertices) {
+            let capacity = 64;
+            while (capacity < vertices) capacity *= 2;
+            scan = PolygonFiller._scanScratch = {
+                capacity,
+                ux: new Float64Array(capacity),
+                uy: new Float64Array(capacity),
+                ly: new Float64Array(capacity),
+                dx: new Float64Array(capacity),
+                dy: new Float64Array(capacity),
+                w: new Int8Array(capacity),
+                start: new Float64Array(capacity),
+                keys: new Float64Array(capacity),
+                order: new Int32Array(capacity),
+                active: new Int32Array(capacity),
+                waiting: new Int32Array(capacity),
+                bx: new Float64Array(capacity),
+                bw: new Int8Array(capacity),
+                bi: new Int32Array(capacity),
+                cx: new Float64Array(capacity),
+                cw: new Int8Array(capacity),
+                ci: new Int32Array(capacity),
+                n: 0,
+                next: 0,
+                activeCount: 0,
+                keptCount: 0
+            };
         }
-
-        // Sort intersections by x coordinate
-        intersections.sort((a, b) => a.x - b.x);
-
-        // Fill spans based on winding rule
-        PolygonFiller._fillSpans(
-            surface,
-            y,
-            intersections,
-            paintSource,
-            fillRule,
-            clipMask,
-            transform,
-            globalAlpha,
-            subPixelOpacity,
-            composite,
-            sourceMask,
-            clipRect
-        );
+        const ux = scan.ux;
+        const uy = scan.uy;
+        const ly = scan.ly;
+        const dx = scan.dx;
+        const dy = scan.dy;
+        const w = scan.w;
+        const start = scan.start;
+        const firstSample = y0 + 0.5;
+        const lastSample = y1 + 0.5;
+        let n = 0;
+        for (const poly of polygons) {
+            for (let i = 0; i < poly.length; i++) {
+                const p1 = poly[i];
+                const p2 = poly[(i + 1) % poly.length];
+                // Skip exactly horizontal edges (no crossing, and a zero divisor). A merely
+                // NEAR-horizontal one is the only edge covering its sliver [upper.y, lower.y), so a
+                // scanline there needs its crossing: skipping it drops the whole row.
+                if (p1.y === p2.y) continue;
+                // The upper end, whichever way the polygon runs the edge, and the differences
+                // _scanRow interpolates with
+                let upper, lower;
+                if (p2.y > p1.y) {
+                    upper = p1;
+                    lower = p2;
+                    w[n] = 1;
+                } else {
+                    upper = p2;
+                    lower = p1;
+                    w[n] = -1;
+                }
+                // No sample in [y0 + 0.5, y1 + 0.5] lies in [upper.y, lower.y)
+                if (lower.y <= firstSample || upper.y > lastSample) continue;
+                ux[n] = upper.x;
+                uy[n] = upper.y;
+                ly[n] = lower.y;
+                dx[n] = lower.x - upper.x;
+                dy[n] = lower.y - upper.y;
+                // floor(upper.y - 0.5) is never later than the first row whose sample reaches
+                // the edge (rounding is monotonic), so the edge is active by then; _scanRow
+                // still tests the exact half-open condition
+                const first = Math.floor(upper.y - 0.5);
+                start[n] = first < y0 ? y0 : first;
+                n++;
+            }
+        }
+        // Order by first row, ties by table position. A few edges (a rect has two): a stable
+        // insertion sort; many: keys first * 2^k + index, sorted numerically
+        const order = scan.order;
+        if (n <= 32) {
+            for (let e = 0; e < n; e++) {
+                let j = e;
+                while (j > 0 && start[order[j - 1]] > start[e]) {
+                    order[j] = order[j - 1];
+                    j--;
+                }
+                order[j] = e;
+            }
+        } else {
+            let span = 1;
+            while (span <= n) span *= 2;
+            const keys = scan.keys;
+            for (let e = 0; e < n; e++) keys[e] = (start[e] - y0) * span + e;
+            const sorted = keys.subarray(0, n).sort();
+            for (let e = 0; e < n; e++) order[e] = sorted[e] % span;
+        }
+        scan.n = n;
+        scan.next = 0;
+        scan.activeCount = 0;
+        scan.keptCount = 0;
+        return scan;
     }
 
     /**
-     * Find intersections between a polygon and a horizontal scanline
-     * @param {Array} polygon - Array of {x, y} points
-     * @param {number} y - Scanline y coordinate
-     * @param {Array} intersections - Array to append intersections to
+     * The crossings of row y with the scanned edges, in scan.cx / scan.cw. The row is sampled at
+     * y + 0.5 and an edge crosses it when upper.y <= y + 0.5 < lower.y: half-open, so a vertex
+     * between two edges is counted once. The crossing is interpolated from the edge's UPPER end
+     * whichever way the polygon runs it, so an edge two polygons share (each traversing it the
+     * other way) crosses the row at the bit-identical x: their spans then meet exactly, with no
+     * 1-ulp gap for a pixel center lying on the edge to fall into. The crossings are sorted by x
+     * and, between equal x, by edge-table order.
+     * Only the active edges are visited: those whose first row has come and whose lower end the
+     * sample has not passed. The previous row's crossing edges come first, in that row's order,
+     * so their insertion sort mostly confirms an order it already has; the edges reached just
+     * now are sorted apart and merged in.
+     * @param {Object} scan - The state _beginScan returned
+     * @param {number} y - Row
+     * @returns {number} How many crossings
      * @private
      */
-    static _findPolygonIntersections(polygon, y, intersections) {
-        for (let i = 0; i < polygon.length; i++) {
-            const p1 = polygon[i];
-            const p2 = polygon[(i + 1) % polygon.length];
+    static _scanRow(scan, y) {
+        const sample = y + 0.5;
+        const ux = scan.ux;
+        const uy = scan.uy;
+        const ly = scan.ly;
+        const dx = scan.dx;
+        const dy = scan.dy;
+        const w = scan.w;
+        const active = scan.active;
+        const order = scan.order;
+        const start = scan.start;
+        const cx = scan.cx;
+        const cw = scan.cw;
+        const ci = scan.ci;
+        const n = scan.n;
+        let next = scan.next;
+        let activeCount = scan.activeCount;
+        while (next < n && start[order[next]] <= y) active[activeCount++] = order[next++];
+        scan.next = next;
 
-            // Skip horizontal edges (avoid division by zero)
-            if (Math.abs(p1.y - p2.y) < FLOAT_EPSILON) continue;
-
-            // Check if scanline crosses this edge
-            const minY = Math.min(p1.y, p2.y);
-            const maxY = Math.max(p1.y, p2.y);
-
-            if (y >= minY && y < maxY) {
-                // Note: < maxY to avoid double-counting vertices
-                // Calculate intersection point using linear interpolation
-                const t = (y - p1.y) / (p2.y - p1.y);
-                const x = p1.x + t * (p2.x - p1.x);
-
-                // Determine winding direction
-                const winding = p2.y > p1.y ? 1 : -1;
-
-                intersections.push({ x: x, winding: winding });
+        // Visit the active edges: drop the passed ones, set aside the ones not reached yet, insert
+        // each crossing in (x, table position) order - the previous row's crossing edges into
+        // cx/cw/ci, the late ones into bx/bw/bi
+        const kept = scan.keptCount;
+        const waiting = scan.waiting;
+        const bx = scan.bx;
+        const bw = scan.bw;
+        const bi = scan.bi;
+        let pending = 0;
+        let count = 0;
+        let late = 0;
+        for (let k = 0; k < activeCount; k++) {
+            const e = active[k];
+            if (sample >= ly[e]) continue;
+            if (sample < uy[e]) {
+                waiting[pending++] = e;
+                continue;
+            }
+            const x = ux[e] + ((sample - uy[e]) / dy[e]) * dx[e];
+            if (k < kept) {
+                let j = count;
+                while (j > 0 && (cx[j - 1] > x || (cx[j - 1] === x && ci[j - 1] > e))) {
+                    cx[j] = cx[j - 1];
+                    cw[j] = cw[j - 1];
+                    ci[j] = ci[j - 1];
+                    j--;
+                }
+                cx[j] = x;
+                cw[j] = w[e];
+                ci[j] = e;
+                count++;
+            } else {
+                let j = late;
+                while (j > 0 && (bx[j - 1] > x || (bx[j - 1] === x && bi[j - 1] > e))) {
+                    bx[j] = bx[j - 1];
+                    bw[j] = bw[j - 1];
+                    bi[j] = bi[j - 1];
+                    j--;
+                }
+                bx[j] = x;
+                bw[j] = w[e];
+                bi[j] = e;
+                late++;
             }
         }
+        // Merge the late crossings in, from the back (cx has room for all of them)
+        if (late > 0) {
+            let a = count - 1;
+            let b = late - 1;
+            let out = count + late - 1;
+            while (b >= 0) {
+                if (a >= 0 && (cx[a] > bx[b] || (cx[a] === bx[b] && ci[a] > bi[b]))) {
+                    cx[out] = cx[a];
+                    cw[out] = cw[a];
+                    ci[out] = ci[a];
+                    a--;
+                } else {
+                    cx[out] = bx[b];
+                    cw[out] = bw[b];
+                    ci[out] = bi[b];
+                    b--;
+                }
+                out--;
+            }
+            count += late;
+        }
+        // Next row visits this row's crossing edges in this row's order, then the waiting ones
+        for (let j = 0; j < count; j++) active[j] = ci[j];
+        for (let j = 0; j < pending; j++) active[count + j] = waiting[j];
+        scan.activeCount = count + pending;
+        scan.keptCount = count;
+        return count;
     }
 
     /**
      * Fill spans on a scanline based on winding rule
      * @param {Surface} surface - Target surface
      * @param {number} y - Scanline y coordinate
-     * @param {Array} intersections - Sorted intersections with winding info
+     * @param {Float64Array} crossX - The row's crossings, sorted (see _scanRow)
+     * @param {Int8Array} crossW - Their windings
+     * @param {number} count - How many crossings
      * @param {Color|Gradient|Pattern} paintSource - Paint source
      * @param {string} fillRule - 'evenodd' or 'nonzero'
      * @param {ClipMask|null} clipMask - Stencil clipping mask
@@ -370,7 +510,9 @@ class PolygonFiller {
     static _fillSpans(
         surface,
         y,
-        intersections,
+        crossX,
+        crossW,
+        count,
         paintSource,
         fillRule,
         clipMask,
@@ -381,7 +523,7 @@ class PolygonFiller {
         sourceMask = null,
         clipRect = null
     ) {
-        if (intersections.length === 0) return;
+        if (count === 0) return;
         // Clip rect: clamp each span's X to the clip rect (the caller has already
         // restricted Y to it); any clipMask is still tested per pixel.
         const clipX0 = clipRect ? clipRect.x0 : 0;
@@ -390,12 +532,9 @@ class PolygonFiller {
         let windingNumber = 0;
         let inside = false;
 
-        for (let i = 0; i < intersections.length; i++) {
-            const intersection = intersections[i];
-            const nextIntersection = intersections[i + 1];
-
+        for (let i = 0; i < count; i++) {
             // Update winding number
-            windingNumber += intersection.winding;
+            windingNumber += crossW[i];
 
             // Determine if we're inside based on fill rule
             if (fillRule === 'evenodd') {
@@ -406,15 +545,15 @@ class PolygonFiller {
             }
 
             // Fill span if we're inside
-            if (inside && nextIntersection) {
+            if (inside && i + 1 < count) {
                 // Pixel-center sampling on X (see _fillClipMaskSpans). This is
                 // the standard path (patterns, gradients, alpha<255,
                 // non-source-over): the old ceil(left)..floor(right) inclusive
                 // endX made e.g. an unclipped desktop PATTERN fill reach one
                 // column past the clipped morphs drawn over it. A column x is in
                 // [left, right) iff left <= x+0.5 < right.
-                let startX = Math.max(0, Math.ceil(intersection.x - 0.5));
-                let endX = Math.min(surface.width - 1, Math.ceil(nextIntersection.x - 0.5) - 1);
+                let startX = Math.max(0, Math.ceil(crossX[i] - 0.5));
+                let endX = Math.min(surface.width - 1, Math.ceil(crossX[i + 1] - 0.5) - 1);
                 if (startX < clipX0) startX = clipX0;
                 if (endX > clipX1m1) endX = clipX1m1;
 
@@ -482,7 +621,9 @@ class PolygonFiller {
         //   srcA===0   -> dest unchanged (so a transparent span is a whole no-op)
         //   srcA===255 -> write source
         //   dstA===0   -> write source
-        //   else       -> Math.round(src*a + dst*(1-a)) per channel, a = srcA/255
+        //   dstA===255 -> Math.round(src*a + dst*(1-a)) per channel, a = srcA/255
+        //   else       -> the same with dst weighted by its own alpha, over the
+        //                 result alpha (Porter-Duff on straight RGBA)
         // sourceMask is only ever set for canvas-wide (non-source-over) ops, so the
         // !sourceMask guard is belt-and-suspenders (source-over => sourceMask null).
         if (solidColor !== null && composite === 'source-over' && !sourceMask) {
@@ -505,10 +646,19 @@ class PolygonFiller {
                         data[offset + 1] = sg;
                         data[offset + 2] = sb;
                         data[offset + 3] = sa;
-                    } else {
+                    } else if (dstA === 255) {
                         data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
                         data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
                         data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                        data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                    } else {
+                        // Both translucent: the destination's colour counts in proportion
+                        // to its own alpha (Porter-Duff over straight RGBA).
+                        const dstWeight = (dstA / 255) * invSrcAlpha;
+                        const outAlpha = srcAlpha + dstWeight;
+                        data[offset] = Math.round((sr * srcAlpha + data[offset] * dstWeight) / outAlpha);
+                        data[offset + 1] = Math.round((sg * srcAlpha + data[offset + 1] * dstWeight) / outAlpha);
+                        data[offset + 2] = Math.round((sb * srcAlpha + data[offset + 2] * dstWeight) / outAlpha);
                         data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
                     }
                 }
@@ -526,16 +676,70 @@ class PolygonFiller {
         // source-over arithmetic as CompositeOperations.blendPixel.
         if (paintSource instanceof Pattern && composite === 'source-over' && !sourceMask) {
             const inv = paintSource.inverseForDevice(transform);
+            const map = paintSource.centreMapForDevice(transform);
             const pdata = paintSource._imageData.data;
+
+            // W3 — the mapping RESAMPLES (rotation, skew or a non-unit step) under
+            // imageSmoothingEnabled: the filtered arm, decided once per transform
+            // (Pattern.isFilteredUnder). The general path below filters through
+            // the same Pattern.filterAt; the alpha and source-over
+            // arithmetic are W1's.
+            if (paintSource.isFilteredUnder(transform)) {
+                const texel = paintSource._sampling.texel;
+                for (let x = startX; x <= endX; x++) {
+                    if (clipMask && clipMask.isPixelClipped(x, y)) continue;
+                    if (!paintSource.filterAt(map, x, y, texel)) continue; // transparent → dest unchanged
+                    let sa = Math.round(texel.a * globalAlpha);
+                    if (subPixelOpacity < 1.0) sa = Math.round(sa * subPixelOpacity);
+                    if (sa === 0) continue;
+                    const sr = texel.r;
+                    const sg = texel.g;
+                    const sb = texel.b;
+                    const offset = y * stride + x * 4;
+                    if (sa === 255) {
+                        data[offset] = sr;
+                        data[offset + 1] = sg;
+                        data[offset + 2] = sb;
+                        data[offset + 3] = 255;
+                    } else {
+                        const dstA = data[offset + 3];
+                        if (dstA === 0) {
+                            data[offset] = sr;
+                            data[offset + 1] = sg;
+                            data[offset + 2] = sb;
+                            data[offset + 3] = sa;
+                        } else if (dstA === 255) {
+                            const srcAlpha = sa / 255;
+                            const invSrcAlpha = 1 - srcAlpha;
+                            data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
+                            data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
+                            data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                            data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                        } else {
+                            // Both translucent: the destination's colour counts in proportion
+                            // to its own alpha (Porter-Duff over straight RGBA).
+                            const srcAlpha = sa / 255;
+                            const invSrcAlpha = 1 - srcAlpha;
+                            const dstWeight = (dstA / 255) * invSrcAlpha;
+                            const outAlpha = srcAlpha + dstWeight;
+                            data[offset] = Math.round((sr * srcAlpha + data[offset] * dstWeight) / outAlpha);
+                            data[offset + 1] = Math.round((sg * srcAlpha + data[offset + 1] * dstWeight) / outAlpha);
+                            data[offset + 2] = Math.round((sb * srcAlpha + data[offset + 2] * dstWeight) / outAlpha);
+                            data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                        }
+                    }
+                }
+                return;
+            }
 
             // W2 — axis-aligned 1:1 integer 'repeat' mapping (the desktop wallpaper:
             // a device-space fill of a 'repeat' pattern under an integer translate).
             // The tile ROW is constant across the scanline and the tile COLUMN is an
             // integer that increments and wraps, so the per-pixel transform + modulo +
             // floor + clamp all disappear. Byte-identical to the general branch below:
-            // for integer in-range coords _sampleOffset's floor/clamp are no-ops and
-            // _repeatCoordinate(v,size) === ((v % size)+size)%size, which is exactly
-            // the incrementing/wrapping column index here.
+            // the pixel centre x + 0.5 + e floors to the same integer column, so
+            // _sampleOffset's floor/clamp yield exactly the incrementing/wrapping
+            // index here (_repeatCoordinate(v,size) === ((v % size)+size)%size).
             if (inv !== null && inv.b === 0 && inv.c === 0 && inv.a === 1 && inv.d === 1 &&
                 Number.isInteger(inv.e) && Number.isInteger(inv.f) &&
                 paintSource._repetition === 'repeat') {
@@ -564,12 +768,27 @@ class PolygonFiller {
                                     data[offset + 1] = sg;
                                     data[offset + 2] = sb;
                                     data[offset + 3] = sa;
-                                } else {
+                                } else if (dstA === 255) {
                                     const srcAlpha = sa / 255;
                                     const invSrcAlpha = 1 - srcAlpha;
                                     data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
                                     data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
                                     data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                                    data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                                } else {
+                                    // Both translucent: the destination's colour counts in proportion
+                                    // to its own alpha (Porter-Duff over straight RGBA).
+                                    const srcAlpha = sa / 255;
+                                    const invSrcAlpha = 1 - srcAlpha;
+                                    const dstWeight = (dstA / 255) * invSrcAlpha;
+                                    const outAlpha = srcAlpha + dstWeight;
+                                    data[offset] = Math.round((sr * srcAlpha + data[offset] * dstWeight) / outAlpha);
+                                    data[offset + 1] = Math.round(
+                                        (sg * srcAlpha + data[offset + 1] * dstWeight) / outAlpha
+                                    );
+                                    data[offset + 2] = Math.round(
+                                        (sb * srcAlpha + data[offset + 2] * dstWeight) / outAlpha
+                                    );
                                     data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
                                 }
                             }
@@ -580,11 +799,12 @@ class PolygonFiller {
                 return;
             }
 
-            // W1 — general hoisted-inverse pattern fill (rotated / scaled / fractional
-            // translate / non-'repeat'): still one inversion per span, sampled by offset.
+            // W1 — general hoisted-inverse nearest-neighbour pattern fill (fractional
+            // translate / non-'repeat', or any mapping with smoothing off): still one
+            // inversion per span, sampled by offset.
             for (let x = startX; x <= endX; x++) {
                 if (clipMask && clipMask.isPixelClipped(x, y)) continue;
-                const so = paintSource.sampleOffsetWithInverse(inv, x, y);
+                const so = paintSource.sampleOffsetAt(map, x, y);
                 if (so < 0) continue; // transparent sample → dest unchanged
                 // withGlobalAlpha (+ sub-pixel opacity for thin strokes), matching
                 // _evaluatePaintSource: alpha only, source channels untouched.
@@ -605,12 +825,23 @@ class PolygonFiller {
                         data[offset + 1] = sg;
                         data[offset + 2] = sb;
                         data[offset + 3] = sa;
-                    } else {
+                    } else if (dstA === 255) {
                         const srcAlpha = sa / 255;
                         const invSrcAlpha = 1 - srcAlpha;
                         data[offset] = Math.round(sr * srcAlpha + data[offset] * invSrcAlpha);
                         data[offset + 1] = Math.round(sg * srcAlpha + data[offset + 1] * invSrcAlpha);
                         data[offset + 2] = Math.round(sb * srcAlpha + data[offset + 2] * invSrcAlpha);
+                        data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
+                    } else {
+                        // Both translucent: the destination's colour counts in proportion
+                        // to its own alpha (Porter-Duff over straight RGBA).
+                        const srcAlpha = sa / 255;
+                        const invSrcAlpha = 1 - srcAlpha;
+                        const dstWeight = (dstA / 255) * invSrcAlpha;
+                        const outAlpha = srcAlpha + dstWeight;
+                        data[offset] = Math.round((sr * srcAlpha + data[offset] * dstWeight) / outAlpha);
+                        data[offset + 1] = Math.round((sg * srcAlpha + data[offset + 1] * dstWeight) / outAlpha);
+                        data[offset + 2] = Math.round((sb * srcAlpha + data[offset + 2] * dstWeight) / outAlpha);
                         data[offset + 3] = Math.round(sa + dstA * invSrcAlpha);
                     }
                 }
@@ -821,8 +1052,9 @@ class PolygonFiller {
                 const p1 = polygon[i];
                 const p2 = polygon[(i + 1) % polygon.length];
 
-                // Skip horizontal edges (no intersection with horizontal ray)
-                if (Math.abs(p1.y - p2.y) < epsilon) continue;
+                // Skip exactly horizontal edges (no intersection with horizontal ray); a
+                // near-horizontal one still owns its sliver of y (see _beginScan)
+                if (p1.y === p2.y) continue;
 
                 // Check if ray crosses this edge
                 const minY = Math.min(p1.y, p2.y);
@@ -831,7 +1063,8 @@ class PolygonFiller {
                 // Ray is at y level, check if it intersects the edge
                 if (y >= minY && y < maxY) {
                     // Note: < maxY to avoid double-counting vertices
-                    // Calculate intersection point using linear interpolation
+                    // Calculate intersection point using linear interpolation - from p1, in the
+                    // polygon's own order (the fills interpolate from the upper end: _scanRow)
                     const t = (y - p1.y) / (p2.y - p1.y);
                     const intersectionX = p1.x + t * (p2.x - p1.x);
 
@@ -947,20 +1180,12 @@ class PolygonFiller {
             spanMaxX = bound.x1 - 1;
         }
 
-        // Process each scanline
+        // Process each scanline: its crossings, sorted, from the active edges only (the same
+        // scan as the surface fills)
+        const scan = PolygonFiller._beginScan(transformedPolygons, minY, maxY);
         for (let y = minY; y <= maxY; y++) {
-            const intersections = [];
-
-            // Find all intersections with this scanline (reuse existing method)
-            for (const poly of transformedPolygons) {
-                PolygonFiller._findPolygonIntersections(poly, y + 0.5, intersections);
-            }
-
-            // Sort intersections by x coordinate
-            intersections.sort((a, b) => a.x - b.x);
-
-            // Fill spans to clip mask
-            PolygonFiller._fillClipMaskSpans(clipMask, y, intersections, fillRule, spanMinX, spanMaxX);
+            const count = PolygonFiller._scanRow(scan, y);
+            PolygonFiller._fillClipMaskSpans(clipMask, y, scan.cx, scan.cw, count, fillRule, spanMinX, spanMaxX);
         }
     }
 
@@ -968,24 +1193,23 @@ class PolygonFiller {
      * Fill spans on a scanline into a ClipMask based on winding rule
      * @param {ClipMask} clipMask - Target clip mask
      * @param {number} y - Scanline y coordinate
-     * @param {Array} intersections - Sorted intersections with winding info
+     * @param {Float64Array} crossX - The row's crossings, sorted (see _scanRow)
+     * @param {Int8Array} crossW - Their windings
+     * @param {number} count - How many crossings
      * @param {string} fillRule - 'evenodd' or 'nonzero'
      * @param {number} minX - First writable column (0, or the bound's x0)
      * @param {number} maxX - Last writable column, inclusive (width - 1, or the bound's x1 - 1)
      * @private
      */
-    static _fillClipMaskSpans(clipMask, y, intersections, fillRule, minX, maxX) {
-        if (intersections.length === 0) return;
+    static _fillClipMaskSpans(clipMask, y, crossX, crossW, count, fillRule, minX, maxX) {
+        if (count === 0) return;
 
         let windingNumber = 0;
         let inside = false;
 
-        for (let i = 0; i < intersections.length; i++) {
-            const intersection = intersections[i];
-            const nextIntersection = intersections[i + 1];
-
+        for (let i = 0; i < count; i++) {
             // Update winding number
-            windingNumber += intersection.winding;
+            windingNumber += crossW[i];
 
             // Determine if we're inside based on fill rule
             if (fillRule === 'evenodd') {
@@ -996,7 +1220,7 @@ class PolygonFiller {
             }
 
             // Fill span if we're inside
-            if (inside && nextIntersection) {
+            if (inside && i + 1 < count) {
                 // Pixel-center sampling on X, to match the scanline's Y
                 // convention: scanlines are sampled at y+0.5 with a half-open
                 // [minY, maxY) edge test, so a column x belongs to the span
@@ -1009,8 +1233,8 @@ class PolygonFiller {
                 // while raster (drawImage/text) blits bounded by their own
                 // extent did not — leaving 1px "streaks" of erased raster
                 // content along the right edge of repainted regions.
-                const startX = Math.max(minX, Math.ceil(intersection.x - 0.5));
-                const endX = Math.min(maxX, Math.ceil(nextIntersection.x - 0.5) - 1);
+                const startX = Math.max(minX, Math.ceil(crossX[i] - 0.5));
+                const endX = Math.min(maxX, Math.ceil(crossX[i + 1] - 0.5) - 1);
 
                 for (let x = startX; x <= endX; x++) {
                     clipMask.setPixel(x, y, true); // Set pixel to visible

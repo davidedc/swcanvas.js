@@ -16,6 +16,9 @@ if (debugMode) {
 console.log('Loading built modular tests...');
 const CoreFunctionalityTests = require('./dist/core-functionality-tests.js');
 const SWCanvas = require('../dist/swcanvas.js');
+// Visual tests reach SWCanvas as a global (createCompatiblePath2D builds an
+// SWPath2D through it), as they do through window.SWCanvas in the browser.
+global.SWCanvas = SWCanvas;
 const VisualRenderingTests = require('./dist/visual-rendering-tests.js');
 
 // Load direct rendering test utilities
@@ -25,72 +28,94 @@ if (fs.existsSync(path.join(directRenderingTestsDir, 'direct-rendering-test-util
     directRenderingTestUtils = require('./direct-rendering/direct-rendering-test-utils.js');
 }
 
-// Preload the smoke fixture's fonts so positive-rendering text tests
-// (Arial reg+bold + BitmapTextInvariant at size 16, densities 1 and 2) can
-// write real glyph pixels. The density-2 set backs the HiDPI direct-blit
-// fast-path tests (208 visual / 308 core). Tests that need to exercise the
-// NO_METRICS path use fonts/sizes deliberately outside this set (see
-// 304-text-fillText-no-atlas-test.js, which uses Courier New 24).
-async function preloadSmokeFonts() {
-    const { BitmapText } = SWCanvas.fonts._raw;
-    const smokeDir = path.resolve(__dirname, '..', 'font-assets', '_smoke') + '/';
-    if (!fs.existsSync(path.join(smokeDir, 'metrics-bundle.js'))) {
+// The smoke fixture's fonts (Arial reg+bold + BitmapTextInvariant at size 16,
+// densities 1 and 2) let the positive-rendering text tests write real glyph
+// pixels; the density-2 set backs the HiDPI direct-blit fast-path tests (208
+// visual / 308 core). Tests that exercise the NO_METRICS path use fonts/sizes
+// deliberately outside this set (304-text-fillText-no-atlas-test.js uses
+// Courier New 24). The preload itself is shared with the browser page
+// (tests/smoke-fonts.js); what only Node can do is list the fixture's files,
+// so it checks here that the shared font list and the fixture are one set.
+const SmokeFonts = require('./smoke-fonts.js');
+const SMOKE_DIR = path.resolve(__dirname, '..', 'font-assets', '_smoke') + '/';
+
+function checkSmokeFixtureMatchesFontList() {
+    if (!fs.existsSync(path.join(SMOKE_DIR, 'metrics-bundle.js'))) {
         throw new Error(
             'Smoke fixture missing at font-assets/_smoke/ (it is committed to git). ' +
             'Regenerate with: npm run text:download-assets && node scripts/build-smoke-fixture.js'
         );
     }
-    BitmapText.setFontDirectory(smokeDir);
-    await Promise.all([
-        BitmapText.loadFont('density-1-0-Arial-style-normal-weight-normal-size-16-0'),
-        BitmapText.loadFont('density-1-0-Arial-style-normal-weight-bold-size-16-0'),
-        BitmapText.loadFont('density-1-0-BitmapTextInvariant-style-normal-weight-normal-size-16-0'),
-        BitmapText.loadFont('density-2-0-Arial-style-normal-weight-normal-size-16-0'),
-        BitmapText.loadFont('density-2-0-Arial-style-normal-weight-bold-size-16-0'),
-        BitmapText.loadFont('density-2-0-BitmapTextInvariant-style-normal-weight-normal-size-16-0'),
-    ]);
+    const files = new Set(fs.readdirSync(SMOKE_DIR));
+    const listed = new Set(SmokeFonts.SMOKE_FONT_IDS);
+    const problems = [];
+    for (const id of listed) {
+        // Node reads the QOI form; the browser reads the WebP (http) or its wrapper (file://).
+        for (const form of [`atlas-${id}-qoi.js`, `atlas-${id}.webp`, `atlas-${id}-webp.js`]) {
+            if (!files.has(form)) problems.push(`missing ${form}`);
+        }
+    }
+    for (const f of files) {
+        const m = /^atlas-(.*?)(-qoi\.js|-webp\.js|\.webp)$/.exec(f);
+        if (m && !listed.has(m[1])) problems.push(`${f} is not in tests/smoke-fonts.js`);
+    }
+    if (problems.length > 0) {
+        throw new Error(`font-assets/_smoke/ and tests/smoke-fonts.js disagree: ${problems.join('; ')}`);
+    }
 }
 
 console.log('Running SWCanvas Tests in Node.js...\n');
 
-// Helper function to save PNG files (same as in core-functionality-tests.js)
+// Helper function to save a visual test's PNG. It throws on failure: the caller
+// counts a PNG that could not be written as a failed visual test.
 function savePNG(surface, filename, description, SWCanvasRef) {
-    try {
-        const pngData = SWCanvasRef.Core.PngEncoder.encode(surface);
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Create output directory if it doesn't exist
-        const outputDir = path.join(__dirname, 'output');
-        if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-        }
-        
-        const filePath = path.join(outputDir, filename);
-        // Convert ArrayBuffer to Buffer for Node.js
-        const buffer = Buffer.from(pngData);
-        fs.writeFileSync(filePath, buffer);
-        console.log(`  Saved ${description}: ${filePath}`);
-    } catch (error) {
-        console.log(`  Warning: Could not save ${description} - ${error.message}`);
+    const pngData = SWCanvasRef.Core.PngEncoder.encode(surface);
+
+    // Create output directory if it doesn't exist
+    const outputDir = path.join(__dirname, 'output');
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
     }
+
+    const filePath = path.join(outputDir, filename);
+    // Convert ArrayBuffer to Buffer for Node.js
+    const buffer = Buffer.from(pngData);
+    fs.writeFileSync(filePath, buffer);
+    console.log(`  Saved ${description}: ${filePath}`);
 }
 
 (async () => {
 try {
     // Smoke-fixture preload — must happen before runSharedTests since the
     // positive-rendering text tests (306+) assert on real glyph pixels.
-    await preloadSmokeFonts();
+    checkSmokeFixtureMatchesFontList();
+    await SmokeFonts.preloadSmokeFonts(SWCanvas, SMOKE_DIR);
 
     // Run the core functionality test suite
     const results = CoreFunctionalityTests.runSharedTests(SWCanvas);
-    
+
+    // A committed core-test PNG that no core test wrote this run is an orphan:
+    // the core harness records every file it saves in results.savedPNGs.
+    const savedCorePNGs = new Set(results.savedPNGs);
+    const coreOutputDir = path.join(__dirname, 'dist', 'output');
+    const coreOutputFailures = (fs.existsSync(coreOutputDir) ? fs.readdirSync(coreOutputDir) : [])
+        .filter(f => f.endsWith('.png') && !savedCorePNGs.has(f))
+        .map(f => {
+            console.log(`  ✗ Orphan: tests/dist/output/${f} is committed but no core test writes it`);
+            return `orphan ${f}`;
+        });
+
     console.log(`\nGenerating Visual Test PNGs...\n`);
     
     // Generate PNGs for all visual tests
     const visualTests = VisualRenderingTests.getTests();
     const visualTestNames = Object.keys(visualTests);
-    
+
+    // A visual test that fails to render, or a committed PNG no visual test
+    // writes, fails the run: the PNGs ARE the visual tests' output, so either
+    // one leaves a committed PNG that nothing regenerates.
+    const visualFailures = [];
+    let generatedCount = 0;
     visualTestNames.forEach(testName => {
         const visualTest = visualTests[testName];
         try {
@@ -110,12 +135,21 @@ try {
             }
             
             savePNG(surface, `${testName}.basic.png`, visualTest.name, SWCanvas);
+            generatedCount++;
         } catch (error) {
-            console.log(`  Warning: Failed to generate ${testName}.basic.png - ${error.message}`);
+            visualFailures.push(`${testName}.basic.png`);
+            console.log(`  ✗ Failed to generate ${testName}.basic.png - ${error.message}`);
         }
     });
-    
-    console.log(`\nGenerated PNGs for ${visualTestNames.length} visual tests`);
+    const registeredPNGs = new Set(visualTestNames.map(name => `${name}.basic.png`));
+    fs.readdirSync(path.join(__dirname, 'output'))
+        .filter(f => f.endsWith('.png') && !registeredPNGs.has(f))
+        .forEach(f => {
+            visualFailures.push(`orphan ${f}`);
+            console.log(`  ✗ Orphan: tests/output/${f} is committed but no visual test writes it`);
+        });
+
+    console.log(`\nGenerated PNGs for ${generatedCount} of ${visualTestNames.length} visual tests`);
 
     // Run direct rendering tests
     let directRenderingPassed = 0;
@@ -131,7 +165,6 @@ try {
             const caseFiles = fs.readdirSync(casesDir).filter(f => f.endsWith('.js'));
 
             // Make utilities globally available
-            global.SWCanvas = SWCanvas;
             global.SeededRandom = directRenderingTestUtils.SeededRandom;
             global.getRandomColor = directRenderingTestUtils.getRandomColor;
             global.getRandomOpaqueColor = directRenderingTestUtils.getRandomOpaqueColor;
@@ -182,14 +215,29 @@ try {
 
     // Final summary
     const totalPassed = results.passed + directRenderingPassed;
-    const totalFailed = results.failed + directRenderingFailed;
+    const totalFailed =
+        results.failed + coreOutputFailures.length + visualFailures.length + directRenderingFailed;
+
+    // A core test that needs a DOM is skipped here, by name, never passed: the
+    // browser page (tests/browser/index.html, npm run test:browser) runs it.
+    const skippedLine = results.skipped.length > 0
+        ? `Core tests skipped here (they need a DOM; npm run test:browser runs them): ` +
+            `${results.skipped.length} [${results.skipped.join(' | ')}]`
+        : 'Core tests skipped here: 0';
 
     console.log(`\n${'='.repeat(50)}`);
     if (totalFailed > 0) {
-        console.log(`\n❌ ${totalFailed} tests failed (Core: ${results.failed}, Direct Rendering: ${directRenderingFailed})`);
+        const named = list => (list.length > 0 ? ` [${list.join(', ')}]` : '');
+        console.log(
+            `\n❌ ${totalFailed} tests failed (Core: ${results.failed}, ` +
+                `Core output: ${coreOutputFailures.length}${named(coreOutputFailures)}, ` +
+                `Visual: ${visualFailures.length}${named(visualFailures)}, Direct Rendering: ${directRenderingFailed})`
+        );
+        console.log(skippedLine);
         process.exit(1);
     } else {
         console.log(`\n✅ All ${totalPassed} tests passed!`);
+        console.log(skippedLine);
     }
 } catch (error) {
     console.error('Error running tests:', error.message);

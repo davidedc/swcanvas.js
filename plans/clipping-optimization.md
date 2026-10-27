@@ -392,7 +392,7 @@ Circle-specific code changes:
 ### 6.4 Paths (general)
 
 Touch points: `PolygonFiller._calculateBounds:216`, `_fillPolygonsDirect:83`,
-`_fillScanline:249`, `_fillSpans:336`, `_fillPixelSpan:406`.
+`_beginScan`/`_scanRow` (the active-edge scan), `_fillSpans:336`, `_fillPixelSpan:406`.
 
 Changes:
 - `_calculateBounds` clamps to surface; also clamp to `_clipRect`.

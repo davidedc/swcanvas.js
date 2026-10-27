@@ -10402,6 +10402,253 @@
     });
 
 
+    // Test: clip() with an explicit fill rule - the rule-only and Path2D overloads
+    // This file will be concatenated into the main visual test suite
+
+    registerVisualTest('clip-fill-rule-evenodd', {
+        name: 'clip(fillRule) and clip(path, fillRule) - nonzero vs evenodd',
+        width: 320,
+        height: 170,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 320, 170);
+
+            // Two nested same-winding rects + a star: nonzero keeps the inner rect
+            // and the star's core, evenodd cuts both out.
+            function ring(target, x, y) {
+                target.rect(x, y, 60, 60);
+                target.rect(x + 15, y + 15, 30, 30);
+            }
+            function star(target, cx, cy) {
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+                    const x = cx + Math.cos(angle) * 30;
+                    const y = cy + Math.sin(angle) * 30;
+                    if (i === 0) target.moveTo(x, y);
+                    else target.lineTo(x, y);
+                }
+                target.closePath();
+            }
+            function paintUnderClip(x, y) {
+                ctx.fillStyle = 'steelblue';
+                ctx.fillRect(x - 5, y - 5, 70, 70);
+                ctx.fillStyle = 'orange';
+                ctx.fillRect(x + 20, y - 5, 20, 70);
+            }
+
+            const rules = ['nonzero', 'evenodd'];
+            rules.forEach((rule, i) => {
+                // Row 1: the current default path, clip(rule)
+                const x = 15 + i * 80;
+                ctx.save();
+                ctx.beginPath();
+                ring(ctx, x, 15);
+                ctx.clip(rule);
+                paintUnderClip(x, 15);
+                ctx.restore();
+
+                ctx.save();
+                ctx.beginPath();
+                star(ctx, x + 175, 45);
+                ctx.clip(rule);
+                paintUnderClip(x + 145, 15);
+                ctx.restore();
+
+                // Row 2: a Path2D, clip(path, rule)
+                const ringPath = createCompatiblePath2D(ctx);
+                ring(ringPath, x, 95);
+                ctx.save();
+                ctx.clip(ringPath, rule);
+                paintUnderClip(x, 95);
+                ctx.restore();
+
+                const starPath = createCompatiblePath2D(ctx);
+                star(starPath, x + 175, 125);
+                ctx.save();
+                ctx.clip(starPath, rule);
+                paintUnderClip(x + 145, 95);
+                ctx.restore();
+            });
+        }
+    });
+
+
+    // Test: radial, conic and linear gradients under non-trivial CTMs, plus the
+    // radial two-circle cone (focal and non-nested circles), and patterns under
+    // rotation, fractional scale and translation, sampled nearest-neighbour
+    // (smoothing off) and filtered (smoothing on)
+    // This file will be concatenated into the main visual test suite
+
+    registerVisualTest('gradients-under-ctm', {
+        name: 'Gradients and patterns under scale / rotation / skew, and the radial cone',
+        width: 360,
+        height: 480,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 360, 480);
+
+            function stops(g) {
+                g.addColorStop(0, 'rgb(255, 200, 0)');
+                g.addColorStop(0.5, 'rgb(200, 0, 120)');
+                g.addColorStop(1, 'rgba(0, 80, 255, 0.4)');
+                return g;
+            }
+
+            // Each cell is 120x120 at (col*120, row*120); every gradient is
+            // defined in the cell's own (transformed) user space.
+            function cell(col, row, paint) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(col * 120 + 2, row * 120 + 2, 116, 116);
+                ctx.clip();
+                ctx.translate(col * 120 + 60, row * 120 + 60);
+                paint();
+                ctx.restore();
+            }
+
+            // Row 1: radial under non-uniform scale (an ellipse), radial under
+            // rotate + non-uniform scale, conic under rotation.
+            cell(0, 0, () => {
+                ctx.scale(2, 1);
+                ctx.fillStyle = stops(ctx.createRadialGradient(0, 0, 4, 0, 0, 28));
+                ctx.fillRect(-30, -60, 60, 120);
+            });
+            cell(1, 0, () => {
+                ctx.rotate(Math.PI / 6);
+                ctx.scale(1.8, 0.8);
+                ctx.fillStyle = stops(ctx.createRadialGradient(0, 0, 4, 0, 0, 30));
+                ctx.fillRect(-90, -150, 180, 300);
+            });
+            cell(2, 0, () => {
+                ctx.rotate(0.7);
+                ctx.fillStyle = stops(ctx.createConicGradient(0, 0, 0));
+                ctx.fillRect(-90, -90, 180, 180);
+            });
+
+            // Row 2: focal radial, non-nested circles (the cone), linear under skew.
+            cell(0, 1, () => {
+                ctx.fillStyle = stops(ctx.createRadialGradient(-20, -15, 3, 0, 0, 55));
+                ctx.fillRect(-60, -60, 120, 120);
+            });
+            cell(1, 1, () => {
+                ctx.fillStyle = stops(ctx.createRadialGradient(-35, 0, 8, 30, 0, 22));
+                ctx.fillRect(-60, -60, 120, 120);
+            });
+            cell(2, 1, () => {
+                ctx.transform(1, 0, 0.8, 1, 0, 0);
+                ctx.fillStyle = stops(ctx.createLinearGradient(-40, -40, 40, 40));
+                ctx.fillRect(-120, -60, 240, 120);
+            });
+
+            // Row 3: an 8x8 checkerboard pattern under a rotation with a fractional
+            // scale, under a fractional scale and translation, and 'no-repeat'
+            // under a rotation. Smoothing off: each pixel takes the texel its
+            // centre maps to.
+            const tile = createTestImage(8, 8, 'checkerboard', ctx);
+            ctx.imageSmoothingEnabled = false;
+            cell(0, 2, () => {
+                ctx.rotate(0.45);
+                ctx.scale(2.3, 2.3);
+                ctx.fillStyle = ctx.createPattern(tile, 'repeat');
+                ctx.fillRect(-40, -40, 80, 80);
+            });
+            cell(1, 2, () => {
+                // No pixel centre lands exactly on a texel edge (an exact tie can
+                // round either way in either engine).
+                ctx.translate(0.35, 0.65);
+                ctx.scale(1.7, 2.9);
+                ctx.fillStyle = ctx.createPattern(tile, 'repeat');
+                ctx.fillRect(-40, -40, 80, 80);
+            });
+            cell(2, 2, () => {
+                ctx.rotate(-0.5);
+                ctx.scale(5.5, 5.5);
+                ctx.fillStyle = ctx.createPattern(tile, 'no-repeat');
+                ctx.fillRect(-20, -20, 40, 40);
+            });
+
+            // Row 4: row 3's patterns with smoothing on. Every mapping here
+            // resamples, so the pattern is filtered bilinearly (drawImage's rule):
+            // 'repeat' wraps its filter taps across the tile seams, and the
+            // 'no-repeat' image fades to transparent over half a texel at its
+            // border.
+            ctx.imageSmoothingEnabled = true;
+            cell(0, 3, () => {
+                ctx.rotate(0.45);
+                ctx.scale(2.3, 2.3);
+                ctx.fillStyle = ctx.createPattern(tile, 'repeat');
+                ctx.fillRect(-40, -40, 80, 80);
+            });
+            cell(1, 3, () => {
+                ctx.translate(0.35, 0.65);
+                ctx.scale(1.7, 2.9);
+                ctx.fillStyle = ctx.createPattern(tile, 'repeat');
+                ctx.fillRect(-40, -40, 80, 80);
+            });
+            cell(2, 3, () => {
+                ctx.rotate(-0.5);
+                ctx.scale(5.5, 5.5);
+                ctx.fillStyle = ctx.createPattern(tile, 'no-repeat');
+                ctx.fillRect(-20, -20, 40, 40);
+            });
+        }
+    });
+
+
+    // Test: drawImage smoothing at the image edges and across source sub-rects
+    // This file will be concatenated into the main visual test suite
+
+    registerVisualTest('drawimage-scaled-edges-and-subrects', {
+        name: 'drawImage scaled - opaque edges, sub-rect neighbours, parts == whole',
+        width: 330,
+        height: 230,
+        draw: function(canvas) {
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 330, 230);
+
+            // Opaque test images: a 16x10 colour ramp, a 12x8 bordered tile and the
+            // 30x30 overlapping-squares sheet.
+            const ramp = createTestImage(16, 10, 'gradient', ctx);
+            const bordered = createTestImage(12, 8, 'border', ctx);
+            const sheet = createTestImage(30, 30, 'overlapping-squares', ctx);
+
+            // Row 1: the ramp scaled up 6x (opaque to its edges), the same ramp as
+            // two abutting halves (must match the whole), and under ctx.scale(5).
+            ctx.drawImage(ramp, 10, 10, 96, 60);
+            ctx.drawImage(ramp, 0, 0, 8, 10, 116, 10, 48, 60);
+            ctx.drawImage(ramp, 8, 0, 8, 10, 164, 10, 48, 60);
+            ctx.save();
+            ctx.scale(5, 5);
+            ctx.drawImage(ramp, 45, 2);
+            ctx.restore();
+
+            // Row 2: the bordered tile scaled up whole (the border reaches the
+            // edges), and its interior alone as a sub-rect (the border texels just
+            // outside the sub-rect blend into its edges); then sub-rects of the
+            // sheet straddling its colour boundaries.
+            ctx.drawImage(bordered, 10, 90, 72, 48);
+            ctx.drawImage(bordered, 1, 1, 10, 6, 92, 90, 72, 48);
+            ctx.drawImage(sheet, 5, 5, 10, 10, 174, 90, 48, 48);
+            ctx.drawImage(sheet, 12, 12, 12, 12, 232, 90, 48, 48);
+
+            // Row 3: a rotated, scaled-up ramp and two non-integer down-scales.
+            ctx.save();
+            ctx.translate(70, 190);
+            ctx.rotate(0.35);
+            ctx.drawImage(ramp, -40, -25, 80, 50);
+            ctx.restore();
+            ctx.drawImage(ramp, 150, 165, 11, 7);
+            ctx.drawImage(sheet, 200, 160, 21, 21);
+        }
+    });
+
+
     const VisualRenderingTests = {
         getTests: function() { return visualTests; },
         getTest: function(name) { return visualTests[name]; },

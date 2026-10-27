@@ -231,10 +231,25 @@ class CompositeOperations {
         const srcAlpha = srcA / 255;
         const invSrcAlpha = 1 - srcAlpha;
 
+        if (dstA === 255) {
+            return {
+                r: Math.round(srcR * srcAlpha + dstR * invSrcAlpha),
+                g: Math.round(srcG * srcAlpha + dstG * invSrcAlpha),
+                b: Math.round(srcB * srcAlpha + dstB * invSrcAlpha),
+                a: Math.round(srcA + dstA * invSrcAlpha)
+            };
+        }
+        // Translucent destination: the surface holds straight RGBA, so the
+        // destination's colour counts in proportion to its own alpha, and the mix
+        // is divided by the result's alpha. (Over an opaque destination this
+        // reduces to the plain mix above, which is kept for it byte-for-byte; an
+        // empty destination gets the source unchanged.)
+        const dstWeight = (dstA / 255) * invSrcAlpha;
+        const outAlpha = srcAlpha + dstWeight;
         return {
-            r: Math.round(srcR * srcAlpha + dstR * invSrcAlpha),
-            g: Math.round(srcG * srcAlpha + dstG * invSrcAlpha),
-            b: Math.round(srcB * srcAlpha + dstB * invSrcAlpha),
+            r: Math.round((srcR * srcAlpha + dstR * dstWeight) / outAlpha),
+            g: Math.round((srcG * srcAlpha + dstG * dstWeight) / outAlpha),
+            b: Math.round((srcB * srcAlpha + dstB * dstWeight) / outAlpha),
             a: Math.round(srcA + dstA * invSrcAlpha)
         };
     }

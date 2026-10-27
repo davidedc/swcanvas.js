@@ -5,9 +5,20 @@
 (function(global) {
     'use strict';
     
-    // Simple test framework for Node.js and browser compatibility
-    const testResults = { passed: 0, failed: 0 };
-    
+    // Simple test framework for Node.js and browser compatibility.
+    // total = passed + failed + skipped.length, set when the run ends.
+    const testResults = { passed: 0, failed: 0, total: 0, failures: [], skipped: [], savedPNGs: [] };
+
+    // What a test can require of its environment (testRequiring). Only the DOM
+    // splits the two runners: an element image source (an HTMLImageElement, an
+    // HTMLVideoElement, an ImageBitmap) exists only where there is a DOM, and
+    // SWCanvas's refusal of one only where there is none. Every other test runs
+    // in both, and none may assume either.
+    const ENVIRONMENT = {
+        'dom': typeof document !== 'undefined',
+        'no-dom': typeof document === 'undefined'
+    };
+
     function assertEquals(actual, expected, message) {
         if (actual !== expected) {
             const error = message || `Expected ${expected}, got ${actual}`;
@@ -33,36 +44,55 @@
             console.log(`✓ ${testName}`);
         } catch (error) {
             testResults.failed++;
+            testResults.failures.push({ name: testName, message: error.message });
             console.log(`✗ ${testName}`);
             console.log(`  ${error.message}`);
         }
     }
     
+    // A test of something only one environment has. Where the capability is
+    // missing the test is SKIPPED: listed in testResults.skipped and logged with
+    // the capability it needs, never counted as passed. The other runner runs it.
+    function testRequiring(capability, testName, testFunction) {
+        if (!(capability in ENVIRONMENT)) {
+            throw new Error(`testRequiring: unknown capability '${capability}' (known: ${Object.keys(ENVIRONMENT).join(', ')})`);
+        }
+        if (!ENVIRONMENT[capability]) {
+            testResults.skipped.push(testName);
+            console.log(`- ${testName} [skipped: needs ${capability}]`);
+            return;
+        }
+        test(testName, testFunction);
+    }
+
     function log(message) {
         console.log(`  ${message}`);
     }
     
-    // Helper function to save PNG files (Node.js only)
+    // Helper function to save PNG files. Node.js only: in the browser it does
+    // nothing. A failed save throws, failing the test that called it, and each
+    // file written is recorded in testResults.savedPNGs for the runner's
+    // orphan check.
     function savePNG(surface, filename, description, SWCanvas) {
-        try {
-            const pngData = SWCanvas.Core.PngEncoder.encode(surface);
-            const fs = require('fs');
-            const path = require('path');
-            
-            // Create output directory if it doesn't exist
-            const outputDir = path.join(__dirname, 'output');
-            if (!fs.existsSync(outputDir)) {
-                fs.mkdirSync(outputDir, { recursive: true });
-            }
-            
-            const filePath = path.join(outputDir, filename);
-            // Convert ArrayBuffer to Buffer for Node.js
-            const buffer = Buffer.from(pngData);
-            fs.writeFileSync(filePath, buffer);
-            console.log(`  Saved ${description}: ${filePath}`);
-        } catch (error) {
-            console.log(`  Warning: Could not save ${description} - ${error.message}`);
+        if (typeof require !== 'function') {
+            return;
         }
+        const pngData = SWCanvas.Core.PngEncoder.encode(surface);
+        const fs = require('fs');
+        const path = require('path');
+
+        // Create output directory if it doesn't exist
+        const outputDir = path.join(__dirname, 'output');
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        const filePath = path.join(outputDir, filename);
+        // Convert ArrayBuffer to Buffer for Node.js
+        const buffer = Buffer.from(pngData);
+        fs.writeFileSync(filePath, buffer);
+        testResults.savedPNGs.push(filename);
+        console.log(`  Saved ${description}: ${filePath}`);
     }
     
     // Core functionality tests - run all tests
@@ -1811,7 +1841,9 @@
             const url = canvas.toDataURL();
             assertEquals(url.indexOf('data:image/png;base64,'), 0, 'must be a PNG data URL');
 
-            const bytes = Buffer.from(url.slice('data:image/png;base64,'.length), 'base64');
+            // atob, not Node's Buffer: the same test runs in the browser page.
+            const binary = atob(url.slice('data:image/png;base64,'.length));
+            const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
             // PNG signature: 137 80 78 71 13 10 26 10
             assertEquals(bytes[0], 137, 'PNG sig byte 0');
             assertEquals(bytes[1], 80, 'PNG sig byte 1');
@@ -1898,8 +1930,9 @@
 
         // Test: drawImage accepts the source shapes Fizzygum passes — an SWCanvasElement,
         // a structural ImageLike, and a canvas-like object (getContext) — and routes
-        // element image sources (HTMLImageElement/HTMLVideoElement) through the
-        // scratch-canvas adapter (which throws cleanly when there is no DOM, as in Node).
+        // element image sources (HTMLImageElement/HTMLVideoElement/ImageBitmap) through
+        // the scratch-canvas adapter: with a DOM it rasterizes them, with HTML5's answer
+        // for a source that has no pixels yet; without one it throws cleanly.
 
         test('drawImage(SWCanvasElement) blits the source pixels', () => {
             const srcCanvas = SWCanvas.createCanvas(2, 2);
@@ -1957,12 +1990,65 @@
             assertEquals(px[2], 19, 'B');
         });
 
-        test('drawImage(element image source) throws cleanly without a DOM canvas', () => {
+        // The element-source tests below need one environment or the other: an element
+        // image source only exists where there is a DOM (the browser page runs those), and
+        // SWCanvas's refusal of one only shows where there is none (Node runs that one).
+
+        testRequiring('no-dom', 'drawImage(element image source) throws cleanly without a DOM canvas', () => {
             const dst = SWCanvas.createCanvas(2, 2);
             const dctx = dst.getContext('2d');
             // Looks like an HTMLImageElement (has naturalWidth) but no DOM to rasterize.
             const fakeImg = { naturalWidth: 2, naturalHeight: 2, complete: false };
             assertThrows(() => dctx.drawImage(fakeImg, 0, 0), 'without a DOM canvas');
+        });
+
+        testRequiring('dom', 'drawImage(ImageBitmap) blits the element source through the DOM canvas', () => {
+            // transferToImageBitmap is synchronous: a real element source with known pixels.
+            const offscreen = new OffscreenCanvas(2, 2);
+            const octx = offscreen.getContext('2d');
+            octx.fillStyle = 'rgb(220, 30, 40)';
+            octx.fillRect(0, 0, 2, 2);
+            const bitmap = offscreen.transferToImageBitmap();
+
+            const dst = SWCanvas.createCanvas(4, 4);
+            const dctx = dst.getContext('2d');
+            dctx.drawImage(bitmap, 1, 1);
+
+            const inside = dctx.getImageData(2, 2, 1, 1).data;
+            assertEquals(inside[0], 220, 'R');
+            assertEquals(inside[1], 30, 'G');
+            assertEquals(inside[2], 40, 'B');
+            assertEquals(inside[3], 255, 'A');
+            assertEquals(dctx.getImageData(0, 0, 1, 1).data[3], 0, 'outside the image stays transparent');
+        });
+
+        testRequiring('dom', 'drawImage of an element source with no pixels yet draws nothing, as HTML5 does', () => {
+            // An image without a src and a video with no frame yet are not "fully
+            // decodable": HTML5 draws nothing from them (no throw).
+            const dst = SWCanvas.createCanvas(2, 2);
+            const dctx = dst.getContext('2d');
+            dctx.fillStyle = 'rgb(10, 20, 30)';
+            dctx.fillRect(0, 0, 2, 2);
+            dctx.drawImage(new Image(), 0, 0);
+            dctx.drawImage(document.createElement('video'), 0, 0, 2, 2);
+            const px = dctx.getImageData(1, 1, 1, 1).data;
+            assertEquals(px[0], 10, 'R unchanged');
+            assertEquals(px[1], 20, 'G unchanged');
+            assertEquals(px[2], 30, 'B unchanged');
+        });
+
+        testRequiring('dom', 'drawImage(zero-size canvas) throws InvalidStateError, as HTML5 does', () => {
+            const empty = document.createElement('canvas');
+            empty.width = 0;
+            empty.height = 4;
+            const dctx = SWCanvas.createCanvas(2, 2).getContext('2d');
+            let thrown = null;
+            try {
+                dctx.drawImage(empty, 0, 0);
+            } catch (e) {
+                thrown = e;
+            }
+            assertEquals(thrown !== null && thrown.name, 'InvalidStateError', 'error name');
         });
 
 
@@ -3067,9 +3153,9 @@
         //   2. 1px STROKE center convention: the Bresenham stroke FLOORS the center, so
         //      every fractional center spelling renders byte-identically to the integer
         //      one, and the ring spans exactly (2r+1) pixels - one wider than the fill
-        //      (which floors cx - 0.5). This fill-vs-1px-stroke asymmetry is deliberate
-        //      and pinned here so a "harmonization" cannot slip in silently and churn
-        //      every existing consumer's pixels.
+        //      (which samples pixel centers - tests/core/080). This fill-vs-1px-stroke
+        //      asymmetry is deliberate and pinned here so a "harmonization" cannot slip
+        //      in silently and churn every existing consumer's pixels.
         //   3. Ring quality: closed (every stroke pixel has >= 2 of 8 neighbors),
         //      mirror-symmetric in both axes; semi-transparent rings blend every pixel
         //      exactly once (single blended level - no overdraw, no gap-fills).
@@ -8321,6 +8407,2597 @@
         });
 
 
+        // Test: thick / fused rounded-rect strokes partially off-surface - position invariance on every side
+        // This file will be concatenated into the main test suite
+        //
+        // The axis-aligned thick and fused rounded-rect arms (strokeRoundRect at a
+        // device line width > 1, fillStrokeRoundRect at any width) walk the shape row by
+        // row and clamp each row's span to the surface / clip rect. A row's extent can start at
+        // a NEGATIVE x - the shape hangs off the surface's left edge, or a widget is
+        // painted past the left of the canvas it lands on - and such a row must still
+        // paint its on-surface part. Contract pinned here: the on-surface part of a
+        // render that hangs off any side is byte-identical to the same window of the
+        // same draw made fully on a wider/taller surface (integer shifts are exact in
+        // the renderers' arithmetic, so clamping may only REMOVE pixels), for:
+        //   - strokeRoundRect and fillStrokeRoundRect, opaque and semi-transparent;
+        //   - uniform and per-corner radii;
+        //   - identity, and scale(2) with the 1-logical-px crisp spelling
+        //     (strokeRoundRect(0.5, 0.5, w - 1, h - 1, r)) a HiDPI client strokes with;
+        //   - line widths 1..7 (at 1, strokeRoundRect is the 1px arm and the fused
+        //     entry still walks rows), unclipped and under a rect clip;
+        //   - the shape off the left, right, top and bottom edges, and far enough off
+        //     the left / top that both of that side's corner arcs are off-surface too.
+        // (The circle analogue is 052.)
+
+        test('RoundRect thick/fused strokes off-surface - position invariance on every side', () => {
+            const W = 64;
+            const H = 56;
+            const PAD = 80; // the wide/tall surface adds PAD on the shifted axis
+
+            function render(width, height, dx, dy, opts) {
+                const surface = SWCanvas.Core.Surface(width, height);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, width, height);
+                if (opts.clip) {
+                    ctx.beginPath();
+                    ctx.rect(3 + dx, 2 + dy, W - 7, H - 5);
+                    ctx.clip();
+                }
+                ctx.translate(dx, dy);
+                if (opts.scale !== 1) ctx.scale(opts.scale, opts.scale);
+                ctx.setFillStyle(0, 0, 255, opts.semi ? 128 : 255);
+                ctx.setStrokeStyle(255, 0, 0, opts.semi ? 128 : 255);
+                ctx.lineWidth = opts.lw;
+                if (opts.fused) {
+                    ctx.fillStrokeRoundRect(opts.x, opts.y, opts.w, opts.h, opts.r);
+                } else {
+                    ctx.strokeRoundRect(opts.x, opts.y, opts.w, opts.h, opts.r);
+                }
+                return surface;
+            }
+
+            // [label, x, y] in DEVICE px for the shape's box (w x h device px)
+            const SIDES = [
+                ['off-left', -9, 10],
+                ['off-right', 34, 10],
+                ['off-top', 10, -9],
+                ['off-bottom', 10, 30],
+                ['far off-left', -30, 10],
+                ['far off-top', 10, -24]
+            ];
+            let cases = 0;
+            for (const fused of [false, true]) {
+                for (const semi of [false, true]) {
+                    for (const radii of [9, [9, 0, 5, 2]]) {
+                        for (const clip of [false, true]) {
+                            for (const [label, bx, by] of SIDES) {
+                                // identity, line widths 1..7 (odd widths put the path on half pixels)
+                                const variants = [];
+                                for (let lw = 1; lw <= 7; lw++) {
+                                    variants.push({ scale: 1, lw, x: bx, y: by, w: 38, h: 34, r: radii });
+                                }
+                                // scale(2): the 1-logical-px crisp spelling, box at logical (bx/2, by/2)
+                                variants.push({
+                                    scale: 2,
+                                    lw: 1,
+                                    x: bx / 2 + 0.5,
+                                    y: by / 2 + 0.5,
+                                    w: 19 - 1,
+                                    h: 17 - 1,
+                                    r: Array.isArray(radii) ? radii.map((v) => Math.round(v / 2)) : Math.round(radii / 2)
+                                });
+                                for (const v of variants) {
+                                    const opts = Object.assign({ fused, semi, clip }, v);
+                                    const offAxisX = label.endsWith('left') || label.endsWith('right');
+                                    const shift = label.endsWith('left') || label.endsWith('top') ? PAD : 0;
+                                    const got = render(W, H, 0, 0, opts);
+                                    const wide = offAxisX
+                                        ? render(W + PAD, H, shift, 0, opts)
+                                        : render(W, H + PAD, 0, shift, opts);
+                                    for (let y = 0; y < H; y++) {
+                                        for (let x = 0; x < W; x++) {
+                                            const go = y * got.stride + x * 4;
+                                            const wo = offAxisX
+                                                ? y * wide.stride + (x + shift) * 4
+                                                : (y + shift) * wide.stride + x * 4;
+                                            for (let c = 0; c < 4; c++) {
+                                                if (got.data[go + c] !== wide.data[wo + c]) {
+                                                    throw new Error(
+                                                        `${fused ? 'fillStrokeRoundRect' : 'strokeRoundRect'} ${label} ` +
+                                                            `${semi ? 'semi' : 'opaque'} radii=${JSON.stringify(radii)} ` +
+                                                            `clip=${clip} scale=${opts.scale} lw=${opts.lw}: pixel (${x},${y}) ` +
+                                                            `differs from the fully-on-surface render`
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                    cases++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            log(`  ${cases} off-surface renders match their fully-on-surface windows`);
+        });
+
+
+        // Test: thick axis-aligned rounded-rect strokes cover exactly the pixel-center ring
+        // This file will be concatenated into the main test suite
+        //
+        // SWCanvas samples coverage at pixel CENTERS (the polygon filler, CircleOps,
+        // the row walk of the rounded-rect arms). For a thick axis-aligned rounded-rect
+        // stroke whose frame sits on the pixel grid - the case the direct arm's integer
+        // frame is exact for - the painted ring must therefore be exactly the pixels
+        // whose centers lie within lineWidth / 2 of the path outline, on all four sides
+        // alike. Pinned here, against that analytic ring (pixels whose center lies ON the
+        // ring's boundary are not asserted):
+        //   1. EXACT RING: strokeRoundRect and fillStrokeRoundRect (its stroke colour),
+        //      identity at line widths 2..6 (odd widths on half-pixel paths), and the
+        //      1-logical-px crisp spelling under scale(2) (strokeRoundRect(0.5, 0.5,
+        //      w - 1, h - 1, r): a 2-device-px ring), radii 1..12, uniform and per-corner;
+        //   2. TRANSPOSE SYMMETRY: on a square box the ring is its own mirror image across
+        //      the diagonal - a vertical side's run up to its arc is the same shape as
+        //      the horizontal side's.
+
+        test('RoundRect thick strokes - exact pixel-center ring, transpose-symmetric', () => {
+            // 1 covered, 0 not, 0.5 on the boundary (not asserted). Path: rounded rect
+            // (x0,y0)-(x1,y1) with corner radii [tl, tr, br, bl]; the ring is every point
+            // within hs of its outline.
+            function ideal(px, py, x0, y0, x1, y1, radii, hs) {
+                const cx = px + 0.5;
+                const cy = py + 0.5;
+                // the corner whose quadrant holds the point, if any
+                let r = 0;
+                let kx = 0;
+                let ky = 0;
+                if (cx < x0 + radii[0] && cy < y0 + radii[0]) {
+                    r = radii[0];
+                    kx = x0 + r;
+                    ky = y0 + r;
+                } else if (cx > x1 - radii[1] && cy < y0 + radii[1]) {
+                    r = radii[1];
+                    kx = x1 - r;
+                    ky = y0 + r;
+                } else if (cx > x1 - radii[2] && cy > y1 - radii[2]) {
+                    r = radii[2];
+                    kx = x1 - r;
+                    ky = y1 - r;
+                } else if (cx < x0 + radii[3] && cy > y1 - radii[3]) {
+                    r = radii[3];
+                    kx = x0 + r;
+                    ky = y1 - r;
+                }
+                let dist;
+                if (r > 0) {
+                    dist = Math.abs(Math.sqrt((cx - kx) * (cx - kx) + (cy - ky) * (cy - ky)) - r);
+                } else {
+                    // outside every rounded quadrant: distance to the box outline - past a
+                    // radius-0 corner the outer edge is SQUARE (a mitered right angle, as
+                    // strokeRect's), hence the larger of the two side distances
+                    const ox = Math.max(x0 - cx, 0, cx - x1);
+                    const oy = Math.max(y0 - cy, 0, cy - y1);
+                    dist = ox > 0 || oy > 0 ? Math.max(ox, oy) : Math.min(cx - x0, x1 - cx, cy - y0, y1 - cy);
+                }
+                if (Math.abs(dist - hs) < 1e-9) return 0.5;
+                return dist < hs ? 1 : 0;
+            }
+
+            const W = 80;
+            const H = 72;
+            function stroked(opts) {
+                const surface = SWCanvas.Core.Surface(W, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(255, 255, 255, 255);
+                ctx.fillRect(0, 0, W, H);
+                if (opts.scale !== 1) ctx.scale(opts.scale, opts.scale);
+                ctx.setStrokeStyle(255, 0, 0, 255);
+                ctx.setFillStyle(0, 0, 255, 255);
+                ctx.lineWidth = opts.lw;
+                if (opts.fused) ctx.fillStrokeRoundRect(opts.x, opts.y, opts.w, opts.h, opts.r);
+                else ctx.strokeRoundRect(opts.x, opts.y, opts.w, opts.h, opts.r);
+                return surface;
+            }
+            const isStroke = (s, x, y) => {
+                const o = y * s.stride + x * 4;
+                return s.data[o] === 255 && s.data[o + 1] === 0 && s.data[o + 2] === 0;
+            };
+
+            let renders = 0;
+            let asserted = 0;
+            for (const fused of [false, true]) {
+                for (const radiiSpec of [1, 2, 3, 5, 7, 8, 10, 12, [10, 0, 6, 3]]) {
+                    // identity: a box of integer device edges, path inset by hs (odd widths on half pixels)
+                    const cases = [];
+                    for (let lw = 2; lw <= 6; lw++) {
+                        const hs = lw / 2;
+                        cases.push({ scale: 1, lw, x: 6 + hs, y: 5 + hs, w: 60 - lw, h: 54 - lw, r: radiiSpec, dev: 1 });
+                    }
+                    // scale(2), the crisp 1-logical-px spelling: box 30x27 logical at (3, 2)
+                    const half = Array.isArray(radiiSpec) ? radiiSpec.map((v) => Math.ceil(v / 2)) : Math.ceil(radiiSpec / 2);
+                    cases.push({ scale: 2, lw: 1, x: 3.5, y: 2.5, w: 29, h: 26, r: half, dev: 2 });
+                    for (const c of cases) {
+                        const s = stroked(Object.assign({ fused }, c));
+                        const k = c.dev;
+                        const hs = (c.lw * k) / 2;
+                        const x0 = c.x * k;
+                        const y0 = c.y * k;
+                        const x1 = (c.x + c.w) * k;
+                        const y1 = (c.y + c.h) * k;
+                        const rr = Array.isArray(c.r) ? c.r.map((v) => v * k) : [c.r * k, c.r * k, c.r * k, c.r * k];
+                        for (let y = 0; y < H; y++) {
+                            for (let x = 0; x < W; x++) {
+                                const want = ideal(x, y, x0, y0, x1, y1, rr, hs);
+                                if (want === 0.5) continue;
+                                asserted++;
+                                if ((want === 1) !== isStroke(s, x, y)) {
+                                    throw new Error(
+                                        `${fused ? 'fillStrokeRoundRect' : 'strokeRoundRect'} scale=${c.scale} lw=${c.lw} ` +
+                                            `radii=${JSON.stringify(c.r)}: pixel (${x},${y}) is ${want ? 'in' : 'outside'} the ` +
+                                            `pixel-center ring but ${want ? 'unpainted' : 'painted'}`
+                                    );
+                                }
+                            }
+                        }
+                        renders++;
+                    }
+                }
+            }
+
+            // 2. transpose symmetry on a square box, every radius 1..16 at lw 2 and 3, and at scale(2)
+            let squares = 0;
+            for (let r = 1; r <= 16; r++) {
+                for (const c of [
+                    { scale: 1, lw: 2, x: 5, y: 5, w: 60, h: 60, r },
+                    { scale: 1, lw: 3, x: 5.5, y: 5.5, w: 59, h: 59, r },
+                    { scale: 2, lw: 1, x: 2.5, y: 2.5, w: 31, h: 31, r: Math.ceil(r / 2) }
+                ]) {
+                    const s = stroked(Object.assign({ fused: false }, c));
+                    for (let y = 0; y < H; y++) {
+                        for (let x = 0; x < H; x++) {
+                            if (isStroke(s, x, y) !== isStroke(s, y, x)) {
+                                throw new Error(
+                                    `strokeRoundRect square scale=${c.scale} lw=${c.lw} r=${c.r}: (${x},${y}) and ` +
+                                        `(${y},${x}) differ - the vertical and horizontal sides are not mirror images`
+                                );
+                            }
+                        }
+                    }
+                    squares++;
+                }
+            }
+            log(`  ${renders} rings exact (${asserted} pixels asserted), ${squares} square rings transpose-symmetric`);
+        });
+
+
+        // Test: one stroke() is the UNION of its parts - overlapping caps, joins and bodies never cancel
+        // This file will be concatenated into the main test suite
+        //
+        // A stroke covers the union of the shapes its pen sweeps (HTML5: the traced path is
+        // "the edge of the areas that would be covered" by the swept line). SWCanvas fills a
+        // stroke's parts - segment bodies, joins, caps - together under the nonzero rule, so
+        // a part wound against the others would cancel coverage wherever it overlaps another
+        // part of the same stroke(). Pinned here, with opaque paint (overpainting is the union):
+        //   1. ACROSS SUBPATHS: stroking several subpaths in ONE stroke() paints exactly what
+        //      stroking each in its own stroke() paints - a T (the stem's start cap on the bar,
+        //      and the bar's end on the stem), a cross, a star of segments sharing an end,
+        //      collinear overlaps run both ways, a V whose join lies on a crossing bar; every
+        //      cap and join kind;
+        //   2. WITHIN A SUBPATH: a polyline's stroke paints every pixel each of its segments
+        //      paints stroked alone (butt caps) - sharp V turns and near-degenerate closed
+        //      quads, where a join's parts overlap the bodies they connect;
+        //   3. isPointInStroke reads the same parts: a point where the T's stem cap overlaps
+        //      the bar is in the stroke.
+
+        test('One-path stroke - the union of its parts', () => {
+            const S = 48;
+            function render(width, height, setup, paths, closed) {
+                const canvas = SWCanvas.createCanvas(width, height);
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, width, height);
+                ctx.strokeStyle = '#000';
+                setup(ctx);
+                for (const subpaths of paths) {
+                    ctx.beginPath();
+                    for (const pts of subpaths) {
+                        pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+                        if (closed) ctx.closePath();
+                    }
+                    ctx.stroke();
+                }
+                return ctx.getImageData(0, 0, width, height).data;
+            }
+
+            // 1. ACROSS SUBPATHS
+            const scenes = [];
+            const c = S / 2;
+            scenes.push(['tee (cap on the bar)', [[[4, c], [S - 4, c]], [[c, c], [c, 6]]]]);
+            scenes.push(['tee (bar end on the stem)', [[[c, 6], [c, c]], [[4, c], [S - 4, c]]]]);
+            scenes.push(['cross', [[[4, c], [S - 4, c]], [[c, 4], [c, S - 4]]]]);
+            scenes.push(['collinear overlap, same way', [[[4, c], [30, c]], [[16, c], [S - 4, c]]]]);
+            scenes.push(['collinear overlap, opposite ways', [[[4, c], [30, c]], [[S - 4, c], [16, c]]]]);
+            scenes.push(['V join on a crossing bar', [[[8, 40], [c, 20], [40, 40]], [[4, 22], [S - 4, 22]]]]);
+            const star = [];
+            for (let k = 0; k < 7; k++) {
+                const a = (k * 2 * Math.PI) / 7 + 0.3;
+                star.push([[c, c], [Math.round(c + 18 * Math.cos(a)), Math.round(c + 18 * Math.sin(a))]]);
+            }
+            scenes.push(['star of 7 from one point', star]);
+            let unionCases = 0;
+            for (const cap of ['round', 'square', 'butt']) {
+                for (const join of ['round', 'miter', 'bevel']) {
+                    for (const lw of [2, 3, 4, 6, 8]) {
+                        for (const [label, subpaths] of scenes) {
+                            const setup = (ctx) => {
+                                ctx.lineWidth = lw;
+                                ctx.lineCap = cap;
+                                ctx.lineJoin = join;
+                            };
+                            const together = render(S, S, setup, [subpaths], false);
+                            const apart = render(S, S, setup, subpaths.map((p) => [p]), false);
+                            for (let i = 0; i < together.length; i += 4) {
+                                if (together[i] !== apart[i]) {
+                                    const p = i / 4;
+                                    throw new Error(
+                                        `${label} cap=${cap} join=${join} lw=${lw}: pixel (${p % S},${Math.floor(p / S)}) ` +
+                                            `${together[i] < 128 ? 'painted' : 'unpainted'} in one stroke() but ` +
+                                            `${apart[i] < 128 ? 'painted' : 'unpainted'} stroked part by part`
+                                    );
+                                }
+                            }
+                            unionCases++;
+                        }
+                    }
+                }
+            }
+
+            // 2. WITHIN A SUBPATH: sharp V turns, and thin closed quads (a grid of skews, thicknesses,
+            //    sizes and sub-pixel offsets)
+            const polylines = [];
+            for (const dx of [1, 2, 3, 5]) {
+                polylines.push([
+                    [
+                        [
+                            [c - dx, 6],
+                            [c, 40],
+                            [c + dx, 6]
+                        ]
+                    ],
+                    false
+                ]);
+            }
+            for (const skew of [-0.35, -0.1, 0.15, 0.4]) {
+                for (const thin of [0.03, 0.08, 0.15]) {
+                    for (const [size, x0, y0] of [
+                        [12, 14.3, 18.6],
+                        [23, 11.7, 15.2]
+                    ]) {
+                        const t = size * thin;
+                        polylines.push([
+                            [
+                                [
+                                    [x0, y0],
+                                    [x0 + size, y0 + skew * size],
+                                    [x0 + size * (1 + skew), y0 + skew * size + t],
+                                    [x0 + skew * size, y0 + t]
+                                ]
+                            ],
+                            true
+                        ]);
+                    }
+                }
+            }
+            let subsetCases = 0;
+            for (const join of ['round', 'miter', 'bevel']) {
+                for (const lw of [1, 2, 3]) {
+                    for (const [subpaths, closed] of polylines) {
+                        const setup = (ctx) => {
+                            ctx.lineWidth = lw;
+                            ctx.lineCap = 'butt';
+                            ctx.lineJoin = join;
+                        };
+                        const whole = render(S, S, setup, [subpaths], closed);
+                        const pts = closed ? subpaths[0].concat([subpaths[0][0]]) : subpaths[0];
+                        for (let j = 0; j + 1 < pts.length; j++) {
+                            const seg = render(S, S, setup, [[[pts[j], pts[j + 1]]]], false);
+                            for (let i = 0; i < whole.length; i += 4) {
+                                if (seg[i] < 128 && whole[i] >= 128) {
+                                    const p = i / 4;
+                                    throw new Error(
+                                        `polyline ${JSON.stringify(pts.map(([x, y]) => [+x.toFixed(2), +y.toFixed(2)]))} ` +
+                                            `join=${join} lw=${lw}: pixel (${p % S},${Math.floor(p / S)}) is painted by ` +
+                                            `segment ${j} alone but not by the whole stroke`
+                                    );
+                                }
+                            }
+                        }
+                        subsetCases++;
+                    }
+                }
+            }
+
+            // 3. isPointInStroke: inside the bar AND the stem's start cap, off every part edge
+            const probe = SWCanvas.createCanvas(S, S).getContext('2d');
+            probe.lineWidth = 4;
+            probe.lineCap = 'round';
+            probe.beginPath();
+            probe.moveTo(4, c);
+            probe.lineTo(S - 4, c);
+            probe.moveTo(c, c);
+            probe.lineTo(c, 6);
+            if (!probe.isPointInStroke(c + 0.3, c + 1.1) || probe.isPointInStroke(c + 0.3, c + 4)) {
+                throw new Error('isPointInStroke: the stem cap over the bar must be in the stroke, a point past both must not');
+            }
+
+            log(`  ${unionCases} one-path renders equal their part-by-part union, ${subsetCases} polylines contain their segments`);
+        });
+
+
+        // Test: a round-capped segment is seamless - no unpainted pixel between its caps and its body
+        // This file will be concatenated into the main test suite
+        //
+        // A single round-capped segment is a convex capsule, so under pixel-center
+        // sampling every row and every column of what it paints is ONE unbroken run. A
+        // pixel left unpainted inside it lies on a seam: where a cap meets the body, two
+        // polygons share an edge (traversed opposite ways), and the filler must cross it
+        // at the same x from both sides or a pixel center on it falls between the two
+        // spans. Swept like an analog clock's hands: integer ends on a circle at 60
+        // angles, widths 4..8, two lengths, four face sizes.
+
+        test('Round-capped segment - seamless capsule', () => {
+            function render(width, height, setup, paths) {
+                const canvas = SWCanvas.createCanvas(width, height);
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, width, height);
+                ctx.strokeStyle = '#000';
+                setup(ctx);
+                for (const subpaths of paths) {
+                    ctx.beginPath();
+                    for (const pts of subpaths) {
+                        pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+                    }
+                    ctx.stroke();
+                }
+                return ctx.getImageData(0, 0, width, height).data;
+            }
+
+            let capsules = 0;
+            for (const side of [40, 60, 80, 120]) {
+                const C = side / 2 + 4;
+                const W = 2 * C;
+                for (let lw = 4; lw <= 8; lw++) {
+                    for (const len of [0.27, 0.37]) {
+                        for (let k = 0; k < 60; k++) {
+                            const a = (k * 2 * Math.PI) / 60;
+                            const tip = len * side;
+                            const x2 = C + Math.round(tip * Math.sin(a));
+                            const y2 = C + Math.round(-tip * Math.cos(a));
+                            const d = render(
+                                W,
+                                W,
+                                (ctx) => {
+                                    ctx.lineWidth = lw;
+                                    ctx.lineCap = 'round';
+                                },
+                                [[[[C, C], [x2, y2]]]]
+                            );
+                            const ink = (x, y) => d[(y * W + x) * 4] < 128;
+                            for (let pass = 0; pass < 2; pass++) {
+                                for (let u = 0; u < W; u++) {
+                                    let runs = 0;
+                                    let prev = false;
+                                    for (let v = 0; v < W; v++) {
+                                        const on = pass === 0 ? ink(v, u) : ink(u, v);
+                                        if (on && !prev) runs++;
+                                        prev = on;
+                                    }
+                                    if (runs > 1) {
+                                        throw new Error(
+                                            `round-capped segment (${C},${C})-(${x2},${y2}) lw=${lw}: ${pass === 0 ? 'row' : 'column'} ` +
+                                                `${u} paints ${runs} separate runs - an unpainted seam inside the capsule`
+                                        );
+                                    }
+                                }
+                            }
+                            capsules++;
+                        }
+                    }
+                }
+            }
+            log(`  ${capsules} capsules seamless`);
+        });
+
+
+        // Test: the direct circle FILL samples pixel centers - at every diameter, alignment and radius
+        // This file will be concatenated into the main test suite
+        //
+        // Pins the coverage rule of the direct circle fill (CircleOps header): a pixel is
+        // filled iff its center (x + 0.5, y + 0.5) lies STRICTLY inside the circle, so a
+        // center exactly on the boundary stays out on every side alike. The fixture spans
+        // what a narrow one misses - a fill that walks integer row offsets from a snapped
+        // center can agree with this rule at one alignment and diameter and still drop
+        // whole rows of pixels (or add stray ones) at the next:
+        //   - every diameter 1..40, at integer radii AND radii a quarter pixel larger;
+        //   - four centre alignments: pixel corner, pixel center, mixed, fractional;
+        //   - opaque (fill_Opaq) and translucent (fill_Alpha) paint;
+        //   - a uniform scale(2) context (the direct path pre-multiplies the CTM);
+        // and asserts that the fused entry's fill half (fillStrokeCircle with a transparent
+        // stroke) and a full-circle fillArc (delegated to the same renderer) paint the very
+        // same pixel set - one rule for every direct circle fill.
+        // Then: a NaN or infinite radius paints nothing (an infinite one would otherwise
+        // sample every pixel center as inside) on the three fill entries.
+
+        test('Circle fill - pixel-center coverage at every diameter, alignment and radius', () => {
+            const W = 72;
+            const H = 72;
+            const C = 36;
+            const TAU = Math.PI * 2;
+            const ALIGNMENTS = [
+                ['pixel corner', 0, 0],
+                ['pixel center', 0.5, 0.5],
+                ['mixed', 0, 0.5],
+                ['fractional', 0.3, 0.7]
+            ];
+
+            function coverage(draw) {
+                const surface = SWCanvas.Core.Surface(W, H);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                draw(ctx);
+                const set = new Set();
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        if (surface.data[y * surface.stride + x * 4 + 3] !== 0) set.add(y * W + x);
+                    }
+                }
+                return set;
+            }
+
+            function pixelCenterDisk(cx, cy, r) {
+                const set = new Set();
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const dx = x + 0.5 - cx;
+                        const dy = y + 0.5 - cy;
+                        if (dx * dx + dy * dy < r * r) set.add(y * W + x);
+                    }
+                }
+                return set;
+            }
+
+            function assertSameSet(label, got, want) {
+                const missing = [];
+                const extra = [];
+                for (const p of want) if (!got.has(p)) missing.push(`(${p % W},${Math.floor(p / W)})`);
+                for (const p of got) if (!want.has(p)) extra.push(`(${p % W},${Math.floor(p / W)})`);
+                if (missing.length || extra.length) {
+                    throw new Error(
+                        `${label}: ${got.size} px, expected ${want.size} - missing [${missing.slice(0, 6).join(' ')}` +
+                            `${missing.length > 6 ? ' ...' : ''}] extra [${extra.slice(0, 6).join(' ')}${extra.length > 6 ? ' ...' : ''}]`
+                    );
+                }
+            }
+
+            const ENTRIES = [
+                ['fillCircle opaque', (ctx, cx, cy, r) => {
+                    ctx.setFillStyle(0, 0, 255, 255);
+                    ctx.fillCircle(cx, cy, r);
+                }],
+                ['fillCircle translucent', (ctx, cx, cy, r) => {
+                    ctx.setFillStyle(0, 0, 255, 128);
+                    ctx.fillCircle(cx, cy, r);
+                }],
+                ['fillStrokeCircle fill half', (ctx, cx, cy, r) => {
+                    ctx.setFillStyle(0, 0, 255, 255);
+                    ctx.setStrokeStyle(0, 0, 0, 0);
+                    ctx.fillStrokeCircle(cx, cy, r);
+                }],
+                ['fillArc full circle', (ctx, cx, cy, r) => {
+                    ctx.setFillStyle(0, 0, 255, 255);
+                    ctx.fillArc(cx, cy, r, 0, TAU);
+                }]
+            ];
+
+            let cases = 0;
+            for (const [alignName, ox, oy] of ALIGNMENTS) {
+                for (const extra of [0, 0.25]) {
+                    for (let d = 1; d <= 40; d++) {
+                        const r = d / 2 + extra;
+                        const cx = C + ox;
+                        const cy = C + oy;
+                        const want = pixelCenterDisk(cx, cy, r);
+                        for (const [entryName, draw] of ENTRIES) {
+                            assertSameSet(
+                                `${entryName} r=${r} at ${alignName} (${cx},${cy})`,
+                                coverage(ctx => draw(ctx, cx, cy, r)),
+                                want
+                            );
+                            cases++;
+                        }
+                        // Under scale(2): the same device geometry from half-size user coordinates
+                        assertSameSet(
+                            `fillCircle under scale(2) device r=${r} at ${alignName} (${cx},${cy})`,
+                            coverage(ctx => {
+                                ctx.scale(2, 2);
+                                ctx.setFillStyle(0, 0, 255, 255);
+                                ctx.fillCircle(cx / 2, cy / 2, r / 2);
+                            }),
+                            want
+                        );
+                        cases++;
+                    }
+                }
+            }
+            log(`  ${cases} renders: every direct circle fill entry paints exactly the pixel-center-sampled disk`);
+
+            // Non-finite radii paint nothing. (strokeCircle / outerStrokeArc at lineWidth 1
+            // are left out on purpose: an infinite radius there never terminates the
+            // Bresenham walk unless the entry guard holds, so a regression would hang the
+            // suite instead of failing this test.)
+            const NONFINITE_ENTRIES = [
+                ['fillCircle', (ctx, r) => ctx.fillCircle(C, C, r)],
+                ['fillStrokeCircle', (ctx, r) => {
+                    ctx.setStrokeStyle(255, 0, 0, 255);
+                    ctx.lineWidth = 2;
+                    ctx.fillStrokeCircle(C, C, r);
+                }],
+                ['fillArc full circle', (ctx, r) => ctx.fillArc(C, C, r, 0, TAU)]
+            ];
+            for (const [entryName, draw] of NONFINITE_ENTRIES) {
+                for (const r of [Infinity, NaN]) {
+                    let painted;
+                    try {
+                        painted = coverage(ctx => {
+                            ctx.setFillStyle(0, 0, 255, 255);
+                            draw(ctx, r);
+                        });
+                    } catch (e) {
+                        throw new Error(`${entryName} radius ${r}: threw "${e.message}" instead of drawing nothing`);
+                    }
+                    if (painted.size !== 0) {
+                        throw new Error(`${entryName} radius ${r}: painted ${painted.size} px, expected nothing`);
+                    }
+                }
+            }
+            log('  NaN and infinite radii draw nothing on fillCircle, fillStrokeCircle and a full-circle fillArc');
+        });
+
+
+        // Test: rounded-rect fills and clips are translation-invariant under integer translations
+        // This file will be concatenated into the main test suite
+        //
+        // A rasterizer must paint the same pixels for the same integer geometry wherever it
+        // is drawn. Pinned for every rounded-rect FILL path and both CLIP spellings, which
+        // all flatten arcTo corners through the generic pipeline: fillRoundRect (uniform
+        // and per-corner radii, opaque and translucent), fillStadium, roundRect() + fill(),
+        // roundRect() + clip() on the Context2D path and clip(SWPath2D) - plus the direct
+        // stroke and fused arms as controls. Every integer radius 1..64 and half-integer
+        // radius 0.5..40.5, at device positions including the canvas's own (0, 0) and
+        // coordinates up to ~4000 on each axis, must reproduce the baseline crop at (3, 3).
+        //
+        // What it guards: an arcTo corner is flattened into ceil(sweep / 90deg x 16)
+        // segments, and an exact quarter turn's sweep comes out of atan2 of the corner's
+        // position-dependent tangent points as 16.000000000000004 at some positions. A bare
+        // ceil gives the top-right (sometimes the bottom-right) corner 17 segments there and
+        // 16 elsewhere - 1 to 8 corner pixels differ at radii such as 15, 17, 28, 29, 32,
+        // 34, 38, 39, 44 - so every segment count goes through PathFlattener.segmentCount.
+
+        test('roundRect fills and clips - translation-invariant at integer positions', () => {
+            const M = 2; // margin read around the box
+            const BASE = [3, 3];
+            const POSITIONS = [
+                [0, 0],
+                [0, 3],
+                [3, 0],
+                [1, 1],
+                [64, 1],
+                [127, 255],
+                [333, 7],
+                [2056, 236],
+                [4093, 5],
+                [5, 4093]
+            ];
+
+            // draw(ctx, X, Y, w, h, r): an integer box at device (X, Y)
+            const SHAPES = [
+                ['fillRoundRect', (c, X, Y, w, h, r) => c.fillRoundRect(X, Y, w, h, r)],
+                ['fillRoundRect translucent', (c, X, Y, w, h, r) => {
+                    c.setFillStyle(0, 0, 0, 128);
+                    c.fillRoundRect(X, Y, w, h, r);
+                }],
+                ['fillRoundRect per-corner', (c, X, Y, w, h, r) => c.fillRoundRect(X, Y, w, h, [r, r, 0, r / 2])],
+                ['fillStadium', (c, X, Y, w, h, r) => c.fillStadium(X, Y, w, 2 * r)],
+                ['roundRect + fill', (c, X, Y, w, h, r) => {
+                    c.beginPath();
+                    c.roundRect(X, Y, w, h, r);
+                    c.fill();
+                }],
+                ['roundRect + clip', (c, X, Y, w, h, r) => {
+                    c.beginPath();
+                    c.roundRect(X, Y, w, h, r);
+                    c.clip();
+                    c.fillRect(X - 1, Y - 1, w + 2, h + 2);
+                }],
+                ['clip(SWPath2D roundRect)', (c, X, Y, w, h, r) => {
+                    const p = new SWCanvas.Core.SWPath2D();
+                    p.roundRect(X, Y, w, h, r);
+                    c.clip(p);
+                    c.fillRect(X - 1, Y - 1, w + 2, h + 2);
+                }],
+                // controls: the direct stroke and fused arms (integer-snapped)
+                ['strokeRoundRect 1px', (c, X, Y, w, h, r) => {
+                    c.setStrokeStyle(0, 0, 0, 255);
+                    c.lineWidth = 1;
+                    c.strokeRoundRect(X + 0.5, Y + 0.5, w - 1, h - 1, r);
+                }],
+                ['fillStrokeRoundRect', (c, X, Y, w, h, r) => {
+                    c.setFillStyle(128, 128, 128, 255);
+                    c.setStrokeStyle(0, 0, 0, 255);
+                    c.lineWidth = 2;
+                    c.fillStrokeRoundRect(X + 1, Y + 1, w - 2, h - 2, r);
+                }]
+            ];
+
+            // The crop [X-M, X+w+M) x [Y-M, Y+h+M) of a canvas just big enough to hold it;
+            // pixels left of / above the canvas read as empty.
+            function crop(draw, X, Y, w, h, r) {
+                const cw = X + w + M + 1;
+                const ch = Y + h + M + 1;
+                const surface = SWCanvas.Core.Surface(cw, ch);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.setFillStyle(0, 0, 0, 255);
+                draw(ctx, X, Y, w, h, r);
+                const rw = w + 2 * M;
+                const rh = h + 2 * M;
+                const out = new Uint8Array(rw * rh * 4);
+                for (let yy = 0; yy < rh; yy++) {
+                    const sy = Y - M + yy;
+                    if (sy < 0) continue;
+                    for (let xx = 0; xx < rw; xx++) {
+                        const sx = X - M + xx;
+                        if (sx < 0) continue;
+                        const so = sy * surface.stride + sx * 4;
+                        const d = (yy * rw + xx) * 4;
+                        out[d] = surface.data[so];
+                        out[d + 1] = surface.data[so + 1];
+                        out[d + 2] = surface.data[so + 2];
+                        out[d + 3] = surface.data[so + 3];
+                    }
+                }
+                return { out, rw };
+            }
+
+            const radii = [];
+            for (let r = 1; r <= 64; r++) radii.push(r);
+            for (let r = 0.5; r <= 40.5; r += 1) radii.push(r);
+
+            let cases = 0;
+            for (const [name, draw] of SHAPES) {
+                for (const r of radii) {
+                    const w = Math.ceil(2 * r) + 4;
+                    const h = Math.ceil(2 * r) + 4;
+                    const base = crop(draw, BASE[0], BASE[1], w, h, r);
+                    for (const [X, Y] of POSITIONS) {
+                        const got = crop(draw, X, Y, w, h, r);
+                        for (let i = 0; i < base.out.length; i++) {
+                            if (base.out[i] !== got.out[i]) {
+                                const p = i >> 2;
+                                throw new Error(
+                                    `${name} r=${r} ${w}x${h}: at (${X},${Y}) box pixel ` +
+                                        `(${(p % base.rw) - M},${Math.floor(p / base.rw) - M}) differs from the same box at ` +
+                                        `(${BASE[0]},${BASE[1]}) - the corner flattening depends on position`
+                                );
+                            }
+                        }
+                        cases++;
+                    }
+                }
+            }
+            log(`  ${cases} placements: every rounded-rect fill/clip path paints the same pixels at every integer position`);
+        });
+
+
+        // Test: the HTML5 (path?, fillRule?) overload of fill / clip / isPointInPath
+        // This file will be concatenated into the main test suite
+        //
+        // fill(), clip() and isPointInPath() share one HTML5 overload shape: an optional
+        // Path2D followed by an optional fill rule, where a LEADING string is the rule
+        // and an explicitly passed undefined means "omitted" (WebIDL). Contract pinned
+        // here, on BOTH API layers:
+        //   1. clip(rule) clips the current default path under that rule, exactly as
+        //      fill(rule) fills it (and as clip(path2d, rule) clips a Path2D);
+        //   2. an explicit undefined rule or path behaves as the omitted argument;
+        //   3. isPointInPath(x, y, undefined) is the (x, y, fillRule) form, not a
+        //      malformed (path, x, y);
+        //   4. a rule string other than 'evenodd' is LENIENT - it fills and clips
+        //      nonzero instead of throwing the TypeError WebIDL specifies.
+        // Fixture: two nested rects of the SAME winding, so nonzero covers the inner
+        // rect and evenodd leaves it as a hole.
+
+        test('fill/clip/isPointInPath (path?, fillRule?) overload parity', () => {
+            const SIZE = 20;
+            const HOLE = [10, 10]; // inside the inner rect
+            const RING = [4, 4]; // between the two rects
+            const OUT = [0, 0]; // outside both
+
+            function nestedRects(target) {
+                target.rect(2, 2, 16, 16);
+                target.rect(6, 6, 8, 8);
+            }
+
+            function alphaAt(ctx, p) {
+                return ctx.getImageData(p[0], p[1], 1, 1).data[3];
+            }
+
+            // Each case returns the HTML5 context after the operation; the expected
+            // coverage is "hole painted?" (nonzero) or not (evenodd).
+            function checkCoverage(label, ctx, holePainted) {
+                assertEquals(alphaAt(ctx, RING), 255, label + ': ring must be painted');
+                assertEquals(alphaAt(ctx, OUT), 0, label + ': outside must stay clear');
+                assertEquals(alphaAt(ctx, HOLE), holePainted ? 255 : 0,
+                    label + ': hole must be ' + (holePainted ? 'painted (nonzero)' : 'clear (evenodd)'));
+            }
+
+            function fillCase(label, op, usePath2D, holePainted) {
+                const ctx = SWCanvas.createCanvas(SIZE, SIZE).getContext('2d');
+                ctx.fillStyle = '#ff0000';
+                let p;
+                if (usePath2D) {
+                    p = new SWCanvas.Core.SWPath2D();
+                    nestedRects(p);
+                } else {
+                    ctx.beginPath();
+                    nestedRects(ctx);
+                }
+                op(ctx, p);
+                checkCoverage(label, ctx, holePainted);
+            }
+
+            function clipCase(label, op, usePath2D, holePainted) {
+                const ctx = SWCanvas.createCanvas(SIZE, SIZE).getContext('2d');
+                let p;
+                if (usePath2D) {
+                    p = new SWCanvas.Core.SWPath2D();
+                    nestedRects(p);
+                } else {
+                    ctx.beginPath();
+                    nestedRects(ctx);
+                }
+                op(ctx, p);
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(0, 0, SIZE, SIZE);
+                checkCoverage(label, ctx, holePainted);
+            }
+
+            // 1. fill vs clip, every overload, on the HTML5 facade
+            fillCase('fill()', ctx => ctx.fill(), false, true);
+            fillCase("fill('nonzero')", ctx => ctx.fill('nonzero'), false, true);
+            fillCase("fill('evenodd')", ctx => ctx.fill('evenodd'), false, false);
+            fillCase("fill(path2d, 'evenodd')", (ctx, p) => ctx.fill(p, 'evenodd'), true, false);
+            clipCase('clip()', ctx => ctx.clip(), false, true);
+            clipCase("clip('nonzero')", ctx => ctx.clip('nonzero'), false, true);
+            clipCase("clip('evenodd')", ctx => ctx.clip('evenodd'), false, false);
+            clipCase("clip(path2d, 'evenodd')", (ctx, p) => ctx.clip(p, 'evenodd'), true, false);
+
+            // 2. explicit undefined == omitted
+            fillCase('fill(undefined)', ctx => ctx.fill(undefined), false, true);
+            fillCase('fill(path2d, undefined)', (ctx, p) => ctx.fill(p, undefined), true, true);
+            clipCase('clip(undefined)', ctx => ctx.clip(undefined), false, true);
+            clipCase('clip(path2d, undefined)', (ctx, p) => ctx.clip(p, undefined), true, true);
+
+            // clip(rule) under a CTM: the current path is baked at construction time,
+            // so the rule must apply to the baked geometry (no re-transform).
+            {
+                const ctx = SWCanvas.createCanvas(SIZE, SIZE).getContext('2d');
+                ctx.scale(2, 2);
+                ctx.beginPath();
+                ctx.rect(1, 1, 8, 8);
+                ctx.rect(3, 3, 4, 4);
+                ctx.clip('evenodd');
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(0, 0, SIZE, SIZE);
+                checkCoverage("scale(2) + clip('evenodd')", ctx, false);
+            }
+
+            // 3. isPointInPath(x, y, undefined) is the (x, y, fillRule) form
+            {
+                const ctx = SWCanvas.createCanvas(SIZE, SIZE).getContext('2d');
+                ctx.beginPath();
+                nestedRects(ctx);
+                assertEquals(ctx.isPointInPath(HOLE[0], HOLE[1], undefined), true, 'isPointInPath(x, y, undefined) = nonzero');
+                assertEquals(ctx.isPointInPath(HOLE[0], HOLE[1], 'evenodd'), false, "isPointInPath(x, y, 'evenodd')");
+                const p = new SWCanvas.Core.SWPath2D();
+                nestedRects(p);
+                assertEquals(ctx.isPointInPath(p, HOLE[0], HOLE[1], undefined), true, 'isPointInPath(path2d, x, y, undefined)');
+            }
+
+            // 4. An unknown rule string fills and clips nonzero (lenient).
+            fillCase("fill('bogus')", ctx => ctx.fill('bogus'), false, true);
+            clipCase("clip('bogus')", ctx => ctx.clip('bogus'), false, true);
+            clipCase("clip(path2d, 'bogus')", (ctx, p) => ctx.clip(p, 'bogus'), true, true);
+
+            // Dual-API parity: the Core Context2D takes the same overloads.
+            function coreAlpha(surface, p) {
+                return surface.data[p[1] * surface.stride + p[0] * 4 + 3];
+            }
+            function coreCase(label, op, isClip, holePainted) {
+                const surface = SWCanvas.Core.Surface(SIZE, SIZE);
+                const core = new SWCanvas.Core.Context2D(surface);
+                core.setFillStyle(255, 0, 0, 255);
+                core.beginPath();
+                nestedRects(core);
+                op(core);
+                if (isClip) core.fillRect(0, 0, SIZE, SIZE);
+                assertEquals(coreAlpha(surface, RING), 255, 'Core ' + label + ': ring must be painted');
+                assertEquals(coreAlpha(surface, OUT), 0, 'Core ' + label + ': outside must stay clear');
+                assertEquals(coreAlpha(surface, HOLE), holePainted ? 255 : 0, 'Core ' + label + ': hole');
+            }
+            coreCase("clip('evenodd')", c => c.clip('evenodd'), true, false);
+            coreCase("clip('nonzero')", c => c.clip('nonzero'), true, true);
+            coreCase("fill('evenodd')", c => c.fill('evenodd'), false, false);
+            coreCase('fill(undefined)', c => c.fill(undefined), false, true);
+            coreCase("fill(undefined, 'evenodd')", c => c.fill(undefined, 'evenodd'), false, false);
+        });
+
+
+        // Test: drawImage's smoothing filter reads clamp-to-edge outside the image and
+        // the image itself outside the source rect (HTML5 filtering rule)
+        // This file will be concatenated into the main test suite
+        //
+        // HTML5 drawImage: "When the filtering algorithm requires a pixel value from
+        // outside the original image data, it must instead use the value from the
+        // nearest edge pixel. (That is, the filter uses 'clamp-to-edge' behavior.)
+        // When the filtering algorithm requires a pixel value from outside the source
+        // rectangle but inside the original image data, then the value from the
+        // original image data must be used." - "Thus, scaling an image in parts or in
+        // whole will have the same effect." Contract pinned here (smoothing on, so
+        // every scaled draw takes the bilinear filter):
+        //   1. an OPAQUE image scaled up stays opaque to its edges - by a rect ratio,
+        //      by a ctx.scale CTM, and at a non-integer ratio;
+        //   2. a sub-rect draw blends the texels just outside the source rect into its
+        //      edge pixels (they are part of the image);
+        //   3. an image drawn as two abutting sub-rects equals the image drawn whole.
+
+        test('drawImage filter: clamp-to-edge outside the image, image data outside the source rect', () => {
+            function makeImage(w, h, texel) {
+                const canvas = SWCanvas.createCanvas(w, h);
+                const ctx = canvas.getContext('2d');
+                const id = ctx.createImageData(w, h);
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        const o = (y * w + x) * 4;
+                        const p = texel(x, y);
+                        id.data[o] = p[0];
+                        id.data[o + 1] = p[1];
+                        id.data[o + 2] = p[2];
+                        id.data[o + 3] = p[3];
+                    }
+                }
+                ctx.putImageData(id, 0, 0);
+                return canvas;
+            }
+
+            function countPartialAlpha(ctx, x, y, w, h) {
+                const d = ctx.getImageData(x, y, w, h).data;
+                let n = 0;
+                for (let i = 3; i < d.length; i += 4) if (d[i] !== 255) n++;
+                return n;
+            }
+
+            const solid = (w, h) => makeImage(w, h, () => [200, 100, 50, 255]);
+
+            // 1. Opaque stays opaque, edge to edge.
+            {
+                const ctx = SWCanvas.createCanvas(220, 140).getContext('2d');
+                ctx.drawImage(solid(20, 12), 10, 10, 200, 120);
+                assertEquals(countPartialAlpha(ctx, 10, 10, 200, 120), 0, '20x12 -> 200x120: dest pixels not fully opaque');
+            }
+            {
+                const ctx = SWCanvas.createCanvas(220, 140).getContext('2d');
+                ctx.drawImage(solid(175, 120), 10, 10, 200, 120);
+                assertEquals(countPartialAlpha(ctx, 10, 10, 200, 120), 0, '175x120 -> 200x120: dest pixels not fully opaque');
+            }
+            {
+                const ctx = SWCanvas.createCanvas(80, 56).getContext('2d');
+                ctx.scale(3, 3);
+                ctx.drawImage(solid(20, 12), 2, 2);
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                assertEquals(countPartialAlpha(ctx, 6, 6, 60, 36), 0, 'scale(3) CTM, same-size rects: dest pixels not fully opaque');
+            }
+
+            // 2. A sub-rect's edge pixels blend the texels beyond the source rect:
+            // orange inside (10,6,20,12), blue around it.
+            {
+                const framed = makeImage(40, 24, (x, y) =>
+                    (x >= 10 && x < 30 && y >= 6 && y < 18) ? [255, 128, 0, 255] : [0, 0, 255, 255]);
+                const ctx = SWCanvas.createCanvas(220, 140).getContext('2d');
+                ctx.drawImage(framed, 10, 6, 20, 12, 10, 10, 200, 120);
+                assertEquals(countPartialAlpha(ctx, 10, 10, 200, 120), 0, 'sub-rect up-scale: dest pixels not fully opaque');
+                const edge = ctx.getImageData(10, 70, 1, 1).data; // left edge, mid row
+                const inner = ctx.getImageData(110, 70, 1, 1).data; // centre
+                if (!(edge[2] > 64)) {
+                    throw new Error('sub-rect left edge pixel must blend the blue texel outside the source rect, got rgba(' + Array.from(edge).join(',') + ')');
+                }
+                assertEquals(inner[2], 0, 'sub-rect centre stays pure orange (no blue)');
+            }
+
+            // 3. In parts or in whole: the same pixels.
+            {
+                const ramp = makeImage(20, 12, (x, y) => [Math.round(255 * x / 19), Math.round(255 * y / 11), 128, 255]);
+                const whole = SWCanvas.createCanvas(220, 140).getContext('2d');
+                whole.drawImage(ramp, 10, 10, 200, 120);
+                const parts = SWCanvas.createCanvas(220, 140).getContext('2d');
+                parts.drawImage(ramp, 0, 0, 10, 12, 10, 10, 100, 120);
+                parts.drawImage(ramp, 10, 0, 10, 12, 110, 10, 100, 120);
+                const a = whole.getImageData(0, 0, 220, 140).data;
+                const b = parts.getImageData(0, 0, 220, 140).data;
+                let differing = 0;
+                for (let i = 0; i < a.length; i += 4) {
+                    if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3]) differing++;
+                }
+                assertEquals(differing, 0, 'two abutting sub-rect draws vs one whole draw: differing pixels');
+            }
+        });
+
+
+        // Test: drawImage source rects outside the image are clipped, negative sizes
+        // are normalised, and a zero-size source draws nothing (HTML5 drawImage steps)
+        // This file will be concatenated into the main test suite
+        //
+        // HTML5 drawImage: "When the source rectangle is outside the source image, the
+        // source rectangle must be clipped to the source image and the destination
+        // rectangle must be clipped in the same proportion." - "If one of the sw or sh
+        // arguments is zero, then return." - "The image data must be processed in the
+        // original direction, even if the dimensions given are negative." Contract
+        // pinned here, smoothing on and off:
+        //   1. a source rect reaching outside the image (each side, all sides) paints
+        //      exactly what the same draw with the PRE-CLIPPED rects paints, and one
+        //      wholly outside paints nothing - none of them throws;
+        //   2. a negative sw/sh or dw/dh names the same rect from its other corner and
+        //      is drawn unmirrored: it paints exactly what the normalised call paints;
+        //   3. a zero sw or sh paints nothing.
+        // Every rect below scales by exactly 2, so the clipped rects are exact.
+
+        test('drawImage: source rect clipped to the image, negative sizes normalised, zero size draws nothing', () => {
+            const W = 48;
+            const H = 40;
+
+            // 10x8 opaque image, every texel distinct
+            const image = SWCanvas.createCanvas(10, 8);
+            const imageCtx = image.getContext('2d');
+            const texels = imageCtx.createImageData(10, 8);
+            for (let y = 0; y < 8; y++) {
+                for (let x = 0; x < 10; x++) {
+                    const o = (y * 10 + x) * 4;
+                    texels.data[o] = x * 25;
+                    texels.data[o + 1] = y * 30;
+                    texels.data[o + 2] = 100;
+                    texels.data[o + 3] = 255;
+                }
+            }
+            imageCtx.putImageData(texels, 0, 0);
+
+            function render(args, smoothing) {
+                const ctx = SWCanvas.createCanvas(W, H).getContext('2d');
+                ctx.imageSmoothingEnabled = smoothing;
+                ctx.drawImage(image, ...args);
+                return ctx.getImageData(0, 0, W, H).data;
+            }
+
+            function painted(data) {
+                let n = 0;
+                for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+                return n;
+            }
+
+            function assertSame(label, args, expectedArgs) {
+                for (const smoothing of [true, false]) {
+                    let actual;
+                    try {
+                        actual = render(args, smoothing);
+                    } catch (e) {
+                        throw new Error(label + ': drawImage threw "' + e.message + '"');
+                    }
+                    const expected = render(expectedArgs, smoothing);
+                    let differing = 0;
+                    for (let i = 0; i < actual.length; i++) if (actual[i] !== expected[i]) differing++;
+                    assertEquals(differing, 0, label + ' (smoothing ' + smoothing + '): bytes differing from the expected draw');
+                    assertEquals(painted(actual) > 0, true, label + ': paints something');
+                }
+            }
+
+            // 1. Clipped to the image, the destination in the same proportion (x2)
+            assertSame('left', [-4, 1, 8, 5, 5, 5, 16, 10], [0, 1, 4, 5, 13, 5, 8, 10]);
+            assertSame('right', [6, 1, 8, 5, 5, 5, 16, 10], [6, 1, 4, 5, 5, 5, 8, 10]);
+            assertSame('top', [2, -3, 6, 6, 5, 5, 12, 12], [2, 0, 6, 3, 5, 11, 12, 6]);
+            assertSame('bottom', [2, 5, 6, 6, 5, 5, 12, 12], [2, 5, 6, 3, 5, 5, 12, 6]);
+            assertSame('all sides', [-2, -2, 14, 12, 2, 2, 28, 24], [0, 0, 10, 8, 6, 6, 20, 16]);
+            for (const smoothing of [true, false]) {
+                let data;
+                try {
+                    data = render([12, 1, 4, 4, 5, 5, 8, 8], smoothing);
+                } catch (e) {
+                    throw new Error('wholly outside: drawImage threw "' + e.message + '"');
+                }
+                assertEquals(painted(data), 0, 'wholly outside (smoothing ' + smoothing + '): painted pixels');
+            }
+
+            // 2. Negative sizes: the same rect from the other corner, unmirrored
+            assertSame('negative sw', [8, 1, -6, 5, 5, 5, 12, 10], [2, 1, 6, 5, 5, 5, 12, 10]);
+            assertSame('negative dw', [2, 1, 6, 5, 17, 5, -12, 10], [2, 1, 6, 5, 5, 5, 12, 10]);
+            assertSame('negative sh and dh', [2, 6, 6, -5, 5, 15, 12, -10], [2, 1, 6, 5, 5, 5, 12, 10]);
+            assertSame('negative dw, 5-argument form', [25, 5, -20, 16], [5, 5, 20, 16]);
+
+            // 3. A zero-size source paints nothing
+            for (const smoothing of [true, false]) {
+                const label = ' (smoothing ' + smoothing + '): painted pixels';
+                assertEquals(painted(render([2, 1, 0, 5, 5, 5, 12, 10], smoothing)), 0, 'zero sw' + label);
+                assertEquals(painted(render([2, 1, 6, 0, 5, 5, 12, 10], smoothing)), 0, 'zero sh' + label);
+            }
+        });
+
+
+        // Test: gradients are evaluated in gradient (user) space under ANY CTM, and the
+        // radial gradient is the HTML5 two-circle cone
+        // This file will be concatenated into the main test suite
+        //
+        // HTML5: "the resulting gradient must then be transformed as described by the
+        // current transformation matrix when rendering" - the CTM maps the WHOLE
+        // gradient (radii, angles, isolines), not just its defining points. Contract
+        // pinned here:
+        //   1. TWINS: a gradient drawn under a CTM equals the same picture drawn under
+        //      identity with the CTM folded into the gradient's own coordinates
+        //      (radial under scale and rotation, focal radial under scale, linear
+        //      under uniform AND non-uniform scale, conic under rotation);
+        //   2. a radial gradient under a NON-uniform scale is an ellipse: points at the
+        //      same gradient-space distance from the centre share a colour along both
+        //      axes;
+        //   3. the radial cone: a point no circle r(w) >= 0 passes through stays
+        //      transparent black;
+        //   4. degenerate gradients (a zero-length linear line, two identical radial
+        //      circles) paint nothing - and creating them does not throw.
+        // Comparisons allow 1-3 levels: the twins sample the same function along two
+        // floating-point routes.
+
+        test('gradients under the CTM and the radial cone', () => {
+            const W = 200;
+            const H = 150;
+
+            function stops(g) {
+                g.addColorStop(0, 'rgba(255,200,0,0.9)');
+                g.addColorStop(0.5, 'rgb(200,0,120)');
+                g.addColorStop(1, 'rgba(0,80,255,0.2)');
+                return g;
+            }
+
+            function render(draw) {
+                const ctx = SWCanvas.createCanvas(W, H).getContext('2d');
+                draw(ctx);
+                return ctx.getImageData(0, 0, W, H).data;
+            }
+
+            function maxDiff(a, b) {
+                let max = 0;
+                for (let i = 0; i < a.length; i++) {
+                    const d = Math.abs(a[i] - b[i]);
+                    if (d > max) max = d;
+                }
+                return max;
+            }
+
+            function assertTwins(label, withCtm, folded, tolerance) {
+                const d = maxDiff(render(withCtm), render(folded));
+                if (d > tolerance) {
+                    throw new Error(label + ': CTM render differs from its folded twin by ' + d + ' levels (tolerance ' + tolerance + ')');
+                }
+            }
+
+            // 1. Twins
+            assertTwins('radial under scale(2)',
+                ctx => {
+                    ctx.scale(2, 2);
+                    ctx.fillStyle = stops(ctx.createRadialGradient(50, 37.5, 5, 50, 37.5, 35));
+                    ctx.fillRect(0, 0, W / 2, H / 2);
+                },
+                ctx => {
+                    ctx.fillStyle = stops(ctx.createRadialGradient(100, 75, 10, 100, 75, 70));
+                    ctx.fillRect(0, 0, W, H);
+                }, 1);
+            assertTwins('radial stroke under scale(2)',
+                ctx => {
+                    ctx.scale(2, 2);
+                    ctx.strokeStyle = stops(ctx.createRadialGradient(50, 37.5, 5, 50, 37.5, 35));
+                    ctx.lineWidth = 12;
+                    ctx.beginPath();
+                    ctx.arc(50, 37.5, 25, 0, Math.PI * 2);
+                    ctx.stroke();
+                },
+                ctx => {
+                    ctx.strokeStyle = stops(ctx.createRadialGradient(100, 75, 10, 100, 75, 70));
+                    ctx.lineWidth = 24;
+                    ctx.beginPath();
+                    ctx.arc(100, 75, 50, 0, Math.PI * 2);
+                    ctx.stroke();
+                }, 1);
+            assertTwins('focal radial under scale(2)',
+                ctx => {
+                    ctx.scale(2, 2);
+                    ctx.fillStyle = stops(ctx.createRadialGradient(35, 30, 2.5, 50, 37.5, 35));
+                    ctx.fillRect(0, 0, W / 2, H / 2);
+                },
+                ctx => {
+                    ctx.fillStyle = stops(ctx.createRadialGradient(70, 60, 5, 100, 75, 70));
+                    ctx.fillRect(0, 0, W, H);
+                }, 1);
+            assertTwins('linear under scale(2)',
+                ctx => {
+                    ctx.scale(2, 2);
+                    ctx.fillStyle = stops(ctx.createLinearGradient(10, 5, 90, 70));
+                    ctx.fillRect(0, 0, W / 2, H / 2);
+                },
+                ctx => {
+                    ctx.fillStyle = stops(ctx.createLinearGradient(20, 10, 180, 140));
+                    ctx.fillRect(0, 0, W, H);
+                }, 1);
+            {
+                // linear under scale(2, 1): the image of a linear gradient is linear,
+                // starting at M*p0 and running along M^-T*d, rescaled so t matches.
+                const sx = 2;
+                const sy = 1;
+                const p0 = [10, 10];
+                const p1 = [90, 140];
+                const d = [p1[0] - p0[0], p1[1] - p0[1]];
+                const len2 = d[0] * d[0] + d[1] * d[1];
+                const g = [d[0] / sx / len2, d[1] / sy / len2]; // M^-T d / |d|^2
+                const g2 = g[0] * g[0] + g[1] * g[1];
+                const q0 = [p0[0] * sx, p0[1] * sy];
+                const q1 = [q0[0] + g[0] / g2, q0[1] + g[1] / g2];
+                assertTwins('linear under non-uniform scale(2, 1)',
+                    ctx => {
+                        ctx.scale(sx, sy);
+                        ctx.fillStyle = stops(ctx.createLinearGradient(p0[0], p0[1], p1[0], p1[1]));
+                        ctx.fillRect(0, 0, W / sx, H / sy);
+                    },
+                    ctx => {
+                        ctx.fillStyle = stops(ctx.createLinearGradient(q0[0], q0[1], q1[0], q1[1]));
+                        ctx.fillRect(0, 0, W, H);
+                    }, 1);
+            }
+            assertTwins('conic under rotate(0.6)',
+                ctx => {
+                    ctx.translate(100, 75);
+                    ctx.rotate(0.6);
+                    ctx.fillStyle = stops(ctx.createConicGradient(0.3, 0, 0));
+                    ctx.fillRect(-200, -200, 400, 400);
+                },
+                ctx => {
+                    ctx.fillStyle = stops(ctx.createConicGradient(0.9, 100, 75));
+                    ctx.fillRect(0, 0, W, H);
+                }, 1);
+
+            // 2. Radial under scale(2, 1) is an ellipse. Gradient centre at user
+            // (50.25, 75.5): device pixel (100 + 2k, 75) and device pixel (100, 75 + k)
+            // both sit k gradient-space units from it, sampled at their pixel centres.
+            {
+                const data = render(ctx => {
+                    ctx.scale(2, 1);
+                    ctx.fillStyle = stops(ctx.createRadialGradient(50.25, 75.5, 5, 50.25, 75.5, 60));
+                    ctx.fillRect(0, 0, W / 2, H);
+                });
+                for (let k = 8; k <= 48; k += 8) {
+                    const ox = (75 * W + 100 + 2 * k) * 4;
+                    const oy = ((75 + k) * W + 100) * 4;
+                    for (let c = 0; c < 4; c++) {
+                        const delta = Math.abs(data[ox + c] - data[oy + c]);
+                        if (delta > 3) {
+                            throw new Error('radial under scale(2, 1): gradient distance ' + k + ' differs by ' + delta + ' levels between the x and y axes (expected an ellipse)');
+                        }
+                    }
+                }
+            }
+
+            // 3. The radial cone: start circle (50,75) r10, end circle (150,75) r30.
+            // (100, 5) lies on no circle with r >= 0 -> transparent; (10, 75), behind
+            // the start circle on the axis, is reached only for w < 0 -> the first
+            // stop; (150, 75), the end circle's centre, only for w > 1 -> the last stop.
+            {
+                const ctx = SWCanvas.createCanvas(W, H).getContext('2d');
+                ctx.fillStyle = stops(ctx.createRadialGradient(50, 75, 10, 150, 75, 30));
+                ctx.fillRect(0, 0, W, H);
+                assertEquals(ctx.getImageData(100, 5, 1, 1).data[3], 0, 'cone: (100,5) is outside the cone');
+                assertEquals(ctx.getImageData(10, 75, 1, 1).data[3], 230, 'cone: behind the start circle = first stop alpha');
+                assertEquals(ctx.getImageData(150, 75, 1, 1).data[3], 51, 'cone: end circle centre = last stop alpha');
+            }
+
+            // 4. Degenerate gradients paint nothing.
+            {
+                const ctx = SWCanvas.createCanvas(40, 40).getContext('2d');
+                const lin = ctx.createLinearGradient(20, 20, 20, 20);
+                lin.addColorStop(0, 'red');
+                lin.addColorStop(1, 'blue');
+                ctx.fillStyle = lin;
+                ctx.fillRect(0, 0, 40, 40);
+                assertEquals(ctx.getImageData(5, 5, 1, 1).data[3], 0, 'zero-length linear gradient paints nothing');
+
+                let rad;
+                try {
+                    rad = ctx.createRadialGradient(20, 20, 10, 20, 20, 10);
+                } catch (e) {
+                    throw new Error('createRadialGradient with identical circles must not throw: ' + e.message);
+                }
+                rad.addColorStop(0, 'red');
+                rad.addColorStop(1, 'blue');
+                ctx.fillStyle = rad;
+                ctx.fillRect(0, 0, 40, 40);
+                assertEquals(ctx.getImageData(20, 20, 1, 1).data[3], 0, 'identical radial circles paint nothing');
+            }
+        });
+
+
+        // Test: with imageSmoothingEnabled false, a pattern is sampled at device pixel
+        // CENTRES mapped through the inverse CTM, under rotation, scale and
+        // fractional translation
+        // This file will be concatenated into the main test suite
+        //
+        // A pattern is painted in the user space of the fill. With smoothing off, each
+        // device pixel takes the texel its CENTRE maps to through the inverse CTM,
+        // repeated per the pattern's repetition (nearest-neighbour; with smoothing on,
+        // a resampling mapping is filtered instead - tests/core/088). The oracle below
+        // maps every pixel centre through the inverse of the matrix given to
+        // setTransform and checks the texel painted there, for:
+        //   1. a rotation with a 3x scale and a fractional translate ('repeat'),
+        //   2. a fractional translate alone,
+        //   3. a non-uniform DOWN-scale,
+        //   4. a non-integer up-scale,
+        //   5. a rotation with 'no-repeat' (outside the tile stays transparent);
+        //   6. case 1 under 'destination-over', which takes the per-pixel paint path
+        //      instead of the source-over fill fast path.
+        // Pixel centres within 1e-9 of a texel boundary are skipped: there the oracle's
+        // and the engine's float routes may round to different sides.
+
+        test('pattern paint is sampled at pixel centres through the inverse CTM', () => {
+            const W = 64;
+            const H = 48;
+            const T = 4; // tile size
+
+            // 4x4 tile, every texel distinct and opaque
+            const tile = SWCanvas.createCanvas(T, T);
+            const tileCtx = tile.getContext('2d');
+            const tileData = tileCtx.createImageData(T, T);
+            for (let y = 0; y < T; y++) {
+                for (let x = 0; x < T; x++) {
+                    const o = (y * T + x) * 4;
+                    tileData.data[o] = 40 + x * 60;
+                    tileData.data[o + 1] = 40 + y * 60;
+                    tileData.data[o + 2] = (x + y) % 2 === 0 ? 200 : 20;
+                    tileData.data[o + 3] = 255;
+                }
+            }
+            tileCtx.putImageData(tileData, 0, 0);
+
+            function check(label, m, repetition, composite = 'source-over') {
+                const [a, b, c, d, e, f] = m;
+                const ctx = SWCanvas.createCanvas(W, H).getContext('2d');
+                ctx.imageSmoothingEnabled = false;
+                ctx.fillStyle = ctx.createPattern(tile, repetition);
+                ctx.globalCompositeOperation = composite;
+                // The pattern is anchored to the CTM in force at fill time.
+                ctx.setTransform(a, b, c, d, e, f);
+                const det = a * d - b * c;
+                // Cover the whole device canvas: map its corners back to user space.
+                const corners = [[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => [
+                    (d * (x - e) - c * (y - f)) / det,
+                    (-b * (x - e) + a * (y - f)) / det
+                ]);
+                const xs = corners.map(p => p[0]);
+                const ys = corners.map(p => p[1]);
+                const minX = Math.floor(Math.min(...xs)) - 1;
+                const minY = Math.floor(Math.min(...ys)) - 1;
+                ctx.fillRect(minX, minY, Math.ceil(Math.max(...xs)) + 1 - minX, Math.ceil(Math.max(...ys)) + 1 - minY);
+                const data = ctx.getImageData(0, 0, W, H).data;
+
+                let checked = 0;
+                let wrong = 0;
+                let firstWrong = '';
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const cx = x + 0.5;
+                        const cy = y + 0.5;
+                        const u = (d * (cx - e) - c * (cy - f)) / det;
+                        const v = (-b * (cx - e) + a * (cy - f)) / det;
+                        if (Math.abs(u - Math.round(u)) < 1e-9 || Math.abs(v - Math.round(v)) < 1e-9) continue;
+                        const tx = Math.floor(u);
+                        const ty = Math.floor(v);
+                        const o = (y * W + x) * 4;
+                        let expected;
+                        if (repetition === 'no-repeat' && (tx < 0 || ty < 0 || tx >= T || ty >= T)) {
+                            expected = [0, 0, 0, 0];
+                        } else {
+                            const ox = ((tx % T) + T) % T;
+                            const oy = ((ty % T) + T) % T;
+                            const t = (oy * T + ox) * 4;
+                            expected = [tileData.data[t], tileData.data[t + 1], tileData.data[t + 2], tileData.data[t + 3]];
+                        }
+                        checked++;
+                        if (data[o] !== expected[0] || data[o + 1] !== expected[1] ||
+                            data[o + 2] !== expected[2] || data[o + 3] !== expected[3]) {
+                            if (wrong === 0) {
+                                firstWrong = ` first at (${x},${y}): got (${Array.from(data.slice(o, o + 4))}), expected (${expected})`;
+                            }
+                            wrong++;
+                        }
+                    }
+                }
+                if (checked < W * H * 0.9) {
+                    throw new Error(label + ': only ' + checked + ' pixels checked (vacuous)');
+                }
+                assertEquals(wrong, 0, label + ': pixels not sampled at their centre' + firstWrong);
+            }
+
+            const r = 0.6;
+            check('rotation x3 + fractional translate', [3 * Math.cos(r), 3 * Math.sin(r), -3 * Math.sin(r), 3 * Math.cos(r), 30.3, 20.7], 'repeat');
+            check('fractional translate', [1, 0, 0, 1, 0.3, 0.6], 'repeat');
+            check('non-uniform down-scale', [0.71, 0, 0, 0.43, 1.23, 0.91], 'repeat');
+            check('non-integer up-scale', [2.6, 0, 0, 2.6, 0.4, 0.2], 'repeat');
+            check('rotation, no-repeat', [4 * Math.cos(r), 4 * Math.sin(r), -4 * Math.sin(r), 4 * Math.cos(r), 30.3, 6.7], 'no-repeat');
+            check('rotation x3, per-pixel path', [3 * Math.cos(r), 3 * Math.sin(r), -3 * Math.sin(r), 3 * Math.cos(r), 30.3, 20.7], 'repeat', 'destination-over');
+        });
+
+
+        // Test: strokeCircle / outerStrokeArc / fillOuterStrokeArc return at the entry
+        // for a NaN or infinite radius
+        // This file will be concatenated into the main test suite
+        //
+        // Each of the three entries opens with the same radius guard as fillCircle
+        // (non-positive, NaN and infinite radii draw nothing). Pinned through cases
+        // that FAIL without the guard instead of hanging:
+        //   1. outerStrokeArc and fillOuterStrokeArc with an infinite radius paint
+        //      nothing at lineWidth 2, 3 and 10 (unguarded, the thick arc paints a
+        //      wedge of the surface);
+        //   2. all three with a NaN radius under a non-uniform scale return before any
+        //      rendering: no pixel, and the generic pipeline is never entered
+        //      (unguarded, the NaN radius reaches the generic path).
+        // (lineWidth 1 and sub-pixel widths are left out on purpose: there an infinite
+        // radius never terminates the hairline walk unless the guard holds, so a
+        // regression would hang the suite instead of failing this test. strokeCircle
+        // paints nothing for an infinite radius at lineWidth >= 2 either way, so its
+        // guard is pinned through case 2.)
+
+        test('Stroke/arc entries: NaN and infinite radii return at the entry', () => {
+            const SIZE = 72;
+            const C = 36;
+            const Ctx2D = SWCanvas.Core.Context2D;
+
+            function render(draw, setup) {
+                const surface = SWCanvas.Core.Surface(SIZE, SIZE);
+                const ctx = new Ctx2D(surface);
+                ctx.setFillStyle(0, 0, 255, 255);
+                ctx.setStrokeStyle(255, 0, 0, 255);
+                if (setup) setup(ctx);
+                Ctx2D.resetPathBasedFlag();
+                draw(ctx);
+                let painted = 0;
+                for (let i = 3; i < surface.data.length; i += 4) if (surface.data[i] !== 0) painted++;
+                return { painted, pathBased: Ctx2D.wasPathBasedUsed() };
+            }
+
+            const ENTRIES = {
+                strokeCircle: (ctx, r) => ctx.strokeCircle(C, C, r),
+                outerStrokeArc: (ctx, r) => ctx.outerStrokeArc(C, C, r, 0, Math.PI * 1.5),
+                fillOuterStrokeArc: (ctx, r) => ctx.fillOuterStrokeArc(C, C, r, 0, Math.PI * 1.5)
+            };
+
+            // 1. Infinite radius, thick strokes
+            for (const name of ['outerStrokeArc', 'fillOuterStrokeArc']) {
+                for (const lineWidth of [2, 3, 10]) {
+                    const result = render(ctx => ENTRIES[name](ctx, Infinity), ctx => {
+                        ctx.lineWidth = lineWidth;
+                    });
+                    assertEquals(result.painted, 0, `${name} radius Infinity, lineWidth ${lineWidth}: painted pixels`);
+                }
+            }
+
+            // 2. NaN radius under a non-uniform scale: no pixel, no generic dispatch
+            for (const name of Object.keys(ENTRIES)) {
+                for (const lineWidth of [1, 2]) {
+                    const result = render(ctx => ENTRIES[name](ctx, NaN), ctx => {
+                        ctx.lineWidth = lineWidth;
+                        ctx.scale(2, 1);
+                    });
+                    assertEquals(result.painted, 0, `${name} radius NaN, lineWidth ${lineWidth}, scale(2, 1): painted pixels`);
+                    assertEquals(result.pathBased, false,
+                        `${name} radius NaN, lineWidth ${lineWidth}, scale(2, 1): entered the generic pipeline`);
+                }
+            }
+            log('  NaN and infinite radii return at strokeCircle, outerStrokeArc and fillOuterStrokeArc');
+        });
+
+
+        // Test: a pattern samples its image by drawImage's rule, and paints the pixels
+        // its image had at createPattern
+        // This file will be concatenated into the main test suite
+        //
+        // ONE image-sampling rule: a draw whose device→image mapping is axis-aligned
+        // with a step of exactly one texel per device pixel takes the nearest texel;
+        // any other mapping filters bilinearly at the pixel centre, unless
+        // imageSmoothingEnabled is false (then nearest). A pattern's mapping is the CTM
+        // composed with its own setTransform. Pinned by comparison with drawImage of the
+        // same image under the same transform:
+        //   1. a 'no-repeat' pattern under rotation + non-uniform scale, a fractional
+        //      up-scale and a down-scale paints drawImage's bytes wherever every filter
+        //      tap lies inside the image (at the image border the edge rules differ:
+        //      drawImage clamps to the edge texel, a non-repeating pattern axis reads
+        //      transparent beyond the image);
+        //   2. a 'repeat' pattern's taps wrap: under rotation it paints what drawImage
+        //      paints of a 3x3 mosaic of the tile (within one level: the mosaic's image
+        //      coordinates are the pattern's shifted by a tile, which can round the
+        //      filter fractions differently in the last bit);
+        //   3. smoothing off: nearest-neighbour for both — each takes the texel under
+        //      the pixel centre — under an integer up-scale (test 093 compares the two
+        //      under a rotation) — and the pattern's smoothing-off bytes differ from its
+        //      smoothing-on bytes, through the facade and through the Core API alike;
+        //   4. a pattern under an integer translate does not resample: every pixel is
+        //      exactly its texel, smoothing on or off.
+        // A second test pins the snapshot: modifying the image after createPattern
+        // does not change the pattern (HTML5), for a canvas source and an ImageLike
+        // source, and a setTransform copy of the pattern keeps the snapshot too.
+
+        test('pattern paint samples by drawImage\'s rule: filtered under a resampling transform, nearest otherwise', () => {
+            const SIZE = 64;
+
+            // N x N opaque image, every texel distinct.
+            function makeImage(n) {
+                const canvas = SWCanvas.createCanvas(n, n);
+                const ctx = canvas.getContext('2d');
+                const id = ctx.createImageData(n, n);
+                for (let y = 0; y < n; y++) {
+                    for (let x = 0; x < n; x++) {
+                        const o = (y * n + x) * 4;
+                        id.data[o] = 30 + ((x * 29) % 220);
+                        id.data[o + 1] = 20 + ((y * 31) % 230);
+                        id.data[o + 2] = (x * 7 + y * 13) % 256;
+                        id.data[o + 3] = 255;
+                    }
+                }
+                ctx.putImageData(id, 0, 0);
+                return { canvas, data: id.data };
+            }
+
+            function render(m, smoothing, draw) {
+                const ctx = SWCanvas.createCanvas(SIZE, SIZE).getContext('2d');
+                ctx.imageSmoothingEnabled = smoothing;
+                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+                draw(ctx);
+                return ctx.getImageData(0, 0, SIZE, SIZE).data;
+            }
+
+            // Image-space coordinates of the pixel centre (x, y) under m.
+            function imagePoint(m, x, y) {
+                const [a, b, c, d, e, f] = m;
+                const det = a * d - b * c;
+                const cx = x + 0.5 - e;
+                const cy = y + 0.5 - f;
+                return [(d * cx - c * cy) / det, (-b * cx + a * cy) / det];
+            }
+
+            // Compare two renders over the pixels whose centre maps into [lo, hi]^2.
+            function compare(label, m, got, want, lo, hi, tolerance) {
+                let checked = 0;
+                let worst = 0;
+                let first = '';
+                for (let y = 0; y < SIZE; y++) {
+                    for (let x = 0; x < SIZE; x++) {
+                        const [u, v] = imagePoint(m, x, y);
+                        if (u < lo || v < lo || u > hi || v > hi) continue;
+                        checked++;
+                        const o = (y * SIZE + x) * 4;
+                        for (let k = 0; k < 4; k++) {
+                            const d = Math.abs(got[o + k] - want[o + k]);
+                            if (d > worst) {
+                                worst = d;
+                                first = ` worst at (${x},${y}): got (${Array.from(got.slice(o, o + 4))}), drawImage (${Array.from(want.slice(o, o + 4))})`;
+                            }
+                        }
+                    }
+                }
+                if (checked < 12) throw new Error(label + ': only ' + checked + ' pixels compared (vacuous)');
+                if (worst > tolerance) {
+                    throw new Error(label + ': pattern differs from drawImage by ' + worst + ' (tolerance ' + tolerance + ')' + first);
+                }
+            }
+
+            const r = 0.37;
+            const cos = Math.cos(r);
+            const sin = Math.sin(r);
+            const rotated = [2.3 * cos, 2.3 * sin, -1.9 * sin, 1.9 * cos, 30.2, 8.7];
+            const image8 = makeImage(8);
+
+            // 1. no-repeat, smoothing on: drawImage's bytes inside the image.
+            const cases = [
+                ['rotation + non-uniform scale', rotated, image8, 8],
+                ['fractional up-scale', [2.6, 0, 0, 3.1, 10.3, 7.7], image8, 8],
+                ['down-scale', [0.7, 0, 0, 0.6, 10.3, 7.7], makeImage(40), 40]
+            ];
+            for (const [label, m, image, n] of cases) {
+                const viaDrawImage = render(m, true, ctx => ctx.drawImage(image.canvas, 0, 0));
+                const viaPattern = render(m, true, ctx => {
+                    ctx.fillStyle = ctx.createPattern(image.canvas, 'no-repeat');
+                    ctx.fillRect(0, 0, n, n);
+                });
+                compare('no-repeat, ' + label, m, viaPattern, viaDrawImage, 1, n - 1, 0);
+            }
+
+            // 2. repeat: the taps wrap — the pattern paints drawImage's view of a 3x3
+            // mosaic of the tile placed one tile up and left.
+            const mosaic = SWCanvas.createCanvas(24, 24);
+            const mosaicCtx = mosaic.getContext('2d');
+            for (let ty = 0; ty < 3; ty++) {
+                for (let tx = 0; tx < 3; tx++) mosaicCtx.drawImage(image8.canvas, tx * 8, ty * 8);
+            }
+            const viaMosaic = render(rotated, true, ctx => ctx.drawImage(mosaic, -8, -8));
+            const viaRepeat = render(rotated, true, ctx => {
+                ctx.fillStyle = ctx.createPattern(image8.canvas, 'repeat');
+                ctx.fillRect(-8, -8, 24, 24);
+            });
+            compare('repeat wraps like a mosaic', rotated, viaRepeat, viaMosaic, -7, 15, 1);
+
+            // 3. smoothing off: nearest for both.
+            const upScale = [3, 0, 0, 2, 10.75, 7.75];
+            const nearestDrawImage = render(upScale, false, ctx => ctx.drawImage(image8.canvas, 0, 0));
+            const nearestPattern = render(upScale, false, ctx => {
+                ctx.fillStyle = ctx.createPattern(image8.canvas, 'no-repeat');
+                ctx.fillRect(0, 0, 8, 8);
+            });
+            compare('smoothing off, integer up-scale', upScale, nearestPattern, nearestDrawImage, 0, 8, 0);
+            const smoothPattern = render(upScale, true, ctx => {
+                ctx.fillStyle = ctx.createPattern(image8.canvas, 'no-repeat');
+                ctx.fillRect(0, 0, 8, 8);
+            });
+            let smoothingMatters = 0;
+            for (let i = 0; i < nearestPattern.length; i++) if (nearestPattern[i] !== smoothPattern[i]) smoothingMatters++;
+            if (smoothingMatters === 0) {
+                throw new Error('facade: imageSmoothingEnabled must reach the pattern sampler (smoothing on and off paint the same bytes)');
+            }
+
+            // ...and through the Core API.
+            function coreRender(smoothing) {
+                const surface = SWCanvas.Core.Surface(SIZE, SIZE);
+                const ctx = new SWCanvas.Core.Context2D(surface);
+                ctx.imageSmoothingEnabled = smoothing;
+                ctx.setTransform(upScale[0], upScale[1], upScale[2], upScale[3], upScale[4], upScale[5]);
+                ctx.setFillStyle(ctx.createPattern({ width: 8, height: 8, data: image8.data }, 'no-repeat'));
+                ctx.fillRect(0, 0, 8, 8);
+                return surface.data;
+            }
+            const coreNearest = coreRender(false);
+            const coreSmooth = coreRender(true);
+            let coreMismatch = 0;
+            for (let i = 0; i < coreNearest.length; i++) {
+                if (coreNearest[i] !== nearestPattern[i] || coreSmooth[i] !== smoothPattern[i]) coreMismatch++;
+            }
+            assertEquals(coreMismatch, 0, 'Core API: pattern bytes must equal the facade\'s, smoothing on and off');
+
+            // 4. an integer translate does not resample: exactly the texels.
+            for (const smoothing of [true, false]) {
+                const tx = 3;
+                const ty = -5;
+                const data = render([1, 0, 0, 1, tx, ty], smoothing, ctx => {
+                    ctx.fillStyle = ctx.createPattern(image8.canvas, 'repeat');
+                    ctx.fillRect(-tx, -ty, SIZE, SIZE);
+                });
+                let wrong = 0;
+                for (let y = 0; y < SIZE; y++) {
+                    for (let x = 0; x < SIZE; x++) {
+                        const sx = (((x - tx) % 8) + 8) % 8;
+                        const sy = (((y - ty) % 8) + 8) % 8;
+                        const o = (y * SIZE + x) * 4;
+                        const t = (sy * 8 + sx) * 4;
+                        for (let k = 0; k < 4; k++) if (data[o + k] !== image8.data[t + k]) wrong++;
+                    }
+                }
+                assertEquals(wrong, 0, 'integer translate, smoothing ' + smoothing + ': every pixel is its texel');
+            }
+        });
+
+        test('a pattern paints its image as it was at createPattern', () => {
+            const RED = [220, 30, 40, 255];
+
+            function pixel(ctx) {
+                return Array.from(ctx.getImageData(3, 3, 1, 1).data);
+            }
+
+            // Canvas source, modified after createPattern.
+            const source = SWCanvas.createCanvas(2, 2);
+            const sourceCtx = source.getContext('2d');
+            sourceCtx.fillStyle = 'rgb(220, 30, 40)';
+            sourceCtx.fillRect(0, 0, 2, 2);
+            const target = SWCanvas.createCanvas(6, 6).getContext('2d');
+            const pattern = target.createPattern(source, 'repeat');
+            sourceCtx.fillStyle = 'rgb(0, 0, 255)';
+            sourceCtx.fillRect(0, 0, 2, 2);
+            target.fillStyle = pattern;
+            target.fillRect(0, 0, 6, 6);
+            assertEquals(pixel(target).join(','), RED.join(','), 'canvas source modified after createPattern');
+
+            // A setTransform copy made after the modification keeps the snapshot too.
+            const moved = pattern.setTransform({ a: 1, b: 0, c: 0, d: 1, e: 1, f: 1 }) || pattern;
+            target.fillStyle = moved;
+            target.fillRect(0, 0, 6, 6);
+            assertEquals(pixel(target).join(','), RED.join(','), 'setTransform copy of the pattern');
+
+            // ImageLike source, its data modified after createPattern.
+            const data = new Uint8ClampedArray(16);
+            for (let i = 0; i < 16; i += 4) data.set(RED, i);
+            const imageLike = { width: 2, height: 2, data };
+            const target2 = SWCanvas.createCanvas(6, 6).getContext('2d');
+            const pattern2 = target2.createPattern(imageLike, 'repeat');
+            data.fill(0);
+            for (let i = 3; i < 16; i += 4) data[i] = 255;
+            target2.fillStyle = pattern2;
+            target2.fillRect(0, 0, 6, 6);
+            assertEquals(pixel(target2).join(','), RED.join(','), 'ImageLike source modified after createPattern');
+        });
+
+
+        // Test: createPattern takes every source drawImage takes. In the browser that
+        // includes the DOM's own sources — a canvas element, an ImageBitmap — which the
+        // HTML5-compatible API resolves to pixels the same way drawImage does; a source
+        // with no pixels yet gives null, as HTML5's createPattern does. Without a DOM
+        // these sources do not exist, so these tests run in the browser page only.
+
+        function patternTileColor089(source) {
+            const dst = SWCanvas.createCanvas(4, 4);
+            const dctx = dst.getContext('2d');
+            dctx.fillStyle = dctx.createPattern(source, 'repeat');
+            dctx.fillRect(0, 0, 4, 4);
+            return Array.from(dctx.getImageData(3, 3, 1, 1).data);
+        }
+
+        testRequiring('dom', 'createPattern(canvas element) tiles the canvas pixels', () => {
+            const tile = document.createElement('canvas');
+            tile.width = 2;
+            tile.height = 2;
+            const tctx = tile.getContext('2d');
+            tctx.fillStyle = 'rgb(220, 30, 40)';
+            tctx.fillRect(0, 0, 2, 2);
+            assertEquals(patternTileColor089(tile).join(','), '220,30,40,255', 'pattern pixel');
+        });
+
+        testRequiring('dom', 'createPattern(ImageBitmap) tiles the bitmap pixels', () => {
+            const offscreen = new OffscreenCanvas(2, 2);
+            const octx = offscreen.getContext('2d');
+            octx.fillStyle = 'rgb(5, 200, 90)';
+            octx.fillRect(0, 0, 2, 2);
+            assertEquals(patternTileColor089(offscreen.transferToImageBitmap()).join(','), '5,200,90,255', 'pattern pixel');
+        });
+
+        testRequiring('dom', 'createPattern of an element source with no pixels yet returns null, as HTML5 does', () => {
+            const ctx = SWCanvas.createCanvas(2, 2).getContext('2d');
+            assertEquals(ctx.createPattern(new Image(), 'repeat'), null, 'image without a src');
+            assertEquals(ctx.createPattern(document.createElement('video'), 'repeat'), null, 'video with no frame');
+        });
+
+
+        // Test: a near-horizontal polygon edge still crosses the scanlines in its sliver of y
+        // This file will be concatenated into the main test suite
+        //
+        // A polygon's edges cover y half-open, [min, max), so every scanline is crossed by exactly
+        // the edges it lies in. An edge whose two ends differ in y by a hair (two computed vertices
+        // one ulp apart) is the ONLY edge covering that hair: if the scanline falls in it, the edge's
+        // crossing is the row's crossing. Only an exactly horizontal edge has none. Pinned for fill(),
+        // clip() and isPointInPath(), with the hair at a pixel-center row.
+
+        test('A near-horizontal edge keeps its scanline crossing', () => {
+            const W = 40;
+            const H = 40;
+            for (const nudge of [0, 2e-15, 5e-11, -2e-15]) {
+                const shape = c => {
+                    c.beginPath();
+                    c.moveTo(10, 5);
+                    c.lineTo(30, 5);
+                    c.lineTo(30, 10.5);
+                    c.lineTo(30, 10.5 + nudge);
+                    c.lineTo(30, 30);
+                    c.lineTo(10, 30);
+                    c.closePath();
+                };
+                for (const mode of ['fill', 'clip']) {
+                    const surface = SWCanvas.Core.Surface(W, H);
+                    const ctx = new SWCanvas.Core.Context2D(surface);
+                    ctx.setFillStyle(0, 0, 0, 255);
+                    shape(ctx);
+                    if (mode === 'fill') {
+                        ctx.fill();
+                    } else {
+                        ctx.clip();
+                        ctx.fillRect(0, 0, W, H);
+                    }
+                    for (let y = 0; y < H; y++) {
+                        for (let x = 0; x < W; x++) {
+                            const on = surface.data[y * surface.stride + x * 4 + 3] !== 0;
+                            const inside = x >= 10 && x < 30 && y >= 5 && y < 30;
+                            if (on !== inside) {
+                                throw new Error(`${mode}, vertex nudged by ${nudge}: pixel (${x},${y}) ${on ? 'painted outside' : 'missed inside'}`);
+                            }
+                        }
+                    }
+                }
+                const ctx = new SWCanvas.Core.Context2D(SWCanvas.Core.Surface(W, H));
+                shape(ctx);
+                if (!ctx.isPointInPath(25, 10.5)) {
+                    throw new Error(`isPointInPath(25, 10.5), vertex nudged by ${nudge}: false, but the point is inside`);
+                }
+            }
+            log('  near-horizontal edges keep their scanline crossings (fill, clip, isPointInPath)');
+        });
+
+
+        // Test: a cubic whose two ends coincide is drawn; a Path2D subpath opened by ellipse() closes on itself
+        // This file will be concatenated into the main test suite
+        //
+        // 1. A cubic Bezier whose end point equals its start point (a loop, a teardrop) has a zero-length
+        //    chord but a real curve: it fills and strokes exactly like the same loop drawn as its two
+        //    halves (de Casteljau split at t = 0.5), in the current path and in a Path2D.
+        // 2. In a Path2D, an ellipse() that opens a subpath starts that subpath, as arc() does: closePath()
+        //    returns to the ellipse's own first point, never to (0, 0).
+
+        test('Closed cubic loop - drawn like its two halves', () => {
+            const P = [[50.3, 60.6], [95.3, 30.6], [95.3, 98.6], [50.3, 60.6]];
+            const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+            const p01 = mid(P[0], P[1]), p12 = mid(P[1], P[2]), p23 = mid(P[2], P[3]);
+            const p012 = mid(p01, p12), p123 = mid(p12, p23), m = mid(p012, p123);
+            for (const op of ['fill', 'stroke']) {
+                const render = (halves) => {
+                    const canvas = SWCanvas.createCanvas(128, 128);
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#000';
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(P[0][0], P[0][1]);
+                    if (halves) {
+                        ctx.bezierCurveTo(p01[0], p01[1], p012[0], p012[1], m[0], m[1]);
+                        ctx.bezierCurveTo(p123[0], p123[1], p23[0], p23[1], P[3][0], P[3][1]);
+                    } else {
+                        ctx.bezierCurveTo(P[1][0], P[1][1], P[2][0], P[2][1], P[3][0], P[3][1]);
+                    }
+                    if (op === 'fill') ctx.fill();
+                    else ctx.stroke();
+                    return ctx.getImageData(0, 0, 128, 128).data;
+                };
+                const loop = render(false), halves = render(true);
+                let painted = 0;
+                for (let i = 3; i < loop.length; i += 4) if (loop[i] > 0) painted++;
+                if (painted === 0) throw new Error(`${op} of a cubic whose ends coincide paints nothing`);
+                for (let i = 3; i < loop.length; i += 4) {
+                    if ((loop[i] > 0) !== (halves[i] > 0)) {
+                        throw new Error(`${op} of the loop differs from its two halves at pixel (${(i >> 2) % 128},${Math.floor((i >> 2) / 128)})`);
+                    }
+                }
+            }
+        });
+
+        test('Path2D subpath opened by ellipse() - closePath returns to the ellipse start', () => {
+            const canvas = SWCanvas.createCanvas(100, 100);
+            const ctx = canvas.getContext('2d');
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            const path = new SWCanvas.Core.SWPath2D();
+            path.ellipse(60, 60, 6, 15, 0.4, 0, 1.5 * Math.PI, false);
+            path.closePath();
+            ctx.stroke(path);
+            const d = ctx.getImageData(0, 0, 100, 100).data;
+            for (let y = 0; y < 30; y++) {
+                for (let x = 0; x < 30; x++) {
+                    if (d[(y * 100 + x) * 4 + 3] > 0) {
+                        throw new Error(`pixel (${x},${y}) painted: closePath() drew back to the origin, not to the ellipse's start`);
+                    }
+                }
+            }
+        });
+
+
+        // Test: a quadratic Bezier whose ends coincide flattens (and a point-sized one draws nothing)
+        // This file will be concatenated into the main test suite
+        //
+        // A quadratic's flatness is its control point's distance from the chord. When the two ends
+        // coincide there is no chord: the distance is measured from the end point instead, so a curve
+        // whose three points coincide is a point - flat at once, drawing nothing - and one whose
+        // control point lies elsewhere (out and back) still flattens. fill(), stroke(), clip() and
+        // isPointInPath() all go through the flattener, on the current path and as a Path2D.
+
+        test('A quadratic whose ends coincide flattens', () => {
+            for (const [label, cpx, cpy, strokePixels] of [
+                ['three coincident points', 20, 20, false],
+                ['out and back', 40, 30, true]
+            ]) {
+                for (const asPath2D of [false, true]) {
+                    for (const op of ['fill', 'stroke', 'clip', 'isPointInPath']) {
+                        const canvas = SWCanvas.createCanvas(64, 64);
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#000';
+                        ctx.strokeStyle = '#000';
+                        ctx.lineWidth = 3;
+                        let path;
+                        if (asPath2D) {
+                            path = new SWCanvas.Core.SWPath2D();
+                            path.moveTo(20, 20);
+                            path.quadraticCurveTo(cpx, cpy, 20, 20);
+                        } else {
+                            ctx.beginPath();
+                            ctx.moveTo(20, 20);
+                            ctx.quadraticCurveTo(cpx, cpy, 20, 20);
+                        }
+                        const where = `${label}, ${asPath2D ? 'Path2D' : 'current path'}, ${op}`;
+                        try {
+                            if (op === 'isPointInPath') {
+                                if (asPath2D) ctx.isPointInPath(path, 30, 25);
+                                else ctx.isPointInPath(30, 25);
+                                continue;
+                            }
+                            if (op === 'clip') {
+                                if (asPath2D) ctx.clip(path);
+                                else ctx.clip();
+                                ctx.fillRect(0, 0, 64, 64);
+                            } else if (asPath2D) {
+                                ctx[op](path);
+                            } else {
+                                ctx[op]();
+                            }
+                        } catch (e) {
+                            throw new Error(`${where}: throws ${e.constructor.name}: ${e.message}`);
+                        }
+                        const d = ctx.getImageData(0, 0, 64, 64).data;
+                        let painted = 0;
+                        for (let i = 3; i < d.length; i += 4) if (d[i] > 0) painted++;
+                        const expectPixels = op === 'stroke' && strokePixels;
+                        if (expectPixels !== painted > 0) {
+                            throw new Error(`${where}: painted ${painted} pixel(s), expected ${expectPixels ? 'some' : 'none'}`);
+                        }
+                    }
+                }
+            }
+            log('  quadratics whose ends coincide flatten (fill, stroke, clip, isPointInPath)');
+        });
+
+
+        // Test: drawImage's nearest-neighbour arm takes the texel under each device
+        // pixel's CENTRE, like pattern paint
+        // This file will be concatenated into the main test suite
+        //
+        // A draw that does not resample (axis-aligned, one texel per device pixel), or
+        // any draw with imageSmoothingEnabled false, takes the texel its pixel centre
+        // maps to, and paints the pixels whose centre lies inside the destination
+        // rect. Pinned against an exact oracle (pixel centres within 1e-9 of a texel
+        // boundary skipped: there the oracle's and the engine's float routes may round
+        // to different sides) for:
+        //   1. a step-1 draw at a fractional offset, smoothing on (the arm that never
+        //      filters);
+        //   2. smoothing off under a fractional up-scale, a down-scale and a rotation;
+        //   3. step-1 draws under a scale(3) CTM at device-grid offsets (a plain blit
+        //      at device pixel ratio 3) and an integer 3x zoom with smoothing off —
+        //      every texel boundary lands on a pixel CORNER there, so only centre
+        //      sampling is immune to the division's rounding;
+        //   4. a smoothing-off pattern paints the same bytes as drawImage under a
+        //      rotation (one nearest-neighbour rule).
+
+        test('drawImage nearest-neighbour samples each pixel at its centre', () => {
+            const W = 96;
+            const H = 80;
+
+            function makeImage(w, h) {
+                const canvas = SWCanvas.createCanvas(w, h);
+                const ctx = canvas.getContext('2d');
+                const id = ctx.createImageData(w, h);
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        const o = (y * w + x) * 4;
+                        id.data[o] = 20 + ((x * 37) % 220);
+                        id.data[o + 1] = 20 + ((y * 53) % 220);
+                        id.data[o + 2] = (x + y) % 2 ? 230 : 30;
+                        id.data[o + 3] = 255;
+                    }
+                }
+                ctx.putImageData(id, 0, 0);
+                return { canvas, data: id.data, w, h };
+            }
+
+            // m = CTM [a, b, c, d, e, f]; the image is drawn at dest (dx, dy, dw, dh).
+            function check(label, m, smoothing, image, dest) {
+                const [dx, dy, dw, dh] = dest || [0, 0, image.w, image.h];
+                const ctx = SWCanvas.createCanvas(W, H).getContext('2d');
+                ctx.imageSmoothingEnabled = smoothing;
+                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+                ctx.drawImage(image.canvas, dx, dy, dw, dh);
+                const data = ctx.getImageData(0, 0, W, H).data;
+
+                const [a, b, c, d, e, f] = m;
+                const det = a * d - b * c;
+                let checked = 0;
+                let wrong = 0;
+                let first = '';
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const cx = x + 0.5 - e;
+                        const cy = y + 0.5 - f;
+                        const ux = (d * cx - c * cy) / det;
+                        const uy = (-b * cx + a * cy) / det;
+                        const u = ((ux - dx) * image.w) / dw;
+                        const v = ((uy - dy) * image.h) / dh;
+                        if (Math.abs(u - Math.round(u)) < 1e-9 || Math.abs(v - Math.round(v)) < 1e-9) continue;
+                        const o = (y * W + x) * 4;
+                        let expected;
+                        if (u < 0 || v < 0 || u >= image.w || v >= image.h) {
+                            expected = [0, 0, 0, 0];
+                        } else {
+                            const t = (Math.floor(v) * image.w + Math.floor(u)) * 4;
+                            expected = [image.data[t], image.data[t + 1], image.data[t + 2], 255];
+                        }
+                        checked++;
+                        if (data[o] !== expected[0] || data[o + 1] !== expected[1] ||
+                            data[o + 2] !== expected[2] || data[o + 3] !== expected[3]) {
+                            if (wrong === 0) {
+                                first = ` first at (${x},${y}): got (${Array.from(data.slice(o, o + 4))}), expected (${expected})`;
+                            }
+                            wrong++;
+                        }
+                    }
+                }
+                if (checked < W * H * 0.5) throw new Error(label + ': only ' + checked + ' pixels checked (vacuous)');
+                assertEquals(wrong, 0, label + ': pixels not showing the texel under their centre' + first);
+                return data;
+            }
+
+            const small = makeImage(12, 9);
+            const large = makeImage(60, 50);
+            const rot = (angle, s, e, f) => [s * Math.cos(angle), s * Math.sin(angle), -s * Math.sin(angle), s * Math.cos(angle), e, f];
+
+            // 1. step 1 at a fractional offset (smoothing on: this arm never filters)
+            check('step-1 fractional offset', [1, 0, 0, 1, 10.3, 7.6], true, makeImage(40, 30));
+
+            // 2. smoothing off
+            check('smoothing off, fractional up-scale', [2.6, 0, 0, 2.6, 10.35, 7.65], false, small);
+            check('smoothing off, down-scale', [0.71, 0, 0, 0.83, 7.35, 4.65], false, large);
+            const rotated = rot(0.5, 3, 40.3, 6.2);
+            const viaDrawImage = check('smoothing off, rotation', rotated, false, small);
+
+            // 3. scale(3): a device-pixel-ratio-3 plain blit (step 1) and an integer 3x zoom
+            check('step-1 blit under scale(3)', [3, 0, 0, 3, 0, 0], true, large, [11 / 3, 7 / 3, 60 / 3, 50 / 3]);
+            check('integer 3x zoom, smoothing off', [3, 0, 0, 2, 10, 7], false, small);
+
+            // 4. one nearest-neighbour rule: a smoothing-off pattern paints drawImage's bytes
+            const ctx = SWCanvas.createCanvas(W, H).getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.setTransform(rotated[0], rotated[1], rotated[2], rotated[3], rotated[4], rotated[5]);
+            ctx.fillStyle = ctx.createPattern(small.canvas, 'no-repeat');
+            ctx.fillRect(0, 0, small.w, small.h);
+            const viaPattern = ctx.getImageData(0, 0, W, H).data;
+            let differ = 0;
+            for (let i = 0; i < viaPattern.length; i++) if (viaPattern[i] !== viaDrawImage[i]) differ++;
+            assertEquals(differ, 0, 'smoothing-off pattern vs drawImage under rotation: differing bytes');
+        });
+
+
+        // Test: a join or a cap meets its segment body with no pixel-centre gap on the seam
+        // This file will be concatenated into the main test suite
+        //
+        // A stroke is filled as separate parts - segment bodies, joins, caps - under the nonzero
+        // rule. Where a join or a cap meets a body they share an edge: the body's end edge through
+        // the joint (or cap point), perpendicular to the segment. The whole of that edge, short of
+        // its two corners, lies INSIDE the stroke (the join or cap continues past it), so a pixel
+        // centre exactly on it must be painted - which only happens if the filler crosses that edge
+        // at the bit-identical x from both parts. Integer ends with both direction components odd
+        // put pixel centres exactly on these lines; each join is drawn by translate() and by
+        // coordinates, at scale 1 and 2, at two device offsets (the rounding of the shared edge
+        // depends on where it lies), each cap at the first of them. Checked exactly, in doubled
+        // device coordinates (pixel centres odd): u = centre - joint, on the edge when u.d == 0,
+        // strictly inside the half width when u.u < (lineWidth * scale)^2. Each offset reuses one
+        // canvas: a stroke's bounding box is cleared before it is drawn, and only the square around
+        // each seam is read back.
+
+        test('Stroke seams - no pixel-centre gap where a join or cap meets a body', () => {
+            const P = 80;
+            // Directions (a, b), both odd: a spread of turns and segment lengths, including the ones whose
+            // seams open when a join and a body do not share their seam points exactly
+            const directions = [
+                [-9, 5], [-7, 3], [-5, 1], [-5, 3], [-3, 7], [-3, 9], [-1, 3], [-1, 5], [-1, 9], [1, 1],
+                [1, 3], [3, 1], [3, 3], [3, 5], [5, 5], [5, 9], [7, 1], [7, 7], [9, 3], [9, 9]
+            ];
+            // [scale, by translate(), offsets, line widths]: device widths 6 and 11 at scale 1, 6 and 22 at scale 2
+            const spellings = [
+                [1, true, [[3, 3], [3, 701]], [6, 11]],
+                [1, false, [[3, 3], [474, 3]], [6, 11]],
+                [2, true, [[3, 3], [474, 701]], [3, 11]],
+                [2, false, [[3, 3], [474, 3]], [3, 11]]
+            ];
+            let seamPixels = 0;
+            let strokes = 0;
+            for (const [dev, byTranslate, offsets, widths] of spellings) {
+                offsets.forEach(([X, Y], offsetIndex) => {
+                    const canvas = SWCanvas.createCanvas((X + P) * dev, (Y + P) * dev);
+                    const ctx = canvas.getContext('2d');
+                    for (const [a, b] of directions) {
+                        const k = Math.max(1, Math.round(18 / Math.hypot(a, b)));
+                        const turn = [[40 - a * k, 40 - b * k], [40, 40], [40 - b * k, 40 + a * k]];
+                        const line = [[40 - a * k, 40 - b * k], [40 + a * k, 40 + b * k]];
+                        const shapes = [['round', 'butt', turn], ['miter', 'butt', turn], ['bevel', 'butt', turn]];
+                        if (offsetIndex === 0) shapes.push(['miter', 'round', line], ['miter', 'square', line]);
+                        for (const lw of widths) {
+                            for (const [join, cap, pts] of shapes) {
+                                // the shared edges: [point, direction the edge is perpendicular to]
+                                const seams = pts.length === 3 ? [[pts[1], [a, b]], [pts[1], [-b, a]]] : [[pts[0], [a, b]], [pts[1], [a, b]]];
+                                // clear the stroke's bounding box (a miter reaches lineWidth / sqrt(2) past the joint)
+                                const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+                                const left = Math.floor((X + Math.min(...xs) - lw - 1) * dev);
+                                const top = Math.floor((Y + Math.min(...ys) - lw - 1) * dev);
+                                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                                ctx.clearRect(left, top, Math.ceil((X + Math.max(...xs) + lw + 1) * dev) - left, Math.ceil((Y + Math.max(...ys) + lw + 1) * dev) - top);
+                                ctx.setTransform(dev, 0, 0, dev, 0, 0);
+                                let ox = X, oy = Y;
+                                if (byTranslate) {
+                                    ctx.translate(X, Y);
+                                    ox = 0;
+                                    oy = 0;
+                                }
+                                ctx.strokeStyle = '#000';
+                                ctx.lineWidth = lw;
+                                ctx.lineJoin = join;
+                                ctx.lineCap = cap;
+                                ctx.beginPath();
+                                pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x + ox, y + oy) : ctx.lineTo(x + ox, y + oy)));
+                                ctx.stroke();
+                                strokes++;
+                                const H2 = lw * dev * lw * dev;
+                                const r = Math.ceil((lw * dev) / 2) + 1;
+                                for (const [[sx, sy], [dx, dy]] of seams) {
+                                    // the square of device pixels around the seam point, crop-relative (i, j)
+                                    const i0 = sx * dev - r, j0 = sy * dev - r, n = 2 * r;
+                                    const d = ctx.getImageData(X * dev + i0, Y * dev + j0, n, n).data;
+                                    for (let j = j0; j < j0 + n; j++) {
+                                        for (let i = i0; i < i0 + n; i++) {
+                                            const ux = 2 * i + 1 - 2 * dev * sx, uy = 2 * j + 1 - 2 * dev * sy;
+                                            if (ux * dx + uy * dy !== 0 || ux * ux + uy * uy >= H2) continue;
+                                            seamPixels++;
+                                            if (d[((j - j0) * n + (i - i0)) * 4 + 3] === 0) {
+                                                throw new Error(
+                                                    `${pts.length === 3 ? join + ' join' : cap + ' cap'} (${a},${b}) lineWidth ${lw} at ` +
+                                                        `${byTranslate ? 'translate' : 'coordinates'} (${X},${Y}) scale ${dev}: pixel (${i},${j}) ` +
+                                                        `of the crop lies on the seam at (${sx},${sy}) inside the stroke, unpainted`
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            log(`  ${strokes} strokes, ${seamPixels} seam pixel centres all painted`);
+        });
+
+
+        // Test: the direct line and rotated-rect stroke entries paint what stroke() of the same path paints
+        // This file will be concatenated into the main test suite
+        //
+        // strokeLine with butt caps and strokeRect under a rotation have direct rasterizers (thick lines
+        // as quads, exactly horizontal/vertical lines as rectangles). They cover the pixels whose centres
+        // lie in the stroke, under the half-open rule every filler uses, so each must paint exactly the
+        // pixels ctx.stroke() paints for the same line or rect: integer ends (the edges then pass through
+        // pixel corners and centres), ends that share a pixel row or column without being axis-aligned,
+        // exact horizontals and verticals, every width above the 1px thin-line convention, at scale 1 and 2.
+        // One canvas per scale and per entry is reused; a line is drawn, cleared and compared within its
+        // bounding box grown by 3 device pixels, a rect within the whole canvas.
+
+        test('strokeLine (butt) and rotated strokeRect paint what stroke() paints', () => {
+            const S = 96;
+            function firstDifference(a, b, x0, y0, w) {
+                for (let i = 3; i < a.length; i += 4) {
+                    if ((a[i] > 0) !== (b[i] > 0)) return `pixel (${x0 + ((i >> 2) % w)},${y0 + Math.floor((i >> 2) / w)})`;
+                }
+                return null;
+            }
+            // A deterministic, evenly spread sequence in [0, 1) (golden-ratio steps), not a random one
+            let phase = 0;
+            const rnd = () => (phase = (phase + 0.6180339887498949) % 1);
+            const lines = [];
+            for (let a = -9; a <= 9; a += 4) {
+                for (let b = 0; b <= 9; b += 3) lines.push([40 - a * 2, 40 - b * 2, 40 + a * 2, 40 + b * 2]);
+            }
+            for (let i = 0; i < 32; i++) {
+                const x1 = 20 + rnd() * 50, y1 = 20 + rnd() * 50, ang = rnd() * 6.283, len = 3 + rnd() * 30;
+                let x2 = x1 + Math.cos(ang) * len, y2 = y1 + Math.sin(ang) * len;
+                if (i % 4 === 1) y2 = Math.floor(y1) + rnd() * 0.99; // same pixel row, not horizontal
+                if (i % 4 === 2) x2 = Math.floor(x1) + rnd() * 0.99; // same pixel column, not vertical
+                if (i % 8 === 3) y2 = y1; // exactly horizontal
+                if (i % 8 === 7) x2 = x1; // exactly vertical
+                lines.push([x1, y1, x2, y2]);
+            }
+            let checked = 0;
+            for (const dev of [1, 2]) {
+                const N = S * dev;
+                const canvases = [0, 1].map(() => {
+                    const ctx = SWCanvas.createCanvas(N, N).getContext('2d');
+                    ctx.strokeStyle = '#000';
+                    return ctx;
+                });
+                // draws with each entry on its own canvas, the region cleared first (it holds the whole
+                // stroke), and returns both reads of the region
+                const both = (region, setup, direct, path) =>
+                    [direct, path].map((draw, k) => {
+                        const ctx = canvases[k];
+                        ctx.setTransform(1, 0, 0, 1, 0, 0);
+                        ctx.clearRect(region[0], region[1], region[2], region[3]);
+                        ctx.setTransform(dev, 0, 0, dev, 0, 0);
+                        setup(ctx);
+                        draw(ctx);
+                        return ctx.getImageData(region[0], region[1], region[2], region[3]).data;
+                    });
+                for (const lw of [2, 3, 6, 11, 4.7]) {
+                    for (const [x1, y1, x2, y2] of lines) {
+                        const m = lw / 2 + 3 / dev;
+                        const left = Math.max(0, Math.floor((Math.min(x1, x2) - m) * dev));
+                        const top = Math.max(0, Math.floor((Math.min(y1, y2) - m) * dev));
+                        const right = Math.min(N, Math.ceil((Math.max(x1, x2) + m) * dev));
+                        const bottom = Math.min(N, Math.ceil((Math.max(y1, y2) + m) * dev));
+                        const [direct, path] = both(
+                            [left, top, right - left, bottom - top],
+                            (ctx) => {
+                                ctx.lineWidth = lw;
+                                ctx.lineCap = 'butt';
+                            },
+                            (ctx) => ctx.strokeLine(x1, y1, x2, y2),
+                            (ctx) => {
+                                ctx.beginPath();
+                                ctx.moveTo(x1, y1);
+                                ctx.lineTo(x2, y2);
+                                ctx.stroke();
+                            }
+                        );
+                        const diff = firstDifference(direct, path, left, top, right - left);
+                        if (diff) {
+                            throw new Error(`strokeLine(${x1}, ${y1}, ${x2}, ${y2}) lineWidth ${lw} at scale ${dev}: ${diff} differs from stroke()`);
+                        }
+                        checked++;
+                    }
+                }
+                for (let i = 0; i < 20; i++) {
+                    const x = 20 + rnd() * 30, y = 20 + rnd() * 30, w = 5 + rnd() * 30, h = 5 + rnd() * 30;
+                    const ang = rnd() * 6.283, lw = 1.5 + rnd() * 8;
+                    const [direct, path] = both(
+                        [0, 0, N, N],
+                        (ctx) => {
+                            ctx.translate(48, 48);
+                            ctx.rotate(ang);
+                            ctx.translate(-48, -48);
+                            ctx.lineWidth = lw;
+                        },
+                        (ctx) => ctx.strokeRect(x, y, w, h),
+                        (ctx) => {
+                            ctx.beginPath();
+                            ctx.rect(x, y, w, h);
+                            ctx.stroke();
+                        }
+                    );
+                    const diff = firstDifference(direct, path, 0, 0, N);
+                    if (diff) {
+                        throw new Error(`strokeRect(${x}, ${y}, ${w}, ${h}) rotated ${ang} lineWidth ${lw} at scale ${dev}: ${diff} differs from rect() + stroke()`);
+                    }
+                    checked++;
+                }
+            }
+            log(`  ${checked} direct strokes identical to stroke()`);
+        });
+
+
+        // Test: a round cap or round join stays within the flattening tolerance of its circle
+        // This file will be concatenated into the main test suite
+        //
+        // Round caps and round joins are arcs of radius lineWidth / 2 about the line's end or the joint,
+        // flattened into chords. Like a path's own arcs they get as many chords as keep every chord within
+        // a quarter device pixel of the circle, however wide the line and whatever the scale: so every
+        // pixel whose centre lies more than 0.26 px inside the circle (and outside the segment bodies,
+        // which are exact) is painted. Fixed 45-degree chords fall short by 0.076 * radius - 0.84 px for
+        // an 11 px radius.
+
+        test('Round caps and joins - within a quarter pixel of their circles', () => {
+            let checked = 0;
+            for (const dev of [1, 2]) {
+                for (const lw of [4, 8, 12, 22, 40]) {
+                    const h = lw / 2;
+                    for (const kind of ['cap', 'join']) {
+                        for (const ang of [0, 0.3, 0.785, 1.2, 2.9]) {
+                            const S = 4 * lw + 40;
+                            const canvas = SWCanvas.createCanvas(S * dev, S * dev);
+                            const ctx = canvas.getContext('2d');
+                            if (dev === 2) ctx.scale(2, 2);
+                            ctx.strokeStyle = '#000';
+                            ctx.lineWidth = lw;
+                            ctx.lineCap = kind === 'cap' ? 'round' : 'butt';
+                            ctx.lineJoin = 'round';
+                            const c = S / 2 + 0.3;
+                            const ux = Math.cos(ang), uy = Math.sin(ang);
+                            ctx.beginPath();
+                            if (kind === 'cap') {
+                                ctx.moveTo(c - ux * lw, c - uy * lw); // the cap sits at (c, c), the line comes from behind
+                                ctx.lineTo(c, c);
+                            } else {
+                                ctx.moveTo(c - ux * lw, c - uy * lw); // a right-angle turn at (c, c)
+                                ctx.lineTo(c, c);
+                                ctx.lineTo(c - uy * lw, c + ux * lw);
+                            }
+                            ctx.stroke();
+                            const N = S * dev;
+                            const d = ctx.getImageData(0, 0, N, N).data;
+                            for (let j = 0; j < N; j++) {
+                                for (let i = 0; i < N; i++) {
+                                    const px = (i + 0.5) / dev - c, py = (j + 0.5) / dev - c;
+                                    const along = px * ux + py * uy; // past the end of the first segment
+                                    if (along <= 0) continue;
+                                    if (kind === 'join' && px * -uy + py * ux >= 0) continue; // inside the second body
+                                    if (Math.hypot(px, py) * dev > h * dev - 0.26) continue;
+                                    checked++;
+                                    if (d[(j * N + i) * 4 + 3] === 0) {
+                                        throw new Error(
+                                            `round ${kind} lineWidth ${lw} at scale ${dev}, direction ${ang}: pixel (${i},${j}) lies ` +
+                                                `${(h * dev - Math.hypot(px, py) * dev).toFixed(2)} device px inside the circle, unpainted`
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            log(`  ${checked} pixel centres inside round caps and joins painted`);
+        });
+
+
+        // Test: a shadow carries the shadow colour's alpha times the shape's coverage —
+        // once — and blurring spreads that coverage without losing or adding any
+        // This file will be concatenated into the main test suite
+        //
+        // An opaque 40x40 square casts its shadow 70px to the side, so the shadow
+        // lands on transparent pixels nothing else paints:
+        //   1. unblurred, every shadow pixel's alpha is the shadow colour's alpha;
+        //   2. under globalAlpha 0.5 it is half that (globalAlpha counted once);
+        //   3. blurred, the shadow's total alpha is the unblurred total (the blur
+        //      moves coverage, it does not dilute or amplify it), and deep inside a
+        //      shape much larger than the blur the shadow keeps the full alpha.
+
+        test('shadows: alpha is shadow alpha x coverage, and blur conserves coverage', () => {
+            const W = 200;
+            const H = 140;
+
+            function shadowOf(alpha, blur, globalAlpha) {
+                const ctx = SWCanvas.createCanvas(W, H).getContext('2d');
+                ctx.shadowColor = `rgba(20, 40, 200, ${alpha})`;
+                ctx.shadowBlur = blur;
+                ctx.shadowOffsetX = 70;
+                if (globalAlpha !== undefined) ctx.globalAlpha = globalAlpha;
+                ctx.fillStyle = 'black';
+                ctx.fillRect(20, 50, 40, 40);
+                return ctx.getImageData(0, 0, W, H).data;
+            }
+
+            // Total alpha over the shadow's side of the canvas (x >= 65: the shape ends at 60).
+            function shadowMass(data) {
+                let sum = 0;
+                for (let y = 0; y < H; y++) {
+                    for (let x = 65; x < W; x++) sum += data[(y * W + x) * 4 + 3];
+                }
+                return sum;
+            }
+
+            const centre = data => data[(70 * W + 110) * 4 + 3];
+
+            // 1. unblurred
+            for (const alpha of [1, 0.5, 0.1, 3 / 255]) {
+                assertEquals(centre(shadowOf(alpha, 0)), Math.round(alpha * 255), `blur 0, shadow alpha ${alpha}`);
+            }
+
+            // 2. globalAlpha once
+            assertEquals(centre(shadowOf(0.5, 0, 0.5)), Math.round(0.25 * 255), 'blur 0, shadow alpha 0.5 under globalAlpha 0.5');
+
+            // 3. blur conserves coverage
+            const unblurred = shadowMass(shadowOf(0.5, 0));
+            for (const blur of [2, 4, 8, 16]) {
+                const data = shadowOf(0.5, blur);
+                const ratio = shadowMass(data) / unblurred;
+                if (Math.abs(ratio - 1) > 0.01) {
+                    throw new Error(`blur ${blur}: shadow total alpha is ${ratio.toFixed(4)} of the unblurred total`);
+                }
+                if (blur <= 8) assertEquals(centre(data), 128, `blur ${blur}: shadow alpha deep inside the shape`);
+            }
+        });
+
+
+        // Test: drawImage under a canvas-wide composite (copy, source-in, source-out,
+        // destination-in, destination-atop) acts on every pixel the clip lets through
+        // This file will be concatenated into the main test suite
+        //
+        // These operators are defined over the whole canvas: where the source is
+        // transparent — outside the drawn image, and under its fully transparent
+        // texels — the result is what the operator gives for a transparent source
+        // (transparent black, for each of the five), exactly as for a fill. Pinned on
+        // a destination holding opaque red, under a clip, with an image whose left
+        // half is opaque blue and right half fully transparent; pixels outside the
+        // clip keep their red.
+
+        test('drawImage: canvas-wide composites act wherever the clip lets them, not only under the image', () => {
+            const W = 60;
+            const H = 40;
+
+            const image = SWCanvas.createCanvas(20, 10);
+            const imageCtx = image.getContext('2d');
+            const id = imageCtx.createImageData(20, 10);
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 20; x++) {
+                    const o = (y * 20 + x) * 4;
+                    if (x < 10) {
+                        id.data[o + 2] = 255;
+                        id.data[o + 3] = 255;
+                    } else {
+                        id.data[o] = 255; // colour under zero alpha must not leak
+                        id.data[o + 3] = 0;
+                    }
+                }
+            }
+            imageCtx.putImageData(id, 0, 0);
+
+            // Expected at an opaque blue texel over opaque red, per operator.
+            const overOpaque = {
+                copy: [0, 0, 255, 255],
+                'source-in': [0, 0, 255, 255],
+                'source-out': [0, 0, 0, 0],
+                'destination-in': [255, 0, 0, 255],
+                'destination-atop': [255, 0, 0, 255]
+            };
+
+            for (const op of Object.keys(overOpaque)) {
+                const ctx = SWCanvas.createCanvas(W, H).getContext('2d');
+                ctx.fillStyle = 'rgb(255, 0, 0)';
+                ctx.fillRect(0, 0, W, H);
+                ctx.beginPath();
+                ctx.rect(5, 5, 50, 30);
+                ctx.clip();
+                ctx.globalCompositeOperation = op;
+                ctx.drawImage(image, 20, 15);
+
+                const px = (x, y) => Array.from(ctx.getImageData(x, y, 1, 1).data).join(',');
+                assertEquals(px(22, 18), overOpaque[op].join(','), op + ': under an opaque texel');
+                assertEquals(px(35, 18), '0,0,0,0', op + ': under a transparent texel');
+                assertEquals(px(10, 10), '0,0,0,0', op + ': outside the image, inside the clip');
+                assertEquals(px(50, 30), '0,0,0,0', op + ': outside the image, inside the clip (far corner)');
+                assertEquals(px(2, 2), '255,0,0,255', op + ': outside the clip');
+            }
+        });
+
+
+        // Test: source-over and destination-over onto a partially transparent pixel
+        // follow Porter-Duff on every paint path
+        // This file will be concatenated into the main test suite
+        //
+        // SWCanvas surfaces hold straight RGBA, so compositing a translucent source S
+        // over a translucent destination D must weigh D's colour by D's own alpha:
+        // alpha = Sa + Da(1 - Sa), colour = (Sc Sa + Dc Da (1 - Sa)) / alpha. Checked
+        // against that formula, premultiplied (the colour each pixel contributes once
+        // composited), within 1.5 levels (the stored 8-bit result and the colour's own
+        // 8-bit components each round), for a grid of source and destination alphas,
+        // through fillRect, fill(), stroke(), drawImage, a pattern fill and
+        // destination-over.
+
+        test('source-over / destination-over onto translucent pixels follow Porter-Duff on every path', () => {
+            const dstColour = [20, 200, 60];
+            const srcColour = [230, 40, 180];
+
+            function exact(sc, sa, dc, da) {
+                const a = sa / 255;
+                const b = da / 255;
+                const outA = a + b * (1 - a);
+                return [0, 1, 2].map(i => (sc[i] * a + dc[i] * b * (1 - a)) / outA).concat([outA * 255]);
+            }
+
+            function texel(c, a) {
+                const canvas = SWCanvas.createCanvas(1, 1);
+                const ctx = canvas.getContext('2d');
+                const id = ctx.createImageData(1, 1);
+                id.data[0] = c[0];
+                id.data[1] = c[1];
+                id.data[2] = c[2];
+                id.data[3] = a;
+                ctx.putImageData(id, 0, 0);
+                return canvas;
+            }
+
+            const css = (c, a) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a / 255})`;
+
+            // The destination pixels, written exactly (straight RGBA).
+            function fillData(ctx, c, a) {
+                const id = ctx.createImageData(8, 8);
+                for (let i = 0; i < id.data.length; i += 4) {
+                    id.data[i] = c[0];
+                    id.data[i + 1] = c[1];
+                    id.data[i + 2] = c[2];
+                    id.data[i + 3] = a;
+                }
+                return id;
+            }
+            const paths = {
+                fillRect: (ctx, a) => {
+                    ctx.fillStyle = css(srcColour, a);
+                    ctx.fillRect(0, 0, 8, 8);
+                },
+                'fill()': (ctx, a) => {
+                    ctx.fillStyle = css(srcColour, a);
+                    ctx.beginPath();
+                    ctx.rect(0, 0, 8, 8);
+                    ctx.fill();
+                },
+                'stroke()': (ctx, a) => {
+                    ctx.strokeStyle = css(srcColour, a);
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    ctx.moveTo(0, 4);
+                    ctx.lineTo(8, 4);
+                    ctx.stroke();
+                },
+                drawImage: (ctx, a) => {
+                    ctx.drawImage(texel(srcColour, a), 0, 0, 8, 8);
+                },
+                pattern: (ctx, a) => {
+                    ctx.fillStyle = ctx.createPattern(texel(srcColour, a), 'repeat');
+                    ctx.fillRect(0, 0, 8, 8);
+                }
+            };
+
+            for (const name of Object.keys(paths)) {
+                let worst = 0;
+                let where = '';
+                for (const da of [3, 40, 128, 220]) {
+                    for (const sa of [5, 64, 128, 200]) {
+                        const ctx = SWCanvas.createCanvas(8, 8).getContext('2d');
+                        ctx.putImageData(fillData(ctx, dstColour, da), 0, 0);
+                        paths[name](ctx, sa);
+                        const d = ctx.getImageData(4, 4, 1, 1).data;
+                        const e = exact(srcColour, sa, dstColour, da);
+                        for (let k = 0; k < 4; k++) {
+                            const off = k < 3 ? Math.abs((d[k] * d[3]) / 255 - (e[k] * e[3]) / 255) : Math.abs(d[3] - e[3]);
+                            if (off > worst) {
+                                worst = off;
+                                where = ` (Sa ${sa} over Da ${da}: got ${Array.from(d)}, exact ${e.map(Math.round)})`;
+                            }
+                        }
+                    }
+                }
+                if (worst > 1.5) throw new Error(`${name}: ${worst.toFixed(1)} levels from Porter-Duff` + where);
+            }
+
+            // destination-over: the destination stays on top
+            let worst = 0;
+            for (const da of [3, 40, 128, 220]) {
+                for (const sa of [5, 64, 128, 200]) {
+                    const ctx = SWCanvas.createCanvas(8, 8).getContext('2d');
+                    ctx.putImageData(fillData(ctx, dstColour, da), 0, 0);
+                    ctx.globalCompositeOperation = 'destination-over';
+                    ctx.fillStyle = css(srcColour, sa);
+                    ctx.fillRect(0, 0, 8, 8);
+                    const d = ctx.getImageData(4, 4, 1, 1).data;
+                    const e = exact(dstColour, da, srcColour, sa);
+                    for (let k = 0; k < 4; k++) {
+                        const off = k < 3 ? Math.abs((d[k] * d[3]) / 255 - (e[k] * e[3]) / 255) : Math.abs(d[3] - e[3]);
+                        worst = Math.max(worst, off);
+                    }
+                }
+            }
+            if (worst > 1.5) throw new Error(`destination-over: ${worst.toFixed(1)} levels from Porter-Duff`);
+        });
+
+
         // Test: ctx.font setter accepts the supported CSS subset and rejects unsupported
 
         test('ctx.font: basic "16px Arial" parses and round-trips', () => {
@@ -8500,10 +11177,12 @@
 
 
         // Test: fillText must not crash when the requested font/size has no matching
-        // atlas — it should silently render nothing (NO_METRICS path). The test
-        // runner preloads the smoke fixture's 3 fonts (Arial reg+bold +
-        // BitmapTextInvariant at size 16, density-1), so we deliberately request a
-        // font outside that set: Courier New 24 misses on both family AND size.
+        // atlas — it should silently render nothing (NO_METRICS path). Both test
+        // runners preload the smoke fixture's fonts (tests/smoke-fonts.js: Arial
+        // reg+bold + BitmapTextInvariant at size 16), whose metrics bundle holds those
+        // fonts only, so we deliberately request a font outside that set: Courier New
+        // 24 misses on both family AND size. (Against the full font-assets release,
+        // whose metrics cover it, the same call draws placeholder rectangles.)
 
         test('fillText with an unmatched font does not crash, leaves canvas untouched', () => {
             const canvas = SWCanvas.createCanvas(20, 20);
@@ -8607,10 +11286,11 @@
 
 
         // Test: fillText actually writes glyph pixels when a matching atlas is loaded.
-        // The test runner preloads the smoke fixture's 3 fonts at size 16 density-1:
-        // Arial reg, Arial bold, BitmapTextInvariant. Tests in this file constrain
-        // themselves to size 16 (the only size in the smoke set) — sizes 9..15
-        // and 17..96 in the smoke fixture have no atlas and would return NO_METRICS.
+        // Both test runners preload the smoke fixture's fonts (tests/smoke-fonts.js):
+        // Arial reg, Arial bold, BitmapTextInvariant, at size 16, densities 1 and 2.
+        // Tests in this file constrain themselves to size 16 (the only size in the
+        // smoke set) — sizes 9..15 and 17..96 have no metrics in the fixture and
+        // would return NO_METRICS.
 
         // Helper: count canvas pixels that differ from white (255,255,255,255).
         function countNonWhitePixels(ctx, w, h) {
@@ -8741,9 +11421,10 @@
         // With ctx.scale(dpr,dpr) + textPixelDensity = dpr, the net transform is
         // [dpr,0,0,dpr,e,f] → TextRenderer's fast path (uniform scale == atlas
         // density), which blits straight to the backing surface with no intermediate
-        // buffer. The runner preloads Arial 16 at density 2 (font-assets/_smoke/), so
-        // glyph pixels are real, not placeholders. The backing surface is sized at
-        // physical pixels (CSS × dpr).
+        // buffer. Both runners preload Arial 16 at density 2 (tests/smoke-fonts.js,
+        // font-assets/_smoke/), so glyph pixels are real, not placeholders — and the
+        // first test checks that they are. The backing surface is sized at physical
+        // pixels (CSS × dpr).
 
         // Helper: count canvas pixels that differ from white (255,255,255,255).
         function countNonWhitePixels(ctx, w, h) {
@@ -8774,10 +11455,45 @@
             return countNonWhitePixels(ctx, cssW * dpr, cssH * dpr);
         }
 
+        // True when the ink of inkForDensity(dpr)'s "A" leaves part of its own bounding
+        // box unpainted, as a glyph does. BitmapText draws a missing atlas's glyph as a
+        // placeholder rectangle in the text colour, which fills its box exactly — and
+        // passes an ink count alone (a density-2 placeholder "A" is 484 px, the glyph 160).
+        function inkIsAGlyphNotABox(dpr) {
+            const w = 40 * dpr, h = 24 * dpr;
+            const canvas = SWCanvas.createCanvas(w, h);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, w, h);
+            ctx.scale(dpr, dpr);
+            ctx.textPixelDensity = dpr;
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'black';
+            ctx.fillText('A', 4, 18);
+            const data = ctx.getImageData(0, 0, w, h).data;
+            let ink = 0, x0 = w, y0 = h, x1 = -1, y1 = -1;
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const i = (y * w + x) * 4;
+                    if (data[i] !== 255 || data[i + 1] !== 255 || data[i + 2] !== 255 || data[i + 3] !== 255) {
+                        ink++;
+                        if (x < x0) x0 = x;
+                        if (x > x1) x1 = x;
+                        if (y < y0) y0 = y;
+                        if (y > y1) y1 = y;
+                    }
+                }
+            }
+            return ink > 0 && ink < (x1 - x0 + 1) * (y1 - y0 + 1);
+        }
+
         test('density-2 fillText (scale == density) writes glyph pixels via the fast path', () => {
             const ink = inkForDensity(2);
             if (ink < 1) {
                 throw new Error('Expected glyph pixels from density-2 fast-path fillText("A"); got ' + ink);
+            }
+            if (!inkIsAGlyphNotABox(2)) {
+                throw new Error('density-2 fillText("A") painted a solid box: a placeholder, not the glyph (atlas not loaded?)');
             }
         });
 
@@ -9406,6 +12122,7 @@
         });
 
 
+        testResults.total = testResults.passed + testResults.failed + testResults.skipped.length;
         return testResults;
     }
     

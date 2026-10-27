@@ -11,7 +11,7 @@
  * - All stroke operations: Skip sw0
  *
  * Tests isolate SWCanvas code paths:
- * - Fill: Midpoint circle fill algorithm
+ * - Fill: pixel-centre-sampled scanline fill (one sqrt per row)
  * - sw0: No-op (skipped for stroke)
  * - sw1px: Bresenham circle stroke
  * - swXXS+: Thick stroke algorithms (annulus)

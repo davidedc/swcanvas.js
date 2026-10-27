@@ -1,5 +1,5 @@
-const SWCanvas = require('./dist/swcanvas.js');
-const fs = require('fs');
+const SWCanvas = require('../dist/swcanvas.js');
+const saveDebugImage = require('./save-debug-image.js');
 
 console.log('=== HTML5 CANVAS-COMPATIBLE XOR DEBUG ===');
 
@@ -72,5 +72,4 @@ testPoints.forEach(([x, y, description]) => {
 
 // Save HTML5 API result
 const pngData = SWCanvas.Core.PngEncoder.encode(surface);
-fs.writeFileSync('debug-html5-xor.basic.png', Buffer.from(pngData));
-console.log('\n✅ HTML5 API debug image saved: debug-html5-xor.basic.png');
+console.log('\n✅ HTML5 API debug image saved: ' + saveDebugImage('debug-html5-xor.basic.png', pngData));

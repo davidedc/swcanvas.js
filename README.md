@@ -15,7 +15,7 @@ See [index page](https://davidedc.github.io/swcanvas.js/) for link to all browse
 - **Memory Efficient Clipping**: Stencil-based clipping system with proper intersection support
 - **Sub-pixel Stroke Rendering**: Thin strokes render with proportional opacity, works with all paint sources
 - **Full Porter-Duff Compositing**: Complete `globalCompositeOperation` support with all 10 standard operations working correctly
-- **Comprehensive Test Coverage**: 95 core tests + 157 visual tests + 85 direct rendering tests
+- **Comprehensive Test Coverage**: core, visual and direct-rendering test suites (see tests/README.md)
 - **Immutable Value Objects**: Point, Rectangle, Transform2D, Color prevent mutation bugs
 - **Cross-Platform**: Works in Node.js and browsers
 - **No Dependencies**: Pure JavaScript implementation
@@ -60,8 +60,8 @@ This generates:
 - `dist/swcanvas.js` - Complete library for development
 - `dist/swcanvas.min.js` - Minified library for production (84% smaller)
 - `dist/swcanvas.min.js.map` - Source map for debugging
-- `tests/dist/core-functionality-tests.js` from 95 individual test files in `/tests/core/`
-- `tests/dist/visual-rendering-tests.js` from 157 individual test files in `/tests/visual/`
+- `tests/dist/core-functionality-tests.js` from the individual test files in `/tests/core/`
+- `tests/dist/visual-rendering-tests.js` from the individual test files in `/tests/visual/`
 
 ### Node.js Usage
 
@@ -161,15 +161,15 @@ npm test
 ```
 
 This runs:
-- 95 modular core functionality tests (automatically uses built tests from `/tests/core/`)
-- 157 visual rendering tests generating PNG files in `tests/output/`
+- The modular core functionality tests (automatically uses built tests from `/tests/core/`)
+- The visual rendering tests, generating PNG files in `tests/output/`
 
 ### Browser Tests
 
 Open `tests/browser/index.html` in a web browser for:
 - Side-by-side HTML5 Canvas vs SWCanvas comparisons
 - Interactive visual tests
-- All 157 visual rendering tests comparisons (automatically uses built modular tests)
+- All visual rendering test comparisons (automatically uses built modular tests)
 - PNG/BMP download functionality
 
 ### Performance Tests
@@ -374,7 +374,7 @@ ctx.setShadowColor(shadowColor.r, shadowColor.g, shadowColor.b, shadowColor.a);
 
 ### Gradients and Patterns
 
-SWCanvas supports HTML5 Canvas-compatible gradients and patterns for advanced fill and stroke operations:
+SWCanvas supports HTML5 Canvas-compatible gradients and patterns for advanced fill and stroke operations. Both are evaluated at each device pixel's centre mapped back through the current transform, so they transform with the CTM under any affine. The radial gradient is HTML5's two-circle cone (transparent outside it). A pattern samples exactly as `drawImage` does (see Image Rendering) and copies its image's pixels at `createPattern`:
 
 #### HTML5 Canvas-Compatible API
 ```javascript
@@ -546,7 +546,8 @@ draw actually RESAMPLES the source — any rotation/skew, or an axis-aligned dra
 whose effective sample step ≠ 1 (the CTM scale and the src/dst rect ratio
 compose) — sampling bilinear at the destination pixel center, filtered
 premultiplied. Draws that do not resample (axis-aligned, step exactly 1 — every
-plain blit) keep the historical nearest-neighbor bytes exactly. WHY bilinear on
+plain blit) take the texel under each destination pixel centre, so a plain blit
+keeps its texels exactly. WHY bilinear on
 rotation: a nearest-neighbor rotation periodically drops the pixels of 1-2px
 source features, disintegrating them into dashes (see
 `debug/probe-rotated-thinline-gaps.js` and
@@ -556,7 +557,15 @@ matches the HTML5 default (`imageSmoothingEnabled` is implemented: default
 `false` forces nearest-neighbor for every transform, rotation included; see
 `tests/core/058-drawimage-scaled-smoothing-contract.js`). A draw whose samples
 land exactly on texel centers (e.g. an exact 90° `setTransform` with integer
-translation) reproduces pure texels bit-exactly, no blur:
+translation) reproduces pure texels bit-exactly, no blur.
+
+`drawImage` follows HTML5's rectangle and filtering rules: negative sizes name
+the same rect from the opposite corner, a source rect reaching outside the image
+is clipped to it (and the destination in proportion), and the bilinear taps
+clamp to the image's edge texel. Patterns sample by the same rule, with one
+difference at the border: a pattern's taps wrap on a repeating axis and read
+transparent past a non-repeating one. Its mapping is the CTM composed with its
+`setTransform`.
 
 ```javascript
 // ImageLike interface: { width, height, data: Uint8ClampedArray }

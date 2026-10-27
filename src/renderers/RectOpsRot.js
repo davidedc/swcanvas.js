@@ -9,7 +9,7 @@
  * Layer 0 (Foundation): QuadScanOps.fillQuad, QuadScanOps.fillSquare
  *
  * Layer 1 (Primitives - do atomic rendering):
- *   fill_Rot_Any (scanline DDA via QuadScanOps)
+ *   fill_Rot_Any (pixel-centre scanline via QuadScanOps)
  *   _stroke_Rot_Alpha (internal, uses QuadScanOps with Set tracking)
  *
  * Layer 2 (Composites - call other *Ops methods):

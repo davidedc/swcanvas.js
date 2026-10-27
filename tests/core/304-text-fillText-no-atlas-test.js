@@ -1,8 +1,10 @@
 // Test: fillText must not crash when the requested font/size has no matching
-// atlas — it should silently render nothing (NO_METRICS path). The test
-// runner preloads the smoke fixture's 3 fonts (Arial reg+bold +
-// BitmapTextInvariant at size 16, density-1), so we deliberately request a
-// font outside that set: Courier New 24 misses on both family AND size.
+// atlas — it should silently render nothing (NO_METRICS path). Both test
+// runners preload the smoke fixture's fonts (tests/smoke-fonts.js: Arial
+// reg+bold + BitmapTextInvariant at size 16), whose metrics bundle holds those
+// fonts only, so we deliberately request a font outside that set: Courier New
+// 24 misses on both family AND size. (Against the full font-assets release,
+// whose metrics cover it, the same call draws placeholder rectangles.)
 
 test('fillText with an unmatched font does not crash, leaves canvas untouched', () => {
     const canvas = SWCanvas.createCanvas(20, 20);

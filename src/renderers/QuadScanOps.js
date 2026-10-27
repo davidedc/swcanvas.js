@@ -1,7 +1,8 @@
 /**
  * QuadScanOps - Static methods for quadrilateral scanline filling
  *
- * Specialized utility for filling 4-vertex convex shapes using scanline DDA.
+ * Specialized utility for filling 4-vertex convex shapes, sampling pixel centres exactly as
+ * PolygonFiller does (so a direct thick line paints what stroke() of the same line paints).
  * Used by LineOps (thick diagonal lines) and RectOpsRot (semi-transparent strokes).
  *
  * NOT for general polygons - use PolygonFiller for arbitrary N-vertex shapes
@@ -18,10 +19,10 @@
 class QuadScanOps {
     // Static pools - reused across calls to eliminate GC pressure
     static _edges = [
-        { p1: null, p2: null, invDeltaY: 0, deltaX: 0, slope: 0, currentX: 0 },
-        { p1: null, p2: null, invDeltaY: 0, deltaX: 0, slope: 0, currentX: 0 },
-        { p1: null, p2: null, invDeltaY: 0, deltaX: 0, slope: 0, currentX: 0 },
-        { p1: null, p2: null, invDeltaY: 0, deltaX: 0, slope: 0, currentX: 0 }
+        { ux: 0, uy: 0, ly: 0, dx: 0, dy: 0 },
+        { ux: 0, uy: 0, ly: 0, dx: 0, dy: 0 },
+        { ux: 0, uy: 0, ly: 0, dx: 0, dy: 0 },
+        { ux: 0, uy: 0, ly: 0, dx: 0, dy: 0 }
     ];
     static _edgeCount = 0;
 
@@ -104,90 +105,48 @@ class QuadScanOps {
         const minY = Math.max(0, Math.floor(Math.min(corners[0].y, corners[1].y, corners[2].y, corners[3].y)));
         const maxY = Math.min(height - 1, Math.ceil(Math.max(corners[0].y, corners[1].y, corners[2].y, corners[3].y)));
 
-        // Pre-compute edge data using static pool (no allocation)
-        // Includes slope and initial currentX for incremental DDA
+        // Each non-horizontal edge by its UPPER end and its differences - exactly what
+        // PolygonFiller._scanRow interpolates with (no allocation)
         QuadScanOps._edgeCount = 0;
         for (let i = 0; i < 4; i++) {
             const p1 = corners[i];
             const p2 = corners[(i + 1) % 4];
-
-            if (p1.y !== p2.y) {
-                // Skip horizontal edges
-                const edge = QuadScanOps._edges[QuadScanOps._edgeCount++];
-                edge.p1 = p1;
-                edge.p2 = p2;
-                edge.invDeltaY = 1 / (p2.y - p1.y);
-                edge.deltaX = p2.x - p1.x;
-                edge.slope = edge.deltaX * edge.invDeltaY;
-                // Compute initial currentX at edge's first active scanline
-                const edgeMinY = Math.min(p1.y, p2.y);
-                const firstActiveY = Math.max(minY, Math.ceil(edgeMinY));
-                edge.currentX = p1.x + (firstActiveY - p1.y) * edge.slope;
-            }
+            if (p1.y === p2.y) continue; // exactly horizontal, as PolygonFiller skips
+            const edge = QuadScanOps._edges[QuadScanOps._edgeCount++];
+            const upper = p2.y > p1.y ? p1 : p2;
+            const lower = p2.y > p1.y ? p2 : p1;
+            edge.ux = upper.x;
+            edge.uy = upper.y;
+            edge.ly = lower.y;
+            edge.dx = lower.x - upper.x;
+            edge.dy = lower.y - upper.y;
         }
 
         // Determine rendering mode
         const usePerPixel = collectTo !== null || skipFrom !== null;
         const intersections = [];
 
-        // Scanline fill with incremental DDA
+        // Scanlines sampled at pixel centres (y + 0.5) with the half-open [upper, lower) edge
+        // test, each crossing interpolated from the edge's upper end: the quad paints exactly
+        // the pixels PolygonFiller paints for the same four corners (a stroke() of the line)
         for (let y = minY; y <= maxY; y++) {
             intersections.length = 0;
-
-            // Find x-intersections using incremental currentX
+            const sample = y + 0.5;
             for (let i = 0; i < QuadScanOps._edgeCount; i++) {
                 const edge = QuadScanOps._edges[i];
-                const p1 = edge.p1;
-                const p2 = edge.p2;
-
-                if ((y >= p1.y && y < p2.y) || (y >= p2.y && y < p1.y)) {
-                    intersections.push(edge.currentX);
-                    edge.currentX += edge.slope; // Incremental update (was: t * deltaX)
+                if (sample >= edge.uy && sample < edge.ly) {
+                    intersections.push(edge.ux + ((sample - edge.uy) / edge.dy) * edge.dx);
                 }
             }
 
-            if (intersections.length === 1) {
-                // Single intersection - draw one pixel (edge case)
-                const x = intersections[0] | 0;
-                if (x >= 0 && x < width) {
-                    const pixelIndex = y * width + x;
-
-                    // Skip if in skipFrom Set
-                    if (skipFrom && skipFrom.has(pixelIndex)) continue;
-
-                    // Add to collectTo Set
-                    if (collectTo) collectTo.add(pixelIndex);
-
-                    // Check clipping
-                    if (clipBuffer) {
-                        const byteIndex = pixelIndex >> 3;
-                        const bitIndex = pixelIndex & 7;
-                        if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
-                    }
-
-                    // Render pixel
-                    if (isOpaque) {
-                        data32[pixelIndex] = packedColor;
-                    } else {
-                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
-                    }
-                }
-            } else if (intersections.length >= 2) {
+            if (intersections.length >= 2) {
                 // Two or more intersections - draw span between min and max
                 const x1i = intersections[0];
                 const x2i = intersections[1];
-                // Half-open right edge, consistent with this filler's
-                // leftX = ceil(min) grid-line convention (a column x is in the
-                // span iff min <= x < max), and with the same fix in
-                // PolygonFiller: the rightmost column is the largest integer
-                // < max, i.e. ceil(max) - 1. The old floor(max) with the
-                // inclusive (rightX - leftX + 1) span over-included the right
-                // column by 1px whenever the right intersection landed on an
-                // integer. Only integer-aligned edges change; for fractional
-                // intersections ceil(max) - 1 === floor(max), so rotated fills
-                // are unaffected.
-                const leftX = Math.max(0, Math.ceil(Math.min(x1i, x2i)));
-                const rightX = Math.min(width - 1, Math.ceil(Math.max(x1i, x2i)) - 1);
+                // Pixel-centre columns, as PolygonFiller: a column x is in the span
+                // [min, max) iff min <= x + 0.5 < max
+                const leftX = Math.max(0, Math.ceil(Math.min(x1i, x2i) - 0.5));
+                const rightX = Math.min(width - 1, Math.ceil(Math.max(x1i, x2i) - 0.5) - 1);
                 const spanLength = rightX - leftX + 1;
 
                 if (spanLength > 0) {

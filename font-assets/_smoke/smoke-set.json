@@ -1,5 +1,5 @@
 {
-  "_comment": "SWCanvas Node text-test fixture spec. scripts/build-smoke-fixture.js reads this and regenerates the sibling QOI atlases + bundle subsets in this directory from the downloaded WebP font-assets release (npm run text:build-smoke-fixture). Edit this file to change the fixture's fonts/densities, then regenerate and commit. Three fonts at densities 1 and 2, size 16: enough to exercise the full drawTextFromAtlas path including the font-invariant character branch, at both atlas densities.",
+  "_comment": "SWCanvas text-test fixture spec, loaded by both test runners (tests/run-tests.js in Node, tests/browser/index.html in the browser) through tests/smoke-fonts.js. scripts/build-smoke-fixture.js reads this and regenerates the sibling atlases (QOI for Node; the release WebP and its -webp.js wrapper for the browser) + bundle subsets in this directory from the downloaded WebP font-assets release (npm run text:build-smoke-fixture). Edit this file to change the fixture's fonts/densities, then regenerate and commit. Three fonts at densities 1 and 2, size 16: enough to exercise the full drawTextFromAtlas path including the font-invariant character branch, at both atlas densities.",
   "fontSets": [
     {
       "name": "Smoke set — Arial 16 (normal + bold)",

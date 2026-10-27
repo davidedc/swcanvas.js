@@ -132,7 +132,7 @@ a caller exists) and has **no direct arm**: it builds an un-baked user-space
 roundRect path at the degenerate radius r = min(w,h)/2 and fills it through the
 generic pipeline under the current CTM.
 
-It once had a dedicated `StadiumOps` renderer built on CircleOps.generateExtents,
+It once had a dedicated `StadiumOps` renderer built on CircleOps' Bresenham extents,
 because (a) a circle+rect+circle composition double-blends its overlaps at
 alpha < 1, and (b) the direct roundRect arm at the degenerate radius lost the
 left/right apex columns of a HORIZONTAL stadium (its corner x extents were
@@ -297,7 +297,7 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt', `_noShadow` | non-Color · composite · round/square cap · shadow | generic via external `SWPath2D` (honours cap/dash; HTML5 anisotropic width under non-uniform CTM); alpha/CTM/clip never gate |
 | `fillText` | direct atlas blit iff `b=c=0, a=d=dpr`, integer e/f; else intermediate buffer + `drawImage` | none (no composite/shadow/alpha/clip gate — both arms honour them via `drawImage`) | `maxWidth` → throw · gradient/pattern → ⚠ silent BLACK substitution (console.warn) | both arms mark path-based |
 | `strokeText` | — | — | ALWAYS throws | — |
-| `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer). SAMPLING is its own two-arm dispatch: NEAREST-NEIGHBOR iff the draw does not resample — axis-aligned AND effective sample step = 1 (per-device-pixel source step `invA*xScale`/`invD*yScale`, where CTM scale and src/dst rect ratio COMPOSE) — else BILINEAR; `imageSmoothingEnabled=false` (per HTML5: boolean-coerced, save/restored, both API layers) forces NN for every draw |
+| `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer). SAMPLING is its own two-arm dispatch: NEAREST-NEIGHBOR iff the draw does not resample — axis-aligned AND effective sample step = 1 (per-device-pixel source step `invA*xScale`/`invD*yScale`, where CTM scale and src/dst rect ratio COMPOSE) — else BILINEAR; `imageSmoothingEnabled=false` (per HTML5: boolean-coerced, save/restored, both API layers) forces NN for every draw. Both arms sample at the pixel centre (`Rasterizer.centreTranslation`), and the bilinear taps clamp to the image (HTML5 filtering rule) — the same decision (`Rasterizer.imageResamples`) and filter (`Rasterizer.filterBilinear`) as pattern paint |
 
 Clip state is NOT a dispatch condition anywhere. With no clip, the renderers do raw fills. A
 clip rect means clamped extents where the rect is wired. `fillStrokeRect`, all `*_Rot_*` arms,
@@ -479,12 +479,12 @@ if (clipBuffer[byteIndex] === 0) {
 
 | Algorithm           | Used By                                  | Purpose                                |
 |---------------------|------------------------------------------|----------------------------------------|
-| Bresenham circle    | CircleOps.stroke1px*, generateExtents    | Pixel-perfect circle outline           |
+| Bresenham circle    | CircleOps.stroke1px*                     | Pixel-perfect circle outline           |
 | Bresenham line      | LineOps thin strokes                     | Pixel-perfect line rasterization       |
 | 8-way symmetry      | CircleOps.stroke1px*                     | Generate 8 points per Bresenham step   |
 | Edge function       | RectOpsRot.fill_Rot_Any                    | Test if pixel inside rotated rect      |
 | Polygon scanline    | LineOps.strokeThickPolygonScan           | Fill thick diagonal lines              |
-| Sqrt-based extent   | CircleOps.fillStroke, strokeThick     | Analytical circle intersection         |
+| Sqrt-based extent   | CircleOps.fill_*, fillStroke, strokeThick | Analytical circle intersection, one sqrt per row |
 | Annulus (ring)      | CircleOps.strokeThick, fillStroke     | Inner/outer radius for thick strokes   |
 | Angle filtering     | ArcOps.*                                 | Filter Bresenham points by angle range |
 | Angle-based iterate | ArcOps.stroke1pxOpaqueExactEndpoints     | Exact start/end pixels for junctions   |
@@ -507,7 +507,7 @@ if (clipBuffer[byteIndex] === 0) {
 |----------------------|----------------------------------------------------------------|----------------------------------------------------|
 | Epsilon contraction  | CircleOps.fillStroke, RoundedRectOpsAA.fillStroke          | FILL_EPSILON = 0.0001 prevents boundary speckles   |
 | Line extend/shorten  | RectOpsRot.stroke_Rot_Any                                        | Proper miter corners for thick rotated rect stroke |
-| Crisp center adjust  | CircleOps, ArcOps                                              | floor(cx - 0.5) for consistent pixel placement     |
+| Pixel-centre frame   | CircleOps/ArcOps fills, thick strokes, fused                   | cX = cx - 0.5: each pixel is tested at its centre (the 1px Bresenham strokes walk integer centres, floor(cx)) |
 | Exact endpoints      | ArcOps.stroke1pxOpaqueExactEndpoints                           | Angle-based iteration guarantees junction pixels   |
 | Event buffer reuse   | ArcOps.*                                                       | Module-level Float32Array(8) avoids per-scanline allocation |
 | Conditional fill extent | RectOpsAA.fillStroke                                          | Semi-transparent stroke → PATH extent; opaque → INNER extent |
@@ -1106,6 +1106,138 @@ current consumers:
    installed. The "fused" bench rows show it: 1.5 ms vs 0.25 ms per corner scene at dpr 1.
    Giving those arms the rect stays entry 13's decision.
 
+### Correctness arc (2026-10)
+
+19. **DONE (2026-10-27): rounded-rect row extents — an empty row is an interval, and columns
+   sample pixel centres.** `RoundedRectOpsAA` returns a row with no columns as the EMPTY interval
+   `{leftX: 0, rightX: -1}` (`rightX < leftX`), never a marker coordinate, so an extent may start
+   at a negative x and every caller tests `rightX < leftX`. (The `-1` marker this replaces collided
+   with a real extent at x = -1 at eight sites; the fused arm lost fill rows there.) Columns are
+   sampled at pixel centres like rows (`ceil(x - 0.5 ± epsilon)`), so a thick ring is exact and
+   symmetric under transposition. Pinned by `tests/core/076` (position invariance off every side,
+   lw 1-7, fused included) and `077` (the exact ring and transpose symmetry). Residual, accepted by
+   the owner: opaque `fillStrokeRoundRect` costs +2-5% (identical span counts; the cost is code
+   shape, and Fizzygum never calls `fillStroke*`).
+20. **DONE (2026-10-27): a stroke is the union of its parts, and its seams are shared.**
+   - Every `StrokeGenerator` part (bodies, joins, caps) is wound like the segment bodies
+     (`_windLikeBodies`), so overlapping parts of one `stroke()` add rather than cancel under
+     nonzero.
+   - A join's point is a vertex of both adjoining bodies' end edges, so a join and its bodies
+     share their seam exactly and no pixel centre on it is left unpainted.
+   - Miter and bevel joins split the connecting area at the join point. The outer half is the
+     bevel triangle, or merges with the miter triangle into one convex kite (miter 4 vertices,
+     bevel 3). The inner half is emitted only when the two segments' lengths sum to less than
+     `halfWidth·|sin turn|` (`_innerTriangleUncovered`); otherwise it lies inside the union of the
+     two bodies.
+   - A round join is one pie from the join point whose rim ends are the bodies' outer corners; a
+     round cap is one half-disc polygon on the body's own end edge.
+   - Round caps and joins are flattened to within 0.25 device px of their circle, and never with
+     fewer than one chord per 45° (`_roundSegments`).
+   - `strokeLine` (butt) and `strokeRect` under a rotation sample pixel centres exactly as
+     `stroke()` does (`LineOps`, `QuadScanOps`).
+
+   Pinned by `tests/core/078`, `079` and `094`-`096`.
+21. **DONE (2026-10-27): the generic filler — one crossing per shared edge, active edges only,
+   and only exactly horizontal edges skipped.**
+   - Each scanline crossing is interpolated from the edge's upper end, whichever way the polygon
+     runs it, so an edge two polygons share crosses at the bit-identical x and the two spans meet
+     exactly. One crossing routine serves fills, strokes and clip masks, and an edge and its
+     parallel twin resolve exact pixel-centre ties the same way (visual 212's 45° stripes are
+     exactly 6 px wide).
+   - Per row the filler visits only the edges that cross it: an edge table ordered by first row
+     (`PolygonFiller._beginScan`), an active list kept in the previous row's crossing order, and
+     crossings ordered by (x, table position) (`_scanRow`). There is no per-row allocation, and
+     the pixels are byte-identical to testing every edge every row.
+   - Only EXACTLY horizontal edges are skipped (`_beginScan`, `isPointInPolygons`,
+     `QuadScanOps`): a near-horizontal edge is the only edge covering its sliver of y, so
+     skipping it would drop every crossing in a row.
+
+   Pinned by `tests/core/079` and `090`.
+22. **DONE (2026-10-27): circles sample pixel centres, and non-finite radii draw nothing.**
+   `fillCircle` (and a full-circle `fillArc`, which delegates to it) fills a pixel iff its centre
+   lies strictly inside the circle (`FILL_EPSILON`-contracted). That is the fused
+   `fillStrokeCircle` fill's rule, so the two are pixel-identical; Bresenham `generateExtents` is
+   deleted. The fill computes every row's span bounds first (one sqrt per row, into `Int32Array`
+   scratch), then fills them in an integer-only loop. All six circle/arc entries draw nothing for
+   NaN or infinite radii (`strokeCircle(Infinity)` used to hang). Pinned by `tests/core/080` and
+   `087`.
+23. **DONE (2026-10-27): curve segment counts are float-noise-proof.** Every count goes through
+   `PathFlattener.segmentCount(q) = max(1, ceil(q - 1e-9))`: the arc/ellipse/arcTo flatteners,
+   Context2D's baking twins, and the stroker's round joins and arc rims. An exact quarter-turn
+   `arcTo` corner arrives from atan2 as 16.000000000000004 at some positions, where a bare ceil
+   gives it 17 segments and the corner's pixels depend on position. Pinned by `tests/core/081`.
+24. **DONE (2026-10-27): the `(path?, fillRule?)` overloads.** The Core API dispatches HTML5's
+   overload by type: a leading string is the fill rule, and an explicit `undefined` counts as
+   omitted, for `fill()`, `clip()` and three-argument `isPointInPath()`; the facade forwards
+   unchanged. DELIBERATELY lenient: an unknown rule string fills and clips nonzero where WebIDL
+   throws a TypeError, and `stroke(non-Path2D)` and `clip(undefined, rule)` stay lenient the same
+   way. Pinned by `tests/core/082` and visual 213.
+25. **DONE (2026-10-27): one image-sampling rule for `drawImage` and patterns.**
+   - `drawImage` follows HTML5's rectangle rules: negative sw/sh/dw/dh name the same rect from the
+     opposite corner, drawn unmirrored; a zero-size source rect paints nothing; a source rect
+     reaching outside the image is clipped to it, and the destination in proportion; one wholly
+     outside paints nothing. None of these throws.
+   - `Rasterizer.imageResamples` decides and `Rasterizer.filterBilinear` filters, for both: the
+     nearest texel iff the device→image mapping is axis-aligned with step exactly 1, else bilinear
+     at the pixel centre, premultiplied, unless `imageSmoothingEnabled` is false. The decision is
+     taken once per draw, or per fill transform.
+   - Every pixel is decided at its centre: the pixel index goes through the inverse with the
+     (0.5, 0.5) offset folded into the translation (`Rasterizer.centreTranslation`). Containment
+     follows the fill rule and nearest-neighbour takes the texel under the centre, so a plain blit
+     keeps its texels exactly and a non-power-of-two scale (dpr 3, a 3× zoom) cannot round a
+     corner sample across a texel edge.
+   - `drawImage`'s bilinear taps clamp to the edge texel outside the image, and read the image's
+     own texels outside the source rect. A pattern's taps wrap on a repeating axis and read
+     transparent past a non-repeating border. A pattern's mapping is the CTM × its `setTransform`;
+     the context binds its smoothing flag through `Pattern.withSmoothing`, a memoized twin; and a
+     pattern snapshots its image's pixels at `createPattern` (one copy, shared by `setTransform`
+     copies and twins).
+   - Edges follow pixel-centre containment; native's geometric edge coverage is deliberately not
+     reproduced. An image drawn piecewise equals the whole up to 1 level of float rounding at
+     8-bit ties.
+
+   Pinned by `tests/core/083`, `084`, `086`, `088` and `093`, and visual 215.
+26. **DONE (2026-10-27): gradients and patterns are evaluated in paint space.** Each device pixel
+   CENTRE is mapped through the inverse CTM, cached per frozen `Transform2D` (on the gradient's own
+   fields, or on the pattern's memo), so radii, angles and isolines transform with the CTM under
+   any affine. The radial gradient is the HTML5 two-circle cone: the largest ω with r(ω) ≥ 0, and
+   transparent outside the cone. A zero-length linear gradient or two identical radial circles
+   paint nothing, and creating them does not throw. Pinned by `tests/core/085` and `086`, and
+   visual 214.
+27. **DONE (2026-10-27): the compat facade's DOM image sources follow HTML5.** A DOM image source
+   with no pixels asks the platform canvas (a 1×1 `drawImage`), which throws `InvalidStateError`
+   exactly when HTML5 does (a broken image, a zero-size canvas); otherwise `drawImage` draws
+   nothing. Compat `createPattern` resolves its source through `_toImageLike`, so it takes every
+   source `drawImage` takes; a source with nothing to draw yet gives `null`. Pinned by
+   `tests/core/041` and `089`, which run in the browser (`testRequiring('dom', …)`).
+28. **DONE (2026-10-27): degenerate curves and the Path2D `ellipse()` subpath.** A Bézier whose
+   ends coincide measures its flatness by its control points' distance from the end point, so a
+   closed cubic loop is drawn and a point-sized quadratic does not recurse until the stack
+   overflows. A Path2D `ellipse()` that opens a subpath starts it, as `arc()` does, so
+   `closePath()` returns to the ellipse's start rather than to (0, 0). Pinned by
+   `tests/core/091` and `092`.
+29. **DONE (2026-10-27): shadows conserve coverage.** A shadow's coverage buffer is blurred by
+   three box passes whose mixed odd widths (P. Kovesi, "Fast Almost-Gaussian Filtering", 2010)
+   come closest to the HTML5 sigma = shadowBlur / 2. Each pass counts samples beyond the buffer as
+   transparent and divides by a fixed 2r+1, so the blur conserves coverage, and the buffer is
+   padded by the passes' full reach (`BoxBlur.spread`). A shadow pixel's alpha is the coverage
+   (globalAlpha in it once) times the shadow colour's alpha, with no calibration factor (the ×8
+   factor this removes made a 0.5-alpha shadow paint 255 where HTML5 paints 128). Pinned by
+   `tests/core/097`.
+30. **DONE (2026-10-27): `drawImage` under canvas-wide composites.** Under `copy`, `source-in`,
+   `source-out`, `destination-in` or `destination-atop`, `drawImage` draws the image source-over
+   into a transparent layer the size of the surface, then composites that layer over every pixel
+   the clip lets through, so outside the image and under alpha-0 texels the operator sees a
+   transparent source, as the fill path does. Every other composite blends the image's own pixels
+   only. Pinned by `tests/core/098`.
+31. **DONE (2026-10-27): source-over and destination-over onto translucent pixels.** The surface
+   holds straight RGBA, so where the destination is translucent its colour counts in proportion to
+   its own alpha, and the mix is divided by the result's alpha (Porter-Duff over). An opaque
+   destination keeps the plain mix, which that formula reduces to there (byte-identical), and an
+   empty one takes the source unchanged. Every source-over writer applies it: `PolygonFiller`'s
+   span and pixel templates, `drawImage`'s inline blend and `CompositeOperations`. Pinned by
+   `tests/core/099`.
+
 ---
 
 ## 10. Code File Summary
@@ -1131,7 +1263,7 @@ current consumers:
 
 ## 11. Test Coverage Analysis
 
-All 34 documented direct rendering functions have **100% explicit test coverage** via dedicated
+All 34 documented direct rendering functions have **100% explicit test coverage** (two of them, `RoundedRectOpsAA.strokeThick_AA_*`, through core tests only — §11.1) via dedicated
 tests in `tests/direct-rendering/cases/`. Three of them (`RectOpsAA.fill_AA_Opaq/Alpha`,
 `RectOpsRot.fill_Rot_Any`) are no longer DISPATCH targets since the fill-arm removal (§9 entries
 15-16) — they survive as internals of the fused/radius-0 paths and are covered through those
@@ -1160,8 +1292,8 @@ entries. `RoundedRectOpsAA.fill_AA_Opaq/Alpha` were deleted outright, and `Stadi
 | `RoundedRectOpsRot.fill_Rot_Any()` *(internal)* | via `RoundedRectOpsRot.fillStroke_Rot_Any` — `roundrect-sgl-szRand-fOpaq-sSemi-*-ornRot-*` tests |
 | `RoundedRectOpsAA.stroke1px_AA_Opaq()` | `roundrect-*-sw1px-*-sOpaq-*` tests |
 | `RoundedRectOpsAA.stroke1px_AA_Alpha()` | `roundrect-sgl-szMix-fNone-sSemi-sw1px-lytCenter-cenMixPG-edgeCrisp-ornAxial-rrrRand-test.js` |
-| `RoundedRectOpsAA.strokeThick_AA_Opaq()` | `roundrect-*-sw1-11px-*-sOpaq-*` tests |
-| `RoundedRectOpsAA.strokeThick_AA_Alpha()` | `roundrect-m6-*-sSemi-*`, `roundrect-m8-*` tests |
+| `RoundedRectOpsAA.strokeThick_AA_Opaq()` | core tests 049, 055, 065, 067, 069, 071–073, 076 and 077 only: the direct `roundrect-*-sw1-11px-*` cases call `fillStrokeRoundRect`, which reaches `fillStroke_AA_Any` |
+| `RoundedRectOpsAA.strokeThick_AA_Alpha()` | the same core tests only (the `roundrect-m6-*`/`m8-*` cases reach `fillStroke_AA_Any` too) |
 | `RoundedRectOpsRot.stroke_Rot_Any()` | `roundrect-m12-*-ornRot-*`, `roundrect-sgl-szRand-*-ornRot-*` tests |
 | `RoundedRectOpsAA.fillStroke_AA_Any()` | Multiple fill+stroke tests |
 | `RoundedRectOpsRot.fillStroke_Rot_Any()` | `roundrect-sgl-szRand-fOpaq-sSemi-sw{1px,2-40px}-*-ornRot-*` tests |
@@ -1214,8 +1346,8 @@ entries. `RoundedRectOpsAA.fill_AA_Opaq/Alpha` were deleted outright, and `Stadi
 | **Total** | **37** | **37 ✓** |
 
 **Test Suite Statistics:**
-- **85 test files** in `tests/direct-rendering/cases/`
-- **425 test runs passed** (85 tests × 5 iterations)
+- **Test files** in `tests/direct-rendering/cases/` (counts: tests/README.md)
+- Each case runs 5 iterations with `-i 5`
 - Run command: `node tests/direct-rendering/run-direct-rendering-tests.js -i 5`
 
 **Dispatch-contract pins (`tests/core/`, added 2026-08-13):** the DISPATCH layer's

@@ -41,9 +41,20 @@ function buildCoreTests() {
 (function(global) {
     'use strict';
     
-    // Simple test framework for Node.js and browser compatibility
-    const testResults = { passed: 0, failed: 0 };
-    
+    // Simple test framework for Node.js and browser compatibility.
+    // total = passed + failed + skipped.length, set when the run ends.
+    const testResults = { passed: 0, failed: 0, total: 0, failures: [], skipped: [], savedPNGs: [] };
+
+    // What a test can require of its environment (testRequiring). Only the DOM
+    // splits the two runners: an element image source (an HTMLImageElement, an
+    // HTMLVideoElement, an ImageBitmap) exists only where there is a DOM, and
+    // SWCanvas's refusal of one only where there is none. Every other test runs
+    // in both, and none may assume either.
+    const ENVIRONMENT = {
+        'dom': typeof document !== 'undefined',
+        'no-dom': typeof document === 'undefined'
+    };
+
     function assertEquals(actual, expected, message) {
         if (actual !== expected) {
             const error = message || \`Expected \${expected}, got \${actual}\`;
@@ -69,36 +80,55 @@ function buildCoreTests() {
             console.log(\`✓ \${testName}\`);
         } catch (error) {
             testResults.failed++;
+            testResults.failures.push({ name: testName, message: error.message });
             console.log(\`✗ \${testName}\`);
             console.log(\`  \${error.message}\`);
         }
     }
     
+    // A test of something only one environment has. Where the capability is
+    // missing the test is SKIPPED: listed in testResults.skipped and logged with
+    // the capability it needs, never counted as passed. The other runner runs it.
+    function testRequiring(capability, testName, testFunction) {
+        if (!(capability in ENVIRONMENT)) {
+            throw new Error(\`testRequiring: unknown capability '\${capability}' (known: \${Object.keys(ENVIRONMENT).join(', ')})\`);
+        }
+        if (!ENVIRONMENT[capability]) {
+            testResults.skipped.push(testName);
+            console.log(\`- \${testName} [skipped: needs \${capability}]\`);
+            return;
+        }
+        test(testName, testFunction);
+    }
+
     function log(message) {
         console.log(\`  \${message}\`);
     }
     
-    // Helper function to save PNG files (Node.js only)
+    // Helper function to save PNG files. Node.js only: in the browser it does
+    // nothing. A failed save throws, failing the test that called it, and each
+    // file written is recorded in testResults.savedPNGs for the runner's
+    // orphan check.
     function savePNG(surface, filename, description, SWCanvas) {
-        try {
-            const pngData = SWCanvas.Core.PngEncoder.encode(surface);
-            const fs = require('fs');
-            const path = require('path');
-            
-            // Create output directory if it doesn't exist
-            const outputDir = path.join(__dirname, 'output');
-            if (!fs.existsSync(outputDir)) {
-                fs.mkdirSync(outputDir, { recursive: true });
-            }
-            
-            const filePath = path.join(outputDir, filename);
-            // Convert ArrayBuffer to Buffer for Node.js
-            const buffer = Buffer.from(pngData);
-            fs.writeFileSync(filePath, buffer);
-            console.log(\`  Saved \${description}: \${filePath}\`);
-        } catch (error) {
-            console.log(\`  Warning: Could not save \${description} - \${error.message}\`);
+        if (typeof require !== 'function') {
+            return;
         }
+        const pngData = SWCanvas.Core.PngEncoder.encode(surface);
+        const fs = require('fs');
+        const path = require('path');
+
+        // Create output directory if it doesn't exist
+        const outputDir = path.join(__dirname, 'output');
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        const filePath = path.join(outputDir, filename);
+        // Convert ArrayBuffer to Buffer for Node.js
+        const buffer = Buffer.from(pngData);
+        fs.writeFileSync(filePath, buffer);
+        testResults.savedPNGs.push(filename);
+        console.log(\`  Saved \${description}: \${filePath}\`);
     }
     
     // Core functionality tests - run all tests
@@ -121,7 +151,8 @@ function buildCoreTests() {
     });
     
     // Static footer
-    concatenated += `        return testResults;
+    concatenated += `        testResults.total = testResults.passed + testResults.failed + testResults.skipped.length;
+        return testResults;
     }
     
     // Export for both Node.js and browser

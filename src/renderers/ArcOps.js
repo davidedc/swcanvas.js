@@ -14,10 +14,10 @@
  *
  * CALL HIERARCHY:
  * ---------------
- * Layer 0 (Foundation): CircleOps.generateExtents (for Bresenham data), inline markers
+ * Layer 0 (Foundation): CircleOps.fill_Opaq/fill_Alpha (full circles), SpanOps, inline markers
  *
  * Layer 1 (Primitives - do atomic rendering):
- *   fill_Opaq, fill_Alpha (use CircleOps extents + angle filtering via isAngleInRange_Fast)
+ *   fill_Opaq, fill_Alpha (full circle -> CircleOps; else sqrt row extents + angle filtering via isAngleInRange_Fast)
  *   stroke1px_Opaq (uses SET_OPAQUE_ARC_FAST_CLIPPED inline template)
  *   stroke1px_Alpha (uses BLEND_ALPHA_ARC_FAST_CLIPPED inline template)
  *   stroke1px_Opaq_Exact (uses angle-based iteration for exact endpoints)

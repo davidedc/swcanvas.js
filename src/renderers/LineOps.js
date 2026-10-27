@@ -127,20 +127,19 @@ class LineOps {
             }
             return true;
         } else if (isOpaqueColor) {
-            // Direct rendering for thick axis-aligned lines: render as rectangle
-            const x1i = Math.floor(x1);
-            const y1i = Math.floor(y1);
-            const x2i = Math.floor(x2);
-            const y2i = Math.floor(y2);
+            // Direct rendering for thick axis-aligned lines: render as rectangle. Only an EXACTLY
+            // horizontal or vertical line is a rectangle; it covers the pixels whose centres lie in
+            // it, under the half-open rule every filler uses (a coordinate v starts or ends a run at
+            // ceil(v - 0.5)), so it paints what stroke() paints for the same line
             const data32 = surface.data32;
 
-            if (y1i === y2i) {
+            if (y1 === y2) {
                 // Horizontal thick line - render as filled rectangle
                 const halfWidth = lineWidth / 2;
-                const topY = Math.floor(y1 - halfWidth);
-                const bottomY = Math.floor(y1 + halfWidth);
-                const leftX = Math.min(x1i, x2i);
-                const rightX = Math.max(x1i, x2i) - 1;
+                const topY = Math.ceil(y1 - halfWidth - 0.5);
+                const bottomY = Math.ceil(y1 + halfWidth - 0.5);
+                const leftX = Math.ceil(Math.min(x1, x2) - 0.5);
+                const rightX = Math.ceil(Math.max(x1, x2) - 0.5) - 1;
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 // Y bounds clamping for the loop
@@ -158,13 +157,13 @@ class LineOps {
                     SpanOps.fill_Opaq(data32, width, height, clampedLeftX, y, spanLength, packedColor, clipBuffer);
                 }
                 return true;
-            } else if (x1i === x2i) {
+            } else if (x1 === x2) {
                 // Vertical thick line - render as filled rectangle
                 const halfWidth = lineWidth / 2;
-                const leftX = Math.floor(x1 - halfWidth);
-                const rightX = Math.floor(x1 + halfWidth);
-                const topY = Math.min(y1i, y2i);
-                const bottomY = Math.max(y1i, y2i);
+                const leftX = Math.ceil(x1 - halfWidth - 0.5);
+                const rightX = Math.ceil(x1 + halfWidth - 0.5); // exclusive
+                const topY = Math.ceil(Math.min(y1, y2) - 0.5);
+                const bottomY = Math.ceil(Math.max(y1, y2) - 0.5); // exclusive
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 // Y bounds clamping for the loop
@@ -172,11 +171,9 @@ class LineOps {
                 const clampedBottomY = Math.min(height, bottomY);
                 if (clampedTopY >= clampedBottomY) return true;
 
-                // X bounds clamping (for span width)
-                // Note: rightX - leftX is the span width (not +1) because leftX/rightX
-                // are computed from floor(x - halfWidth) / floor(x + halfWidth)
+                // X bounds clamping (rightX is exclusive)
                 const clampedLeftX = Math.max(0, leftX);
-                const clampedRightX = Math.min(width, rightX); // Use width (not width-1) since rightX is already exclusive
+                const clampedRightX = Math.min(width, rightX);
                 const spanLength = clampedRightX - clampedLeftX;
                 if (spanLength <= 0) return true;
 

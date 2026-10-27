@@ -52,7 +52,7 @@ Arc templates use fast cross-product angle checks (10-50x faster than atan2).
 
 ```bash
 npm run build                              # Expand markers during build
-node tests/build/test-preprocessor.js      # Test preprocessor (45 tests)
+node tests/build/test-preprocessor.js      # Test preprocessor
 ```
 
 Verify expansion in `dist/swcanvas.js`.

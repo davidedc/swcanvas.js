@@ -20,6 +20,11 @@ class Gradient {
     constructor() {
         this._colorStops = [];
         this._sorted = false;
+        // _toGradientSpace's per-transform inverse cache and its scalar output.
+        this._inverseOf = null;
+        this._inverse = null;
+        this._ux = 0;
+        this._uy = 0;
     }
 
     /**
@@ -122,8 +127,11 @@ class Gradient {
     }
 
     /**
-     * Calculate color for a pixel position (must be implemented by subclasses)
-     * Subclasses should use the transform to map pixel coordinates to gradient space.
+     * Calculate color for a pixel position (must be implemented by subclasses).
+     * Every subclass evaluates its gradient in GRADIENT (user) space: the device
+     * pixel is mapped back through the inverse CTM by _toGradientSpace, so the
+     * CTM transforms the whole gradient - radii, angles and isolines included -
+     * exactly as HTML5 specifies, under any affine CTM.
      * @param {number} x - Pixel x coordinate in canvas space (integer)
      * @param {number} y - Pixel y coordinate in canvas space (integer)
      * @param {Transform2D} transform - Current canvas transform (used to invert pixel to gradient coords)
@@ -132,6 +140,33 @@ class Gradient {
      */
     getColorForPixel(x, y, transform) {
         throw new Error('getColorForPixel must be implemented by subclass');
+    }
+
+    /**
+     * Map device pixel (x, y), sampled at its centre, into gradient space; the
+     * result lands in this._ux / this._uy (scalars - no per-pixel allocation).
+     * The inverse CTM is cached per transform OBJECT: Transform2D is frozen, so
+     * one identity test per pixel replaces a matrix inversion. Returns false
+     * when the CTM is singular (a zero-area mapping paints nothing).
+     * @private
+     */
+    _toGradientSpace(x, y, transform) {
+        if (transform !== this._inverseOf) {
+            this._inverseOf = transform;
+            try {
+                this._inverse = transform.invert();
+            } catch (e) {
+                this._inverse = null;
+            }
+        }
+        const inv = this._inverse;
+        if (inv === null) return false;
+        // The pixel CENTRE (HTML5 semantics), as the polygon scanlines sample.
+        const px = x + 0.5;
+        const py = y + 0.5;
+        this._ux = inv.a * px + inv.c * py + inv.e;
+        this._uy = inv.b * px + inv.d * py + inv.f;
+        return true;
     }
 }
 
@@ -161,39 +196,27 @@ class LinearGradient extends Gradient {
     }
 
     /**
-     * Calculate color for a pixel position
+     * Calculate color for a pixel position: project the gradient-space point
+     * onto the start→end line. A zero-length line paints nothing (HTML5).
      * @param {number} x - Pixel x coordinate in canvas space
      * @param {number} y - Pixel y coordinate in canvas space
-     * @param {Transform2D} transform - Current canvas transform (applied to gradient)
+     * @param {Transform2D} transform - Current canvas transform
      * @returns {Color} Color for this pixel
      */
     getColorForPixel(x, y, transform) {
-        // Transform gradient coordinates by current transform
-        // Gradients work in transformed coordinate space
-        const p0 = transform.transformPoint(new Point(this._x0, this._y0));
-        const p1 = transform.transformPoint(new Point(this._x1, this._y1));
-
-        const dx = p1.x - p0.x;
-        const dy = p1.y - p0.y;
-        const lengthSquared = dx * dx + dy * dy;
-
-        if (lengthSquared === 0) {
-            // Degenerate gradient (same start/end points)
-            return this._getColorAt(0);
+        if (this._lengthSquared === 0 || !this._toGradientSpace(x, y, transform)) {
+            return Color.transparent;
         }
-
-        // Calculate parameter t along gradient line
-        // Project pixel onto gradient line
-        const px = x - p0.x;
-        const py = y - p0.y;
-        const t = (px * dx + py * dy) / lengthSquared;
-
+        const t = ((this._ux - this._x0) * this._dx + (this._uy - this._y0) * this._dy) / this._lengthSquared;
         return this._getColorAt(t);
     }
 }
 
 /**
- * Radial Gradient implementation
+ * Radial Gradient implementation - the HTML5 two-circle CONE: circles
+ * c(ω) = c0 + ω(c1 − c0), r(ω) = r0 + ω(r1 − r0); a point takes the colour
+ * at the LARGEST ω whose circle passes through it with r(ω) ≥ 0, and a point
+ * no such circle reaches (outside the cone) stays transparent black.
  */
 class RadialGradient extends Gradient {
     /**
@@ -212,17 +235,23 @@ class RadialGradient extends Gradient {
         Validators.nonNegative(r0, 'Inner radius');
         Validators.nonNegative(r1, 'Outer radius');
 
-        // Check for identical circles (would paint nothing)
-        if (x0 === x1 && y0 === y1 && r0 === r1) {
-            throw new Error('Radial gradient circles must not be identical');
-        }
-
         this._x0 = x0;
         this._y0 = y0;
         this._r0 = r0;
         this._x1 = x1;
         this._y1 = y1;
         this._r1 = r1;
+
+        // |p − c(ω)| = r(ω) is the quadratic  a·ω² − 2·b·ω + c = 0  with
+        // a = |c1 − c0|² − (r1 − r0)², b = (p − c0)·(c1 − c0) + r0(r1 − r0),
+        // c = |p − c0|² − r0²; a and the per-gradient terms are constant.
+        this._cdx = x1 - x0;
+        this._cdy = y1 - y0;
+        this._dr = r1 - r0;
+        this._a = this._cdx * this._cdx + this._cdy * this._cdy - this._dr * this._dr;
+        this._concentric = this._cdx === 0 && this._cdy === 0;
+        // Identical circles paint nothing (HTML5).
+        this._paintsNothing = this._concentric && this._dr === 0;
     }
 
     /**
@@ -233,29 +262,41 @@ class RadialGradient extends Gradient {
      * @returns {Color} Color for this pixel
      */
     getColorForPixel(x, y, transform) {
-        // Transform gradient coordinates by current transform
-        const p0 = transform.transformPoint(new Point(this._x0, this._y0));
-        const p1 = transform.transformPoint(new Point(this._x1, this._y1));
+        if (this._paintsNothing || !this._toGradientSpace(x, y, transform)) {
+            return Color.transparent;
+        }
+        const pdx = this._ux - this._x0;
+        const pdy = this._uy - this._y0;
 
-        // For simplicity, we'll use distance-based calculation
-        // More accurate would be solving the cone intersection equation
-        const d0 = Math.sqrt((x - p0.x) ** 2 + (y - p0.y) ** 2);
-        const d1 = Math.sqrt((x - p1.x) ** 2 + (y - p1.y) ** 2);
-
-        // Simple linear interpolation based on distance ratio
-        const maxDistance = Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2) + this._r1;
-
-        let t;
-        if (d0 <= this._r0) {
-            t = 0; // Inside inner circle
-        } else if (d1 >= this._r1) {
-            t = 1; // Outside outer circle
-        } else {
-            // Simple distance-based calculation
-            t = (d0 - this._r0) / (maxDistance - this._r0);
+        if (this._concentric) {
+            // One root survives r(ω) ≥ 0: ω = (|p − c0| − r0) / (r1 − r0).
+            const t = (Math.sqrt(pdx ** 2 + pdy ** 2) - this._r0) / this._dr;
+            return this._getColorAt(t);
         }
 
-        return this._getColorAt(Math.max(0, Math.min(1, t)));
+        const r0 = this._r0;
+        const dr = this._dr;
+        const b = pdx * this._cdx + pdy * this._cdy + r0 * dr;
+        const c = pdx * pdx + pdy * pdy - r0 * r0;
+        let omega;
+        if (this._a === 0) {
+            // One circle touches the other internally: the quadratic is linear.
+            if (b === 0) return Color.transparent;
+            omega = c / (2 * b);
+            if (r0 + omega * dr < 0) return Color.transparent;
+        } else {
+            const disc = b * b - this._a * c;
+            if (disc < 0) return Color.transparent; // outside the cone
+            const root = Math.sqrt(disc);
+            const w1 = (b + root) / this._a;
+            const w2 = (b - root) / this._a;
+            const hi = w1 > w2 ? w1 : w2;
+            const lo = w1 > w2 ? w2 : w1;
+            if (r0 + hi * dr >= 0) omega = hi;
+            else if (r0 + lo * dr >= 0) omega = lo;
+            else return Color.transparent;
+        }
+        return this._getColorAt(omega);
     }
 }
 
@@ -278,18 +319,20 @@ class ConicGradient extends Gradient {
     }
 
     /**
-     * Calculate color for a pixel position
+     * Calculate color for a pixel position: the gradient-space angle around the
+     * centre, measured from the start angle.
      * @param {number} x - Pixel x coordinate in canvas space
      * @param {number} y - Pixel y coordinate in canvas space
      * @param {Transform2D} transform - Current canvas transform
      * @returns {Color} Color for this pixel
      */
     getColorForPixel(x, y, transform) {
-        // Transform gradient center by current transform
-        const center = transform.transformPoint(new Point(this._x, this._y));
+        if (!this._toGradientSpace(x, y, transform)) {
+            return Color.transparent;
+        }
 
         // Calculate angle from center to pixel
-        let pixelAngle = Math.atan2(y - center.y, x - center.x) - this._angle;
+        let pixelAngle = Math.atan2(this._uy - this._y, this._ux - this._x) - this._angle;
 
         // Normalize angle to [0, 2π)
         while (pixelAngle < 0) {

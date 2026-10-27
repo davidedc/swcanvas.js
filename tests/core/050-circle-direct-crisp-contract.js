@@ -10,9 +10,9 @@
 //   2. 1px STROKE center convention: the Bresenham stroke FLOORS the center, so
 //      every fractional center spelling renders byte-identically to the integer
 //      one, and the ring spans exactly (2r+1) pixels - one wider than the fill
-//      (which floors cx - 0.5). This fill-vs-1px-stroke asymmetry is deliberate
-//      and pinned here so a "harmonization" cannot slip in silently and churn
-//      every existing consumer's pixels.
+//      (which samples pixel centers - tests/core/080). This fill-vs-1px-stroke
+//      asymmetry is deliberate and pinned here so a "harmonization" cannot slip
+//      in silently and churn every existing consumer's pixels.
 //   3. Ring quality: closed (every stroke pixel has >= 2 of 8 neighbors),
 //      mirror-symmetric in both axes; semi-transparent rings blend every pixel
 //      exactly once (single blended level - no overdraw, no gap-fills).

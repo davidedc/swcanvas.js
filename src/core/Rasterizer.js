@@ -26,6 +26,134 @@ class Rasterizer {
 
         this._surface = surface;
         this._currentOp = null;
+        // Out-parameter of filterBilinear for drawImage's filtered taps, reused
+        // by every draw so the pixel loop allocates nothing.
+        this._texel = { r: 0, g: 0, b: 0, a: 0 };
+    }
+
+    /**
+     * The ONE image-sampling decision, shared by drawImage and pattern paint:
+     * does a draw RESAMPLE its image? It does not when the device→image mapping
+     * is axis-aligned and steps exactly one texel per device pixel on both axes;
+     * every other mapping resamples. A resampling draw filters bilinearly
+     * (filterBilinear) unless imageSmoothingEnabled is false; a draw that does
+     * not resample takes the nearest texel, byte-for-byte. Callers decide once
+     * per draw or per fill transform, never per pixel.
+     * @param {number} b - Off-diagonal term of the mapping (zero in the forward
+     *   mapping iff zero in its inverse, so either direction may be passed)
+     * @param {number} c - The other off-diagonal term
+     * @param {number} stepX - Texels advanced per device pixel along x
+     * @param {number} stepY - Texels advanced per device pixel along y
+     * @returns {boolean}
+     */
+    static imageResamples(b, c, stepX, stepY) {
+        return b !== 0 || c !== 0 || stepX !== 1 || stepY !== 1;
+    }
+
+    /**
+     * Translation of the map that takes a device pixel's INDEX (x, y) to the
+     * image-space point of its CENTRE (x + 0.5, y + 0.5): the device→image
+     * mapping's own translation plus its linear part applied to (0.5, 0.5).
+     * Every image draw (drawImage and pattern paint, nearest and filtered)
+     * samples at the point a*x + c*y + centreTranslation(a, c, e), so the
+     * pixel centre costs no per-pixel work; call once per draw / per fill
+     * transform for each axis (a, c, e) and (b, d, f).
+     * @param {number} a - Linear coefficient applied to x
+     * @param {number} c - Linear coefficient applied to y
+     * @param {number} e - Translation
+     * @returns {number}
+     */
+    static centreTranslation(a, c, e) {
+        return e + (a + c) * 0.5;
+    }
+
+    /**
+     * Bilinear filter of the four texels around a sample point — the tap
+     * arithmetic of every filtered image draw (drawImage and pattern paint).
+     * Filtered PREMULTIPLIED: source texels are straight RGBA and fully
+     * transparent texels carry arbitrary RGB, so a straight-alpha lerp would
+     * bleed that RGB into edges (dark fringes). Each texel's RGB is weighted by
+     * its alpha, accumulated, and un-premultiplied at the end. Plain double
+     * arithmetic in a fixed accumulation order (00, 10, 01, 11) — byte-identical
+     * on V8 and JSC.
+     *
+     * The caller applies its edge rule through the arguments: it resolves the
+     * tap columns/rows (drawImage clamps to the edge texel, a pattern wraps a
+     * repeating axis), and passes the per-axis weights (1 - fx, fx, 1 - fy, fy),
+     * zeroing the weight of a tap that reads nothing (a pattern's non-repeating
+     * axis beyond the image). A zero-weight tap is never read.
+     * @param {Uint8ClampedArray} data - Straight RGBA texels
+     * @param {number} width - Image width in texels
+     * @param {number} tx0 - Column of the left taps
+     * @param {number} tx1 - Column of the right taps
+     * @param {number} ty0 - Row of the top taps
+     * @param {number} ty1 - Row of the bottom taps
+     * @param {number} wx0 - Weight of the left column
+     * @param {number} wx1 - Weight of the right column
+     * @param {number} wy0 - Weight of the top row
+     * @param {number} wy1 - Weight of the bottom row
+     * @param {{r: number, g: number, b: number, a: number}} out - Receives the
+     *   filtered straight RGBA
+     * @returns {boolean} false (out untouched) when every weighted tap is
+     *   transparent
+     */
+    static filterBilinear(data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, out) {
+        const w00 = wx0 * wy0;
+        const w10 = wx1 * wy0;
+        const w01 = wx0 * wy1;
+        const w11 = wx1 * wy1;
+        let aSum = 0;
+        let rSum = 0;
+        let gSum = 0;
+        let bSum = 0;
+        if (w00 !== 0) {
+            const o = (ty0 * width + tx0) * 4;
+            const wa = w00 * data[o + 3];
+            if (wa !== 0) {
+                aSum += wa;
+                rSum += wa * data[o];
+                gSum += wa * data[o + 1];
+                bSum += wa * data[o + 2];
+            }
+        }
+        if (w10 !== 0) {
+            const o = (ty0 * width + tx1) * 4;
+            const wa = w10 * data[o + 3];
+            if (wa !== 0) {
+                aSum += wa;
+                rSum += wa * data[o];
+                gSum += wa * data[o + 1];
+                bSum += wa * data[o + 2];
+            }
+        }
+        if (w01 !== 0) {
+            const o = (ty1 * width + tx0) * 4;
+            const wa = w01 * data[o + 3];
+            if (wa !== 0) {
+                aSum += wa;
+                rSum += wa * data[o];
+                gSum += wa * data[o + 1];
+                bSum += wa * data[o + 2];
+            }
+        }
+        if (w11 !== 0) {
+            const o = (ty1 * width + tx1) * 4;
+            const wa = w11 * data[o + 3];
+            if (wa !== 0) {
+                aSum += wa;
+                rSum += wa * data[o];
+                gSum += wa * data[o + 1];
+                bSum += wa * data[o + 2];
+            }
+        }
+        if (aSum === 0) return false; // all taps transparent
+        // Un-premultiply back to straight RGBA (the alpha weights cancel out of
+        // the RGB average).
+        out.r = Math.round(rSum / aSum);
+        out.g = Math.round(gSum / aSum);
+        out.b = Math.round(bSum / aSum);
+        out.a = Math.round(aSum);
+        return true;
     }
 
     /**
@@ -510,8 +638,14 @@ class Rasterizer {
             adjustedStrokeProps = { ...strokeProps, lineWidth: 1.0 };
         }
 
-        // Generate stroke polygons using geometric approach
-        const strokePolygons = StrokeGenerator.generateStrokePolygons(path, adjustedStrokeProps);
+        // Generate stroke polygons using geometric approach, round parts flattened for the device
+        // size the op transform gives them
+        const transform = this._currentOp.transform;
+        const strokePolygons = StrokeGenerator.generateStrokePolygons(
+            path,
+            adjustedStrokeProps,
+            Math.max(transform.scaleX, transform.scaleY)
+        );
 
         if (this._requiresCanvasWideCompositing(this._currentOp.composite)) {
             // Canvas-wide compositing path: build source mask then perform canvas-wide compositing
@@ -564,10 +698,78 @@ class Rasterizer {
     drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh) {
         this._requireActiveOp();
 
+        // A canvas-wide composite also acts where the image is not
+        // (_drawImageCanvasWide). Plain source-over blits skip the lookup.
+        const composite = this._currentOp.composite;
+        const canvasWide = composite !== 'source-over' && this._requiresCanvasWideCompositing(composite);
+
         // Wrap the actual image drawing logic with shadow pipeline
         ShadowPipeline.renderWithShadow(this, () => {
-            this._drawImageInternal.apply(this, arguments);
+            if (canvasWide) {
+                this._drawImageCanvasWide(arguments);
+            } else {
+                this._drawImageInternal.apply(this, arguments);
+            }
         });
+    }
+
+    /**
+     * drawImage under a canvas-wide composite (copy, source-in, source-out,
+     * destination-in, destination-atop). These operators act on every pixel
+     * the clip lets through, and where the source is transparent — outside
+     * the image and under its fully transparent texels — they give what the
+     * operator gives for a transparent source. So the image is drawn
+     * source-over into a transparent layer the size of the surface (the source
+     * as it would land), and that layer is composited over every unclipped
+     * pixel, as the fill path's _performCanvasWideCompositing composites its
+     * paint with a transparent source wherever the coverage mask is empty.
+     * @param {Arguments} args - drawImage's arguments
+     * @private
+     */
+    _drawImageCanvasWide(args) {
+        const op = this._currentOp;
+        const surface = this._surface;
+        const layer = new Surface(surface.width, surface.height);
+        this._surface = layer;
+        this._currentOp = Object.assign({}, op, { composite: 'source-over', clipMask: null, clipRect: null });
+        try {
+            this._drawImageInternal.apply(this, args);
+        } finally {
+            this._surface = surface;
+            this._currentOp = op;
+        }
+
+        const composite = op.composite;
+        const clipMask = op.clipMask;
+        const clipRect = op.clipRect;
+        const x0 = clipRect ? Math.max(0, clipRect.x0) : 0;
+        const y0 = clipRect ? Math.max(0, clipRect.y0) : 0;
+        const x1 = clipRect ? Math.min(surface.width, clipRect.x1) : surface.width;
+        const y1 = clipRect ? Math.min(surface.height, clipRect.y1) : surface.height;
+        const src = layer.data;
+        const dst = surface.data;
+        for (let y = y0; y < y1; y++) {
+            for (let x = x0; x < x1; x++) {
+                if (clipMask && clipMask.isPixelClipped(x, y)) continue;
+                const so = y * layer.stride + x * 4;
+                const o = y * surface.stride + x * 4;
+                const result = CompositeOperations.blendPixel(
+                    composite,
+                    src[so],
+                    src[so + 1],
+                    src[so + 2],
+                    src[so + 3],
+                    dst[o],
+                    dst[o + 1],
+                    dst[o + 2],
+                    dst[o + 3]
+                );
+                dst[o] = result.r;
+                dst[o + 1] = result.g;
+                dst[o + 2] = result.b;
+                dst[o + 3] = result.a;
+            }
+        }
     }
 
     /**
@@ -625,14 +827,61 @@ class Rasterizer {
             throw new Error('Invalid number of arguments for drawImage');
         }
 
-        // Validate source rectangle bounds
+        // HTML5 rectangle semantics. A negative width or height names the same
+        // rectangle from its opposite corner and is drawn in the original
+        // direction (never mirrored), so both rects are normalised first.
+        if (sourceWidth < 0) {
+            sourceX += sourceWidth;
+            sourceWidth = -sourceWidth;
+        }
+        if (sourceHeight < 0) {
+            sourceY += sourceHeight;
+            sourceHeight = -sourceHeight;
+        }
+        if (destWidth < 0) {
+            destX += destWidth;
+            destWidth = -destWidth;
+        }
+        if (destHeight < 0) {
+            destY += destHeight;
+            destHeight = -destHeight;
+        }
+
+        // A zero-size source rect paints nothing. A source rect reaching outside
+        // the image is clipped to it, and the destination rect in the same
+        // proportion; one wholly outside paints nothing.
+        if (sourceWidth === 0 || sourceHeight === 0) return;
         if (
             sourceX < 0 ||
             sourceY < 0 ||
             sourceX + sourceWidth > imageData.width ||
             sourceY + sourceHeight > imageData.height
         ) {
-            throw new Error('Source rectangle is outside image bounds');
+            const destPerSourceX = destWidth / sourceWidth;
+            const destPerSourceY = destHeight / sourceHeight;
+            if (sourceX < 0) {
+                destX -= sourceX * destPerSourceX;
+                destWidth += sourceX * destPerSourceX;
+                sourceWidth += sourceX;
+                sourceX = 0;
+            }
+            if (sourceY < 0) {
+                destY -= sourceY * destPerSourceY;
+                destHeight += sourceY * destPerSourceY;
+                sourceHeight += sourceY;
+                sourceY = 0;
+            }
+            const overX = sourceX + sourceWidth - imageData.width;
+            if (overX > 0) {
+                destWidth -= overX * destPerSourceX;
+                sourceWidth -= overX;
+            }
+            const overY = sourceY + sourceHeight - imageData.height;
+            if (overY > 0) {
+                destHeight -= overY * destPerSourceY;
+                sourceHeight -= overY;
+            }
+            if (sourceWidth <= 0 || sourceHeight <= 0) return;
         }
 
         // Apply transform to destination rectangle corners
@@ -669,9 +918,9 @@ class Rasterizer {
         // Get inverse transform for mapping device pixels back to source
         const inverseTransform = transform.invert();
         // Hoist the inverse-transform coefficients and apply them as scalars inside
-        // the loop (destPoint = inv * (deviceX, deviceY)) so no {x,y} object is
-        // allocated per pixel. Byte-identical to inverseTransform.transformPoint,
-        // which computes a*x + c*y + e / b*x + d*y + f in exactly this order.
+        // the loop (a*x + c*y + e / b*x + d*y + f, the order of
+        // inverseTransform.transformPoint) so no {x,y} object is allocated per
+        // pixel.
         const invA = inverseTransform.a, invB = inverseTransform.b, invC = inverseTransform.c;
         const invD = inverseTransform.d, invE = inverseTransform.e, invF = inverseTransform.f;
 
@@ -695,7 +944,7 @@ class Rasterizer {
         // (the same-size 1:1 blit, e.g., the per-glyph + scratch-to-main
         // drawImage calls BitmapText emits for colored text), the ratio is
         // exactly 1.0 in IEEE 754 and the inner-loop mapping reduces to
-        // `sourceX + (destPoint.x - destX)` — bit-exact integer arithmetic.
+        // `sourceX + (centerPointX - destX)` — exact arithmetic.
         // Critical: do NOT compute the mapping as `(d / dW) * sW` inside the
         // loop. For many denominators (e.g. dW=191), `((d/191)*191)` rounds
         // to d−ε (e.g. 27.999...) for some integer d, then `Math.floor`
@@ -703,13 +952,16 @@ class Rasterizer {
         // column for an adjacent one — sometimes a transparent neighbour —
         // dropping or duplicating pixels in an FP-precision-of-the-denominator
         // pattern. Multiplication by a precomputed ratio sidesteps the issue
-        // entirely.
+        // entirely. (The same rounding through a non-power-of-two CTM scale —
+        // 1/3 under scale(3) — is why samples are taken at pixel CENTRES: a
+        // centre sits half a texel from every texel edge in a step-1 draw, so
+        // no rounding can carry it across one.)
         const xScale = (destWidth === sourceWidth) ? 1 : sourceWidth / destWidth;
         const yScale = (destHeight === sourceHeight) ? 1 : sourceHeight / destHeight;
 
         // Sampling policy: smooth (bilinear) whenever the draw actually
-        // RESAMPLES the source; keep the historical nearest-neighbor sample,
-        // byte-for-byte, when it does not. Two ways a draw resamples:
+        // RESAMPLES the source; take the nearest texel when it does not. Two
+        // ways a draw resamples:
         //  - a NON-axis-aligned transform (rotation/skew): under rotation the
         //    floor-quantized NN sample point periodically lands on the texel
         //    BESIDE a thin source feature, so 1-2px features (hairline
@@ -731,30 +983,36 @@ class Rasterizer {
         // transform — including rotation, per the HTML5 property's semantics
         // (the user's explicit opt-out, e.g. pixel art; it re-admits the
         // rotated thin-feature dashing bilinear exists to prevent).
+        // The decision is Rasterizer.imageResamples, shared with pattern paint.
         const smoothingEnabled = this._currentOp.imageSmoothingEnabled !== false;
         const stepX = invA * xScale;
         const stepY = invD * yScale;
-        const useBilinear = smoothingEnabled &&
-            (transform.b !== 0 || transform.c !== 0 || stepX !== 1 || stepY !== 1);
-        // Bilinear samples at the DEST PIXEL CENTER (native semantics): the
-        // corner-mapped destPoint below (kept for containment and for the NN
-        // path, byte-compat) plus this constant device-space (0.5, 0.5) offset
-        // pushed through the inverse transform. Texel centers live at +0.5, so
-        // a 90°-style composite with integer translation lands samples exactly
-        // ON texel centers -> the zero-fraction fast path -> crisp pure texels
-        // (no blur), while arbitrary angles reconstruct without the half-texel
-        // shift a floor-anchored kernel would smear into every resample.
-        const centerOffX = (invA + invC) * 0.5;
-        const centerOffY = (invB + invD) * 0.5;
-        // Bilinear tap bounds: the texel range of the sx/sy/sw/sh source
-        // sub-rect, clamped to the image. A tap OUTSIDE these bounds
-        // contributes transparent black — never clamped edge content — so a
-        // sub-rect blit cannot smear pixels that were never part of the
-        // source rect.
-        const tapMinX = Math.max(0, Math.floor(sourceX));
-        const tapMaxX = Math.min(imgWidth - 1, Math.ceil(sourceX + sourceWidth) - 1);
-        const tapMinY = Math.max(0, Math.floor(sourceY));
-        const tapMaxY = Math.min(imgHeight - 1, Math.ceil(sourceY + sourceHeight) - 1);
+        const useBilinear = smoothingEnabled && Rasterizer.imageResamples(transform.b, transform.c, stepX, stepY);
+        // Every pixel is decided at its DEST PIXEL CENTER (native semantics):
+        // the device pixel's index through the inverse, with the (0.5, 0.5)
+        // centre offset folded into the translation (centreTranslation, shared
+        // with pattern paint), so the centre costs no per-pixel work. The centre
+        // decides containment (the pixels whose centre lies inside the
+        // destination rect, the fill rule) and both samplers: nearest takes the
+        // texel the centre lands in, so a plain blit — step 1, offsets on the
+        // device grid — keeps its texels exactly, and an offset or scale that
+        // puts texel edges on pixel CORNERS (an integer zoom) cannot misround;
+        // bilinear filters around it. Texel centers live at +0.5, so a
+        // 90°-style composite with integer translation lands samples exactly ON
+        // texel centers -> the zero-fraction fast path -> crisp pure texels (no
+        // blur), while arbitrary angles reconstruct without the half-texel shift
+        // a floor-anchored kernel would smear into every resample.
+        const centreE = Rasterizer.centreTranslation(invA, invC, invE);
+        const centreF = Rasterizer.centreTranslation(invB, invD, invF);
+        // Bilinear taps follow HTML5's filtering rule: a tap outside the
+        // sx/sy/sw/sh source rect but inside the image reads the image ("scaling
+        // an image in parts or in whole will have the same effect"), and a tap
+        // outside the image takes the nearest edge texel (clamp-to-edge). So an
+        // opaque image stays opaque to its edges at any scale, and two abutting
+        // sub-rect draws meet seamlessly.
+        const lastTexelX = imgWidth - 1;
+        const lastTexelY = imgHeight - 1;
+        const texel = this._texel;
 
         // Render each pixel in the bounding box
         for (let deviceY = minY; deviceY <= maxY; deviceY++) {
@@ -764,34 +1022,31 @@ class Rasterizer {
                     continue;
                 }
 
-                // Transform device pixel back to destination space (scalar form of
-                // inverseTransform.transformPoint — same a*x+c*y+e / b*x+d*y+f order)
-                const destPointX = invA * deviceX + invC * deviceY + invE;
-                const destPointY = invB * deviceX + invD * deviceY + invF;
+                // The device pixel CENTRE in destination space (scalar form of
+                // transformPoint with the centre folded into the translation —
+                // see centreE/centreF). It drives containment and sampling on
+                // both arms.
+                const centerPointX = invA * deviceX + invC * deviceY + centreE;
+                const centerPointY = invB * deviceX + invD * deviceY + centreF;
+                if (
+                    centerPointX < destX ||
+                    centerPointX >= destXMax ||
+                    centerPointY < destY ||
+                    centerPointY >= destYMax
+                ) {
+                    continue;
+                }
+                // The centre in source (image) space. See the xScale/yScale
+                // comment above for why this form is FP-stable in the
+                // same-size case.
+                const sampleXf = sourceX + (centerPointX - destX) * xScale;
+                const sampleYf = sourceY + (centerPointY - destY) * yScale;
 
                 let srcR, srcG, srcB, srcA;
                 if (!useBilinear) {
-                    // Check if we're inside the destination rectangle
-                    // (corner-mapped point — the historical inclusion rule)
-                    if (
-                        destPointX < destX ||
-                        destPointX >= destXMax ||
-                        destPointY < destY ||
-                        destPointY >= destYMax
-                    ) {
-                        continue;
-                    }
-
-                    // Map destination coordinates to source coordinates.
-                    // See the xScale/yScale comment above for why this form is
-                    // FP-stable in the same-size case.
-                    const sourceXf = sourceX + (destPointX - destX) * xScale;
-                    const sourceYf = sourceY + (destPointY - destY) * yScale;
-
-                    // Nearest-neighbor sampling (axis-aligned transforms — the
-                    // historical path, byte-for-byte)
-                    const sourcePX = Math.floor(sourceXf);
-                    const sourcePY = Math.floor(sourceYf);
+                    // Nearest neighbour: the texel the centre lands in.
+                    const sourcePX = Math.floor(sampleXf);
+                    const sourcePY = Math.floor(sampleYf);
 
                     // Bounds check for source coordinates
                     if (sourcePX < 0 || sourcePY < 0 || sourcePX >= imgWidth || sourcePY >= imgHeight) {
@@ -805,29 +1060,10 @@ class Rasterizer {
                     srcB = imgData[sourceOffset + 2];
                     srcA = imgData[sourceOffset + 3];
                 } else {
-                    // Bilinear: the DEST PIXEL CENTER (see centerOffX/Y above)
-                    // drives BOTH containment and sampling — one convention per
-                    // path. (Mixing corner containment with center sampling
-                    // shifts the included window one pixel against the sampled
-                    // window under a 90°-style transform, dropping an edge
-                    // row/column.)
-                    const centerPointX = destPointX + centerOffX;
-                    const centerPointY = destPointY + centerOffY;
-                    if (
-                        centerPointX < destX ||
-                        centerPointX >= destXMax ||
-                        centerPointY < destY ||
-                        centerPointY >= destYMax
-                    ) {
-                        continue;
-                    }
-
                     // Put texel centers at +0.5 and split into floor texel +
                     // fractions. A sample landing exactly on a texel center has
                     // fractions 0/0 and takes the pure-texel fast path —
                     // bit-exact with a NN sample of that point.
-                    const sampleXf = sourceX + (centerPointX - destX) * xScale;
-                    const sampleYf = sourceY + (centerPointY - destY) * yScale;
                     const gx = sampleXf - 0.5;
                     const gy = sampleYf - 0.5;
                     const x0 = Math.floor(gx);
@@ -835,66 +1071,43 @@ class Rasterizer {
                     const fx = gx - x0;
                     const fy = gy - y0;
 
+                    // Clamp-to-edge tap coordinates (see lastTexelX/Y above).
+                    const tx0 = x0 < 0 ? 0 : x0 > lastTexelX ? lastTexelX : x0;
+                    const ty0 = y0 < 0 ? 0 : y0 > lastTexelY ? lastTexelY : y0;
+
                     if (fx === 0 && fy === 0) {
                         // Pure-texel fast path (zero-fraction exactness)
-                        if (x0 < tapMinX || x0 > tapMaxX || y0 < tapMinY || y0 > tapMaxY) {
-                            continue;
-                        }
-                        const sourceOffset = (y0 * imgWidth + x0) * 4;
+                        const sourceOffset = (ty0 * imgWidth + tx0) * 4;
                         srcR = imgData[sourceOffset];
                         srcG = imgData[sourceOffset + 1];
                         srcB = imgData[sourceOffset + 2];
                         srcA = imgData[sourceOffset + 3];
                     } else {
-                        // Bilinear over the 4 neighboring texels, filtered
-                        // PREMULTIPLIED: source texels are straight RGBA and fully
-                        // transparent texels carry arbitrary RGB, so a straight-alpha
-                        // lerp would bleed that RGB into edges (dark fringes). Weight
-                        // each texel's RGB by its alpha, accumulate, un-premultiply at
-                        // the end. Plain double arithmetic in a fixed accumulation
-                        // order (00, 10, 01, 11) — byte-identical on V8 and JSC.
-                        const x1 = x0 + 1;
-                        const y1 = y0 + 1;
-                        const w00 = (1 - fx) * (1 - fy);
-                        const w10 = fx * (1 - fy);
-                        const w01 = (1 - fx) * fy;
-                        const w11 = fx * fy;
-                        let aSum = 0, rSum = 0, gSum = 0, bSum = 0;
-                        if (w00 !== 0 && x0 >= tapMinX && x0 <= tapMaxX && y0 >= tapMinY && y0 <= tapMaxY) {
-                            const o = (y0 * imgWidth + x0) * 4;
-                            const wa = w00 * imgData[o + 3];
-                            if (wa !== 0) {
-                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
-                            }
+                        // Bilinear over the 4 neighboring texels (filterBilinear,
+                        // shared with pattern paint), clamped to the edge.
+                        const tx1 = x0 + 1 > lastTexelX ? lastTexelX : x0 + 1 < 0 ? 0 : x0 + 1;
+                        const ty1 = y0 + 1 > lastTexelY ? lastTexelY : y0 + 1 < 0 ? 0 : y0 + 1;
+                        if (
+                            !Rasterizer.filterBilinear(
+                                imgData,
+                                imgWidth,
+                                tx0,
+                                tx1,
+                                ty0,
+                                ty1,
+                                1 - fx,
+                                fx,
+                                1 - fy,
+                                fy,
+                                texel
+                            )
+                        ) {
+                            continue; // all taps transparent
                         }
-                        if (w10 !== 0 && x1 >= tapMinX && x1 <= tapMaxX && y0 >= tapMinY && y0 <= tapMaxY) {
-                            const o = (y0 * imgWidth + x1) * 4;
-                            const wa = w10 * imgData[o + 3];
-                            if (wa !== 0) {
-                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
-                            }
-                        }
-                        if (w01 !== 0 && x0 >= tapMinX && x0 <= tapMaxX && y1 >= tapMinY && y1 <= tapMaxY) {
-                            const o = (y1 * imgWidth + x0) * 4;
-                            const wa = w01 * imgData[o + 3];
-                            if (wa !== 0) {
-                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
-                            }
-                        }
-                        if (w11 !== 0 && x1 >= tapMinX && x1 <= tapMaxX && y1 >= tapMinY && y1 <= tapMaxY) {
-                            const o = (y1 * imgWidth + x1) * 4;
-                            const wa = w11 * imgData[o + 3];
-                            if (wa !== 0) {
-                                aSum += wa; rSum += wa * imgData[o]; gSum += wa * imgData[o + 1]; bSum += wa * imgData[o + 2];
-                            }
-                        }
-                        if (aSum === 0) continue; // all taps transparent
-                        // Un-premultiply back to straight RGBA (the alpha weights
-                        // cancel out of the RGB average).
-                        srcR = Math.round(rSum / aSum);
-                        srcG = Math.round(gSum / aSum);
-                        srcB = Math.round(bSum / aSum);
-                        srcA = Math.round(aSum);
+                        srcR = texel.r;
+                        srcG = texel.g;
+                        srcB = texel.b;
+                        srcA = texel.a;
                     }
                 }
 
@@ -922,12 +1135,29 @@ class Rasterizer {
                             surfaceData[destOffset + 1] = srcG;
                             surfaceData[destOffset + 2] = srcB;
                             surfaceData[destOffset + 3] = finalSrcA;
-                        } else {
+                        } else if (dstA === 255) {
                             const srcAlpha = finalSrcA / 255;
                             const invSrcAlpha = 1 - srcAlpha;
                             surfaceData[destOffset] = Math.round(srcR * srcAlpha + surfaceData[destOffset] * invSrcAlpha);
                             surfaceData[destOffset + 1] = Math.round(srcG * srcAlpha + surfaceData[destOffset + 1] * invSrcAlpha);
                             surfaceData[destOffset + 2] = Math.round(srcB * srcAlpha + surfaceData[destOffset + 2] * invSrcAlpha);
+                            surfaceData[destOffset + 3] = Math.round(finalSrcA + dstA * invSrcAlpha);
+                        } else {
+                            // Both translucent: Porter-Duff over straight RGBA (see
+                            // CompositeOperations._sourceOver).
+                            const srcAlpha = finalSrcA / 255;
+                            const invSrcAlpha = 1 - srcAlpha;
+                            const dstWeight = (dstA / 255) * invSrcAlpha;
+                            const outAlpha = srcAlpha + dstWeight;
+                            surfaceData[destOffset] = Math.round(
+                                (srcR * srcAlpha + surfaceData[destOffset] * dstWeight) / outAlpha
+                            );
+                            surfaceData[destOffset + 1] = Math.round(
+                                (srcG * srcAlpha + surfaceData[destOffset + 1] * dstWeight) / outAlpha
+                            );
+                            surfaceData[destOffset + 2] = Math.round(
+                                (srcB * srcAlpha + surfaceData[destOffset + 2] * dstWeight) / outAlpha
+                            );
                             surfaceData[destOffset + 3] = Math.round(finalSrcA + dstA * invSrcAlpha);
                         }
                     }

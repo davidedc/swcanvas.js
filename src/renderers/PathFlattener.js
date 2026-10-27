@@ -89,6 +89,12 @@ class PathFlattener {
                         cmd.endAngle,
                         cmd.counterclockwise
                     );
+                    // An ellipse that opens a subpath starts it (as an arc does)
+                    if (currentPoly.length === 0 && ellipsePoints.length > 0) {
+                        currentPoly.push({ x: ellipsePoints[0].x, y: ellipsePoints[0].y });
+                        subpathStart = new Point(ellipsePoints[0].x, ellipsePoints[0].y);
+                        currentPoint = subpathStart;
+                    }
                     PathFlattener._handleEllipsePoints(ellipsePoints, currentPoly, currentPoint);
                     if (ellipsePoints.length > 0) {
                         currentPoint = new Point(
@@ -277,7 +283,10 @@ class PathFlattener {
         // Check if curve is flat enough
         const dx = x2 - x0;
         const dy = y2 - y0;
-        const d = Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / Math.sqrt(dx * dx + dy * dy);
+        const len = Math.sqrt(dx * dx + dy * dy);
+        // Ends that coincide: the control point's distance from them measures flatness (a
+        // distance from the zero-length chord's line is 0 / 0, and would split forever)
+        const d = len === 0 ? Math.hypot(x1 - x0, y1 - y0) : Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / len;
 
         if (d <= tolerance || points.length > 1000) {
             // Safety limit
@@ -337,13 +346,9 @@ class PathFlattener {
         const dy = y3 - y0;
         const len = Math.sqrt(dx * dx + dy * dy);
 
-        if (len === 0) {
-            points.push({ x: x3, y: y3 });
-            return;
-        }
-
-        const d1 = Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / len;
-        const d2 = Math.abs((x2 - x0) * dy - (y2 - y0) * dx) / len;
+        // Ends that coincide (a loop): the control points' distances from them measure flatness
+        const d1 = len === 0 ? Math.hypot(x1 - x0, y1 - y0) : Math.abs((x1 - x0) * dy - (y1 - y0) * dx) / len;
+        const d2 = len === 0 ? Math.hypot(x2 - x0, y2 - y0) : Math.abs((x2 - x0) * dy - (y2 - y0) * dx) / len;
 
         if (d1 + d2 <= tolerance || points.length > 1000) {
             // Safety limit
@@ -370,6 +375,23 @@ class PathFlattener {
         // Recursively flatten both halves
         PathFlattener._flattenCubicBezierRecursive(x0, y0, x01, y01, x012, y012, x0123, y0123, points, tolerance);
         PathFlattener._flattenCubicBezierRecursive(x0123, y0123, x123, y123, x23, y23, x3, y3, points, tolerance);
+    }
+
+    /**
+     * Whole number of segments covering a fractional count q (>= 1): ceil(q),
+     * except that a q within SEGMENT_COUNT_EPSILON above a whole number IS that
+     * number. Every curve segment count goes through here (the arc, ellipse and
+     * arcTo flatteners, Context2D's baking twins, and the stroker's round joins
+     * and arc rims), so a count never depends on float noise: an exact
+     * quarter-turn arcTo corner (16 by the per-90° floor) arrives from atan2 of
+     * position-dependent tangent points as 16.000000000000004 at some canvas
+     * positions, and a bare ceil would flatten it with 17 segments there - a
+     * rounded rect's corner pixels would then depend on where it is drawn.
+     * @param {number} q - Fractional segment count
+     * @returns {number} Segment count, at least 1
+     */
+    static segmentCount(q) {
+        return Math.max(1, Math.ceil(q - SEGMENT_COUNT_EPSILON));
     }
 
     /**
@@ -400,7 +422,7 @@ class PathFlattener {
 
         // Calculate number of segments needed for tolerance
         const maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / radius));
-        const segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
+        const segments = PathFlattener.segmentCount(totalAngle / maxAngleStep);
 
         const points = [];
         const angleStep = (end - start) / segments;
@@ -447,7 +469,7 @@ class PathFlattener {
         // Calculate number of segments - use smaller radius for tolerance calculation
         const minRadius = Math.min(radiusX, radiusY);
         const maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / minRadius));
-        const segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
+        const segments = PathFlattener.segmentCount(totalAngle / maxAngleStep);
 
         const points = [];
         const angleStep = (end - start) / segments;
@@ -503,9 +525,9 @@ class PathFlattener {
         // Calculate number of segments needed for tolerance with minimum segments for smooth curves
         const maxAngleStep = 2 * Math.acos(Math.max(0, 1 - tolerance / radius));
         const minSegmentsFor90Deg = 16; // Minimum segments for a 90-degree arc
-        const minSegments = Math.ceil((totalAngle / HALF_PI) * minSegmentsFor90Deg);
-        const toleranceSegments = Math.ceil(totalAngle / maxAngleStep);
-        const segments = Math.max(1, Math.max(minSegments, toleranceSegments));
+        const minSegments = PathFlattener.segmentCount((totalAngle / HALF_PI) * minSegmentsFor90Deg);
+        const toleranceSegments = PathFlattener.segmentCount(totalAngle / maxAngleStep);
+        const segments = Math.max(minSegments, toleranceSegments);
 
         const points = [];
         const angleStep = (end - start) / segments;

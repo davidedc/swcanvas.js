@@ -8,8 +8,13 @@
  * Path-based circles (beginPath() + arc() + fill()/stroke()) use the
  * generic polygon pipeline for consistent, predictable behavior.
  *
- * Algorithm notes: Uses a Bresenham circle variant with specific adjustments
- * (center offset, +1 boundary corrections) for correct extreme pixel rendering.
+ * Coverage rule (fills): PIXEL-CENTER SAMPLING - a pixel is filled iff its
+ * center (x + 0.5, y + 0.5) lies strictly inside the circle (row extents by
+ * sqrt, contracted by FILL_EPSILON so a center on the boundary stays out).
+ * fill_Opaq, fill_Alpha and fillStroke_Any's fill share that one rule, so a
+ * fill is pixel-identical to the fill half of the fused entry. The 1px
+ * strokes stay Bresenham rings (their own center convention - see
+ * tests/core/050); thick strokes sample the closed annulus.
  *
  * CALL HIERARCHY:
  * ---------------
@@ -34,55 +39,25 @@
  *   - (No orientation suffix - circles are rotation-invariant)
  */
 class CircleOps {
+    // Per-row span scratch of the fills' two passes (fill_Opaq / fill_Alpha): grown on
+    // demand, never shrunk, shared by every call
+    static _spanStarts = new Int32Array(64);
+    static _spanEnds = new Int32Array(64);
+
     /**
-     * Generate horizontal extents for each scanline of a circle using Bresenham
-     * Uses Bresenham circle algorithm variant optimized for correct extreme pixel rendering
-     * @param {number} radius - Circle radius (can be float)
-     * @returns {object|null} { extents, intRadius, xOffset, yOffset } or null for invalid radius
+     * Grow the fills' span scratch to hold at least `rows` rows.
+     * @param {number} rows - Rows needed
+     * @private
      */
-    static generateExtents(radius) {
-        const intRadius = Math.floor(radius);
-        if (intRadius < 0) return null;
-
-        // Determine offsets for .5 radius case (affects boundary calculations)
-        let xOffset = 0,
-            yOffset = 0;
-        if (radius > 0 && (radius * 2) % 2 === 1) {
-            xOffset = 1;
-            yOffset = 1;
-        }
-
-        // Handle zero radius (single pixel)
-        if (intRadius === 0) {
-            return { extents: [0], intRadius: 0, xOffset, yOffset };
-        }
-
-        // Bresenham initialization (midpoint circle algorithm variant)
-        const extents = new Array(intRadius + 1).fill(0);
-        let x = 0;
-        let y = intRadius;
-        let d = 3 - 2 * intRadius;
-
-        while (x <= y) {
-            // Record extents using max to handle octant overlap
-            extents[y] = Math.max(extents[y], x);
-            extents[x] = Math.max(extents[x], y);
-
-            if (d < 0) {
-                d = d + 4 * x + 6;
-            } else {
-                d = d + 4 * (x - y) + 10;
-                y--;
-            }
-            x++;
-        }
-
-        return { extents, intRadius, xOffset, yOffset };
+    static _growSpanScratch(rows) {
+        let capacity = CircleOps._spanStarts.length * 2;
+        while (capacity < rows) capacity *= 2;
+        CircleOps._spanStarts = new Int32Array(capacity);
+        CircleOps._spanEnds = new Int32Array(capacity);
     }
 
     /**
-     * Optimized opaque circle fill using Bresenham scanlines with 32-bit packed writes
-     * Uses Bresenham variant with pixel corrections for accurate rendering
+     * Opaque circle fill: pixel-center-sampled scanlines (class header), 32-bit packed writes
      * @param {Surface} surface - Target surface
      * @param {number} cx - Center X
      * @param {number} cy - Center Y
@@ -107,58 +82,49 @@ class CircleOps {
         const cx1 = clipRect ? clipRect.x1 : width;
         const cy1 = clipRect ? clipRect.y1 : height;
 
-        // Generate extents with Bresenham algorithm
-        const extentData = CircleOps.generateExtents(radius);
-        if (!extentData) return;
-        const { extents, intRadius, xOffset, yOffset } = extentData;
+        // Pixel-center sampling (class header): row y's centers sit at
+        // dy = y - cY from the center, and the row's span is the centers
+        // strictly within xDist of cX. Same arithmetic as fillStroke_Any's fill.
+        const cX = cx - 0.5;
+        const cY = cy - 0.5;
+        const radiusSquared = radius * radius;
+        const minY = Math.max(cy0, Math.ceil(cY - radius));
+        const maxY = Math.min(cy1 - 1, Math.floor(cY + radius));
+        if (!(minY <= maxY)) return;
+        // From here every row and span bound is held as an int32: the rows lie in the clip rect's
+        // rows, and each span is clamped to its columns (one past either side when the row is
+        // empty, which keeps startX > endX exactly when no column is inside)
+        const firstRow = minY | 0;
+        const lastRow = maxY | 0;
 
-        // Center adjustment for pixel-perfect rendering
-        const adjCenterX = Math.floor(cx - 0.5);
-        const adjCenterY = Math.floor(cy - 0.5);
-
-        // Fill scanlines - iterate through ALL rows (no skipping)
-        for (let rel_y = 0; rel_y <= intRadius; rel_y++) {
-            const max_rel_x = extents[rel_y];
-
-            // +1 corrections on min boundaries for pixel accuracy
-            const abs_x_min = adjCenterX - max_rel_x - xOffset + 1;
-            const abs_x_max = adjCenterX + max_rel_x;
-            const abs_y_bottom = adjCenterY + rel_y;
-            const abs_y_top = adjCenterY - rel_y - yOffset + 1;
-
-            // Clamp X coordinates to canvas/clip bounds to prevent memory wrap-around
-            const clampedStartX = Math.max(cx0, abs_x_min);
-            const clampedEndX = Math.min(cx1 - 1, abs_x_max);
-            const spanWidth = clampedEndX - clampedStartX + 1;
-
-            // Skip if span is entirely off-screen
-            if (spanWidth <= 0) continue;
-
-            // Draw bottom scanline
-            if (abs_y_bottom >= cy0 && abs_y_bottom < cy1) {
-                SpanOps.fill_Opaq(
-                    data32,
-                    width,
-                    height,
-                    clampedStartX,
-                    abs_y_bottom,
-                    spanWidth,
-                    packedColor,
-                    clipBuffer
-                );
+        // Two passes. First every row's span into the int32 scratch - rows are independent, so
+        // their square roots and roundings pipeline, with no call between them - then the spans.
+        const rows = lastRow - firstRow + 1;
+        if (CircleOps._spanStarts.length < rows) CircleOps._growSpanScratch(rows);
+        const starts = CircleOps._spanStarts;
+        const ends = CircleOps._spanEnds;
+        for (let i = 0; i < rows; i++) {
+            const dy = firstRow + i - cY;
+            const distSquared = radiusSquared - dy * dy;
+            if (distSquared < 0) {
+                starts[i] = 1;
+                ends[i] = 0;
+                continue;
             }
-
-            // Draw top scanline (skip overdraw conditions)
-            const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
-            if (drawTop && abs_y_top >= cy0 && abs_y_top < cy1) {
-                SpanOps.fill_Opaq(data32, width, height, clampedStartX, abs_y_top, spanWidth, packedColor, clipBuffer);
-            }
+            const xDist = Math.sqrt(distSquared);
+            starts[i] = Math.min(cx1, Math.max(cx0, Math.ceil(cX - xDist + FILL_EPSILON)));
+            ends[i] = Math.max(cx0 - 1, Math.min(cx1 - 1, Math.floor(cX + xDist - FILL_EPSILON)));
+        }
+        for (let i = 0; i < rows; i++) {
+            const startX = starts[i];
+            const endX = ends[i];
+            if (startX > endX) continue;
+            SpanOps.fill_Opaq(data32, width, height, startX, firstRow + i, endX - startX + 1, packedColor, clipBuffer);
         }
     }
 
     /**
-     * Optimized circle fill with alpha blending using Bresenham scanlines
-     * Uses Bresenham variant with pixel corrections for accurate rendering
+     * Circle fill with alpha blending: pixel-center-sampled scanlines (class header)
      * @param {Surface} surface - Target surface
      * @param {number} cx - Center X
      * @param {number} cy - Center Y
@@ -188,69 +154,55 @@ class CircleOps {
         const cx1 = clipRect ? clipRect.x1 : width;
         const cy1 = clipRect ? clipRect.y1 : height;
 
-        // Generate extents with Bresenham algorithm
-        const extentData = CircleOps.generateExtents(radius);
-        if (!extentData) return;
-        const { extents, intRadius, xOffset, yOffset } = extentData;
+        // Pixel-center sampling - see fill_Opaq.
+        const cX = cx - 0.5;
+        const cY = cy - 0.5;
+        const radiusSquared = radius * radius;
+        const minY = Math.max(cy0, Math.ceil(cY - radius));
+        const maxY = Math.min(cy1 - 1, Math.floor(cY + radius));
+        if (!(minY <= maxY)) return;
+        // From here every row and span bound is held as an int32: the rows lie in the clip rect's
+        // rows, and each span is clamped to its columns (one past either side when the row is
+        // empty, which keeps startX > endX exactly when no column is inside)
+        const firstRow = minY | 0;
+        const lastRow = maxY | 0;
 
-        // Center adjustment for pixel-perfect rendering
-        const adjCenterX = Math.floor(cx - 0.5);
-        const adjCenterY = Math.floor(cy - 0.5);
-
-        // Fill scanlines - iterate through ALL rows (no skipping)
-        for (let rel_y = 0; rel_y <= intRadius; rel_y++) {
-            const max_rel_x = extents[rel_y];
-
-            // +1 corrections on min boundaries for pixel accuracy
-            const abs_x_min = adjCenterX - max_rel_x - xOffset + 1;
-            const abs_x_max = adjCenterX + max_rel_x;
-            const abs_y_bottom = adjCenterY + rel_y;
-            const abs_y_top = adjCenterY - rel_y - yOffset + 1;
-
-            // Clamp X coordinates to canvas/clip bounds to prevent memory wrap-around
-            const clampedStartX = Math.max(cx0, abs_x_min);
-            const clampedEndX = Math.min(cx1 - 1, abs_x_max);
-            const spanWidth = clampedEndX - clampedStartX + 1;
-
-            // Skip if span is entirely off-screen
-            if (spanWidth <= 0) continue;
-
-            // Draw bottom scanline
-            if (abs_y_bottom >= cy0 && abs_y_bottom < cy1) {
-                SpanOps.fill_Alpha(
-                    data,
-                    width,
-                    height,
-                    clampedStartX,
-                    abs_y_bottom,
-                    spanWidth,
-                    r,
-                    g,
-                    b,
-                    effectiveAlpha,
-                    invAlpha,
-                    clipBuffer
-                );
+        // Two passes. First every row's span into the int32 scratch - rows are independent, so
+        // their square roots and roundings pipeline, with no call between them - then the spans.
+        const rows = lastRow - firstRow + 1;
+        if (CircleOps._spanStarts.length < rows) CircleOps._growSpanScratch(rows);
+        const starts = CircleOps._spanStarts;
+        const ends = CircleOps._spanEnds;
+        for (let i = 0; i < rows; i++) {
+            const dy = firstRow + i - cY;
+            const distSquared = radiusSquared - dy * dy;
+            if (distSquared < 0) {
+                starts[i] = 1;
+                ends[i] = 0;
+                continue;
             }
-
-            // Draw top scanline (skip overdraw conditions)
-            const drawTop = rel_y > 0 && !(rel_y === 1 && yOffset === 0);
-            if (drawTop && abs_y_top >= cy0 && abs_y_top < cy1) {
-                SpanOps.fill_Alpha(
-                    data,
-                    width,
-                    height,
-                    clampedStartX,
-                    abs_y_top,
-                    spanWidth,
-                    r,
-                    g,
-                    b,
-                    effectiveAlpha,
-                    invAlpha,
-                    clipBuffer
-                );
-            }
+            const xDist = Math.sqrt(distSquared);
+            starts[i] = Math.min(cx1, Math.max(cx0, Math.ceil(cX - xDist + FILL_EPSILON)));
+            ends[i] = Math.max(cx0 - 1, Math.min(cx1 - 1, Math.floor(cX + xDist - FILL_EPSILON)));
+        }
+        for (let i = 0; i < rows; i++) {
+            const startX = starts[i];
+            const endX = ends[i];
+            if (startX > endX) continue;
+            SpanOps.fill_Alpha(
+                data,
+                width,
+                height,
+                startX,
+                firstRow + i,
+                endX - startX + 1,
+                r,
+                g,
+                b,
+                effectiveAlpha,
+                invAlpha,
+                clipBuffer
+            );
         }
     }
 

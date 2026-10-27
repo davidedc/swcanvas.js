@@ -149,14 +149,14 @@
     
     <div class="test-section">
         <h2>Core Functionality Tests</h2>
-        <p>These are the same modular core functionality tests (31 tests) that run in Node.js, automatically running in the browser:</p>
+        <p>These are the same modular core functionality tests that run in Node.js, automatically running in the browser. The few that need a DOM run only here, the few that need its absence only in Node; each is listed as skipped where it does not run:</p>
         <div id="shared-test-output" class="test-output"></div>
     </div>
 
     <div class="test-section">
         <h2>Visual Rendering Tests</h2>
         <p>Side-by-side comparison of HTML5 Canvas vs SWCanvas for all visual rendering test cases:</p>
-        <div id="smoke-fonts-status" style="font-size: 12px; padding: 8px 10px; border-radius: 4px; margin-bottom: 8px; background: #f0f0f0; color: #666;">Loading text fonts from font-assets/&hellip;</div>
+        <div id="smoke-fonts-status" style="font-size: 12px; padding: 8px 10px; border-radius: 4px; margin-bottom: 8px; background: #f0f0f0; color: #666;">Loading text fonts from font-assets/_smoke/&hellip;</div>
         <div id="visual-comparisons"></div>
     </div>
 
@@ -164,47 +164,25 @@
     <script src="../../dist/swcanvas.js"></script>
     <script src="../dist/visual-rendering-tests.js"></script>
     <script src="../dist/core-functionality-tests.js"></script>
+    <script src="../smoke-fonts.js"></script>
     <script src="browser-test-helpers.js"></script>
     <script>
         let browserVisualTests;
 
-        // The three idStrings that match what tests/run-tests.js preloads in
-        // Node. The browser path consumes WebP atlases from the full
-        // font-assets/ download (smoke fixture is QOI, Node-only).
-        const SMOKE_FONT_IDS = [
-            'density-1-0-Arial-style-normal-weight-normal-size-16-0',
-            'density-1-0-Arial-style-normal-weight-bold-size-16-0',
-            'density-1-0-BitmapTextInvariant-style-normal-weight-normal-size-16-0',
-        ];
+        // The page's results, for a headless runner to read once `done` is true.
+        window.SWCanvasPageResults = { smokeFonts: 'loading', core: null, visual: { total: 0, run: 0, errors: [] }, done: false };
 
-        async function loadSmokeFontsInBrowser() {
-            const { BitmapText } = SWCanvas.fonts._raw;
-            // Relative to tests/browser/index.html → ../../font-assets/
-            BitmapText.setFontDirectory('../../font-assets/');
-            const isFileProtocol = window.location.protocol === 'file:';
-            // loadFont's missing-file path is non-throwing (it console.warns
-            // and resolves to placeholder behaviour). Use hasAtlas after the
-            // await to check actual outcome.
-            await Promise.all(SMOKE_FONT_IDS.map(id =>
-                BitmapText.loadFont(id, { isFileProtocol })
-            ));
-            return SMOKE_FONT_IDS.every(id => BitmapText.hasAtlas(id));
-        }
-
-        function setSmokeStatus(success, isFileProtocol) {
+        function setSmokeStatus(error) {
             const el = document.getElementById('smoke-fonts-status');
             if (!el) return;
-            if (success) {
+            if (!error) {
                 el.style.background = '#e8f5e9';
                 el.style.color = '#2e7d32';
-                el.textContent = '✓ Text fonts loaded from font-assets/ — text visual tests render real glyphs below.';
+                el.textContent = '✓ Text fonts loaded from font-assets/_smoke/ (the fixture Node\'s tests load too) — text tests render real glyphs.';
             } else {
-                el.style.background = '#fff5e0';
-                el.style.color = '#8a5b00';
-                const hint = isFileProtocol
-                    ? 'Run ./scripts/download-bitmaptext-assets.sh AND npm run text:wrap-for-file to enable text rendering under file://.'
-                    : 'Run ./scripts/download-bitmaptext-assets.sh to enable text rendering. Without it, text tests below render placeholder rectangles instead of glyphs.';
-                el.innerHTML = '⚠ Text fonts not found at font-assets/. ' + hint;
+                el.style.background = '#ffe6e6';
+                el.style.color = '#b00020';
+                el.textContent = '✗ The committed text fixture font-assets/_smoke/ did not load, so the text tests below fail: ' + error.message;
             }
         }
 
@@ -214,17 +192,20 @@
                 browserVisualTests = createBrowserVisualTests(SWCanvas);
             }
 
-            // Preload the smoke fonts so the text visual tests (200-207)
-            // render real glyphs in the browser, matching the Node-generated
-            // golden PNGs at tests/output/text-*.basic.png.
-            const isFileProtocol = window.location.protocol === 'file:';
-            let smokeOK = false;
+            // The smoke-font preload Node runs too (tests/smoke-fonts.js): the
+            // same fonts from the same committed fixture, so the text tests
+            // render the glyphs they render in Node. Relative to this page.
+            let smokeError = null;
             try {
-                smokeOK = await loadSmokeFontsInBrowser();
+                await SmokeFonts.preloadSmokeFonts(SWCanvas, '../../font-assets/_smoke/', {
+                    isFileProtocol: window.location.protocol === 'file:'
+                });
             } catch (err) {
-                console.warn('Smoke font preload failed:', err);
+                smokeError = err;
+                console.error('Smoke font preload failed:', err.message);
             }
-            setSmokeStatus(smokeOK, isFileProtocol);
+            setSmokeStatus(smokeError);
+            window.SWCanvasPageResults.smokeFonts = smokeError ? 'failed: ' + smokeError.message : 'loaded';
 
             // Automatically run both test suites
             runSharedTests();
@@ -249,9 +230,14 @@
                 // Restore console.log
                 console.log = originalLog;
                 
+                window.SWCanvasPageResults.core = results;
+
                 // Display results
                 outputDiv.innerHTML = logs.join('<br>') + 
-                    `<br><br><strong>${results.passed}/${results.total} tests passed</strong>`;
+                    `<br><br><strong>${results.passed}/${results.total} tests passed</strong>` +
+                    (results.skipped.length > 0
+                        ? `<br>${results.skipped.length} skipped here: they need what only Node has (no DOM), and Node runs them`
+                        : '');
                 
                 if (results.failed > 0) {
                     outputDiv.innerHTML += `<br><span style="color: red;">❌ ${results.failed} tests failed</span>`;
@@ -262,6 +248,7 @@
                 // Restore console.log
                 console.log = originalLog;
                 
+                window.SWCanvasPageResults.core = { error: error.message };
                 outputDiv.innerHTML = `<span style="color: red;">Error running tests: ${error.message}</span>`;
             }
         }
@@ -281,8 +268,19 @@
             
             // Run all tests
             container.innerHTML = '';
+            window.SWCanvasPageResults.visual.total = testNames.length;
             testNames.forEach((testName, index) => {
-                setTimeout(() => runSingleVisualTest(visualTests[testName], container), index * 100);
+                setTimeout(() => {
+                    const results = window.SWCanvasPageResults;
+                    try {
+                        runSingleVisualTest(visualTests[testName], container);
+                    } catch (error) {
+                        results.visual.errors.push({ name: testName, message: error.message });
+                    } finally {
+                        results.visual.run++;
+                        results.done = results.visual.run === testNames.length;
+                    }
+                }, index * 100);
             });
         }
 

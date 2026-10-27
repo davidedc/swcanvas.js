@@ -7,10 +7,10 @@
 # SWCanvas pins to a specific tag for reproducibility — bump the value in
 # vendor/bitmaptext-release.pin when a newer release should be the baseline.
 #
-# Note: this script fetches the WebP minimum set only. For Node tests that need
-# QOI-encoded atlases, see font-assets/_smoke/ (a small committed subset that
-# ships with the repo so Node tests work after a fresh clone with no extra
-# steps).
+# Note: this script fetches the WebP minimum set, for the examples and for
+# regenerating the test fixture. The tests need no download: font-assets/_smoke/
+# is committed (QOI atlases for Node, the WebP plus its -webp.js wrapper for the
+# browser test page), so both test runners work after a fresh clone.
 #
 # Usage:
 #   ./scripts/download-bitmaptext-assets.sh                  # pinned tag
@@ -29,7 +29,7 @@ ASSET_NAME='font-assets-min.zip'
 # per-invocation with --tag <name>.
 # Verify the pin matches GitHub releases/latest with: npm run text:check-pin
 #
-# The Node text-test fixture (font-assets/_smoke/, committed QOI) is DERIVED
+# The text-test fixture (font-assets/_smoke/, committed QOI + WebP) is DERIVED
 # from these WebP atlases by scripts/build-smoke-fixture.js — Node can't decode
 # WebP, and the atlas WebP are lossless, so the WebP→QOI transcode is exact.
 # This one release is therefore the source of truth for both browser (WebP) and
@@ -130,4 +130,4 @@ if [ "$SHA_OK" -eq 1 ]; then
 fi
 echo ""
 echo "Done. Browser-side text rendering is now usable."
-echo "(For Node text tests, font-assets/_smoke/ ships with the repo.)"
+echo "(The test fixture, font-assets/_smoke/, ships with the repo.)"

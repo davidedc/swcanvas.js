@@ -287,7 +287,7 @@ The shadow system uses a sophisticated dual-buffer rendering approach:
 **BoxBlur Class** - Multi-pass blur algorithm:
 - **Gaussian approximation**: Uses 3-pass box blur to approximate Gaussian blur via Central Limit Theorem
 - **Running sums**: Efficient O(1) per-pixel horizontal and vertical passes
-- **Sigma calculation**: Automatically calculates box width from blur radius for correct standard deviation
+- **Box widths**: three passes of mixed odd widths (Kovesi 2010) whose combined variance comes closest to sigma² for sigma = shadowBlur / 2. Samples beyond the buffer count as transparent, so every pass conserves coverage, and the buffer is padded by the passes' full reach (`BoxBlur.spread`)
 - **Separable filtering**: Applies horizontal then vertical blur passes for optimal performance
 
 ### Shadow Properties
@@ -337,10 +337,10 @@ Shadows work seamlessly with all paint sources:
 - Separable filtering reduces complexity from O(r²) to O(r) per pixel
 - Running sums provide O(1) per-pixel blur operations
 
-**Opacity Calibration**:
-- 8x opacity multiplier ensures shadow intensity matches HTML5 Canvas behavior
-- Proper alpha blending with source-over compositing
-- Premultiplied alpha handling for correct transparency
+**Opacity**:
+- A shadow pixel's alpha is the shape's coverage (globalAlpha included, once) times the shadow colour's alpha
+- There is no calibration factor: the blur conserves coverage, so the shadow is as strong as in HTML5 Canvas
+- The shadow is composited source-over beneath the shape, per the HTML5 spec
 
 ### State Management
 

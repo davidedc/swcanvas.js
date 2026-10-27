@@ -130,13 +130,13 @@ class Context2D {
         this.shadowOffsetY = 0; // No vertical offset
 
         // Image smoothing (HTML5 imageSmoothingEnabled, default true). When true,
-        // drawImage samples BILINEAR whenever the draw actually resamples the
-        // source (any rotation/skew, or an axis-aligned draw whose effective
-        // sample step != 1); step-1 axis-aligned draws are nearest-neighbor
-        // byte-exact either way. When false, every draw samples nearest-neighbor
-        // — including rotation, matching the HTML5 property's semantics (which
-        // re-admits the thin-feature dashing bilinear exists to prevent; that is
-        // the user's explicit choice, e.g. pixel art).
+        // drawImage and pattern paint sample BILINEAR whenever the draw actually
+        // resamples the image (any rotation/skew, or an axis-aligned draw whose
+        // effective sample step != 1); step-1 axis-aligned draws are
+        // nearest-neighbor byte-exact either way. When false, every draw samples
+        // nearest-neighbor — including rotation, matching the HTML5 property's
+        // semantics (which re-admits the thin-feature dashing bilinear exists to
+        // prevent; that is the user's explicit choice, e.g. pixel art).
         this._imageSmoothingEnabled = true;
 
         // Internal path and clipping. The current default path holds DEVICE-space
@@ -279,6 +279,18 @@ class Context2D {
      */
     _canUseDirectRendering(paintSource) {
         return this._isSourceOver && this._noShadow && paintSource instanceof Color && paintSource.a > 0;
+    }
+
+    /**
+     * The paint source an op draws with. A pattern samples under the context's
+     * imageSmoothingEnabled at draw time, so the op gets the pattern's twin for
+     * the current flag (Pattern.withSmoothing — memoized, no allocation per draw).
+     * @param {Color|Gradient|Pattern} paintSource - fillStyle or strokeStyle
+     * @returns {Color|Gradient|Pattern}
+     * @private
+     */
+    _paintForOp(paintSource) {
+        return paintSource instanceof Pattern ? paintSource.withSmoothing(this._imageSmoothingEnabled) : paintSource;
     }
 
     /**
@@ -773,7 +785,7 @@ class Context2D {
         const deviceRadius = Math.max(radius * deviceScale, TRANSFORM_EPSILON);
         let maxAngleStep = 2 * Math.acos(Math.max(0, 1 - tolerance / deviceRadius));
         if (!(maxAngleStep > TRANSFORM_EPSILON)) maxAngleStep = TRANSFORM_EPSILON;
-        let segments = Math.max(1, Math.ceil(totalAngle / maxAngleStep));
+        let segments = PathFlattener.segmentCount(totalAngle / maxAngleStep);
         if (segments > 4096) segments = 4096; // defensive cap for pathological radii
         return segments;
     }
@@ -792,7 +804,7 @@ class Context2D {
             totalAngle,
             Math.min(0.1, PATH_FLATTENING_TOLERANCE) // matches _handleArcTo
         );
-        const minSegments = Math.ceil((totalAngle / (Math.PI / 2)) * 16); // 16 per 90°
+        const minSegments = PathFlattener.segmentCount((totalAngle / (Math.PI / 2)) * 16); // 16 per 90°
         return Math.max(toleranceSegments, minSegments);
     }
 
@@ -822,13 +834,14 @@ class Context2D {
         // a fill fast path without fresh benchmark evidence (tests/core pins this).
         // Direct rect machinery lives on in strokeRect/fillStrokeRect only.
         Context2D._markPathBasedRendering();
+        const fillStyle = this._paintForOp(this._fillStyle);
         this.rasterizer.beginOp({
             composite: this.globalCompositeOperation,
             globalAlpha: this.globalAlpha,
             transform: this._transform,
             clipMask: this._clipMaskForDraw(),
             clipRect: this._clipRectForDraw(),
-            fillStyle: this._fillStyle,
+            fillStyle: fillStyle,
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
@@ -836,7 +849,7 @@ class Context2D {
             shadowOffsetY: this.shadowOffsetY
         });
 
-        this.rasterizer.fillRect(x, y, width, height, this._fillStyle);
+        this.rasterizer.fillRect(x, y, width, height, fillStyle);
         this.rasterizer.endOp();
     }
 
@@ -986,7 +999,7 @@ class Context2D {
             transform: this._transform,
             clipMask: this._clipMaskForDraw(),
             clipRect: this._clipRectForDraw(),
-            strokeStyle: this._strokeStyle,
+            strokeStyle: this._paintForOp(this._strokeStyle),
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
@@ -1688,9 +1701,10 @@ class Context2D {
         // Do not re-add a fill fast path without fresh benchmark evidence.
         //
         // Path-based rendering: an un-baked, user-space rounded-rect path at
-        // the degenerate radius (the generic pipeline samples pixel centers,
-        // so ITS degenerate-radius output is a correct stadium), drawn as an
-        // external Path2D under the current CTM.
+        // the degenerate radius, drawn as an external Path2D under the current
+        // CTM. The generic pipeline samples pixel centres, so the stadium is
+        // its flattened outline (caps as inscribed chords, within the
+        // flattening tolerance) sampled exactly.
         const fallbackPath = new SWPath2D();
         SWPath2D.appendRoundRect(fallbackPath, x, y, width, height, Math.min(width, height) / 2);
         this.fill(fallbackPath);
@@ -1748,35 +1762,16 @@ class Context2D {
     }
 
     fill(path, rule) {
-        let pathToFill, fillRule;
-
-        // Handle different argument combinations:
-        // fill() -> path = undefined, rule = undefined
-        // fill('evenodd') -> path = 'evenodd', rule = undefined
-        // fill(path2d) -> path = path2d object, rule = undefined
-        // fill(path2d, 'evenodd') -> path = path2d object, rule = 'evenodd'
-
-        if (arguments.length === 0) {
-            // fill() - use current path, nonzero rule
-            pathToFill = this._currentPath;
-            fillRule = 'nonzero';
-        } else if (arguments.length === 1) {
-            if (typeof path === 'string') {
-                // fill('evenodd') - use current path, specified rule
-                pathToFill = this._currentPath;
-                fillRule = path;
-            } else {
-                // fill(path2d) - use specified path, nonzero rule
-                pathToFill = path;
-                fillRule = 'nonzero';
-            }
-        } else {
-            // fill(path2d, 'evenodd') - use specified path and rule
-            pathToFill = path;
-            fillRule = rule;
+        // The HTML5 (path?, fillRule?) overload, dispatched by TYPE so an
+        // explicitly passed undefined means "omitted", as WebIDL has it:
+        // fill(), fill(rule), fill(path2d), fill(path2d, rule). A rule string
+        // other than 'evenodd' fills nonzero (lenient, where WebIDL throws).
+        if (typeof path === 'string') {
+            rule = path;
+            path = undefined;
         }
-
-        fillRule = fillRule || 'nonzero';
+        let pathToFill = path || this._currentPath;
+        const fillRule = rule || 'nonzero';
 
         // The current default path holds device-space geometry. Filling it under
         // IDENTITY would starve a gradient/pattern fillStyle of the CTM: a paint
@@ -1810,7 +1805,7 @@ class Context2D {
             transform: opTransform,
             clipMask: this._clipMaskForDraw(),
             clipRect: this._clipRectForDraw(),
-            fillStyle: this._fillStyle,
+            fillStyle: this._paintForOp(this._fillStyle),
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
@@ -1856,7 +1851,7 @@ class Context2D {
             transform: opTransform,
             clipMask: this._clipMaskForDraw(),
             clipRect: this._clipRectForDraw(),
-            strokeStyle: this._strokeStyle,
+            strokeStyle: this._paintForOp(this._strokeStyle),
             // Shadow properties
             shadowColor: this.shadowColor,
             shadowBlur: this.shadowBlur,
@@ -1899,7 +1894,9 @@ class Context2D {
             path = this._currentPath;
             fillRule = 'nonzero';
         } else if (arguments.length === 3) {
-            if (typeof arguments[2] === 'string') {
+            // Told apart by the FIRST argument, as WebIDL resolves it: a number
+            // selects (x, y, fillRule), whose fillRule may be passed undefined.
+            if (typeof arguments[0] !== 'object') {
                 // isPointInPath(x, y, fillRule)
                 [x, y, fillRule] = arguments;
                 path = this._currentPath;
@@ -2025,7 +2022,8 @@ class Context2D {
             }
             const strokePolygons = StrokeGenerator.generateStrokePolygons(
                 this._transformPathPoints(path, inv),
-                strokeProps
+                strokeProps,
+                Math.max(drawT.scaleX, drawT.scaleY)
             );
             if (strokePolygons.length === 0) {
                 return false;
@@ -2033,7 +2031,11 @@ class Context2D {
             testPolygons = strokePolygons.map(poly => poly.map(point => drawT.transformPoint(point)));
         } else {
             // External user-space path: stroke, then map by the current CTM.
-            const strokePolygons = StrokeGenerator.generateStrokePolygons(path, strokeProps);
+            const strokePolygons = StrokeGenerator.generateStrokePolygons(
+                path,
+                strokeProps,
+                Math.max(this._transform.scaleX, this._transform.scaleY)
+            );
             if (strokePolygons.length === 0) {
                 return false;
             }
@@ -2182,8 +2184,8 @@ class Context2D {
      * draw clamped to the rect is pixel-identical to one tested against that mask:
      *   - X (per _fillClipMaskSpans): a span [left, right) sets columns
      *     [ceil(left − 0.5), ceil(right − 0.5)).
-     *   - Y (per _findPolygonIntersections' half-open `y >= minY && y < maxY`
-     *     edge test sampled at y+0.5): rows [ceil(top − 0.5), ceil(bottom − 0.5)).
+     *   - Y (per PolygonFiller._scanRow's half-open `upper.y <= y+0.5 < lower.y`
+     *     edge test): rows [ceil(top − 0.5), ceil(bottom − 0.5)).
      * Both axes therefore round with ceil(v − 0.5). (This supersedes the
      * `ceil(min)/floor(max)+1` sketch in the plan's §5.2, which encoded the older
      * inclusive-endX mask that over-exposed the right/bottom edge column.)
@@ -2273,7 +2275,12 @@ class Context2D {
      * @param {string} rule - Fill rule: 'nonzero' (default) or 'evenodd'
      */
     clip(path, rule) {
-        // If no path provided, use the current default path.
+        // The same (path?, fillRule?) overload as fill(): a leading string is
+        // the fill rule, and no path means the current default path.
+        if (typeof path === 'string') {
+            rule = path;
+            path = undefined;
+        }
         const pathToClip = path || this._currentPath;
         const clipRule = rule || 'nonzero';
 
@@ -2531,7 +2538,9 @@ class Context2D {
      * @param {number} radius - Circle radius
      */
     fillCircle(centerX, centerY, radius) {
-        if (radius <= 0) return;
+        // Non-positive, NaN and infinite radii draw nothing (an infinite radius
+        // would otherwise sample every pixel center as inside).
+        if (!(radius > 0 && radius < Infinity)) return;
 
         if (this._isInvisibleDraw(this._fillStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
@@ -2571,7 +2580,7 @@ class Context2D {
      * @param {number} radius - Circle radius
      */
     strokeCircle(centerX, centerY, radius) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._strokeStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
@@ -2622,7 +2631,7 @@ class Context2D {
      * @param {number} radius - Circle radius
      */
     fillStrokeCircle(centerX, centerY, radius) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._fillStyle) && this._isInvisibleDraw(this._strokeStyle)) {
             return; // Neither half can change a pixel under source-over
@@ -2720,7 +2729,7 @@ class Context2D {
      * @param {boolean} [anticlockwise=false] - Direction
      */
     fillArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._fillStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
@@ -2818,7 +2827,7 @@ class Context2D {
      * @param {boolean} [anticlockwise=false] - Direction
      */
     outerStrokeArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._strokeStyle)) {
             return; // Transparent paint / globalAlpha 0 under source-over draws nothing
@@ -2945,7 +2954,7 @@ class Context2D {
      * @param {boolean} [anticlockwise=false] - Direction
      */
     fillOuterStrokeArc(centerX, centerY, radius, startAngle, endAngle, anticlockwise = false) {
-        if (radius <= 0) return;
+        if (!(radius > 0 && radius < Infinity)) return; // see fillCircle
 
         if (this._isInvisibleDraw(this._fillStyle) && this._isInvisibleDraw(this._strokeStyle)) {
             return; // Neither half can change a pixel under source-over
@@ -3133,7 +3142,7 @@ class Context2D {
                 // Direct rendering 1: 32-bit packed writes for opaque colors
                 CircleOps.fill_Opaq(surface, cx, cy, radius, paintSource, clipBuffer, clipRect);
             } else {
-                // Direct rendering 2: Bresenham scanlines with per-pixel alpha blending
+                // Direct rendering 2: pixel-center scanlines with per-pixel alpha blending
                 CircleOps.fill_Alpha(surface, cx, cy, radius, paintSource, this.globalAlpha, clipBuffer, clipRect);
             }
         } else {

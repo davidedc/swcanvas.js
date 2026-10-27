@@ -6,14 +6,16 @@ Deterministic 2D raster engine with a dual API: HTML5-compatible (`SWCanvas.crea
 
 ```bash
 npm run build                                # REQUIRED before every test run (expands @inline markers)
-npm test                                     # 95 core + 157 visual tests
-npm run test:direct-rendering                # 85 direct-renderer correctness tests
+npm test                                     # core + visual tests, then the direct-rendering suite
+npm run test:direct-rendering                # direct-renderer correctness tests
 npm run test:direct-rendering:perf           # Quick perf sanity check — NOT a measurement
+npm run test:browser -- --puppeteer-from <dir>/node_modules/puppeteer   # The same core + visual tests in a headless browser
 npm run lint           # / lint:fix          # ESLint on src/
 npm run format         # / format:check      # Prettier on src/
 npm run check:test-metadata                  # Validate test metadata, signatures, filenames
 npm run check:register-consistency           # Quick filename ↔ registration check
 npm run update-test-counts                   # Re-sync test counts across docs after adding/removing tests
+npm run check:test-counts                    # Fail if a doc's test count is out of date
 npm run text:check-pin                       # Drift check: vendor/bitmaptext-release.pin vs GitHub releases/latest
 
 node tests/direct-rendering/scripts/benchmark-session.js              # Production perf measurement (IQR-filtered, ~0.8% CV)
@@ -32,13 +34,13 @@ node tests/direct-rendering/verify-logs-and-bounds-snapshot.js        # Verify t
 
 - **`npm run build` before every test run.** `build.sh` expands `/*@inline:TEMPLATE(...)*/` markers in hot loops into open-coded blend code. Skipping it leaves `dist/swcanvas.js` stale and tests run against old behaviour. See `build-scripts/README.md`.
 - **Dual-API parity.** Public-API changes must update **both** `src/core/Context2D.js` and `src/compat/CanvasCompatibleContext2D.js`. Visual tests run both paths against the same expected output — keep them in sync.
-- **Node ↔ browser parity.** The same visual test registry runs in both. Never make a test change that only works in one environment.
+- **Node ↔ browser parity.** The same core and visual test registries run in both: `npm test` in Node, `tests/browser/index.html` in the browser, both loading the same fonts through one preload (`tests/smoke-fonts.js`). `npm run test:browser -- --puppeteer-from <dir>/node_modules/puppeteer` (or `--playwright-from <dir>/node_modules/playwright [--browser=webkit]`) runs the page headless and fails unless every core test passes there and every visual render is byte-identical to Node's `tests/output` PNG; exit 2 means it could not run, never a pass. Never make a test change that only works in one environment. A core test of something only one environment has (a DOM element image source, or its absence) declares it with `testRequiring('dom' | 'no-dom', …)` and is listed as skipped, never passed, where it cannot run.
 - **`clearRect` deliberately bypasses the composite pipeline** (`Context2D._clearRectDirect`) to avoid global compositing affecting the whole canvas. Do not "fix" it back to the standard pipeline.
 - **Benchmark method matters.** Real perf claims come from `benchmark-session.js` only (super-measurements, sub-run CV check, IQR outlier removal). `test:direct-rendering:perf` is a sanity check — never quote its numbers as results.
 - **Immutable value objects:** `Transform2D`, `Point`, `Rectangle`, `Color`, `BitmapEncodingOptions`. Clone, don't mutate.
 - **In tests, use standard Canvas API** (`ctx.fillStyle = '...'`, `ctx.getImageData()`). Don't reach into internal classes from test bodies — visual tests must remain runnable against real HTML5 Canvas.
 - **Visual tests (`tests/visual/cases/`) vs perf cases (`tests/direct-rendering/perf-cases/`) are separate architectures** — correctness vs throughput. Don't conflate them.
-- **Text rendering needs assets.** `dist/swcanvas.js` ships the BitmapText engine but no font data. Run `scripts/download-bitmaptext-assets.sh` once to populate `font-assets/` (browser-side WebP); the Node test fixture under `font-assets/_smoke/` (QOI) is committed and regenerated from the WebP release by `scripts/build-smoke-fixture.js` (`npm run text:build-smoke-fixture`). Without assets, `ctx.fillText(...)` runs without crashing but emits no pixels — by design.
+- **Text rendering needs assets.** `dist/swcanvas.js` ships the BitmapText engine but no font data. The test fixture `font-assets/_smoke/` is committed — QOI atlases for Node, the release WebP plus its `-webp.js` wrapper for the browser page — and is regenerated from the WebP release by `scripts/build-smoke-fixture.js` (`npm run text:build-smoke-fixture`); both test runners load it through `tests/smoke-fonts.js`. `scripts/download-bitmaptext-assets.sh` populates the full `font-assets/` (browser-side WebP) for the examples and for regenerating the fixture. Without assets, `ctx.fillText(...)` runs without crashing but emits no pixels — by design.
 - **Two BitmapText pin files, different cadences.** `vendor/bitmaptext.pin` (SHA) pins the engine source; `vendor/bitmaptext-release.pin` (tag) pins the font-assets release that both downloaders read at runtime. The asset-release pin can drift independently when a new font release is published upstream — `npm run text:check-pin` compares it against GitHub `releases/latest` (exit 1 on drift). See `vendor/bitmaptext.UPDATE.md` for both bump procedures.
 - **`vendor/bitmaptext/` is gitignored and regenerated on demand** from the SHA in `vendor/bitmaptext.pin`. `build.sh` auto-fetches on first build via `scripts/vendor-bitmaptext.sh`. Bump by editing the pin and re-running the script (or with `--source <path>` for local-sibling dev, which also rewrites the pin). Don't patch in place — the next vendor run wipes any local edits. See `vendor/bitmaptext.UPDATE.md`. The integration relies on upstream features `BitmapText.setFontLoader`, `setAtlasFormat`, and platform-file self-registration; do not vendor a pre-Sprint-4 BitmapText.
 

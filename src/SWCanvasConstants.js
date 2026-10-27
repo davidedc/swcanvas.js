@@ -79,6 +79,16 @@ class SWCanvasConstants {
     /** Curve flattening tolerance for deterministic behavior */
     static PATH_FLATTENING_TOLERANCE = 0.25;
 
+    /**
+     * Float-noise allowance when rounding a fractional curve SEGMENT COUNT up
+     * (PathFlattener.segmentCount): a count a hair above a whole number is that
+     * number. An exact quarter-turn arcTo corner - 16 segments by design - has
+     * its count arrive from atan2 as 16.000000000000004 at some canvas
+     * positions; a bare ceil would give 17 there, so a rounded rect's corner
+     * pixels would depend on where it is drawn.
+     */
+    static SEGMENT_COUNT_EPSILON = 1e-9;
+
     // ═══════════════════════════════════════════════════════════════════════
     // LINE/STROKE THRESHOLDS
     // ═══════════════════════════════════════════════════════════════════════
@@ -106,5 +116,6 @@ const ARC_FULLCIRCLE_TOLERANCE = SWCanvasConstants.ARC_FULLCIRCLE_TOLERANCE;
 const MIN_EDGE_LENGTH = SWCanvasConstants.MIN_EDGE_LENGTH;
 const MIN_EDGE_LENGTH_SQUARED = SWCanvasConstants.MIN_EDGE_LENGTH_SQUARED;
 const PATH_FLATTENING_TOLERANCE = SWCanvasConstants.PATH_FLATTENING_TOLERANCE;
+const SEGMENT_COUNT_EPSILON = SWCanvasConstants.SEGMENT_COUNT_EPSILON;
 const THIN_LINE_THRESHOLD = SWCanvasConstants.THIN_LINE_THRESHOLD;
 const DEFAULT_MITER_LIMIT = SWCanvasConstants.DEFAULT_MITER_LIMIT;

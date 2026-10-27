@@ -9,6 +9,10 @@
 // HTMLImageElements drawn via drawImage/createPattern, keyed by the element.
 // Never used for videos or canvases (their pixels change).
 const _swElementImageLikeCache = new WeakMap();
+// What _toImageLike answers for a DOM image source that has no pixels yet and that
+// HTML5 draws nothing from (an image not yet decoded or without a src, a video with
+// no frame yet): drawImage then draws nothing and createPattern returns null.
+const _swNothingToDraw = Object.freeze({});
 
 class CanvasCompatibleContext2D {
     // ===== STATIC PATH-BASED RENDERING TRACKING (for testing) =====
@@ -492,7 +496,11 @@ class CanvasCompatibleContext2D {
     // ===== IMAGE DRAWING =====
 
     drawImage(image, ...args) {
-        this._core.drawImage(CanvasCompatibleContext2D._toImageLike(image), ...args);
+        const source = CanvasCompatibleContext2D._toImageLike(image);
+        if (source === _swNothingToDraw) {
+            return;
+        }
+        this._core.drawImage(source, ...args);
     }
 
     /**
@@ -504,6 +512,8 @@ class CanvasCompatibleContext2D {
      *  - HTMLImageElement / HTMLVideoElement / ImageBitmap → rasterized into a
      *    scratch DOM canvas; image results are cached (immutable), video/bitmap
      *    are re-grabbed each call (frames change)
+     *  - a DOM source with no pixels → _swNothingToDraw, or HTML5's throw
+     *    (see _domSourceWithoutPixels)
      *  - anything else → returned as-is so the Core can throw its own error
      * @private
      */
@@ -516,6 +526,9 @@ class CanvasCompatibleContext2D {
         }
         if (typeof image.getContext === 'function') {
             // HTMLCanvasElement (or any canvas-like with a 2d context)
+            if ((image.width === 0 || image.height === 0) && typeof document !== 'undefined') {
+                return CanvasCompatibleContext2D._domSourceWithoutPixels(image);
+            }
             const ctx = image.getContext('2d');
             return ctx.getImageData(0, 0, image.width, image.height);
         }
@@ -557,6 +570,9 @@ class CanvasCompatibleContext2D {
         if (typeof document === 'undefined') {
             throw new Error('SWCanvas: cannot rasterize an element image source without a DOM canvas');
         }
+        if (w === 0 || h === 0) {
+            return CanvasCompatibleContext2D._domSourceWithoutPixels(image);
+        }
         const scratch = document.createElement('canvas');
         scratch.width = w;
         scratch.height = h;
@@ -569,6 +585,23 @@ class CanvasCompatibleContext2D {
             _swElementImageLikeCache.set(image, imageLike);
         }
         return imageLike;
+    }
+
+    /**
+     * A DOM image source with a zero dimension has no pixels. HTML5 draws nothing
+     * from an image not yet decoded (or without a src) or a video with no frame
+     * yet, and throws InvalidStateError for a broken image or a zero-size canvas.
+     * The platform canvas knows which state the element is in, so it is asked:
+     * drawing the source onto a 1x1 scratch canvas throws exactly when HTML5 does.
+     * @returns {Object} _swNothingToDraw, when the platform did not throw
+     * @private
+     */
+    static _domSourceWithoutPixels(image) {
+        const scratch = document.createElement('canvas');
+        scratch.width = 1;
+        scratch.height = 1;
+        scratch.getContext('2d').drawImage(image, 0, 0);
+        return _swNothingToDraw;
     }
 
     // ===== TEXT RENDERING =====
@@ -729,13 +762,20 @@ class CanvasCompatibleContext2D {
     }
 
     /**
-     * Create a pattern from an image
-     * @param {Object} image - ImageLike object (canvas, surface, imagedata)
+     * Create a pattern from an image: any source drawImage accepts (resolved by
+     * _toImageLike; the Pattern copies the resolved pixels, so later changes to
+     * the source do not reach it). A DOM source with nothing to draw yet gives
+     * null, as in HTML5.
+     * @param {Object} image - SWCanvasElement, DOM canvas/image/video/ImageBitmap, or ImageLike
      * @param {string} repetition - Repetition mode: 'repeat', 'repeat-x', 'repeat-y', 'no-repeat'
-     * @returns {Pattern} New pattern object
+     * @returns {Pattern|null} New pattern object
      */
     createPattern(image, repetition) {
-        return this._core.createPattern(image, repetition);
+        const source = CanvasCompatibleContext2D._toImageLike(image);
+        if (source === _swNothingToDraw) {
+            return null;
+        }
+        return this._core.createPattern(source, repetition);
     }
 
     // ===== CORE ACCESS FOR ADVANCED USERS =====

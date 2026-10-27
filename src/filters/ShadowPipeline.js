@@ -46,7 +46,8 @@ class ShadowPipeline {
 
         const surface = rasterizer.surface;
         const op = rasterizer.currentOp;
-        const maxBlurRadius = Math.ceil(op.shadowBlur);
+        // Padded by the blur's full reach (every pass widens it), so no tail is cut off
+        const maxBlurRadius = BoxBlur.spread(op.shadowBlur);
         const shadowBuffer = new ShadowBuffer(surface.width, surface.height, maxBlurRadius);
 
         // Step 1: Render shape to shadow buffer
@@ -65,7 +66,6 @@ class ShadowPipeline {
             op.shadowColor,
             op.shadowOffsetX,
             op.shadowOffsetY,
-            op.globalAlpha,
             op.clipMask
         );
 
@@ -153,7 +153,7 @@ class ShadowPipeline {
         const blurredBuffer = new ShadowBuffer(
             shadowBuffer.originalWidth,
             shadowBuffer.originalHeight,
-            Math.ceil(blurRadius)
+            BoxBlur.spread(blurRadius)
         );
         blurredBuffer.fromDenseArray(
             blurredData,
@@ -173,13 +173,14 @@ class ShadowPipeline {
      * @param {Color} shadowColor - Shadow color
      * @param {number} offsetX - Shadow X offset
      * @param {number} offsetY - Shadow Y offset
-     * @param {number} globalAlpha - Global alpha value
      * @param {ClipMask} clipMask - Clipping mask (can be null)
      * @private
      */
-    static _compositeShadowToSurface(surface, shadowBuffer, shadowColor, offsetX, offsetY, globalAlpha, clipMask) {
-        // Apply global alpha to shadow color
-        const effectiveShadowColor = shadowColor.withGlobalAlpha(globalAlpha);
+    static _compositeShadowToSurface(surface, shadowBuffer, shadowColor, offsetX, offsetY, clipMask) {
+        // The buffer holds the shape's coverage as drawn — globalAlpha already
+        // applied by _renderToShadowBuffer's render — so the shadow colour's own
+        // alpha is the only factor left (globalAlpha counted once).
+        const effectiveShadowColor = shadowColor;
 
         // Iterate over shadow pixels and composite to surface
         for (const pixel of shadowBuffer.getPixels()) {
@@ -197,15 +198,9 @@ class ShadowPipeline {
                 continue;
             }
 
-            // Calculate final shadow alpha
-            // The 8x multiplier compensates for alpha dilution caused by box blur averaging.
-            // When blur spreads a single pixel over a larger area, the average alpha drops
-            // significantly. The multiplier restores visual intensity to match HTML5 Canvas.
-            const BLUR_DILUTION_COMPENSATION = 8;
-            const finalShadowAlpha = Math.min(
-                255,
-                Math.round(pixel.alpha * effectiveShadowColor.a * BLUR_DILUTION_COMPENSATION)
-            );
+            // Shadow alpha = coverage x shadow colour alpha. The blur conserves
+            // coverage (BoxBlur), so no compensation factor belongs here.
+            const finalShadowAlpha = Math.min(255, Math.round(pixel.alpha * effectiveShadowColor.a));
 
             if (finalShadowAlpha <= 0) continue;
 

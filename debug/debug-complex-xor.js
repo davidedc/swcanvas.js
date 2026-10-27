@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Debug the complex XOR test to see if purple rectangle appears
-const SWCanvas = require('./dist/swcanvas.js');
+const SWCanvas = require('../dist/swcanvas.js');
+const saveDebugImage = require('./save-debug-image.js');
 
 console.log('=== Complex XOR Test Verification ===\n');
 
@@ -59,8 +60,7 @@ const yellowArea = checkPixel(100, 140, 'Yellow triangle (should be unchanged)')
 // Save debug image
 const surface = canvas._coreSurface;
 const pngData = SWCanvas.Core.PngEncoder.encode(surface);
-require('fs').writeFileSync('debug-complex-xor-fixed.basic.png', Buffer.from(pngData));
-console.log('8. Saved debug-complex-xor-fixed.basic.png');
+console.log('8. Saved ' + saveDebugImage('debug-complex-xor-fixed.basic.png', pngData));
 
 console.log('\n=== VERIFICATION ===');
 console.log('Key test: Purple rectangle over white background');

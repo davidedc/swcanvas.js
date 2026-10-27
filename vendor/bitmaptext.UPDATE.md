@@ -176,7 +176,7 @@ are two independent cadences with two independent pins:
 
 `vendor/bitmaptext-release.pin` is read at runtime by
 `scripts/download-bitmaptext-assets.sh` (the full ~157 MB WebP set). The
-committed Node smoke fixture (`font-assets/_smoke/`, QOI) is regenerated from
+committed test fixture (`font-assets/_smoke/`: QOI for Node, WebP for the browser test page) is regenerated from
 that same WebP set by `scripts/build-smoke-fixture.js`, so this one pin is the
 single source of truth for both browser (WebP) and Node (QOI) text assets.
 

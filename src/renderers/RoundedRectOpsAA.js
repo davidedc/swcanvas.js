@@ -61,6 +61,22 @@ class RoundedRectOpsAA {
      * rendering exactly the historical one. A single missed end stops at the
      * arc's tangent column instead, so one tiny-radius corner cannot blank a
      * whole row of the hole next to differently-rounded corners.
+     *
+     * Both axes sample pixel CENTERS, as the polygon filler and CircleOps do: the
+     * row is taken at py + 0.5 (dyL / dyR below), and a column x is inside iff its
+     * center x + 0.5 lies in [left edge, right edge) of the shape on that row. So
+     * the ring a thick stroke leaves (outer extent minus inner extent) is the exact
+     * pixel-center coverage of the stroke, the same along a vertical side as along
+     * the transposed horizontal one.
+     *
+     * A row with no columns (outside the shape, or both arcs missed) is the EMPTY
+     * interval, rightX < leftX - never a marker coordinate: a legal extent can start
+     * at any x, negative ones included (a shape past the surface's left edge), so
+     * callers test rightX < leftX, never the sign of leftX. Every return is a fresh
+     * { leftX, rightX } literal of that one shape, and should stay so: inlined, the
+     * call's result can be scalar-replaced, so a row allocates nothing - a shared
+     * empty constant would be a real heap object, and module-level output variables
+     * measured slower on this per-row path.
      * @param {number} py - Scanline Y coordinate
      * @param {number} rectX - Rectangle left X
      * @param {number} rectW - Rectangle width
@@ -68,12 +84,13 @@ class RoundedRectOpsAA {
      * @param {number} rectH - Rectangle height
      * @param {number[]} radii - Corner radii [topLeft, topRight, bottomRight, bottomLeft]
      * @param {number} [epsilon=0] - Epsilon for inset calculation
-     * @returns {{leftX: number, rightX: number}} X extent or {-1, -1} if outside
+     * @returns {{leftX: number, rightX: number}} The row's columns, inclusive (any x,
+     *   negative included); rightX < leftX when the row has no columns
      * @private
      */
     static _getXExtent(py, rectX, rectW, rectY, rectH, radii, epsilon = 0) {
         if (py < rectY || py >= rectY + rectH) {
-            return { leftX: -1, rightX: -1 };
+            return { leftX: 0, rightX: -1 };
         }
         const rTL = radii[0],
             rTR = radii[1],
@@ -111,7 +128,7 @@ class RoundedRectOpsAA {
                 radiusSquared = rL * rL;
             leftMissed = dySquared >= radiusSquared;
             dxL = leftMissed ? 0 : Math.sqrt(radiusSquared - dySquared);
-            leftX = Math.ceil(rectX + rL - dxL + epsilon);
+            leftX = Math.ceil(rectX + rL - dxL - 0.5 + epsilon);
         }
         if (rR > 0) {
             let dxR;
@@ -125,11 +142,11 @@ class RoundedRectOpsAA {
                 rightMissed = dySquared >= radiusSquared;
                 dxR = rightMissed ? 0 : Math.sqrt(radiusSquared - dySquared);
             }
-            rightX = Math.floor(rectX + rectW - rR + dxR - 1 - epsilon);
+            rightX = Math.ceil(rectX + rectW - rR + dxR - 0.5 - epsilon) - 1;
         }
 
         if (leftMissed && rightMissed) {
-            return { leftX: -1, rightX: -1 };
+            return { leftX: 0, rightX: -1 };
         }
         return { leftX, rightX };
     }
@@ -535,7 +552,7 @@ class RoundedRectOpsAA {
 
             // Get outer extent
             const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadii);
-            if (outer.leftX < 0) continue; // Outside outer bounds
+            if (outer.rightX < outer.leftX) continue; // Outside outer bounds
 
             // Clamp outer to the clip frame (surface bounds when unclipped)
             const outerLeft = Math.max(cx0, outer.leftX);
@@ -546,7 +563,7 @@ class RoundedRectOpsAA {
             if (innerW > 0 && innerH > 0 && py >= innerY && py < innerY + innerH) {
                 const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadii);
 
-                if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
+                if (inner.rightX >= inner.leftX) {
                     // Draw left and right stroke spans around the inner region.
                     // Dual clamp: the left span ends at innerLeft - 1 and the right span
                     // starts at innerRight + 1, so innerLeft must not exceed cx1 and
@@ -702,7 +719,7 @@ class RoundedRectOpsAA {
             if (py < cy0 || py >= cy1) continue;
 
             const outer = RoundedRectOpsAA._getXExtent(py, outerX, outerW, outerY, outerH, outerRadii);
-            if (outer.leftX < 0) continue;
+            if (outer.rightX < outer.leftX) continue;
 
             const outerLeft = Math.max(cx0, outer.leftX);
             const outerRight = Math.min(cx1 - 1, outer.rightX);
@@ -711,7 +728,7 @@ class RoundedRectOpsAA {
             if (innerW > 0 && innerH > 0 && py >= innerY && py < innerY + innerH) {
                 const inner = RoundedRectOpsAA._getXExtent(py, innerX, innerW, innerY, innerH, innerRadii);
 
-                if (inner.leftX >= 0 && inner.rightX >= inner.leftX) {
+                if (inner.rightX >= inner.leftX) {
                     const innerLeft = Math.min(cx1, Math.max(cx0, inner.leftX));
                     const innerRight = Math.max(cx0 - 1, Math.min(cx1 - 1, inner.rightX));
 
@@ -997,16 +1014,16 @@ class RoundedRectOpsAA {
             // Get outer stroke extent - uses calculated bounds from original coordinates
             const outerExtent = hasStroke
                 ? RoundedRectOpsAA._getXExtent(py, outerRectX, outerRectW, outerRectY, outerRectH, outerRadii, 0)
-                : { leftX: -1, rightX: -1 };
+                : { leftX: 0, rightX: -1 };
 
             // Get inner stroke extent - uses calculated bounds from original coordinates
             const innerExtent =
                 hasStroke && innerRectH > 0
                     ? RoundedRectOpsAA._getXExtent(py, innerRectX, innerRectW, innerRectY, innerRectH, innerRadii, 0)
-                    : { leftX: -1, rightX: -1 };
+                    : { leftX: 0, rightX: -1 };
 
             // Determine fill extent based on stroke transparency
-            let fillExtent = { leftX: -1, rightX: -1 };
+            let fillExtent = { leftX: 0, rightX: -1 };
             if (hasFill) {
                 if (hasStroke) {
                     // Check if stroke is semi-transparent (needs overlap blending)
@@ -1027,7 +1044,7 @@ class RoundedRectOpsAA {
                     } else {
                         // Opaque OR 1px semi-transparent: fill to inner extent
                         // (1px has no visible overlap area; opaque stroke covers fill anyway)
-                        if (innerExtent.leftX >= 0 && innerExtent.rightX >= innerExtent.leftX) {
+                        if (innerExtent.rightX >= innerExtent.leftX) {
                             fillExtent.leftX = innerExtent.leftX;
                             fillExtent.rightX = innerExtent.rightX;
                         }
@@ -1039,17 +1056,17 @@ class RoundedRectOpsAA {
             }
 
             // STEP 1: Render fill first (uses path extent or inner extent based on stroke type)
-            if (hasFill && fillExtent.leftX >= 0 && fillExtent.leftX <= fillExtent.rightX) {
+            if (hasFill && fillExtent.leftX <= fillExtent.rightX) {
                 renderFillSpan(fillExtent.leftX, fillExtent.rightX, py);
             }
 
             // STEP 2: Render stroke on top (covers any micro-gaps at boundary)
-            if (hasStroke && outerExtent.leftX >= 0) {
+            if (hasStroke && outerExtent.rightX >= outerExtent.leftX) {
                 const outerLeft = Math.max(0, outerExtent.leftX);
                 const outerRight = Math.min(surfaceWidth - 1, outerExtent.rightX);
 
                 if (outerLeft <= outerRight) {
-                    if (innerExtent.leftX >= 0 && innerExtent.rightX >= innerExtent.leftX) {
+                    if (innerExtent.rightX >= innerExtent.leftX) {
                         // Has inner region - draw left and right stroke segments
                         const innerLeft = Math.max(0, innerExtent.leftX);
                         const innerRight = Math.min(surfaceWidth - 1, innerExtent.rightX);

@@ -1,17 +1,23 @@
 #!/usr/bin/env node
 
 /**
- * build-smoke-fixture.js — regenerate font-assets/_smoke/ (the Node text-test
- * fixture) locally from the downloaded WebP font-assets release.
+ * build-smoke-fixture.js — regenerate font-assets/_smoke/ (the text-test
+ * fixture both test runners load: Node's tests/run-tests.js and the browser
+ * page tests/browser/index.html) locally from the downloaded WebP font-assets
+ * release.
  *
  * WHY THIS EXISTS
- *   Node has no WebP decoder, so the Node text tests load atlases as QOI. Rather
- *   than depend on a separate upstream "smoke zip" release artifact, we DERIVE
- *   the Node fixture from the standard WebP release — the same one the browser
- *   demo uses. The atlas WebP are lossless VP8L 1-bit coverage masks, so the
- *   WebP→QOI transcode is byte-exact. This makes vendor/bitmaptext-release.pin
- *   the single source of truth for BOTH browser (WebP) and Node (QOI) text
- *   assets, and removes the smoke-zip artifact + its separate download path.
+ *   Node has no WebP decoder, so the Node text tests load atlases as QOI; the
+ *   browser's font loader reads WebP (a raw .webp over http(s), a base64
+ *   -webp.js wrapper over file://). Rather than depend on a separate upstream
+ *   "smoke zip" release artifact, we DERIVE the fixture from the standard WebP
+ *   release, in both forms: the release's own WebP bytes (copied, and wrapped
+ *   for file://) and their QOI transcode. The atlas WebP are lossless VP8L 1-bit
+ *   coverage masks, so the WebP→QOI transcode is byte-exact and both runners
+ *   rasterize the very same atlas pixels. This makes
+ *   vendor/bitmaptext-release.pin the single source of truth for BOTH browser
+ *   (WebP) and Node (QOI) text assets, and removes the smoke-zip artifact + its
+ *   separate download path.
  *
  * WHEN TO RUN  (authoring-time, maintainer only — the OUTPUT is committed)
  *   - after bumping the font-assets baseline, or
@@ -28,6 +34,9 @@
  *           (no trailing newline — the upstream pipeline terser-minifies these,
  *            which normalises quotes to " and strips the newline; we emit that
  *            form directly so there is no terser dependency.)
+ *           font-assets/atlas-<id>.webp  --[ copied byte for byte ]-->  _smoke/atlas-<id>.webp
+ *             --[ base64 ]-->  _smoke/atlas-<id>-webp.js: BitmapText.a(d,"fam",sIdx,wIdx,size,'<b64>');\n
+ *           (the form `npm run text:wrap-for-file` writes — the file:// loader's input.)
  *   bundle: font-assets/{metrics-bundle,positioning-bundle-density-N}.js
  *             --[ extract base64 → inflateRaw → JSON ]-->  full record set
  *             --[ filter to the spec's fonts ]-->          subset
@@ -150,7 +159,8 @@ for (const set of spec.fontSets) {
 // ---------------------------------------------------------------------------
 for (const f of fs.readdirSync(SMOKE_DIR)) {
     if (f === 'smoke-set.json') continue;
-    if (/^atlas-.*-qoi\.js$/.test(f) || /^metrics-bundle\.js$/.test(f) || /^positioning-bundle-density-.*\.js$/.test(f)) {
+    if (/^atlas-.*-(qoi|webp)\.js$/.test(f) || /^atlas-.*\.webp$/.test(f) ||
+        /^metrics-bundle\.js$/.test(f) || /^positioning-bundle-density-.*\.js$/.test(f)) {
         fs.unlinkSync(path.join(SMOKE_DIR, f));
     }
 }
@@ -196,6 +206,20 @@ for (const a of wantedAtlases) {
     const outName = `atlas-${a.idString}-qoi.js`;
     fs.writeFileSync(path.join(SMOKE_DIR, outName), shim);
     written.push(outName);
+
+    // The browser's two forms of the same atlas: the release WebP itself (http(s))
+    // and its base64 wrapper (file://), exactly what `npm run text:wrap-for-file`
+    // makes of it.
+    const webpBytes = fs.readFileSync(webpPath);
+    const webpName = `atlas-${a.idString}.webp`;
+    fs.writeFileSync(path.join(SMOKE_DIR, webpName), webpBytes);
+    written.push(webpName);
+    const webpShim =
+        `BitmapText.a(${a.density},"${a.family}",${a.styleIdx},${a.weightIdx},${a.size},` +
+        `'${webpBytes.toString('base64')}');\n`;
+    const webpShimName = `atlas-${a.idString}-webp.js`;
+    fs.writeFileSync(path.join(SMOKE_DIR, webpShimName), webpShim);
+    written.push(webpShimName);
 }
 
 // ---------------------------------------------------------------------------

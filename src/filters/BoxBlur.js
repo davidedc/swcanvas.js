@@ -46,19 +46,17 @@ class BoxBlur {
             return new Float32Array(data); // Return copy
         }
 
-        // Calculate equivalent box filter width for Gaussian approximation
-        // Based on Central Limit Theorem: multiple box filters -> Gaussian
-        const sigma = blurRadius / 2.0;
-        const boxWidth = Math.floor(Math.max(Math.sqrt((12 * sigma * sigma) / passes + 1), 3));
-
-        // Ensure odd width for symmetric filter
-        const finalBoxWidth = boxWidth % 2 === 0 ? boxWidth + 1 : boxWidth;
-
-        // Apply multiple blur passes
+        // Multiple box filters approximate a Gaussian (Central Limit Theorem);
+        // the widths (boxWidths) make the passes' combined variance that of
+        // the HTML5 shadow blur, sigma = blurRadius / 2. A width of 1 is the
+        // identity and is skipped.
+        const widths = BoxBlur.boxWidths(blurRadius, passes);
         let currentData = new Float32Array(data);
 
         for (let pass = 0; pass < passes; pass++) {
-            currentData = BoxBlur._singleBoxBlurPass(currentData, width, height, finalBoxWidth);
+            if (widths[pass] > 1) {
+                currentData = BoxBlur._singleBoxBlurPass(currentData, width, height, widths[pass]);
+            }
         }
 
         return currentData;
@@ -86,7 +84,11 @@ class BoxBlur {
     }
 
     /**
-     * Apply horizontal box blur using running sum
+     * Apply horizontal box blur using running sum. Each output is the mean of
+     * the 2r+1 samples centred on it, a sample beyond the row counting as
+     * transparent (0): the divisor never shrinks at the edges, so the pass
+     * conserves the row's total alpha (the caller pads the buffer by the
+     * blur's reach, so nothing falls off it).
      * @param {Float32Array} data - Input image data
      * @param {number} width - Image width
      * @param {number} height - Image height
@@ -96,40 +98,23 @@ class BoxBlur {
      */
     static _horizontalBoxBlur(data, width, height, radius) {
         const result = new Float32Array(data.length);
+        const box = 2 * radius + 1;
 
         for (let y = 0; y < height; y++) {
             const rowOffset = y * width;
 
-            // Initialize running sum for first pixel
+            // The box around x = 0: samples 0..radius (the rest lie beyond the row)
             let sum = 0;
-            let count = 0;
-
-            // Build initial sum
-            for (let x = -radius; x <= radius; x++) {
-                const srcX = Math.max(0, Math.min(width - 1, x));
-                sum += data[rowOffset + srcX];
-                count++;
+            for (let x = 0; x <= radius && x < width; x++) {
+                sum += data[rowOffset + x];
             }
-
-            result[rowOffset] = sum / count;
+            result[rowOffset] = sum / box;
 
             // Slide the box across the row
             for (let x = 1; x < width; x++) {
-                // Remove leftmost pixel from sum
-                const leftX = Math.max(0, Math.min(width - 1, x - radius - 1));
-                const rightX = Math.max(0, Math.min(width - 1, x + radius));
-
-                if (x - radius - 1 >= 0) {
-                    sum -= data[rowOffset + leftX];
-                    count--;
-                }
-
-                if (x + radius < width) {
-                    sum += data[rowOffset + rightX];
-                    count++;
-                }
-
-                result[rowOffset + x] = sum / count;
+                if (x - radius - 1 >= 0) sum -= data[rowOffset + x - radius - 1];
+                if (x + radius < width) sum += data[rowOffset + x + radius];
+                result[rowOffset + x] = sum / box;
             }
         }
 
@@ -137,7 +122,8 @@ class BoxBlur {
     }
 
     /**
-     * Apply vertical box blur using running sum
+     * Apply vertical box blur using running sum (the vertical twin of
+     * _horizontalBoxBlur: transparent beyond the column, fixed divisor).
      * @param {Float32Array} data - Input image data
      * @param {number} width - Image width
      * @param {number} height - Image height
@@ -147,38 +133,21 @@ class BoxBlur {
      */
     static _verticalBoxBlur(data, width, height, radius) {
         const result = new Float32Array(data.length);
+        const box = 2 * radius + 1;
 
         for (let x = 0; x < width; x++) {
-            // Initialize running sum for first pixel
+            // The box around y = 0: samples 0..radius (the rest lie beyond the column)
             let sum = 0;
-            let count = 0;
-
-            // Build initial sum
-            for (let y = -radius; y <= radius; y++) {
-                const srcY = Math.max(0, Math.min(height - 1, y));
-                sum += data[srcY * width + x];
-                count++;
+            for (let y = 0; y <= radius && y < height; y++) {
+                sum += data[y * width + x];
             }
-
-            result[x] = sum / count;
+            result[x] = sum / box;
 
             // Slide the box down the column
             for (let y = 1; y < height; y++) {
-                // Remove topmost pixel from sum
-                const topY = Math.max(0, Math.min(height - 1, y - radius - 1));
-                const bottomY = Math.max(0, Math.min(height - 1, y + radius));
-
-                if (y - radius - 1 >= 0) {
-                    sum -= data[topY * width + x];
-                    count--;
-                }
-
-                if (y + radius < height) {
-                    sum += data[bottomY * width + x];
-                    count++;
-                }
-
-                result[y * width + x] = sum / count;
+                if (y - radius - 1 >= 0) sum -= data[(y - radius - 1) * width + x];
+                if (y + radius < height) sum += data[(y + radius) * width + x];
+                result[y * width + x] = sum / box;
             }
         }
 
@@ -279,6 +248,43 @@ class BoxBlur {
         const topLeft = x1 > 0 && y1 > 0 ? sat[(y1 - 1) * width + (x1 - 1)] : 0;
 
         return bottomRight - topRight - bottomLeft + topLeft;
+    }
+
+    /**
+     * The box width of each pass of blur(): odd widths wl and wl + 2, the first
+     * m passes taking wl, chosen so the passes' summed variance
+     * (sum of (w^2 - 1) / 12) comes closest to sigma^2, sigma = blurRadius / 2
+     * (P. Kovesi, "Fast Almost-Gaussian Filtering", 2010). A single odd
+     * width for every pass overshoots sigma; this split does not.
+     * @param {number} blurRadius - The shadow blur (HTML5 shadowBlur)
+     * @param {number} passes - Number of blur passes (default: 3)
+     * @returns {number[]} One odd width per pass (1 = no blur)
+     */
+    static boxWidths(blurRadius, passes = 3) {
+        const sigma = blurRadius / 2.0;
+        const ideal = Math.sqrt((12 * sigma * sigma) / passes + 1);
+        let wl = Math.floor(ideal);
+        if (wl % 2 === 0) wl--;
+        if (wl < 1) wl = 1;
+        const wu = wl + 2;
+        const mIdeal = (12 * sigma * sigma - passes * wl * wl - 4 * passes * wl - 3 * passes) / (-4 * wl - 4);
+        const m = Math.max(0, Math.min(passes, Math.round(mIdeal)));
+        const widths = [];
+        for (let i = 0; i < passes; i++) widths.push(i < m ? wl : wu);
+        return widths;
+    }
+
+    /**
+     * How far (pixels) blur() carries alpha from where it starts: every pass
+     * widens the reach by half its box. The shadow buffer is padded by this,
+     * so the blur's tails are not cut off.
+     * @param {number} blurRadius - The shadow blur (HTML5 shadowBlur)
+     * @param {number} passes - Number of blur passes (default: 3)
+     * @returns {number}
+     */
+    static spread(blurRadius, passes = 3) {
+        if (blurRadius === 0) return 0;
+        return BoxBlur.boxWidths(blurRadius, passes).reduce((sum, w) => sum + Math.floor(w / 2), 0);
     }
 
     /**

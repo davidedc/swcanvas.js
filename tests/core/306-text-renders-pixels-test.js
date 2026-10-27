@@ -1,8 +1,9 @@
 // Test: fillText actually writes glyph pixels when a matching atlas is loaded.
-// The test runner preloads the smoke fixture's 3 fonts at size 16 density-1:
-// Arial reg, Arial bold, BitmapTextInvariant. Tests in this file constrain
-// themselves to size 16 (the only size in the smoke set) — sizes 9..15
-// and 17..96 in the smoke fixture have no atlas and would return NO_METRICS.
+// Both test runners preload the smoke fixture's fonts (tests/smoke-fonts.js):
+// Arial reg, Arial bold, BitmapTextInvariant, at size 16, densities 1 and 2.
+// Tests in this file constrain themselves to size 16 (the only size in the
+// smoke set) — sizes 9..15 and 17..96 have no metrics in the fixture and
+// would return NO_METRICS.
 
 // Helper: count canvas pixels that differ from white (255,255,255,255).
 function countNonWhitePixels(ctx, w, h) {

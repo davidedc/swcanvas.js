@@ -1,5 +1,5 @@
-const SWCanvas = require('./dist/swcanvas.js');
-const fs = require('fs');
+const SWCanvas = require('../dist/swcanvas.js');
+const saveDebugImage = require('./save-debug-image.js');
 
 console.log('=== MINIMAL XOR CORNER DEBUG ===');
 
@@ -78,8 +78,7 @@ testPoints.forEach(([x, y, description]) => {
 
 // Save debug image
 const pngData = SWCanvas.Core.PngEncoder.encode(surface);
-fs.writeFileSync('debug-minimal-xor.basic.png', Buffer.from(pngData));
-console.log('\n✅ Debug image saved: debug-minimal-xor.basic.png');
+console.log('\n✅ Debug image saved: ' + saveDebugImage('debug-minimal-xor.basic.png', pngData));
 
 console.log('\n=== EXPECTED vs ACTUAL ===');
 console.log('Expected:');

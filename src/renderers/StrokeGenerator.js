@@ -15,10 +15,13 @@ class StrokeGenerator {
      * Generate stroke polygons for a path with given stroke properties
      * @param {Path2D} path - Path to stroke
      * @param {Object} strokeProps - Stroke properties
+     * @param {number} [deviceScale=1] - Device pixels per path unit (the transform's larger axis
+     *   scale): round joins and caps are flattened for the size they are drawn at
      * @returns {Array<Array<Point>>} Array of stroke polygons
      */
-    static generateStrokePolygons(path, strokeProps) {
+    static generateStrokePolygons(path, strokeProps, deviceScale = 1) {
         const validatedProps = StrokeGenerator._validateStrokeProperties(strokeProps);
+        validatedProps.deviceScale = deviceScale;
 
         if (validatedProps.lineWidth <= 0) return [];
 
@@ -280,17 +283,18 @@ class StrokeGenerator {
         const segments = StrokeGenerator._generateSegments(points, halfWidth);
         if (segments.length === 0) return [];
 
-        // Add segment bodies to stroke parts
-        for (const segment of segments) {
-            strokeParts.push(segment.body);
-        }
-
         // Generate joins between adjacent segments
         StrokeGenerator._generateJoins(segments, strokeParts, strokeProps, isClosed);
 
         // Generate caps for open paths
         if (!isClosed && segments.length > 0) {
             StrokeGenerator._generateCaps(segments, strokeParts, strokeProps, halfWidth);
+        }
+
+        // Add segment bodies to stroke parts - last, as a join marks the end edges it shares
+        // with them (_bodyOutline)
+        for (const segment of segments) {
+            strokeParts.push(StrokeGenerator._bodyOutline(segment));
         }
 
         return strokeParts;
@@ -363,8 +367,31 @@ class StrokeGenerator {
             p2: p2,
             tangent: direction,
             normal: normal,
-            length: length
+            length: length,
+            startJoin: null, // the join point on the start edge, when a join attaches there
+            endJoin: null // the join point on the end edge, when a join attaches there
         };
+    }
+
+    /**
+     * A segment's body as filled: its four corners, with the join point inserted on each end
+     * edge a join attaches to. Every join polygon has edges from the join point to the outer
+     * (or inner) corners, i.e. along HALF of the body's end edge; with the join point a vertex
+     * of the body too, join and body share those half edges with the same two endpoints, which
+     * the filler crosses at the bit-identical x from both sides - no gap for a pixel center on
+     * the seam to fall into, where the full edge and its half could round 1 ulp apart.
+     * @param {Object} seg - Segment
+     * @returns {Array<Object>} The body polygon
+     * @private
+     */
+    static _bodyOutline(seg) {
+        const b = seg.body;
+        if (seg.startJoin === null && seg.endJoin === null) return b;
+        const outline = [b[0], b[1]];
+        if (seg.endJoin !== null) outline.push(seg.endJoin.toObject());
+        outline.push(b[2], b[3]);
+        if (seg.startJoin !== null) outline.push(seg.startJoin.toObject());
+        return outline;
     }
 
     /**
@@ -382,6 +409,8 @@ class StrokeGenerator {
             const seg2 = segments[i + 1];
             const joinPolygons = StrokeGenerator._generateJoin(seg1, seg2, strokeProps);
             strokeParts.push(...joinPolygons);
+            seg1.endJoin = seg2.p1;
+            seg2.startJoin = seg2.p1;
         }
 
         // Handle closed path joining (last segment to first segment)
@@ -390,6 +419,8 @@ class StrokeGenerator {
             const firstSeg = segments[0];
             const joinPolygons = StrokeGenerator._generateJoin(lastSeg, firstSeg, strokeProps);
             strokeParts.push(...joinPolygons);
+            lastSeg.endJoin = firstSeg.p1;
+            firstSeg.startJoin = firstSeg.p1;
         }
     }
 
@@ -409,7 +440,7 @@ class StrokeGenerator {
 
         // Check for 180-degree turn (parallel segments)
         if (Math.abs(cross) < FLOAT_EPSILON) {
-            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
+            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint, strokeProps.lineWidth / 2);
         }
 
         // Generate appropriate join type
@@ -417,11 +448,34 @@ class StrokeGenerator {
             case 'miter':
                 return StrokeGenerator._generateMiterJoin(seg1, seg2, joinPoint, strokeProps.miterLimit);
             case 'round':
-                return StrokeGenerator._generateRoundJoin(seg1, seg2, joinPoint);
+                return StrokeGenerator._generateRoundJoin(seg1, seg2, joinPoint, strokeProps.deviceScale);
             case 'bevel':
             default:
-                return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
+                return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint, strokeProps.lineWidth / 2);
         }
+    }
+
+    /**
+     * Whether a miter or bevel join needs its INNER triangle [joinPoint, inner2, inner1] - the
+     * inner half of the connecting area between the two bodies' end edges. Every point of that
+     * triangle is within both bodies' widths, lies some b behind seg1's end edge and some f
+     * ahead of seg2's start edge, with b + f <= halfWidth * |sin(turn)| (0 at joinPoint, the
+     * whole amount along inner1-inner2), so it is inside seg1's body where b <= seg1.length or
+     * inside seg2's where f <= seg2.length. Whenever seg1.length + seg2.length reaches
+     * halfWidth * |sin(turn)| the two bodies therefore cover the whole triangle, and a part
+     * inside parts wound the same way adds nothing to a nonzero fill. Only two segments shorter
+     * than that together (a thick stroke on a tightly flattened curve, short polyline segments)
+     * leave some of it bare, and there it is emitted. (The round join relies on the bodies
+     * alone, as these joins then do.)
+     * @param {Object} seg1 - First segment
+     * @param {Object} seg2 - Second segment
+     * @param {number} halfWidth - Half line width
+     * @param {number} cross - seg1.tangent x seg2.tangent, = +/-sin(turn)
+     * @returns {boolean} True if the two bodies leave part of the inner triangle uncovered
+     * @private
+     */
+    static _innerTriangleUncovered(seg1, seg2, halfWidth, cross) {
+        return seg1.length + seg2.length < halfWidth * Math.abs(cross);
     }
 
     /**
@@ -468,7 +522,7 @@ class StrokeGenerator {
 
         if (!miterPoint) {
             // Fallback to bevel if no intersection
-            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
+            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint, halfWidth);
         }
 
         // Check miter limit
@@ -479,10 +533,18 @@ class StrokeGenerator {
 
         if (miterRatio > miterLimit) {
             // Exceeds miter limit - use bevel
-            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint);
+            return StrokeGenerator._generateBevelJoin(seg1, seg2, joinPoint, halfWidth);
         }
 
-        // For miter join, we need to fill both the miter triangle and the inner area
+        // The connecting area [outer1, outer2, inner2, inner1] is two triangles meeting at the
+        // join point (its long edges cross there, so as one polygon its halves would wind
+        // opposite ways): the outer one joins the miter triangle into one convex kite; the
+        // inner one is emitted only where no body covers it (_innerTriangleUncovered)
+        const jp = joinPoint.toObject();
+        const kite = StrokeGenerator._windLikeBodies([jp, outer1, miterPoint, outer2]);
+        if (!StrokeGenerator._innerTriangleUncovered(seg1, seg2, halfWidth, cross)) {
+            return [kite];
+        }
         let inner1, inner2;
         if (cross > 0) {
             // Left turn - left sides are inner
@@ -493,12 +555,7 @@ class StrokeGenerator {
             inner1 = seg1.body[2]; // Right side of seg1 end
             inner2 = seg2.body[3]; // Right side of seg2 start
         }
-
-        // Create miter triangle and inner quadrilateral
-        return [
-            [outer1, miterPoint, outer2], // Miter triangle
-            [outer1, outer2, inner2, inner1] // Inner connecting area
-        ];
+        return [kite, StrokeGenerator._windLikeBodies([jp, inner2, inner1])];
     }
 
     /**
@@ -506,26 +563,39 @@ class StrokeGenerator {
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {Point} joinPoint - Join point
-     * @returns {Array} Array containing single bevel polygon
+     * @param {number} halfWidth - Half line width (decides whether the inner triangle is needed)
+     * @returns {Array} The bevel triangle, plus the inner triangle where no body covers it
      * @private
      */
-    static _generateBevelJoin(seg1, seg2, joinPoint) {
+    static _generateBevelJoin(seg1, seg2, joinPoint, halfWidth) {
         const cross = seg1.tangent.cross(seg2.tangent);
         const outerSides = StrokeGenerator._getOuterSides(seg1, seg2, cross);
-        const innerSides = StrokeGenerator._getInnerSides(seg1, seg2, cross);
 
-        return [[outerSides.outer1, outerSides.outer2, innerSides.inner2, innerSides.inner1]];
+        // [outer1, outer2, inner2, inner1] is two triangles meeting at the join point (its long
+        // edges cross there - see _generateMiterJoin): the outer one is the bevel, the inner one
+        // is emitted only where no body covers it (_innerTriangleUncovered)
+        const jp = joinPoint.toObject();
+        const bevel = StrokeGenerator._windLikeBodies([jp, outerSides.outer1, outerSides.outer2]);
+        if (!StrokeGenerator._innerTriangleUncovered(seg1, seg2, halfWidth, cross)) {
+            return [bevel];
+        }
+        const innerSides = StrokeGenerator._getInnerSides(seg1, seg2, cross);
+        return [bevel, StrokeGenerator._windLikeBodies([jp, innerSides.inner2, innerSides.inner1])];
     }
 
     /**
-     * Generate round join
+     * Generate round join as ONE pie polygon [joinPoint, outer1, rim..., outer2] whose rim ends
+     * are the bodies' own corner objects: its two straight sides are the outer halves of the
+     * bodies' end edges, with the same endpoints as the bodies' (_bodyOutline), so no sliver
+     * opens between join and body for a pixel center on the seam to fall into
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {Point} joinPoint - Join point
-     * @returns {Array} Array of triangular fan polygons
+     * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
+     * @returns {Array} The pie polygon
      * @private
      */
-    static _generateRoundJoin(seg1, seg2, joinPoint) {
+    static _generateRoundJoin(seg1, seg2, joinPoint, deviceScale) {
         // Calculate half width from segment body (distance between top and bottom edges)
         const halfWidth =
             Math.sqrt(Math.pow(seg1.body[0].x - seg1.body[3].x, 2) + Math.pow(seg1.body[0].y - seg1.body[3].y, 2)) / 2;
@@ -560,7 +630,8 @@ class StrokeGenerator {
         }
 
         // We want to go the convex way (positive turn)
-        if (angleDiff < 0) {
+        const swapped = angleDiff < 0;
+        if (swapped) {
             // Swap to go positive direction
             const temp = startAngle;
             startAngle = endAngle;
@@ -568,27 +639,45 @@ class StrokeGenerator {
             angleDiff = -angleDiff;
         }
 
-        const segments = Math.max(2, Math.ceil(angleDiff / QUARTER_PI)); // At least 2 segments
+        const segments = StrokeGenerator._roundSegments(angleDiff, halfWidth, deviceScale);
         const angleStep = angleDiff / segments;
 
-        const triangles = [];
-        for (let i = 0; i < segments; i++) {
-            const a1 = startAngle + i * angleStep;
-            const a2 = startAngle + (i + 1) * angleStep;
-
-            const p1 = {
-                x: joinPoint.x + halfWidth * Math.cos(a1),
-                y: joinPoint.y + halfWidth * Math.sin(a1)
-            };
-            const p2 = {
-                x: joinPoint.x + halfWidth * Math.cos(a2),
-                y: joinPoint.y + halfWidth * Math.sin(a2)
-            };
-
-            triangles.push([joinPoint.toObject(), p1, p2]);
+        // The rim from startAngle; its two ends are the corners themselves
+        const pie = [joinPoint.toObject()];
+        for (let i = 0; i <= segments; i++) {
+            const a = startAngle + i * angleStep;
+            pie.push({
+                x: joinPoint.x + halfWidth * Math.cos(a),
+                y: joinPoint.y + halfWidth * Math.sin(a)
+            });
         }
+        pie[1] = swapped ? outer2 : outer1;
+        pie[segments + 1] = swapped ? outer1 : outer2;
 
-        return triangles;
+        return [StrokeGenerator._windLikeBodies(pie)];
+    }
+
+    /**
+     * How many chords flatten a round join's or cap's arc of `angle` radians and radius
+     * `halfWidth`, drawn at `deviceScale` device pixels per unit: as many as keep every chord
+     * within PATH_FLATTENING_TOLERANCE device pixels of the circle (like a path's own arcs,
+     * Context2D._arcSegmentCount), and never fewer than one per quarter-PI (nor than 2) - so
+     * small round parts keep their shape and large ones stay round. Both quotients go through
+     * PathFlattener.segmentCount, so the rounding noise of an angle read back from
+     * position-dependent corners (a right angle's 2 + noise) cannot add a chord.
+     * @param {number} angle - Arc angle in radians (non-negative)
+     * @param {number} halfWidth - Arc radius in path units
+     * @param {number} deviceScale - Device pixels per path unit
+     * @returns {number} Chord count
+     * @private
+     */
+    static _roundSegments(angle, halfWidth, deviceScale) {
+        const quarters = PathFlattener.segmentCount(angle / QUARTER_PI);
+        const radius = Math.max(halfWidth * deviceScale, TRANSFORM_EPSILON);
+        let maxAngleStep = 2 * Math.acos(Math.max(0, 1 - PATH_FLATTENING_TOLERANCE / radius));
+        if (!(maxAngleStep > TRANSFORM_EPSILON)) maxAngleStep = TRANSFORM_EPSILON;
+        const byTolerance = PathFlattener.segmentCount(angle / maxAngleStep);
+        return Math.max(2, quarters, byTolerance);
     }
 
     /**
@@ -600,26 +689,33 @@ class StrokeGenerator {
      * @private
      */
     static _generateCaps(segments, strokeParts, strokeProps, halfWidth) {
-        // Start cap
+        // Start cap (closing on the first body's start edge, body[3] -> body[0])
+        const firstSeg = segments[0];
         const startCaps = StrokeGenerator._generateCap(
-            segments[0].p1,
-            segments[0].tangent,
+            firstSeg.p1,
+            firstSeg.tangent,
             halfWidth,
             strokeProps.lineCap,
-            true
+            true,
+            firstSeg.body[0],
+            firstSeg.body[3],
+            strokeProps.deviceScale
         );
         if (startCaps) {
             strokeParts.push(...(Array.isArray(startCaps[0]) ? startCaps : [startCaps]));
         }
 
-        // End cap
+        // End cap (closing on the last body's end edge, body[1] -> body[2])
         const lastSeg = segments[segments.length - 1];
         const endCaps = StrokeGenerator._generateCap(
             lastSeg.p2,
             lastSeg.tangent,
             halfWidth,
             strokeProps.lineCap,
-            false
+            false,
+            lastSeg.body[1],
+            lastSeg.body[2],
+            strokeProps.deviceScale
         );
         if (endCaps) {
             strokeParts.push(...(Array.isArray(endCaps[0]) ? endCaps : [endCaps]));
@@ -633,17 +729,28 @@ class StrokeGenerator {
      * @param {number} halfWidth - Half line width
      * @param {string} lineCap - Cap type
      * @param {boolean} isStart - Whether this is start cap
+     * @param {Object} plusCorner - The body's corner at point + normal * halfWidth
+     * @param {Object} minusCorner - The body's corner at point - normal * halfWidth
+     * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
      * @returns {Array|null} Cap polygons or null for butt caps
      * @private
      */
-    static _generateCap(point, tangent, halfWidth, lineCap, isStart) {
+    static _generateCap(point, tangent, halfWidth, lineCap, isStart, plusCorner, minusCorner, deviceScale) {
         const normal = new Point(-tangent.y, tangent.x);
 
         switch (lineCap) {
             case 'square':
                 return StrokeGenerator._generateSquareCap(point, tangent, normal, halfWidth, isStart);
             case 'round':
-                return StrokeGenerator._generateRoundCap(point, normal, halfWidth, isStart);
+                return StrokeGenerator._generateRoundCap(
+                    point,
+                    normal,
+                    halfWidth,
+                    isStart,
+                    plusCorner,
+                    minusCorner,
+                    deviceScale
+                );
             case 'butt':
             default:
                 return null; // No cap geometry needed
@@ -664,27 +771,42 @@ class StrokeGenerator {
         const extension = isStart ? point.subtract(tangent.scale(halfWidth)) : point.add(tangent.scale(halfWidth));
 
         return [
-            [
+            StrokeGenerator._windLikeBodies([
                 extension.add(normal.scale(halfWidth)).toObject(),
                 extension.subtract(normal.scale(halfWidth)).toObject(),
                 point.subtract(normal.scale(halfWidth)).toObject(),
                 point.add(normal.scale(halfWidth)).toObject()
-            ]
+            ])
         ];
     }
 
     /**
-     * Generate round cap as semicircular fan
+     * Generate round cap as ONE half-disc polygon whose diameter IS the body's end edge: its two
+     * ends are the body's own corner objects, so cap and body meet along one edge with the same
+     * two endpoints - not along two separately computed lines, and with no fan edges inside the
+     * cap - leaving no sliver between them for a pixel center on the seam to fall into.
      * @param {Point} point - Cap center point
      * @param {Point} normal - Normal direction
      * @param {number} halfWidth - Half line width
      * @param {boolean} isStart - Whether this is start cap
-     * @returns {Array} Array of triangular fan segments
+     * @param {Object} plusCorner - The body's corner at point + normal * halfWidth
+     * @param {Object} minusCorner - The body's corner at point - normal * halfWidth
+     * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
+     * @returns {Array} One polygon
      * @private
      */
-    static _generateRoundCap(point, normal, halfWidth, isStart) {
+    static _generateRoundCap(point, normal, halfWidth, isStart, plusCorner, minusCorner, deviceScale) {
         const startAngle = Math.atan2(normal.y, normal.x);
-        return StrokeGenerator._generateArcFan(point, halfWidth, startAngle, startAngle + Math.PI * (isStart ? 1 : -1));
+        const rim = StrokeGenerator._generateArcRim(
+            point,
+            halfWidth,
+            startAngle,
+            startAngle + Math.PI * (isStart ? 1 : -1),
+            deviceScale
+        );
+        rim[0] = plusCorner;
+        rim[rim.length - 1] = minusCorner;
+        return [StrokeGenerator._windLikeBodies(rim)];
     }
 
     // Helper methods
@@ -762,15 +884,17 @@ class StrokeGenerator {
     }
 
     /**
-     * Generate triangular fan for arcs (used by round joins and caps)
+     * The rim of an arc as its flattened points p(a0) ... p(an), a0 = startAngle, an = endAngle
+     * (a round cap closes it with the diameter)
      * @param {Point} center - Arc center
      * @param {number} radius - Arc radius
      * @param {number} startAngle - Start angle in radians
      * @param {number} endAngle - End angle in radians
-     * @returns {Array} Array of triangles
+     * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
+     * @returns {Array<Object>} The rim points {x, y}
      * @private
      */
-    static _generateArcFan(center, radius, startAngle, endAngle) {
+    static _generateArcRim(center, radius, startAngle, endAngle, deviceScale) {
         let angleDiff = endAngle - startAngle;
 
         // Normalize angle difference. The epsilon tolerance is essential for round
@@ -785,27 +909,47 @@ class StrokeGenerator {
         while (angleDiff > Math.PI + FLOAT_EPSILON) angleDiff -= TAU;
         while (angleDiff < -Math.PI - FLOAT_EPSILON) angleDiff += TAU;
 
-        const absAngle = Math.abs(angleDiff);
-        const segments = Math.max(2, Math.ceil(absAngle / QUARTER_PI));
+        // A cap's half turn is exactly 4 quarter-PIs up to the rounding of startAngle +/- PI.
+        const segments = StrokeGenerator._roundSegments(Math.abs(angleDiff), radius, deviceScale);
         const angleStep = angleDiff / segments;
 
-        const triangles = [];
-        for (let i = 0; i < segments; i++) {
-            const a1 = startAngle + i * angleStep;
-            const a2 = startAngle + (i + 1) * angleStep;
-
-            const p1 = {
-                x: center.x + radius * Math.cos(a1),
-                y: center.y + radius * Math.sin(a1)
-            };
-            const p2 = {
-                x: center.x + radius * Math.cos(a2),
-                y: center.y + radius * Math.sin(a2)
-            };
-
-            triangles.push([center.toObject(), p1, p2]);
+        const rim = [];
+        for (let i = 0; i <= segments; i++) {
+            const a = startAngle + i * angleStep;
+            rim.push({
+                x: center.x + radius * Math.cos(a),
+                y: center.y + radius * Math.sin(a)
+            });
         }
 
-        return triangles;
+        return rim;
+    }
+
+    /**
+     * Wind a stroke part the way every segment body winds, reversing it in place if needed.
+     * A stroke covers the union of its swept parts (the HTML spec's traced path is "the edge of
+     * the areas that would be covered" by the swept line), and SWCanvas fills the parts together
+     * under the nonzero rule: a part wound against the others subtracts instead of adding, so
+     * where it overlaps another part of the same stroke() - a round or square cap on a crossing
+     * line, a join on a short neighbour - the overlap sums to winding 0 and is left unpainted.
+     * A body [p1+n, p2+n, p2-n, p1-n] (n = the tangent turned +90deg) has a negative signed area
+     * (shoelace sum); the decision reads the whole polygon's signed area, not one corner's, so a
+     * near-collinear first corner (a kite at a near-straight join) cannot flip it. The sum is
+     * taken relative to the first point, so a small part far from the origin keeps its sign.
+     * @param {Array<Object>} poly - Simple polygon points {x, y} (a part: 3 to ~6 points)
+     * @returns {Array<Object>} The same array, wound like the bodies
+     * @private
+     */
+    static _windLikeBodies(poly) {
+        const x0 = poly[0].x,
+            y0 = poly[0].y;
+        let twiceArea = 0;
+        for (let i = 1, n = poly.length - 1; i < n; i++) {
+            const p = poly[i],
+                q = poly[i + 1];
+            twiceArea += (p.x - x0) * (q.y - y0) - (q.x - x0) * (p.y - y0);
+        }
+        if (twiceArea > 0) poly.reverse();
+        return poly;
     }
 }

@@ -86,16 +86,9 @@ Debug utilities help developers:
 
 **Purpose**: Visual verification of rendering output.
 
-Generated output files from debug scripts for visual inspection:
-- `debug-copy-color.bmp` - Copy operation color output
-- `debug-copy-vs-sourceover.bmp` - Copy vs source-over comparison output
-- `debug-minimal-xor.bmp` - Minimal XOR test result
-- `debug-html5-xor.bmp` - HTML5 API XOR result
-- `debug-simple-xor-analysis.bmp` - Simple XOR analysis (BMP legacy format)
-- `debug-simple-xor-analysis.basic.png` - Simple XOR analysis (PNG with transparency)
-- `debug-complex-xor-fixed.bmp` - Complex XOR after fixes
+Each debug script writes its image output (e.g. `debug-simple-xor-analysis.basic.png`) next to itself in `debug/`, through `debug/save-debug-image.js`. Outputs there are git-ignored; run the script to regenerate one.
 
-**Note**: Older scripts used BitmapEncoder (.bmp), newer scripts use PngEncoder (.png) for transparency support.
+**Note**: Older scripts use BitmapEncoder (.bmp), newer scripts use PngEncoder (.png) for transparency support.
 
 ## Usage Patterns
 

@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // Micro-benchmark for the transformed-drawImage sampling change (NN -> bilinear
-// on non-axis-aligned transforms). The direct-rendering perf cases never call
-// drawImage, so benchmark-session.js is blind to this path by construction —
-// this measures the rotated composite (a Fizzygum island drag's hot path)
-// directly. Usage:
+// on non-axis-aligned transforms): it measures the rotated composite (a Fizzygum
+// island drag's hot path) in isolation. benchmark-session.js covers the same
+// path through the drawimage-perf case's 'rotated' operation. Usage:
 //   node debug/bench-rotated-drawimage.js [path-to-dist]   (default ../dist/swcanvas.js)
 const path = require('path');
 const distPath = process.argv[2] || path.join(__dirname, '..', 'dist', 'swcanvas.js');

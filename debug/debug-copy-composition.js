@@ -1,5 +1,5 @@
-const SWCanvas = require('./dist/swcanvas.js');
-const fs = require('fs');
+const SWCanvas = require('../dist/swcanvas.js');
+const saveDebugImage = require('./save-debug-image.js');
 
 console.log('=== COPY COMPOSITION ANALYSIS ===');
 
@@ -82,8 +82,7 @@ testCtx.fillRect(130, 30, 40, 40);
 // Save comparison
 const testSurface = testCanvas._coreSurface;
 const testPngData = SWCanvas.Core.PngEncoder.encode(testSurface);
-fs.writeFileSync('debug-copy-vs-sourceover.basic.png', Buffer.from(testPngData));
-console.log('\n✅ Comparison image saved: debug-copy-vs-sourceover.basic.png');
+console.log('\n✅ Comparison image saved: ' + saveDebugImage('debug-copy-vs-sourceover.basic.png', testPngData));
 
 // Check both results
 const copyResult = testCtx.getImageData(50, 50, 1, 1);
