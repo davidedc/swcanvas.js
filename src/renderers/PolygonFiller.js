@@ -32,6 +32,10 @@ class PolygonFiller {
      * @param {number} subPixelOpacity - Sub-pixel opacity for thin strokes (0-1)
      * @param {string} composite - Composite operation (default: 'source-over')
      * @param {SourceMask|null} sourceMask - Optional source coverage mask for canvas-wide compositing
+     * @param {{x0,y0,x1,y1}|null} clipRect - Optional half-open device clip rect
+     * @param {{x: number, y: number}|null} origin - For a stroke's parts, the integer user point they
+     *   are relative to (StrokeGenerator's anchor): they are then filled in their device frame
+     *   (_toDeviceFrame). Null for absolute polygons, transformed as given
      */
     static fillPolygons(
         surface,
@@ -44,7 +48,8 @@ class PolygonFiller {
         subPixelOpacity = 1.0,
         composite = 'source-over',
         sourceMask = null,
-        clipRect = null
+        clipRect = null,
+        origin = null
     ) {
         if (polygons.length === 0) return;
         if (IS_DEBUG) {
@@ -66,7 +71,16 @@ class PolygonFiller {
             sourceMask === null;
 
         if (canUseDirectRendering) {
-            PolygonFiller._fillPolygonsDirect(surface, polygons, paintSource, fillRule, transform, clipMask, clipRect);
+            PolygonFiller._fillPolygonsDirect(
+                surface,
+                polygons,
+                paintSource,
+                fillRule,
+                transform,
+                clipMask,
+                clipRect,
+                origin
+            );
         } else {
             PolygonFiller._fillPolygonsStandard(
                 surface,
@@ -79,9 +93,85 @@ class PolygonFiller {
                 subPixelOpacity,
                 composite,
                 sourceMask,
-                clipRect
+                clipRect,
+                origin
             );
         }
+    }
+
+    /**
+     * Where a shape anchored at the integer user point (ux, uy) lands in device space: the device
+     * pixel (ox, oy) at or below the anchor's image and the remainder (rx, ry) in [0, 1), so that a
+     * user point p of the shape lies at (ox, oy) + A (p - (ux, uy)) + (rx, ry), A being the
+     * transform's linear part (see _toDeviceFrame)
+     * @param {Transform2D} transform - User to device
+     * @param {number} ux - Anchor x (an integer)
+     * @param {number} uy - Anchor y (an integer)
+     * @returns {{ox: number, oy: number, rx: number, ry: number}}
+     */
+    static deviceAnchor(transform, ux, uy) {
+        const tx = transform.a * ux + transform.c * uy + transform.e;
+        const ty = transform.b * ux + transform.d * uy + transform.f;
+        let ox = Math.floor(tx);
+        let oy = Math.floor(ty);
+        if (!Number.isFinite(ox) || !Number.isFinite(oy)) {
+            ox = 0;
+            oy = 0;
+        }
+        return { ox, oy, rx: tx - ox, ry: ty - oy };
+    }
+
+    /**
+     * A stroke's parts in its device FRAME: every vertex as its offset from the integer device
+     * pixel (ox, oy) the stroke's integer user anchor lands at (deviceAnchor), computed from the
+     * vertex's offset from that anchor - which is what the parts are already given as
+     * (StrokeGenerator.generateStrokePolygons). A stroke moved by whole pixels, by a translate() or by
+     * its own coordinates, is then computed from the same small numbers wherever it lands: its edges
+     * cross every pixel centre the same way, so it covers the same pixels moved by the same whole
+     * pixels - also at a TIE, a centre exactly on an edge, which the rounding of a vertex at the
+     * stroke's absolute magnitude would otherwise decide. Device row y is frame row y - oy, and a
+     * crossing x in the frame starts a run at column ox + ceil(x - 0.5).
+     * @param {Array} polygons - The stroke's parts, relative to origin
+     * @param {Transform2D} transform - User to device
+     * @param {{x: number, y: number}} origin - The integer user point the parts are relative to
+     * @returns {{polygons: Array, ox: number, oy: number}}
+     * @private
+     */
+    static _toDeviceFrame(polygons, transform, origin) {
+        const anchor = PolygonFiller.deviceAnchor(transform, origin.x, origin.y);
+        const a = transform.a;
+        const b = transform.b;
+        const c = transform.c;
+        const d = transform.d;
+        const rx = anchor.rx;
+        const ry = anchor.ry;
+        const framed = new Array(polygons.length);
+        for (let i = 0; i < polygons.length; i++) {
+            const poly = polygons[i];
+            const out = new Array(poly.length);
+            for (let j = 0; j < poly.length; j++) {
+                const px = poly[j].x;
+                const py = poly[j].y;
+                out[j] = { x: a * px + c * py + rx, y: b * px + d * py + ry };
+            }
+            framed[i] = out;
+        }
+        return { polygons: framed, ox: anchor.ox, oy: anchor.oy };
+    }
+
+    /**
+     * Whether device point (x, y) is inside a stroke's parts (nonzero), decided in the device frame
+     * the stroke is filled in (_toDeviceFrame), so the answer agrees with the stroke's pixels
+     * @param {number} x - Device x
+     * @param {number} y - Device y
+     * @param {Array} polygons - The stroke's parts, relative to origin
+     * @param {Transform2D} transform - User to device
+     * @param {{x: number, y: number}} origin - The integer user point the parts are relative to
+     * @returns {boolean} True if the point is inside the stroke
+     */
+    static isPointInStrokePolygons(x, y, polygons, transform, origin) {
+        const frame = PolygonFiller._toDeviceFrame(polygons, transform, origin);
+        return PolygonFiller.isPointInPolygons(x - frame.ox, y - frame.oy, frame.polygons, 'nonzero');
     }
 
     /**
@@ -89,7 +179,16 @@ class PolygonFiller {
      * Uses 32-bit packed writes and inline clip buffer access for maximum performance
      * @private
      */
-    static _fillPolygonsDirect(surface, polygons, color, fillRule, transform, clipMask, clipRect = null) {
+    static _fillPolygonsDirect(
+        surface,
+        polygons,
+        color,
+        fillRule,
+        transform,
+        clipMask,
+        clipRect = null,
+        origin = null
+    ) {
         // Pre-compute packed color outside hot loop
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
         const data32 = surface.data32;
@@ -99,11 +198,16 @@ class PolygonFiller {
         const clipX0 = clipRect ? clipRect.x0 : 0;
         const clipX1m1 = clipRect ? clipRect.x1 - 1 : (width - 1);
 
-        // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
+        // Transform all polygon vertices - a stroke's parts into its device frame, rows and columns
+        // counted from (ox, oy) (_toDeviceFrame)
+        const frame = origin === null ? null : PolygonFiller._toDeviceFrame(polygons, transform, origin);
+        const transformedPolygons =
+            frame === null ? polygons.map(poly => poly.map(point => transform.transformPoint(point))) : frame.polygons;
+        const ox = frame === null ? 0 : frame.ox;
+        const oy = frame === null ? 0 : frame.oy;
 
         // Find bounding box
-        const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
+        const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface, oy);
         let scanMinY = bounds.minY, scanMaxY = bounds.maxY;
         if (clipRect) {
             if (clipRect.y0 > scanMinY) scanMinY = clipRect.y0;
@@ -111,11 +215,11 @@ class PolygonFiller {
         }
 
         // Process each scanline: its crossings, sorted, from the active edges only
-        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY, scanMaxY);
+        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY - oy, scanMaxY - oy);
         const crossX = scan.cx;
         const crossW = scan.cw;
         for (let y = scanMinY; y <= scanMaxY; y++) {
-            const count = PolygonFiller._scanRow(scan, y);
+            const count = PolygonFiller._scanRow(scan, y - oy);
 
             // Fill spans using optimized rendering
             let windingNumber = 0;
@@ -138,8 +242,8 @@ class PolygonFiller {
                     // ceil(left)..floor(right) inclusive endX made a path-filled
                     // rect 1px wider on the right than fillRect / clip / drawImage
                     // / HTML5.
-                    let startX = Math.max(0, Math.ceil(crossX[i] - 0.5));
-                    let endX = Math.min(width - 1, Math.ceil(crossX[i + 1] - 0.5) - 1);
+                    let startX = Math.max(0, ox + Math.ceil(crossX[i] - 0.5));
+                    let endX = Math.min(width - 1, ox + Math.ceil(crossX[i + 1] - 0.5) - 1);
                     // Clip rect: clamp the span to the clip rect's X range; the
                     // clipBuffer (if any) is still tested per pixel below.
                     if (startX < clipX0) startX = clipX0;
@@ -197,7 +301,8 @@ class PolygonFiller {
         subPixelOpacity,
         composite,
         sourceMask,
-        clipRect = null
+        clipRect = null,
+        origin = null
     ) {
         // Mark path-based rendering for testing (helps verify direct rendering is used when expected)
         // Check for Context2D existence since PolygonFiller may be used in isolation (e.g., unit tests)
@@ -205,11 +310,16 @@ class PolygonFiller {
             Context2D._markPathBasedRendering();
         }
 
-        // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
+        // Transform all polygon vertices - a stroke's parts into its device frame, rows and columns
+        // counted from (ox, oy) (_toDeviceFrame)
+        const frame = origin === null ? null : PolygonFiller._toDeviceFrame(polygons, transform, origin);
+        const transformedPolygons =
+            frame === null ? polygons.map(poly => poly.map(point => transform.transformPoint(point))) : frame.polygons;
+        const ox = frame === null ? 0 : frame.ox;
+        const oy = frame === null ? 0 : frame.oy;
 
         // Find bounding box for optimization
-        const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
+        const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface, oy);
         let scanMinY = bounds.minY, scanMaxY = bounds.maxY;
         if (clipRect) { // only scanlines inside the clip rect's Y range
             if (clipRect.y0 > scanMinY) scanMinY = clipRect.y0;
@@ -217,14 +327,14 @@ class PolygonFiller {
         }
 
         // Process each scanline: its crossings, sorted, from the active edges only
-        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY, scanMaxY);
+        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY - oy, scanMaxY - oy);
         for (let y = scanMinY; y <= scanMaxY; y++) {
             PolygonFiller._fillSpans(
                 surface,
                 y,
                 scan.cx,
                 scan.cw,
-                PolygonFiller._scanRow(scan, y),
+                PolygonFiller._scanRow(scan, y - oy),
                 paintSource,
                 fillRule,
                 clipMask,
@@ -233,19 +343,21 @@ class PolygonFiller {
                 subPixelOpacity,
                 composite,
                 sourceMask,
-                clipRect
+                clipRect,
+                ox
             );
         }
     }
 
     /**
      * Calculate bounding box for transformed polygons
-     * @param {Array} polygons - Transformed polygons
+     * @param {Array} polygons - Transformed polygons (a stroke's in its device frame)
      * @param {Surface} surface - Target surface for bounds clamping
-     * @returns {Object} {minY, maxY} bounds
+     * @param {number} oy - The device row the polygons' y is counted from (0, or a frame's oy)
+     * @returns {Object} {minY, maxY} bounds, device rows
      * @private
      */
-    static _calculateBounds(polygons, surface) {
+    static _calculateBounds(polygons, surface, oy) {
         let minY = Infinity,
             maxY = -Infinity;
 
@@ -258,8 +370,8 @@ class PolygonFiller {
 
         // Clamp to surface bounds
         return {
-            minY: Math.max(0, Math.floor(minY)),
-            maxY: Math.min(surface.height - 1, Math.ceil(maxY))
+            minY: Math.max(0, oy + Math.floor(minY)),
+            maxY: Math.min(surface.height - 1, oy + Math.ceil(maxY))
         };
     }
 
@@ -505,6 +617,8 @@ class PolygonFiller {
      * @param {number} subPixelOpacity - Sub-pixel opacity for thin strokes (0-1)
      * @param {string} composite - Composite operation
      * @param {SourceMask|null} sourceMask - Optional source coverage mask
+     * @param {{x0,y0,x1,y1}|null} clipRect - Optional half-open device clip rect
+     * @param {number} ox - The device column crossX is counted from (0, or a frame's ox)
      * @private
      */
     static _fillSpans(
@@ -521,7 +635,8 @@ class PolygonFiller {
         subPixelOpacity = 1.0,
         composite = 'source-over',
         sourceMask = null,
-        clipRect = null
+        clipRect = null,
+        ox = 0
     ) {
         if (count === 0) return;
         // Clip rect: clamp each span's X to the clip rect (the caller has already
@@ -552,8 +667,8 @@ class PolygonFiller {
                 // endX made e.g. an unclipped desktop PATTERN fill reach one
                 // column past the clipped morphs drawn over it. A column x is in
                 // [left, right) iff left <= x+0.5 < right.
-                let startX = Math.max(0, Math.ceil(crossX[i] - 0.5));
-                let endX = Math.min(surface.width - 1, Math.ceil(crossX[i + 1] - 0.5) - 1);
+                let startX = Math.max(0, ox + Math.ceil(crossX[i] - 0.5));
+                let endX = Math.min(surface.width - 1, ox + Math.ceil(crossX[i + 1] - 0.5) - 1);
                 if (startX < clipX0) startX = clipX0;
                 if (endX > clipX1m1) endX = clipX1m1;
 

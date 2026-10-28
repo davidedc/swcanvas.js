@@ -1129,8 +1129,9 @@ current consumers:
      bevel 3). The inner half is emitted only when the two segments' lengths sum to less than
      `halfWidth·|sin turn|` (`_innerTriangleUncovered`); otherwise it lies inside the union of the
      two bodies.
-   - A round join is one pie from the join point whose rim ends are the bodies' outer corners; a
-     round cap is one half-disc polygon on the body's own end edge.
+   - A round join is one pie from the join point whose rim ends are the bodies' outer corners, plus
+     the inner half under the same rule as miter and bevel (entry 33); a round cap is one
+     half-disc polygon on the body's own end edge.
    - Round caps and joins are flattened to within 0.25 device px of their circle, and never with
      fewer than one chord per 45° (`_roundSegments`).
    - `strokeLine` (butt) and `strokeRect` under a rotation sample pixel centres exactly as
@@ -1237,6 +1238,28 @@ current consumers:
    empty one takes the source unchanged. Every source-over writer applies it: `PolygonFiller`'s
    span and pixel templates, `drawImage`'s inline blend and `CompositeOperations`. Pinned by
    `tests/core/099`.
+32. **DONE (2026-10-28): a stroke paints the same pixels wherever a whole-pixel translation puts
+   it.** `StrokeGenerator` strokes a path relative to the floor of its first point, and
+   `PolygonFiller` fills the parts in their device frame: every vertex is placed from the device
+   pixel that anchor lands at (`deviceAnchor`, `_toDeviceFrame`). A stroke moved by whole pixels,
+   by `translate()` or by its own coordinates, is then computed from the same small numbers and
+   covers the same pixels, ties included (a pixel centre exactly on an edge, which rounding at the
+   stroke's absolute magnitude would otherwise decide). `strokeLine` takes its endpoints in the
+   same frame, so it still paints what `stroke()` paints, and `isPointInStroke` answers in the
+   frame its stroke is painted in.
+   - Fills, clips and `isPointInPath` keep absolute device arithmetic. A fill's vertices are often
+     computed by the caller at the device position, and absolute arithmetic re-rounds them at that
+     same magnitude; a device frame there made such a fill depend on position where it had not.
+     Translation-free fills need the path stored translation-free first (the default path is kept
+     in device space).
+   - The rotated `strokeRect` (`RectOpsRot`) is not framed.
+
+   Pinned by `tests/core/100`.
+33. **DONE (2026-10-28): round joins cover their inner side.** A round join adds the inner
+   triangle [join point, inner corner of the first body's end, inner corner of the second body's
+   start] under the same rule as miter and bevel joins (`_innerTriangleUncovered`), so the join
+   kind never changes what a thick stroke on a tight curve paints on its inner side. Pinned by
+   `tests/core/101`.
 
 ---
 

@@ -1,12 +1,12 @@
 # SWCanvas.js Test Suite
 
-This directory contains the comprehensive **modular test infrastructure** for SWCanvas, with 119 core tests + 160 visual tests + 85 direct rendering tests and cross-platform compatibility.
+This directory contains the comprehensive **modular test infrastructure** for SWCanvas, with 121 core tests + 160 visual tests + 85 direct rendering tests and cross-platform compatibility.
 
 ## Modular Test Architecture
 
 ```
 tests/
-├── core/                          # 119 individual core test files (001-099 + 300-308 text + 401-410 3D)
+├── core/                          # 121 individual core test files (001-101 + 300-308 text + 401-410 3D)
 │   ├── 001-surface-creation-valid.js
 │   ├── 015-alpha-blending-test.js  
 │   ├── 031-transform-matrix-order-dependency.js

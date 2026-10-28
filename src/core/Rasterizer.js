@@ -639,12 +639,15 @@ class Rasterizer {
         }
 
         // Generate stroke polygons using geometric approach, round parts flattened for the device
-        // size the op transform gives them
+        // size the op transform gives them, relative to the path's own anchor (origin), which the
+        // filler places in device space
         const transform = this._currentOp.transform;
+        const origin = { x: 0, y: 0 };
         const strokePolygons = StrokeGenerator.generateStrokePolygons(
             path,
             adjustedStrokeProps,
-            Math.max(transform.scaleX, transform.scaleY)
+            Math.max(transform.scaleX, transform.scaleY),
+            origin
         );
 
         if (this._requiresCanvasWideCompositing(this._currentOp.composite)) {
@@ -660,7 +663,8 @@ class Rasterizer {
                 subPixelOpacity,
                 this._currentOp.composite,
                 this._ensureSourceMask(),
-                this._currentOp.clipRect
+                this._currentOp.clipRect,
+                origin
             );
 
             // Perform canvas-wide compositing pass
@@ -678,7 +682,8 @@ class Rasterizer {
                 subPixelOpacity,
                 this._currentOp.composite,
                 this._currentOp.sourceMask,
-                this._currentOp.clipRect
+                this._currentOp.clipRect,
+                origin
             );
         }
     }

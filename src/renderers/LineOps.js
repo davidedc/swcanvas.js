@@ -36,6 +36,9 @@ class LineOps {
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: inline per-pixel for Bresenham, delegated to SpanOps/QuadScanOps for spans)
      * @param {boolean} isOpaqueColor - True if color is opaque with full alpha
      * @param {boolean} isSemiTransparentColor - True if color needs alpha blending
+     * @param {number} [ox=0] - Device column the coordinates are relative to (the line's device
+     *   frame, PolygonFiller._toDeviceFrame): pixel columns are counted from it
+     * @param {number} [oy=0] - Device row the coordinates are relative to
      * @returns {boolean} True if direct rendering was used, false if path-based rendering needed
      */
     static stroke_Any(
@@ -49,7 +52,9 @@ class LineOps {
         globalAlpha,
         clipBuffer,
         isOpaqueColor,
-        isSemiTransparentColor
+        isSemiTransparentColor,
+        ox = 0,
+        oy = 0
     ) {
         const width = surface.width;
         const height = surface.height;
@@ -59,10 +64,10 @@ class LineOps {
             const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
             const data32 = surface.data32;
 
-            let x1i = Math.floor(x1);
-            let y1i = Math.floor(y1);
-            let x2i = Math.floor(x2);
-            let y2i = Math.floor(y2);
+            let x1i = ox + Math.floor(x1);
+            let y1i = oy + Math.floor(y1);
+            let x2i = ox + Math.floor(x2);
+            let y2i = oy + Math.floor(y2);
 
             // Shorten horizontal/vertical lines by 1 pixel to match HTML5 Canvas
             if (x1i === x2i) {
@@ -136,10 +141,10 @@ class LineOps {
             if (y1 === y2) {
                 // Horizontal thick line - render as filled rectangle
                 const halfWidth = lineWidth / 2;
-                const topY = Math.ceil(y1 - halfWidth - 0.5);
-                const bottomY = Math.ceil(y1 + halfWidth - 0.5);
-                const leftX = Math.ceil(Math.min(x1, x2) - 0.5);
-                const rightX = Math.ceil(Math.max(x1, x2) - 0.5) - 1;
+                const topY = oy + Math.ceil(y1 - halfWidth - 0.5);
+                const bottomY = oy + Math.ceil(y1 + halfWidth - 0.5);
+                const leftX = ox + Math.ceil(Math.min(x1, x2) - 0.5);
+                const rightX = ox + Math.ceil(Math.max(x1, x2) - 0.5) - 1;
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 // Y bounds clamping for the loop
@@ -160,10 +165,10 @@ class LineOps {
             } else if (x1 === x2) {
                 // Vertical thick line - render as filled rectangle
                 const halfWidth = lineWidth / 2;
-                const leftX = Math.ceil(x1 - halfWidth - 0.5);
-                const rightX = Math.ceil(x1 + halfWidth - 0.5); // exclusive
-                const topY = Math.ceil(Math.min(y1, y2) - 0.5);
-                const bottomY = Math.ceil(Math.max(y1, y2) - 0.5); // exclusive
+                const leftX = ox + Math.ceil(x1 - halfWidth - 0.5);
+                const rightX = ox + Math.ceil(x1 + halfWidth - 0.5); // exclusive
+                const topY = oy + Math.ceil(Math.min(y1, y2) - 0.5);
+                const bottomY = oy + Math.ceil(Math.max(y1, y2) - 0.5); // exclusive
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 // Y bounds clamping for the loop
@@ -193,7 +198,9 @@ class LineOps {
                     paintSource,
                     globalAlpha,
                     clipBuffer,
-                    false
+                    false,
+                    ox,
+                    oy
                 );
                 return true;
             }
@@ -207,10 +214,10 @@ class LineOps {
                 g = paintSource.g,
                 b = paintSource.b;
 
-            let x1i = Math.floor(x1);
-            let y1i = Math.floor(y1);
-            let x2i = Math.floor(x2);
-            let y2i = Math.floor(y2);
+            let x1i = ox + Math.floor(x1);
+            let y1i = oy + Math.floor(y1);
+            let x2i = ox + Math.floor(x2);
+            let y2i = oy + Math.floor(y2);
 
             if (x1i === x2i) {
                 if (y2i > y1i) y2i--;
@@ -301,7 +308,9 @@ class LineOps {
                 paintSource,
                 globalAlpha,
                 clipBuffer,
-                true
+                true,
+                ox,
+                oy
             );
             return true;
         }
@@ -323,6 +332,8 @@ class LineOps {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps)
      * @param {boolean} useSemiTransparent - If true, use alpha blending
+     * @param {number} [ox=0] - Device column the coordinates are relative to
+     * @param {number} [oy=0] - Device row the coordinates are relative to
      */
     static _strokeThick_PolyScan(
         surface,
@@ -334,7 +345,9 @@ class LineOps {
         paintSource,
         globalAlpha,
         clipBuffer,
-        useSemiTransparent = false
+        useSemiTransparent = false,
+        ox = 0,
+        oy = 0
     ) {
         const r = paintSource.r,
             g = paintSource.g,
@@ -362,9 +375,9 @@ class LineOps {
 
         if (corners === null) {
             // Zero-length line - draw a square
-            QuadScanOps.fillSquare(x1, y1, halfThick, params);
+            QuadScanOps.fillSquare(x1, y1, halfThick, params, ox, oy);
         } else {
-            QuadScanOps.fillQuad(corners, params);
+            QuadScanOps.fillQuad(corners, params, ox, oy);
         }
     }
 }

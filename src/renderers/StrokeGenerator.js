@@ -17,16 +17,43 @@ class StrokeGenerator {
      * @param {Object} strokeProps - Stroke properties
      * @param {number} [deviceScale=1] - Device pixels per path unit (the transform's larger axis
      *   scale): round joins and caps are flattened for the size they are drawn at
+     * @param {{x: number, y: number}|null} [origin=null] - When given, the path is stroked relative
+     *   to an integer point of its own (the floor of its first point), written here: the polygons
+     *   are then relative to it, for PolygonFiller to place (_toDeviceFrame)
      * @returns {Array<Array<Point>>} Array of stroke polygons
      */
-    static generateStrokePolygons(path, strokeProps, deviceScale = 1) {
+    static generateStrokePolygons(path, strokeProps, deviceScale = 1, origin = null) {
         const validatedProps = StrokeGenerator._validateStrokeProperties(strokeProps);
         validatedProps.deviceScale = deviceScale;
 
         if (validatedProps.lineWidth <= 0) return [];
 
         // Flatten path to get line segments
-        const pathPolygons = PathFlattener.flattenPath(path);
+        let pathPolygons = PathFlattener.flattenPath(path);
+
+        // Relative to the floor of the first point, a path moved by whole units is stroked from the
+        // same numbers wherever it lies: its dashes, corners and round parts round the same way,
+        // as they would not at the path's absolute magnitude
+        if (origin !== null) {
+            let ax = 0;
+            let ay = 0;
+            for (let i = 0; i < pathPolygons.length; i++) {
+                if (pathPolygons[i].length > 0) {
+                    ax = Math.floor(pathPolygons[i][0].x);
+                    ay = Math.floor(pathPolygons[i][0].y);
+                    break;
+                }
+            }
+            if (!Number.isFinite(ax) || !Number.isFinite(ay)) {
+                ax = 0;
+                ay = 0;
+            }
+            if (ax !== 0 || ay !== 0) {
+                pathPolygons = pathPolygons.map(poly => poly.map(p => ({ x: p.x - ax, y: p.y - ay })));
+            }
+            origin.x = ax;
+            origin.y = ay;
+        }
 
         // Apply dash pattern if specified
         const dashedPolygons = StrokeGenerator._applyDashPattern(pathPolygons, validatedProps);
@@ -456,7 +483,7 @@ class StrokeGenerator {
     }
 
     /**
-     * Whether a miter or bevel join needs its INNER triangle [joinPoint, inner2, inner1] - the
+     * Whether a join needs its INNER triangle [joinPoint, inner2, inner1] - the
      * inner half of the connecting area between the two bodies' end edges. Every point of that
      * triangle is within both bodies' widths, lies some b behind seg1's end edge and some f
      * ahead of seg2's start edge, with b + f <= halfWidth * |sin(turn)| (0 at joinPoint, the
@@ -465,8 +492,7 @@ class StrokeGenerator {
      * halfWidth * |sin(turn)| the two bodies therefore cover the whole triangle, and a part
      * inside parts wound the same way adds nothing to a nonzero fill. Only two segments shorter
      * than that together (a thick stroke on a tightly flattened curve, short polyline segments)
-     * leave some of it bare, and there it is emitted. (The round join relies on the bodies
-     * alone, as these joins then do.)
+     * leave some of it bare, and there it is emitted - by the round join too.
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {number} halfWidth - Half line width
@@ -587,12 +613,13 @@ class StrokeGenerator {
      * Generate round join as ONE pie polygon [joinPoint, outer1, rim..., outer2] whose rim ends
      * are the bodies' own corner objects: its two straight sides are the outer halves of the
      * bodies' end edges, with the same endpoints as the bodies' (_bodyOutline), so no sliver
-     * opens between join and body for a pixel center on the seam to fall into
+     * opens between join and body for a pixel center on the seam to fall into. Like the miter
+     * and bevel joins it adds the inner triangle where no body covers it (_innerTriangleUncovered)
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {Point} joinPoint - Join point
      * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
-     * @returns {Array} The pie polygon
+     * @returns {Array} The pie polygon, plus the inner triangle where no body covers it
      * @private
      */
     static _generateRoundJoin(seg1, seg2, joinPoint, deviceScale) {
@@ -654,7 +681,12 @@ class StrokeGenerator {
         pie[1] = swapped ? outer2 : outer1;
         pie[segments + 1] = swapped ? outer1 : outer2;
 
-        return [StrokeGenerator._windLikeBodies(pie)];
+        const wound = StrokeGenerator._windLikeBodies(pie);
+        if (!StrokeGenerator._innerTriangleUncovered(seg1, seg2, halfWidth, cross)) {
+            return [wound];
+        }
+        const innerSides = StrokeGenerator._getInnerSides(seg1, seg2, cross);
+        return [wound, StrokeGenerator._windLikeBodies([joinPoint.toObject(), innerSides.inner2, innerSides.inner1])];
     }
 
     /**

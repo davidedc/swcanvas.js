@@ -2009,7 +2009,10 @@ class Context2D {
             lineDashOffset: this._lineDashOffset
         };
 
-        let testPolygons;
+        // The stroke parts, relative to the path's anchor (origin), as stroke() makes them
+        const origin = { x: 0, y: 0 };
+        let strokePolygons;
+        let strokeTransform;
         if (path === this._currentPath) {
             // Device-space centerline: map back by drawT⁻¹, stroke with the round pen
             // in draw-time user space, then forward by drawT — mirroring stroke().
@@ -2020,31 +2023,31 @@ class Context2D {
             } catch (e) {
                 return false;
             }
-            const strokePolygons = StrokeGenerator.generateStrokePolygons(
+            strokePolygons = StrokeGenerator.generateStrokePolygons(
                 this._transformPathPoints(path, inv),
                 strokeProps,
-                Math.max(drawT.scaleX, drawT.scaleY)
+                Math.max(drawT.scaleX, drawT.scaleY),
+                origin
             );
-            if (strokePolygons.length === 0) {
-                return false;
-            }
-            testPolygons = strokePolygons.map(poly => poly.map(point => drawT.transformPoint(point)));
+            strokeTransform = drawT;
         } else {
             // External user-space path: stroke, then map by the current CTM.
-            const strokePolygons = StrokeGenerator.generateStrokePolygons(
+            strokePolygons = StrokeGenerator.generateStrokePolygons(
                 path,
                 strokeProps,
-                Math.max(this._transform.scaleX, this._transform.scaleY)
+                Math.max(this._transform.scaleX, this._transform.scaleY),
+                origin
             );
-            if (strokePolygons.length === 0) {
-                return false;
-            }
-            testPolygons = strokePolygons.map(poly => poly.map(point => this._transform.transformPoint(point)));
+            strokeTransform = this._transform;
+        }
+        if (strokePolygons.length === 0) {
+            return false;
         }
 
         // Test point against the stroke polygons using nonzero winding rule
-        // (stroke hit testing doesn't use fill rules like path filling does).
-        return PolygonFiller.isPointInPolygons(x, y, testPolygons, 'nonzero');
+        // (stroke hit testing doesn't use fill rules like path filling does), in the
+        // device frame stroke() fills them in, so a tie is answered as it is painted.
+        return PolygonFiller.isPointInStrokePolygons(x, y, strokePolygons, strokeTransform, origin);
     }
 
     /**
@@ -3082,19 +3085,45 @@ class Context2D {
         // No caller strokes lines under a non-uniform transform, and the
         // generic stroker makes lines cheap anyway; gate it if one appears.
 
-        // Transform endpoints
-        const start = this._transform.transformPoint({ x: x1, y: y1 });
-        const end = this._transform.transformPoint({ x: x2, y: y2 });
+        // The endpoints in the line's device frame, as stroke() takes the same line: relative
+        // to the floor of the start point (StrokeGenerator's anchor), placed from the device
+        // pixel (ox, oy) that anchor lands at (PolygonFiller.deviceAnchor), so the line covers
+        // the same pixels wherever it is drawn - and the pixels stroke() covers, ties included
+        const t = this._transform;
+        let ax = Math.floor(x1);
+        let ay = Math.floor(y1);
+        if (!Number.isFinite(ax) || !Number.isFinite(ay)) {
+            ax = 0;
+            ay = 0;
+        }
+        const anchor = PolygonFiller.deviceAnchor(t, ax, ay);
+        const px1 = x1 - ax,
+            py1 = y1 - ay,
+            px2 = x2 - ax,
+            py2 = y2 - ay;
 
         // Calculate effective line width
-        const scale = this._transform.uniformScale;
+        const scale = t.uniformScale;
         const scaledLineWidth = this._lineWidth * scale;
 
         // Get paint source
         const paintSource = this._strokeStyle;
 
         // Use optimized line renderer (user-space args feed its generic fallback)
-        this._strokeLineDirect(start.x, start.y, end.x, end.y, scaledLineWidth, paintSource, x1, y1, x2, y2);
+        this._strokeLineDirect(
+            t.a * px1 + t.c * py1 + anchor.rx,
+            t.b * px1 + t.d * py1 + anchor.ry,
+            t.a * px2 + t.c * py2 + anchor.rx,
+            t.b * px2 + t.d * py2 + anchor.ry,
+            anchor.ox,
+            anchor.oy,
+            scaledLineWidth,
+            paintSource,
+            x1,
+            y1,
+            x2,
+            y2
+        );
     }
 
     // ========================================================================
@@ -3276,7 +3305,7 @@ class Context2D {
      * @param {number} ux2 - User-space end x, for the generic fallback
      * @param {number} uy2 - User-space end y, for the generic fallback
      */
-    _strokeLineDirect(x1, y1, x2, y2, lineWidth, paintSource, ux1, uy1, ux2, uy2) {
+    _strokeLineDirect(x1, y1, x2, y2, ox, oy, lineWidth, paintSource, ux1, uy1, ux2, uy2) {
         // Direct rendering only supports butt line caps (open shapes need cap handling)
         const isButtCap = this.lineCap === 'butt';
 
@@ -3345,7 +3374,9 @@ class Context2D {
             isHairlineStroke ? this.globalAlpha * lineWidth : this.globalAlpha,
             clipBuffer,
             isOpaqueColor,
-            isSemiTransparentColor
+            isSemiTransparentColor,
+            ox,
+            oy
         );
 
         if (!directRenderingUsed) {

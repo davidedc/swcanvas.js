@@ -7678,8 +7678,12 @@ class QuadScanOps {
      * @param {Uint8Array|null} params.clipBuffer - Clip mask (CLIPPING: inline per-pixel or delegated to SpanOps depending on mode)
      * @param {Set|null} [params.collectTo] - Add rendered pixel positions to this Set
      * @param {Set|null} [params.skipFrom] - Skip pixels that are in this Set
+     * @param {number} [ox=0] - Device column the corners are relative to (a device frame,
+     *   PolygonFiller._toDeviceFrame): columns are counted from it
+     * @param {number} [oy=0] - Device row the corners are relative to: row y is sampled at
+     *   y - oy + 0.5 in the corners' frame
      */
-    static fillQuad(corners, params) {
+    static fillQuad(corners, params, ox = 0, oy = 0) {
         const { surface, r, g, b, isOpaque, clipBuffer } = params;
         const packedColor = params.packedColor || 0;
         const effectiveAlpha = params.effectiveAlpha || 0;
@@ -7692,9 +7696,12 @@ class QuadScanOps {
         const data32 = surface.data32;
         const data = surface.data;
 
-        // Find bounding box
-        const minY = Math.max(0, Math.floor(Math.min(corners[0].y, corners[1].y, corners[2].y, corners[3].y)));
-        const maxY = Math.min(height - 1, Math.ceil(Math.max(corners[0].y, corners[1].y, corners[2].y, corners[3].y)));
+        // Find bounding box (device rows)
+        const minY = Math.max(0, oy + Math.floor(Math.min(corners[0].y, corners[1].y, corners[2].y, corners[3].y)));
+        const maxY = Math.min(
+            height - 1,
+            oy + Math.ceil(Math.max(corners[0].y, corners[1].y, corners[2].y, corners[3].y))
+        );
 
         // Each non-horizontal edge by its UPPER end and its differences - exactly what
         // PolygonFiller._scanRow interpolates with (no allocation)
@@ -7722,7 +7729,7 @@ class QuadScanOps {
         // the pixels PolygonFiller paints for the same four corners (a stroke() of the line)
         for (let y = minY; y <= maxY; y++) {
             intersections.length = 0;
-            const sample = y + 0.5;
+            const sample = y - oy + 0.5;
             for (let i = 0; i < QuadScanOps._edgeCount; i++) {
                 const edge = QuadScanOps._edges[i];
                 if (sample >= edge.uy && sample < edge.ly) {
@@ -7736,8 +7743,8 @@ class QuadScanOps {
                 const x2i = intersections[1];
                 // Pixel-centre columns, as PolygonFiller: a column x is in the span
                 // [min, max) iff min <= x + 0.5 < max
-                const leftX = Math.max(0, Math.ceil(Math.min(x1i, x2i) - 0.5));
-                const rightX = Math.min(width - 1, Math.ceil(Math.max(x1i, x2i) - 0.5) - 1);
+                const leftX = Math.max(0, ox + Math.ceil(Math.min(x1i, x2i) - 0.5));
+                const rightX = Math.min(width - 1, ox + Math.ceil(Math.max(x1i, x2i) - 0.5) - 1);
                 const spanLength = rightX - leftX + 1;
 
                 if (spanLength > 0) {
@@ -7809,8 +7816,10 @@ if (__outA > 0) {
      * @param {number} centerY - Center Y
      * @param {number} halfSize - Half the square size (typically lineWidth / 2)
      * @param {Object} params - Same parameters as fillQuad (CLIPPING: inline per-pixel or delegated to SpanOps)
+     * @param {number} [ox=0] - Device column the centre is relative to (as fillQuad)
+     * @param {number} [oy=0] - Device row the centre is relative to
      */
-    static fillSquare(centerX, centerY, halfSize, params) {
+    static fillSquare(centerX, centerY, halfSize, params, ox = 0, oy = 0) {
         const { surface, r, g, b, isOpaque, clipBuffer } = params;
         const packedColor = params.packedColor || 0;
         const effectiveAlpha = params.effectiveAlpha || 0;
@@ -7826,16 +7835,16 @@ if (__outA > 0) {
         const usePerPixel = collectTo !== null || skipFrom !== null;
 
         // Calculate Y bounds using proper rounding
-        const minY = Math.max(0, Math.floor(centerY - halfSize));
-        const maxY = Math.min(height - 1, Math.ceil(centerY + halfSize));
+        const minY = Math.max(0, oy + Math.floor(centerY - halfSize));
+        const maxY = Math.min(height - 1, oy + Math.ceil(centerY + halfSize));
 
         for (let y = minY; y <= maxY; y++) {
             // Half-open right edge (see fillQuad): the rightmost column is the
             // largest integer < the right edge = ceil(...) - 1, consistent with
             // leftX = ceil(min). The old floor(...) over-included the right
             // column by 1px at integer-aligned edges.
-            const leftX = Math.max(0, Math.ceil(centerX - halfSize));
-            const rightX = Math.min(width - 1, Math.ceil(centerX + halfSize) - 1);
+            const leftX = Math.max(0, ox + Math.ceil(centerX - halfSize));
+            const rightX = Math.min(width - 1, ox + Math.ceil(centerX + halfSize) - 1);
             const spanLength = rightX - leftX + 1;
 
             if (spanLength <= 0) continue;
@@ -13124,6 +13133,9 @@ class LineOps {
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: inline per-pixel for Bresenham, delegated to SpanOps/QuadScanOps for spans)
      * @param {boolean} isOpaqueColor - True if color is opaque with full alpha
      * @param {boolean} isSemiTransparentColor - True if color needs alpha blending
+     * @param {number} [ox=0] - Device column the coordinates are relative to (the line's device
+     *   frame, PolygonFiller._toDeviceFrame): pixel columns are counted from it
+     * @param {number} [oy=0] - Device row the coordinates are relative to
      * @returns {boolean} True if direct rendering was used, false if path-based rendering needed
      */
     static stroke_Any(
@@ -13137,7 +13149,9 @@ class LineOps {
         globalAlpha,
         clipBuffer,
         isOpaqueColor,
-        isSemiTransparentColor
+        isSemiTransparentColor,
+        ox = 0,
+        oy = 0
     ) {
         const width = surface.width;
         const height = surface.height;
@@ -13147,10 +13161,10 @@ class LineOps {
             const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
             const data32 = surface.data32;
 
-            let x1i = Math.floor(x1);
-            let y1i = Math.floor(y1);
-            let x2i = Math.floor(x2);
-            let y2i = Math.floor(y2);
+            let x1i = ox + Math.floor(x1);
+            let y1i = oy + Math.floor(y1);
+            let x2i = ox + Math.floor(x2);
+            let y2i = oy + Math.floor(y2);
 
             // Shorten horizontal/vertical lines by 1 pixel to match HTML5 Canvas
             if (x1i === x2i) {
@@ -13224,10 +13238,10 @@ class LineOps {
             if (y1 === y2) {
                 // Horizontal thick line - render as filled rectangle
                 const halfWidth = lineWidth / 2;
-                const topY = Math.ceil(y1 - halfWidth - 0.5);
-                const bottomY = Math.ceil(y1 + halfWidth - 0.5);
-                const leftX = Math.ceil(Math.min(x1, x2) - 0.5);
-                const rightX = Math.ceil(Math.max(x1, x2) - 0.5) - 1;
+                const topY = oy + Math.ceil(y1 - halfWidth - 0.5);
+                const bottomY = oy + Math.ceil(y1 + halfWidth - 0.5);
+                const leftX = ox + Math.ceil(Math.min(x1, x2) - 0.5);
+                const rightX = ox + Math.ceil(Math.max(x1, x2) - 0.5) - 1;
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 // Y bounds clamping for the loop
@@ -13248,10 +13262,10 @@ class LineOps {
             } else if (x1 === x2) {
                 // Vertical thick line - render as filled rectangle
                 const halfWidth = lineWidth / 2;
-                const leftX = Math.ceil(x1 - halfWidth - 0.5);
-                const rightX = Math.ceil(x1 + halfWidth - 0.5); // exclusive
-                const topY = Math.ceil(Math.min(y1, y2) - 0.5);
-                const bottomY = Math.ceil(Math.max(y1, y2) - 0.5); // exclusive
+                const leftX = ox + Math.ceil(x1 - halfWidth - 0.5);
+                const rightX = ox + Math.ceil(x1 + halfWidth - 0.5); // exclusive
+                const topY = oy + Math.ceil(Math.min(y1, y2) - 0.5);
+                const bottomY = oy + Math.ceil(Math.max(y1, y2) - 0.5); // exclusive
                 const packedColor = Surface.packColor(paintSource.r, paintSource.g, paintSource.b, 255);
 
                 // Y bounds clamping for the loop
@@ -13281,7 +13295,9 @@ class LineOps {
                     paintSource,
                     globalAlpha,
                     clipBuffer,
-                    false
+                    false,
+                    ox,
+                    oy
                 );
                 return true;
             }
@@ -13295,10 +13311,10 @@ class LineOps {
                 g = paintSource.g,
                 b = paintSource.b;
 
-            let x1i = Math.floor(x1);
-            let y1i = Math.floor(y1);
-            let x2i = Math.floor(x2);
-            let y2i = Math.floor(y2);
+            let x1i = ox + Math.floor(x1);
+            let y1i = oy + Math.floor(y1);
+            let x2i = ox + Math.floor(x2);
+            let y2i = oy + Math.floor(y2);
 
             if (x1i === x2i) {
                 if (y2i > y1i) y2i--;
@@ -13399,7 +13415,9 @@ if (__outA > 0) {
                 paintSource,
                 globalAlpha,
                 clipBuffer,
-                true
+                true,
+                ox,
+                oy
             );
             return true;
         }
@@ -13421,6 +13439,8 @@ if (__outA > 0) {
      * @param {number} globalAlpha - Context global alpha
      * @param {Uint8Array|null} clipBuffer - Clip mask (CLIPPING: delegated to QuadScanOps)
      * @param {boolean} useSemiTransparent - If true, use alpha blending
+     * @param {number} [ox=0] - Device column the coordinates are relative to
+     * @param {number} [oy=0] - Device row the coordinates are relative to
      */
     static _strokeThick_PolyScan(
         surface,
@@ -13432,7 +13452,9 @@ if (__outA > 0) {
         paintSource,
         globalAlpha,
         clipBuffer,
-        useSemiTransparent = false
+        useSemiTransparent = false,
+        ox = 0,
+        oy = 0
     ) {
         const r = paintSource.r,
             g = paintSource.g,
@@ -13460,9 +13482,9 @@ if (__outA > 0) {
 
         if (corners === null) {
             // Zero-length line - draw a square
-            QuadScanOps.fillSquare(x1, y1, halfThick, params);
+            QuadScanOps.fillSquare(x1, y1, halfThick, params, ox, oy);
         } else {
-            QuadScanOps.fillQuad(corners, params);
+            QuadScanOps.fillQuad(corners, params, ox, oy);
         }
     }
 }
@@ -19401,6 +19423,10 @@ class PolygonFiller {
      * @param {number} subPixelOpacity - Sub-pixel opacity for thin strokes (0-1)
      * @param {string} composite - Composite operation (default: 'source-over')
      * @param {SourceMask|null} sourceMask - Optional source coverage mask for canvas-wide compositing
+     * @param {{x0,y0,x1,y1}|null} clipRect - Optional half-open device clip rect
+     * @param {{x: number, y: number}|null} origin - For a stroke's parts, the integer user point they
+     *   are relative to (StrokeGenerator's anchor): they are then filled in their device frame
+     *   (_toDeviceFrame). Null for absolute polygons, transformed as given
      */
     static fillPolygons(
         surface,
@@ -19413,7 +19439,8 @@ class PolygonFiller {
         subPixelOpacity = 1.0,
         composite = 'source-over',
         sourceMask = null,
-        clipRect = null
+        clipRect = null,
+        origin = null
     ) {
         if (polygons.length === 0) return;
         if (IS_DEBUG) {
@@ -19435,7 +19462,16 @@ class PolygonFiller {
             sourceMask === null;
 
         if (canUseDirectRendering) {
-            PolygonFiller._fillPolygonsDirect(surface, polygons, paintSource, fillRule, transform, clipMask, clipRect);
+            PolygonFiller._fillPolygonsDirect(
+                surface,
+                polygons,
+                paintSource,
+                fillRule,
+                transform,
+                clipMask,
+                clipRect,
+                origin
+            );
         } else {
             PolygonFiller._fillPolygonsStandard(
                 surface,
@@ -19448,9 +19484,85 @@ class PolygonFiller {
                 subPixelOpacity,
                 composite,
                 sourceMask,
-                clipRect
+                clipRect,
+                origin
             );
         }
+    }
+
+    /**
+     * Where a shape anchored at the integer user point (ux, uy) lands in device space: the device
+     * pixel (ox, oy) at or below the anchor's image and the remainder (rx, ry) in [0, 1), so that a
+     * user point p of the shape lies at (ox, oy) + A (p - (ux, uy)) + (rx, ry), A being the
+     * transform's linear part (see _toDeviceFrame)
+     * @param {Transform2D} transform - User to device
+     * @param {number} ux - Anchor x (an integer)
+     * @param {number} uy - Anchor y (an integer)
+     * @returns {{ox: number, oy: number, rx: number, ry: number}}
+     */
+    static deviceAnchor(transform, ux, uy) {
+        const tx = transform.a * ux + transform.c * uy + transform.e;
+        const ty = transform.b * ux + transform.d * uy + transform.f;
+        let ox = Math.floor(tx);
+        let oy = Math.floor(ty);
+        if (!Number.isFinite(ox) || !Number.isFinite(oy)) {
+            ox = 0;
+            oy = 0;
+        }
+        return { ox, oy, rx: tx - ox, ry: ty - oy };
+    }
+
+    /**
+     * A stroke's parts in its device FRAME: every vertex as its offset from the integer device
+     * pixel (ox, oy) the stroke's integer user anchor lands at (deviceAnchor), computed from the
+     * vertex's offset from that anchor - which is what the parts are already given as
+     * (StrokeGenerator.generateStrokePolygons). A stroke moved by whole pixels, by a translate() or by
+     * its own coordinates, is then computed from the same small numbers wherever it lands: its edges
+     * cross every pixel centre the same way, so it covers the same pixels moved by the same whole
+     * pixels - also at a TIE, a centre exactly on an edge, which the rounding of a vertex at the
+     * stroke's absolute magnitude would otherwise decide. Device row y is frame row y - oy, and a
+     * crossing x in the frame starts a run at column ox + ceil(x - 0.5).
+     * @param {Array} polygons - The stroke's parts, relative to origin
+     * @param {Transform2D} transform - User to device
+     * @param {{x: number, y: number}} origin - The integer user point the parts are relative to
+     * @returns {{polygons: Array, ox: number, oy: number}}
+     * @private
+     */
+    static _toDeviceFrame(polygons, transform, origin) {
+        const anchor = PolygonFiller.deviceAnchor(transform, origin.x, origin.y);
+        const a = transform.a;
+        const b = transform.b;
+        const c = transform.c;
+        const d = transform.d;
+        const rx = anchor.rx;
+        const ry = anchor.ry;
+        const framed = new Array(polygons.length);
+        for (let i = 0; i < polygons.length; i++) {
+            const poly = polygons[i];
+            const out = new Array(poly.length);
+            for (let j = 0; j < poly.length; j++) {
+                const px = poly[j].x;
+                const py = poly[j].y;
+                out[j] = { x: a * px + c * py + rx, y: b * px + d * py + ry };
+            }
+            framed[i] = out;
+        }
+        return { polygons: framed, ox: anchor.ox, oy: anchor.oy };
+    }
+
+    /**
+     * Whether device point (x, y) is inside a stroke's parts (nonzero), decided in the device frame
+     * the stroke is filled in (_toDeviceFrame), so the answer agrees with the stroke's pixels
+     * @param {number} x - Device x
+     * @param {number} y - Device y
+     * @param {Array} polygons - The stroke's parts, relative to origin
+     * @param {Transform2D} transform - User to device
+     * @param {{x: number, y: number}} origin - The integer user point the parts are relative to
+     * @returns {boolean} True if the point is inside the stroke
+     */
+    static isPointInStrokePolygons(x, y, polygons, transform, origin) {
+        const frame = PolygonFiller._toDeviceFrame(polygons, transform, origin);
+        return PolygonFiller.isPointInPolygons(x - frame.ox, y - frame.oy, frame.polygons, 'nonzero');
     }
 
     /**
@@ -19458,7 +19570,16 @@ class PolygonFiller {
      * Uses 32-bit packed writes and inline clip buffer access for maximum performance
      * @private
      */
-    static _fillPolygonsDirect(surface, polygons, color, fillRule, transform, clipMask, clipRect = null) {
+    static _fillPolygonsDirect(
+        surface,
+        polygons,
+        color,
+        fillRule,
+        transform,
+        clipMask,
+        clipRect = null,
+        origin = null
+    ) {
         // Pre-compute packed color outside hot loop
         const packedColor = Surface.packColor(color.r, color.g, color.b, 255);
         const data32 = surface.data32;
@@ -19468,11 +19589,16 @@ class PolygonFiller {
         const clipX0 = clipRect ? clipRect.x0 : 0;
         const clipX1m1 = clipRect ? clipRect.x1 - 1 : (width - 1);
 
-        // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
+        // Transform all polygon vertices - a stroke's parts into its device frame, rows and columns
+        // counted from (ox, oy) (_toDeviceFrame)
+        const frame = origin === null ? null : PolygonFiller._toDeviceFrame(polygons, transform, origin);
+        const transformedPolygons =
+            frame === null ? polygons.map(poly => poly.map(point => transform.transformPoint(point))) : frame.polygons;
+        const ox = frame === null ? 0 : frame.ox;
+        const oy = frame === null ? 0 : frame.oy;
 
         // Find bounding box
-        const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
+        const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface, oy);
         let scanMinY = bounds.minY, scanMaxY = bounds.maxY;
         if (clipRect) {
             if (clipRect.y0 > scanMinY) scanMinY = clipRect.y0;
@@ -19480,11 +19606,11 @@ class PolygonFiller {
         }
 
         // Process each scanline: its crossings, sorted, from the active edges only
-        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY, scanMaxY);
+        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY - oy, scanMaxY - oy);
         const crossX = scan.cx;
         const crossW = scan.cw;
         for (let y = scanMinY; y <= scanMaxY; y++) {
-            const count = PolygonFiller._scanRow(scan, y);
+            const count = PolygonFiller._scanRow(scan, y - oy);
 
             // Fill spans using optimized rendering
             let windingNumber = 0;
@@ -19507,8 +19633,8 @@ class PolygonFiller {
                     // ceil(left)..floor(right) inclusive endX made a path-filled
                     // rect 1px wider on the right than fillRect / clip / drawImage
                     // / HTML5.
-                    let startX = Math.max(0, Math.ceil(crossX[i] - 0.5));
-                    let endX = Math.min(width - 1, Math.ceil(crossX[i + 1] - 0.5) - 1);
+                    let startX = Math.max(0, ox + Math.ceil(crossX[i] - 0.5));
+                    let endX = Math.min(width - 1, ox + Math.ceil(crossX[i + 1] - 0.5) - 1);
                     // Clip rect: clamp the span to the clip rect's X range; the
                     // clipBuffer (if any) is still tested per pixel below.
                     if (startX < clipX0) startX = clipX0;
@@ -19566,7 +19692,8 @@ class PolygonFiller {
         subPixelOpacity,
         composite,
         sourceMask,
-        clipRect = null
+        clipRect = null,
+        origin = null
     ) {
         // Mark path-based rendering for testing (helps verify direct rendering is used when expected)
         // Check for Context2D existence since PolygonFiller may be used in isolation (e.g., unit tests)
@@ -19574,11 +19701,16 @@ class PolygonFiller {
             Context2D._markPathBasedRendering();
         }
 
-        // Transform all polygon vertices
-        const transformedPolygons = polygons.map(poly => poly.map(point => transform.transformPoint(point)));
+        // Transform all polygon vertices - a stroke's parts into its device frame, rows and columns
+        // counted from (ox, oy) (_toDeviceFrame)
+        const frame = origin === null ? null : PolygonFiller._toDeviceFrame(polygons, transform, origin);
+        const transformedPolygons =
+            frame === null ? polygons.map(poly => poly.map(point => transform.transformPoint(point))) : frame.polygons;
+        const ox = frame === null ? 0 : frame.ox;
+        const oy = frame === null ? 0 : frame.oy;
 
         // Find bounding box for optimization
-        const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface);
+        const bounds = PolygonFiller._calculateBounds(transformedPolygons, surface, oy);
         let scanMinY = bounds.minY, scanMaxY = bounds.maxY;
         if (clipRect) { // only scanlines inside the clip rect's Y range
             if (clipRect.y0 > scanMinY) scanMinY = clipRect.y0;
@@ -19586,14 +19718,14 @@ class PolygonFiller {
         }
 
         // Process each scanline: its crossings, sorted, from the active edges only
-        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY, scanMaxY);
+        const scan = PolygonFiller._beginScan(transformedPolygons, scanMinY - oy, scanMaxY - oy);
         for (let y = scanMinY; y <= scanMaxY; y++) {
             PolygonFiller._fillSpans(
                 surface,
                 y,
                 scan.cx,
                 scan.cw,
-                PolygonFiller._scanRow(scan, y),
+                PolygonFiller._scanRow(scan, y - oy),
                 paintSource,
                 fillRule,
                 clipMask,
@@ -19602,19 +19734,21 @@ class PolygonFiller {
                 subPixelOpacity,
                 composite,
                 sourceMask,
-                clipRect
+                clipRect,
+                ox
             );
         }
     }
 
     /**
      * Calculate bounding box for transformed polygons
-     * @param {Array} polygons - Transformed polygons
+     * @param {Array} polygons - Transformed polygons (a stroke's in its device frame)
      * @param {Surface} surface - Target surface for bounds clamping
-     * @returns {Object} {minY, maxY} bounds
+     * @param {number} oy - The device row the polygons' y is counted from (0, or a frame's oy)
+     * @returns {Object} {minY, maxY} bounds, device rows
      * @private
      */
-    static _calculateBounds(polygons, surface) {
+    static _calculateBounds(polygons, surface, oy) {
         let minY = Infinity,
             maxY = -Infinity;
 
@@ -19627,8 +19761,8 @@ class PolygonFiller {
 
         // Clamp to surface bounds
         return {
-            minY: Math.max(0, Math.floor(minY)),
-            maxY: Math.min(surface.height - 1, Math.ceil(maxY))
+            minY: Math.max(0, oy + Math.floor(minY)),
+            maxY: Math.min(surface.height - 1, oy + Math.ceil(maxY))
         };
     }
 
@@ -19874,6 +20008,8 @@ class PolygonFiller {
      * @param {number} subPixelOpacity - Sub-pixel opacity for thin strokes (0-1)
      * @param {string} composite - Composite operation
      * @param {SourceMask|null} sourceMask - Optional source coverage mask
+     * @param {{x0,y0,x1,y1}|null} clipRect - Optional half-open device clip rect
+     * @param {number} ox - The device column crossX is counted from (0, or a frame's ox)
      * @private
      */
     static _fillSpans(
@@ -19890,7 +20026,8 @@ class PolygonFiller {
         subPixelOpacity = 1.0,
         composite = 'source-over',
         sourceMask = null,
-        clipRect = null
+        clipRect = null,
+        ox = 0
     ) {
         if (count === 0) return;
         // Clip rect: clamp each span's X to the clip rect (the caller has already
@@ -19921,8 +20058,8 @@ class PolygonFiller {
                 // endX made e.g. an unclipped desktop PATTERN fill reach one
                 // column past the clipped morphs drawn over it. A column x is in
                 // [left, right) iff left <= x+0.5 < right.
-                let startX = Math.max(0, Math.ceil(crossX[i] - 0.5));
-                let endX = Math.min(surface.width - 1, Math.ceil(crossX[i + 1] - 0.5) - 1);
+                let startX = Math.max(0, ox + Math.ceil(crossX[i] - 0.5));
+                let endX = Math.min(surface.width - 1, ox + Math.ceil(crossX[i + 1] - 0.5) - 1);
                 if (startX < clipX0) startX = clipX0;
                 if (endX > clipX1m1) endX = clipX1m1;
 
@@ -20632,16 +20769,43 @@ class StrokeGenerator {
      * @param {Object} strokeProps - Stroke properties
      * @param {number} [deviceScale=1] - Device pixels per path unit (the transform's larger axis
      *   scale): round joins and caps are flattened for the size they are drawn at
+     * @param {{x: number, y: number}|null} [origin=null] - When given, the path is stroked relative
+     *   to an integer point of its own (the floor of its first point), written here: the polygons
+     *   are then relative to it, for PolygonFiller to place (_toDeviceFrame)
      * @returns {Array<Array<Point>>} Array of stroke polygons
      */
-    static generateStrokePolygons(path, strokeProps, deviceScale = 1) {
+    static generateStrokePolygons(path, strokeProps, deviceScale = 1, origin = null) {
         const validatedProps = StrokeGenerator._validateStrokeProperties(strokeProps);
         validatedProps.deviceScale = deviceScale;
 
         if (validatedProps.lineWidth <= 0) return [];
 
         // Flatten path to get line segments
-        const pathPolygons = PathFlattener.flattenPath(path);
+        let pathPolygons = PathFlattener.flattenPath(path);
+
+        // Relative to the floor of the first point, a path moved by whole units is stroked from the
+        // same numbers wherever it lies: its dashes, corners and round parts round the same way,
+        // as they would not at the path's absolute magnitude
+        if (origin !== null) {
+            let ax = 0;
+            let ay = 0;
+            for (let i = 0; i < pathPolygons.length; i++) {
+                if (pathPolygons[i].length > 0) {
+                    ax = Math.floor(pathPolygons[i][0].x);
+                    ay = Math.floor(pathPolygons[i][0].y);
+                    break;
+                }
+            }
+            if (!Number.isFinite(ax) || !Number.isFinite(ay)) {
+                ax = 0;
+                ay = 0;
+            }
+            if (ax !== 0 || ay !== 0) {
+                pathPolygons = pathPolygons.map(poly => poly.map(p => ({ x: p.x - ax, y: p.y - ay })));
+            }
+            origin.x = ax;
+            origin.y = ay;
+        }
 
         // Apply dash pattern if specified
         const dashedPolygons = StrokeGenerator._applyDashPattern(pathPolygons, validatedProps);
@@ -21071,7 +21235,7 @@ class StrokeGenerator {
     }
 
     /**
-     * Whether a miter or bevel join needs its INNER triangle [joinPoint, inner2, inner1] - the
+     * Whether a join needs its INNER triangle [joinPoint, inner2, inner1] - the
      * inner half of the connecting area between the two bodies' end edges. Every point of that
      * triangle is within both bodies' widths, lies some b behind seg1's end edge and some f
      * ahead of seg2's start edge, with b + f <= halfWidth * |sin(turn)| (0 at joinPoint, the
@@ -21080,8 +21244,7 @@ class StrokeGenerator {
      * halfWidth * |sin(turn)| the two bodies therefore cover the whole triangle, and a part
      * inside parts wound the same way adds nothing to a nonzero fill. Only two segments shorter
      * than that together (a thick stroke on a tightly flattened curve, short polyline segments)
-     * leave some of it bare, and there it is emitted. (The round join relies on the bodies
-     * alone, as these joins then do.)
+     * leave some of it bare, and there it is emitted - by the round join too.
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {number} halfWidth - Half line width
@@ -21202,12 +21365,13 @@ class StrokeGenerator {
      * Generate round join as ONE pie polygon [joinPoint, outer1, rim..., outer2] whose rim ends
      * are the bodies' own corner objects: its two straight sides are the outer halves of the
      * bodies' end edges, with the same endpoints as the bodies' (_bodyOutline), so no sliver
-     * opens between join and body for a pixel center on the seam to fall into
+     * opens between join and body for a pixel center on the seam to fall into. Like the miter
+     * and bevel joins it adds the inner triangle where no body covers it (_innerTriangleUncovered)
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {Point} joinPoint - Join point
      * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
-     * @returns {Array} The pie polygon
+     * @returns {Array} The pie polygon, plus the inner triangle where no body covers it
      * @private
      */
     static _generateRoundJoin(seg1, seg2, joinPoint, deviceScale) {
@@ -21269,7 +21433,12 @@ class StrokeGenerator {
         pie[1] = swapped ? outer2 : outer1;
         pie[segments + 1] = swapped ? outer1 : outer2;
 
-        return [StrokeGenerator._windLikeBodies(pie)];
+        const wound = StrokeGenerator._windLikeBodies(pie);
+        if (!StrokeGenerator._innerTriangleUncovered(seg1, seg2, halfWidth, cross)) {
+            return [wound];
+        }
+        const innerSides = StrokeGenerator._getInnerSides(seg1, seg2, cross);
+        return [wound, StrokeGenerator._windLikeBodies([joinPoint.toObject(), innerSides.inner2, innerSides.inner1])];
     }
 
     /**
@@ -25837,12 +26006,15 @@ class Rasterizer {
         }
 
         // Generate stroke polygons using geometric approach, round parts flattened for the device
-        // size the op transform gives them
+        // size the op transform gives them, relative to the path's own anchor (origin), which the
+        // filler places in device space
         const transform = this._currentOp.transform;
+        const origin = { x: 0, y: 0 };
         const strokePolygons = StrokeGenerator.generateStrokePolygons(
             path,
             adjustedStrokeProps,
-            Math.max(transform.scaleX, transform.scaleY)
+            Math.max(transform.scaleX, transform.scaleY),
+            origin
         );
 
         if (this._requiresCanvasWideCompositing(this._currentOp.composite)) {
@@ -25858,7 +26030,8 @@ class Rasterizer {
                 subPixelOpacity,
                 this._currentOp.composite,
                 this._ensureSourceMask(),
-                this._currentOp.clipRect
+                this._currentOp.clipRect,
+                origin
             );
 
             // Perform canvas-wide compositing pass
@@ -25876,7 +26049,8 @@ class Rasterizer {
                 subPixelOpacity,
                 this._currentOp.composite,
                 this._currentOp.sourceMask,
-                this._currentOp.clipRect
+                this._currentOp.clipRect,
+                origin
             );
         }
     }
@@ -28397,7 +28571,10 @@ class Context2D {
             lineDashOffset: this._lineDashOffset
         };
 
-        let testPolygons;
+        // The stroke parts, relative to the path's anchor (origin), as stroke() makes them
+        const origin = { x: 0, y: 0 };
+        let strokePolygons;
+        let strokeTransform;
         if (path === this._currentPath) {
             // Device-space centerline: map back by drawT⁻¹, stroke with the round pen
             // in draw-time user space, then forward by drawT — mirroring stroke().
@@ -28408,31 +28585,31 @@ class Context2D {
             } catch (e) {
                 return false;
             }
-            const strokePolygons = StrokeGenerator.generateStrokePolygons(
+            strokePolygons = StrokeGenerator.generateStrokePolygons(
                 this._transformPathPoints(path, inv),
                 strokeProps,
-                Math.max(drawT.scaleX, drawT.scaleY)
+                Math.max(drawT.scaleX, drawT.scaleY),
+                origin
             );
-            if (strokePolygons.length === 0) {
-                return false;
-            }
-            testPolygons = strokePolygons.map(poly => poly.map(point => drawT.transformPoint(point)));
+            strokeTransform = drawT;
         } else {
             // External user-space path: stroke, then map by the current CTM.
-            const strokePolygons = StrokeGenerator.generateStrokePolygons(
+            strokePolygons = StrokeGenerator.generateStrokePolygons(
                 path,
                 strokeProps,
-                Math.max(this._transform.scaleX, this._transform.scaleY)
+                Math.max(this._transform.scaleX, this._transform.scaleY),
+                origin
             );
-            if (strokePolygons.length === 0) {
-                return false;
-            }
-            testPolygons = strokePolygons.map(poly => poly.map(point => this._transform.transformPoint(point)));
+            strokeTransform = this._transform;
+        }
+        if (strokePolygons.length === 0) {
+            return false;
         }
 
         // Test point against the stroke polygons using nonzero winding rule
-        // (stroke hit testing doesn't use fill rules like path filling does).
-        return PolygonFiller.isPointInPolygons(x, y, testPolygons, 'nonzero');
+        // (stroke hit testing doesn't use fill rules like path filling does), in the
+        // device frame stroke() fills them in, so a tie is answered as it is painted.
+        return PolygonFiller.isPointInStrokePolygons(x, y, strokePolygons, strokeTransform, origin);
     }
 
     /**
@@ -29470,19 +29647,45 @@ class Context2D {
         // No caller strokes lines under a non-uniform transform, and the
         // generic stroker makes lines cheap anyway; gate it if one appears.
 
-        // Transform endpoints
-        const start = this._transform.transformPoint({ x: x1, y: y1 });
-        const end = this._transform.transformPoint({ x: x2, y: y2 });
+        // The endpoints in the line's device frame, as stroke() takes the same line: relative
+        // to the floor of the start point (StrokeGenerator's anchor), placed from the device
+        // pixel (ox, oy) that anchor lands at (PolygonFiller.deviceAnchor), so the line covers
+        // the same pixels wherever it is drawn - and the pixels stroke() covers, ties included
+        const t = this._transform;
+        let ax = Math.floor(x1);
+        let ay = Math.floor(y1);
+        if (!Number.isFinite(ax) || !Number.isFinite(ay)) {
+            ax = 0;
+            ay = 0;
+        }
+        const anchor = PolygonFiller.deviceAnchor(t, ax, ay);
+        const px1 = x1 - ax,
+            py1 = y1 - ay,
+            px2 = x2 - ax,
+            py2 = y2 - ay;
 
         // Calculate effective line width
-        const scale = this._transform.uniformScale;
+        const scale = t.uniformScale;
         const scaledLineWidth = this._lineWidth * scale;
 
         // Get paint source
         const paintSource = this._strokeStyle;
 
         // Use optimized line renderer (user-space args feed its generic fallback)
-        this._strokeLineDirect(start.x, start.y, end.x, end.y, scaledLineWidth, paintSource, x1, y1, x2, y2);
+        this._strokeLineDirect(
+            t.a * px1 + t.c * py1 + anchor.rx,
+            t.b * px1 + t.d * py1 + anchor.ry,
+            t.a * px2 + t.c * py2 + anchor.rx,
+            t.b * px2 + t.d * py2 + anchor.ry,
+            anchor.ox,
+            anchor.oy,
+            scaledLineWidth,
+            paintSource,
+            x1,
+            y1,
+            x2,
+            y2
+        );
     }
 
     // ========================================================================
@@ -29664,7 +29867,7 @@ class Context2D {
      * @param {number} ux2 - User-space end x, for the generic fallback
      * @param {number} uy2 - User-space end y, for the generic fallback
      */
-    _strokeLineDirect(x1, y1, x2, y2, lineWidth, paintSource, ux1, uy1, ux2, uy2) {
+    _strokeLineDirect(x1, y1, x2, y2, ox, oy, lineWidth, paintSource, ux1, uy1, ux2, uy2) {
         // Direct rendering only supports butt line caps (open shapes need cap handling)
         const isButtCap = this.lineCap === 'butt';
 
@@ -29733,7 +29936,9 @@ class Context2D {
             isHairlineStroke ? this.globalAlpha * lineWidth : this.globalAlpha,
             clipBuffer,
             isOpaqueColor,
-            isSemiTransparentColor
+            isSemiTransparentColor,
+            ox,
+            oy
         );
 
         if (!directRenderingUsed) {
