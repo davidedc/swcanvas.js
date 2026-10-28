@@ -1259,7 +1259,9 @@ current consumers:
    triangle [join point, inner corner of the first body's end, inner corner of the second body's
    start] under the same rule as miter and bevel joins (`_innerTriangleUncovered`), so the join
    kind never changes what a thick stroke on a tight curve paints on its inner side. Pinned by
-   `tests/core/101`.
+   `tests/core/101`, and shown end to end by visual test 216 (`tight-curve-strokes-join-inner-side`):
+   arc, ellipse, cubic and quadratic hairpins and an arcTo corner, stroked 30 px wide with round,
+   miter and bevel joins side by side.
 
 ---
 
