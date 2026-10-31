@@ -20,7 +20,9 @@ class StrokeGenerator {
      * @param {{x: number, y: number}|null} [origin=null] - When given, the path is stroked relative
      *   to an integer point of its own (the floor of its first point), written here: the polygons
      *   are then relative to it, for PolygonFiller to place (_toDeviceFrame)
-     * @returns {Array<Array<Point>>} Array of stroke polygons
+     * @returns {Array<Array<Point>>} The stroke's polygons, to be filled TOGETHER under nonzero:
+     *   each subpath's outline and the parts it does not absorb (_generateStrokeForPolygon). An
+     *   outline overlaps itself where two bodies overlap, so the polygons are not simple
      */
     static generateStrokePolygons(path, strokeProps, deviceScale = 1, origin = null) {
         const validatedProps = StrokeGenerator._validateStrokeProperties(strokeProps);
@@ -298,16 +300,29 @@ class StrokeGenerator {
     }
 
     /**
-     * Generate stroke geometry for a single polygon (subpath)
+     * Generate stroke geometry for a single polygon (subpath): its OUTLINE, plus the parts the
+     * outline does not absorb. The parts of a stroke are filled together under nonzero, so what
+     * decides its pixels is the multiset of their edges, not how the edges are grouped into
+     * polygons. A segment body [b0, b1, b2, b3] runs b0 -> b1 along its + side and b2 -> b3 back
+     * along its - side. A join or cap meets the bodies along a SEAM - a join's two straight sides
+     * on the outer halves of the bodies' end and start edges, a cap's base on a body's end edge -
+     * that the part runs one way and the body the other, between the same two points. Such a pair
+     * crosses every row at the same x with opposite windings (PolygonFiller interpolates an edge
+     * from its upper end, whichever way it runs), so no pixel depends on it, and the outline leaves
+     * both out: it walks the + sides forward and the - sides back, follows a join's rim on the
+     * join's outer side and a cap's rim around the cap, and goes through the join point on a join's
+     * inner side, along the bodies' inner half edges. A part whose seam does not run exactly
+     * opposite (a degenerate join, rounded the other way) stays a polygon of its own and the
+     * outline takes the body's edges there instead - the edges of filling every part separately.
      * @param {Array} points - Array of {x, y} points
      * @param {Object} strokeProps - Validated stroke properties
-     * @returns {Array} Array of stroke polygon parts
+     * @returns {Array} The outline - one polygon, or two for a closed path (its + and - sides) -
+     *   and the separate parts: the inner triangles, and a join or cap whose seam is not exact
      * @private
      */
     static _generateStrokeForPolygon(points, strokeProps) {
         if (points.length < 2) return [];
 
-        const strokeParts = [];
         const halfWidth = strokeProps.lineWidth / 2;
 
         // Determine if this is a closed path
@@ -317,21 +332,138 @@ class StrokeGenerator {
         const segments = StrokeGenerator._generateSegments(points, halfWidth);
         if (segments.length === 0) return [];
 
-        // Generate joins between adjacent segments
-        StrokeGenerator._generateJoins(segments, strokeParts, strokeProps, isClosed);
-
-        // Generate caps for open paths
-        if (!isClosed && segments.length > 0) {
-            StrokeGenerator._generateCaps(segments, strokeParts, strokeProps, halfWidth);
+        // joins[i] joins segments[i - 1] and segments[i]; joins[0] joins the last segment to the
+        // first, on a closed path of two segments or more. The inner triangles stay separate parts
+        const n = segments.length;
+        const wraps = isClosed && n > 1;
+        const strokeParts = [];
+        const joins = [];
+        for (let i = 0; i < n; i++) {
+            const prev = segments[(i + n - 1) % n];
+            const join = i > 0 || wraps ? StrokeGenerator._generateJoin(prev, segments[i], strokeProps) : null;
+            if (join !== null && join.length > 1) strokeParts.push(join[1]);
+            joins.push(join);
         }
 
-        // Add segment bodies to stroke parts - last, as a join marks the end edges it shares
-        // with them (_bodyOutline)
-        for (const segment of segments) {
-            strokeParts.push(StrokeGenerator._bodyOutline(segment));
+        // The + sides forward, each join before the segment it leads into (joins[0] wraps round
+        // from the last vertex), then the - sides back, each join after the segment it leads from
+        const plus = [];
+        for (let i = 0; i < n; i++) {
+            const seg = segments[i];
+            const prev = segments[(i + n - 1) % n];
+            if (joins[i] !== null) StrokeGenerator._outlineJoin(plus, joins[i], prev, seg, true, strokeParts);
+            plus.push(seg.body[0], seg.body[1]);
+        }
+        const minus = [];
+        for (let i = n - 1; i >= 0; i--) {
+            const seg = segments[i];
+            const prev = segments[(i + n - 1) % n];
+            minus.push(seg.body[2], seg.body[3]);
+            if (joins[i] !== null) StrokeGenerator._outlineJoin(minus, joins[i], prev, seg, false, strokeParts);
+        }
+        if (wraps) {
+            strokeParts.push(plus, minus);
+            return strokeParts;
         }
 
+        // Otherwise ONE outline: from the + side round the end cap to the - side, and round the
+        // start cap back (a closed path of one segment has no caps: its body alone)
+        if (!isClosed) StrokeGenerator._outlineCap(plus, segments[n - 1], false, strokeProps, strokeParts);
+        for (let i = 0; i < minus.length; i++) plus.push(minus[i]);
+        if (!isClosed) StrokeGenerator._outlineCap(plus, segments[0], true, strokeProps, strokeParts);
+        strokeParts.push(plus);
         return strokeParts;
+    }
+
+    /**
+     * Continue an outline across a join, from seg1's corner to seg2's on the + side, from seg2's to
+     * seg1's on the - side. On the join's INNER side it goes through the join point (the bodies'
+     * inner half edges); on its OUTER side along the join part's rim, the seam left out - or, when
+     * the seam is not exact, through the join point (the bodies' outer half edges), the part kept
+     * as a polygon of its own
+     * @param {Array<Object>} outline - The outline so far, ending at the arrival corner (empty for
+     *   a closed path's closing join on the + side: the outline wraps round to it)
+     * @param {Array<Array<Object>>} join - _generateJoin's polygons: [part, inner triangle?]
+     * @param {Object} seg1 - The segment before the join
+     * @param {Object} seg2 - The segment after it
+     * @param {boolean} plusSide - Whether the outline is on the + side (else the - side)
+     * @param {Array} strokeParts - Where a part with an inexact seam goes
+     * @private
+     */
+    static _outlineJoin(outline, join, seg1, seg2, plusSide, strokeParts) {
+        const joinPoint = seg2.p1;
+        // The outer side is the - side on a left turn (cross > 0), as _generateJoin decides it
+        if (plusSide === seg1.tangent.cross(seg2.tangent) > 0) {
+            outline.push(joinPoint.toObject());
+            return;
+        }
+        const arrival = plusSide ? seg1.body[1] : seg2.body[3];
+        const departure = plusSide ? seg2.body[0] : seg1.body[2];
+        if (!StrokeGenerator._spliceRim(outline, join[0], joinPoint, arrival, departure)) {
+            outline.push(joinPoint.toObject());
+            strokeParts.push(join[0]);
+        }
+    }
+
+    /**
+     * Continue an outline across a cap: the end cap from the body's + corner to its - corner, the
+     * start cap from the - corner back to the + corner. Along the cap's rim, its base left out - or,
+     * with a butt cap or a base that is not exact, straight along the body's edge, a cap kept as a
+     * polygon of its own
+     * @param {Array<Object>} outline - The outline so far, ending at the arrival corner
+     * @param {Object} seg - The first segment (start cap) or the last (end cap)
+     * @param {boolean} isStart - Whether this is the start cap
+     * @param {Object} strokeProps - Validated stroke properties
+     * @param {Array} strokeParts - Where a cap with an inexact base goes
+     * @private
+     */
+    static _outlineCap(outline, seg, isStart, strokeProps, strokeParts) {
+        const plusCorner = seg.body[isStart ? 0 : 1];
+        const minusCorner = seg.body[isStart ? 3 : 2];
+        const cap = StrokeGenerator._generateCap(
+            isStart ? seg.p1 : seg.p2,
+            seg.tangent,
+            strokeProps.lineWidth / 2,
+            strokeProps.lineCap,
+            isStart,
+            plusCorner,
+            minusCorner,
+            strokeProps.deviceScale
+        );
+        if (cap === null) return;
+        const arrival = isStart ? minusCorner : plusCorner;
+        const departure = isStart ? plusCorner : minusCorner;
+        if (!StrokeGenerator._spliceRim(outline, cap, null, arrival, departure)) strokeParts.push(cap);
+    }
+
+    /**
+     * Append a part's rim to an outline when the part runs its seam exactly opposite to the body:
+     * read cyclically from the arrival corner, the part must be [arrival, rim..., departure] and
+     * then the center (a join's point) if there is one, so its seam departure -> (center ->) arrival
+     * is the body's arrival -> (center ->) departure reversed, point for point. Appends the rim
+     * between the two corners (the outline has the corners already, or is about to)
+     * @param {Array<Object>} outline - The outline so far, ending at the arrival corner
+     * @param {Array<Object>} part - The join or cap polygon, wound like the bodies
+     * @param {Object|null} center - The join point, or null for a cap
+     * @param {Object} arrival - The body corner the outline is at
+     * @param {Object} departure - The body corner the outline goes on from
+     * @returns {boolean} False, and nothing appended, when the seam is not exactly opposite
+     * @private
+     */
+    static _spliceRim(outline, part, center, arrival, departure) {
+        const n = part.length;
+        const tail = center === null ? 1 : 2;
+        let k = 0;
+        while (k < n && !(part[k].x === arrival.x && part[k].y === arrival.y)) k++;
+        if (k === n) return false;
+        const d = part[(k + n - tail) % n];
+        if (d.x !== departure.x || d.y !== departure.y) return false;
+        if (center !== null) {
+            const c = part[(k + n - 1) % n];
+            if (c.x !== center.x || c.y !== center.y) return false;
+        }
+        for (let j = 1; j < n - tail; j++) outline.push(part[(k + j) % n]);
+        return true;
     }
 
     /**
@@ -401,61 +533,8 @@ class StrokeGenerator {
             p2: p2,
             tangent: direction,
             normal: normal,
-            length: length,
-            startJoin: null, // the join point on the start edge, when a join attaches there
-            endJoin: null // the join point on the end edge, when a join attaches there
+            length: length
         };
-    }
-
-    /**
-     * A segment's body as filled: its four corners, with the join point inserted on each end
-     * edge a join attaches to. Every join polygon has edges from the join point to the outer
-     * (or inner) corners, i.e. along HALF of the body's end edge; with the join point a vertex
-     * of the body too, join and body share those half edges with the same two endpoints, which
-     * the filler crosses at the bit-identical x from both sides - no gap for a pixel center on
-     * the seam to fall into, where the full edge and its half could round 1 ulp apart.
-     * @param {Object} seg - Segment
-     * @returns {Array<Object>} The body polygon
-     * @private
-     */
-    static _bodyOutline(seg) {
-        const b = seg.body;
-        if (seg.startJoin === null && seg.endJoin === null) return b;
-        const outline = [b[0], b[1]];
-        if (seg.endJoin !== null) outline.push(seg.endJoin.toObject());
-        outline.push(b[2], b[3]);
-        if (seg.startJoin !== null) outline.push(seg.startJoin.toObject());
-        return outline;
-    }
-
-    /**
-     * Generate joins between segments
-     * @param {Array} segments - Array of segments
-     * @param {Array} strokeParts - Array to append join polygons to
-     * @param {Object} strokeProps - Stroke properties
-     * @param {boolean} isClosed - Whether path is closed
-     * @private
-     */
-    static _generateJoins(segments, strokeParts, strokeProps, isClosed) {
-        // Joins between adjacent segments
-        for (let i = 0; i < segments.length - 1; i++) {
-            const seg1 = segments[i];
-            const seg2 = segments[i + 1];
-            const joinPolygons = StrokeGenerator._generateJoin(seg1, seg2, strokeProps);
-            strokeParts.push(...joinPolygons);
-            seg1.endJoin = seg2.p1;
-            seg2.startJoin = seg2.p1;
-        }
-
-        // Handle closed path joining (last segment to first segment)
-        if (isClosed && segments.length > 1) {
-            const lastSeg = segments[segments.length - 1];
-            const firstSeg = segments[0];
-            const joinPolygons = StrokeGenerator._generateJoin(lastSeg, firstSeg, strokeProps);
-            strokeParts.push(...joinPolygons);
-            lastSeg.endJoin = firstSeg.p1;
-            firstSeg.startJoin = firstSeg.p1;
-        }
     }
 
     /**
@@ -463,7 +542,8 @@ class StrokeGenerator {
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {Object} strokeProps - Stroke properties
-     * @returns {Array} Array of join polygons
+     * @returns {Array} [the join part - bevel triangle, miter kite or round pie, wound like the
+     *   bodies, from the join point on - and the inner triangle where no body covers it]
      * @private
      */
     static _generateJoin(seg1, seg2, strokeProps) {
@@ -619,9 +699,9 @@ class StrokeGenerator {
     /**
      * Generate round join as ONE pie polygon [joinPoint, outer1, rim..., outer2] whose rim ends
      * are the bodies' own corner objects: its two straight sides are the outer halves of the
-     * bodies' end edges, with the same endpoints as the bodies' (_bodyOutline), so no sliver
-     * opens between join and body for a pixel center on the seam to fall into. Like the miter
-     * and bevel joins it adds the inner triangle where no body covers it (_innerTriangleUncovered)
+     * bodies' end and start edges, between the same two points as the bodies', so they are an
+     * exact seam the outline leaves out (_outlineJoin). Like the miter and bevel joins it adds the
+     * inner triangle where no body covers it (_innerTriangleUncovered)
      * @param {Object} seg1 - First segment
      * @param {Object} seg2 - Second segment
      * @param {Point} joinPoint - Join point
@@ -720,48 +800,6 @@ class StrokeGenerator {
     }
 
     /**
-     * Generate caps for open paths
-     * @param {Array} segments - Array of segments
-     * @param {Array} strokeParts - Array to append cap polygons to
-     * @param {Object} strokeProps - Stroke properties
-     * @param {number} halfWidth - Half line width
-     * @private
-     */
-    static _generateCaps(segments, strokeParts, strokeProps, halfWidth) {
-        // Start cap (closing on the first body's start edge, body[3] -> body[0])
-        const firstSeg = segments[0];
-        const startCaps = StrokeGenerator._generateCap(
-            firstSeg.p1,
-            firstSeg.tangent,
-            halfWidth,
-            strokeProps.lineCap,
-            true,
-            firstSeg.body[0],
-            firstSeg.body[3],
-            strokeProps.deviceScale
-        );
-        if (startCaps) {
-            strokeParts.push(...(Array.isArray(startCaps[0]) ? startCaps : [startCaps]));
-        }
-
-        // End cap (closing on the last body's end edge, body[1] -> body[2])
-        const lastSeg = segments[segments.length - 1];
-        const endCaps = StrokeGenerator._generateCap(
-            lastSeg.p2,
-            lastSeg.tangent,
-            halfWidth,
-            strokeProps.lineCap,
-            false,
-            lastSeg.body[1],
-            lastSeg.body[2],
-            strokeProps.deviceScale
-        );
-        if (endCaps) {
-            strokeParts.push(...(Array.isArray(endCaps[0]) ? endCaps : [endCaps]));
-        }
-    }
-
-    /**
      * Generate cap geometry
      * @param {Point} point - Cap point
      * @param {Point} tangent - Tangent direction
@@ -771,7 +809,7 @@ class StrokeGenerator {
      * @param {Object} plusCorner - The body's corner at point + normal * halfWidth
      * @param {Object} minusCorner - The body's corner at point - normal * halfWidth
      * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
-     * @returns {Array|null} Cap polygons or null for butt caps
+     * @returns {Array<Object>|null} The cap polygon, or null for a butt cap
      * @private
      */
     static _generateCap(point, tangent, halfWidth, lineCap, isStart, plusCorner, minusCorner, deviceScale) {
@@ -803,27 +841,25 @@ class StrokeGenerator {
      * @param {Point} normal - Normal direction
      * @param {number} halfWidth - Half line width
      * @param {boolean} isStart - Whether this is start cap
-     * @returns {Array} Square cap polygon
+     * @returns {Array<Object>} The square cap polygon
      * @private
      */
     static _generateSquareCap(point, tangent, normal, halfWidth, isStart) {
         const extension = isStart ? point.subtract(tangent.scale(halfWidth)) : point.add(tangent.scale(halfWidth));
 
-        return [
-            StrokeGenerator._windLikeBodies([
-                extension.add(normal.scale(halfWidth)).toObject(),
-                extension.subtract(normal.scale(halfWidth)).toObject(),
-                point.subtract(normal.scale(halfWidth)).toObject(),
-                point.add(normal.scale(halfWidth)).toObject()
-            ])
-        ];
+        return StrokeGenerator._windLikeBodies([
+            extension.add(normal.scale(halfWidth)).toObject(),
+            extension.subtract(normal.scale(halfWidth)).toObject(),
+            point.subtract(normal.scale(halfWidth)).toObject(),
+            point.add(normal.scale(halfWidth)).toObject()
+        ]);
     }
 
     /**
      * Generate round cap as ONE half-disc polygon whose diameter IS the body's end edge: its two
      * ends are the body's own corner objects, so cap and body meet along one edge with the same
-     * two endpoints - not along two separately computed lines, and with no fan edges inside the
-     * cap - leaving no sliver between them for a pixel center on the seam to fall into.
+     * two endpoints - an exact seam the outline leaves out (_outlineCap) - with no fan edges
+     * inside the cap.
      * @param {Point} point - Cap center point
      * @param {Point} normal - Normal direction
      * @param {number} halfWidth - Half line width
@@ -831,7 +867,7 @@ class StrokeGenerator {
      * @param {Object} plusCorner - The body's corner at point + normal * halfWidth
      * @param {Object} minusCorner - The body's corner at point - normal * halfWidth
      * @param {number} deviceScale - Device pixels per unit (see _roundSegments)
-     * @returns {Array} One polygon
+     * @returns {Array<Object>} One polygon
      * @private
      */
     static _generateRoundCap(point, normal, halfWidth, isStart, plusCorner, minusCorner, deviceScale) {
@@ -845,7 +881,7 @@ class StrokeGenerator {
         );
         rim[0] = plusCorner;
         rim[rim.length - 1] = minusCorner;
-        return [StrokeGenerator._windLikeBodies(rim)];
+        return StrokeGenerator._windLikeBodies(rim);
     }
 
     // Helper methods

@@ -1123,7 +1123,8 @@ current consumers:
      (`_windLikeBodies`), so overlapping parts of one `stroke()` add rather than cancel under
      nonzero.
    - A join's point is a vertex of both adjoining bodies' end edges, so a join and its bodies
-     share their seam exactly and no pixel centre on it is left unpainted.
+     share their seam exactly and no pixel centre on it is left unpainted. (Exact seams are what
+     let entry 35 fill a stroke as its outline.)
    - Miter and bevel joins split the connecting area at the join point. The outer half is the
      bevel triangle, or merges with the miter triangle into one convex kite (miter 4 vertices,
      bevel 3). The inner half is emitted only when the two segments' lengths sum to less than
@@ -1285,13 +1286,42 @@ current consumers:
      - polyline strokes (+4.5% over entry 32's own step): the anchor copied every flattened
        point; it shifts them in place. Of what remains, round joins at large widths on short
        segments cost +8–13% — the inner triangles of entry 33; with them switched off the same
-       configurations cost +1.4% — and every other configuration +1–2%, inside the noise. A
-       cheaper way to cover a round join's inner side is open (Fizzygum BACKLOG).
+       configurations cost +1.4% — and every other configuration +1–2%, inside the noise. Entry
+       35 takes that cost back, and more.
    - Residual, accepted by the owner — each is work the old engine skipped: small
      semi-transparent circles cost +7–26% (XXS–S; entry 22: it painted 58–91% of the true area);
      a smoothed pattern costs 1.24–3.24× (entry 25: it always took the nearest texel); the fused
      rounded-rect arm's left-edge configurations cost 2.7–3.9× (entry 19: it painted no pixel
      there).
+35. **DONE (2026-10-31): a stroke is filled as its outline.** `StrokeGenerator` emits each
+   subpath as ONE polygon — two for a closed path, its + and − sides — plus the parts that
+   polygon does not absorb, instead of one polygon per body, join and cap.
+   - The outline walks the bodies' + sides forward and their − sides back. On a join's outer side
+     it follows the join's rim (the round pie's arc, the miter kite's point, the bevel's chord),
+     around a cap the cap's rim, and on a join's inner side it goes through the join point along
+     the bodies' inner half edges (`_outlineJoin`, `_outlineCap`).
+   - The seams entry 20 made exact — a join's two straight sides on the bodies' outer half edges,
+     a cap's base on a body's end edge — run once each way between the same two points. Such a
+     pair crosses every row at the same x with opposite windings (entry 21), so no pixel depends
+     on it, and the outline leaves both out (`_spliceRim`). A part whose seam does not run exactly
+     opposite (a degenerate join, rounded the other way) stays a polygon of its own and the
+     outline takes the body's edges there instead. The edges filled are therefore the parts' own
+     less exact opposite pairs, and the pixels are identical by construction.
+   - The inner triangles (entries 20 and 33) stay separate parts: their sides run the same way as
+     the bodies', so nothing cancels — which is also why no smaller triangle paints the same
+     pixels, and why merging one into its pie (same edges, one polygon fewer) saves nothing.
+   - Proved by equal edge multisets (exact opposite pairs removed) on 200,000 random strokes —
+     every cap and join, dashes, closed paths, reversals, duplicate points, scales 0.5–3 — and by
+     byte-identical surfaces on 4,376 benchmark configurations (175,040 frames).
+   - `isPointInStroke` answers as before at 108 million probed points (vertices, edge midpoints,
+     points 1e-9 and 1e-6 off them, part centroids) but one: a point 1e-9 OUTSIDE a square cap's
+     corner, which the cancelled seam's `FLOAT_EPSILON` reach along its own line used to count as
+     on an edge. It now answers outside, the exact answer.
+   - The filler visits 0.57–0.76× the edges per row on thick strokes, and the time follows,
+     against entry 34's engine: polylines 0.61–0.87× (every configuration; thick round joins on
+     short segments 0.66–0.70×, i.e. 0.71–0.79× the engine before entry 33's triangles), curve
+     strokes 0.62–0.82×, rotated rounded-rect strokes 0.67–0.83× opaque and 0.68–0.85×
+     translucent.
 
 ---
 
