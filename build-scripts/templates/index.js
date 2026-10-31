@@ -5,6 +5,7 @@
  *   Level 0 (Base):     BLEND_ALPHA, SET_OPAQUE
  *   Level 1 (Clipped):  *_CLIPPED → chains to Level 0
  *   Level 2 (Arc):      *_ARC_FAST_CLIPPED → chains to Level 1
+ * Image sampling (no chaining): FILTER_BILINEAR
  *
  * Chained expansion: Templates can reference other templates via nested markers.
  * The preprocessor performs multi-pass expansion until no markers remain.
@@ -15,11 +16,13 @@
 const BASE_TEMPLATES = require('./base');
 const CLIPPED_TEMPLATES = require('./clipped');
 const ARC_TEMPLATES = require('./arc');
+const SAMPLING_TEMPLATES = require('./sampling');
 
 const TEMPLATES = {
     ...BASE_TEMPLATES,
     ...CLIPPED_TEMPLATES,
-    ...ARC_TEMPLATES
+    ...ARC_TEMPLATES,
+    ...SAMPLING_TEMPLATES
 };
 
 module.exports = TEMPLATES;

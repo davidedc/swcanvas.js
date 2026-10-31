@@ -29,11 +29,12 @@ class StrokeGenerator {
         if (validatedProps.lineWidth <= 0) return [];
 
         // Flatten path to get line segments
-        let pathPolygons = PathFlattener.flattenPath(path);
+        const pathPolygons = PathFlattener.flattenPath(path);
 
         // Relative to the floor of the first point, a path moved by whole units is stroked from the
         // same numbers wherever it lies: its dashes, corners and round parts round the same way,
-        // as they would not at the path's absolute magnitude
+        // as they would not at the path's absolute magnitude. Shifted in place: flattenPath returns
+        // fresh points, each in one polygon once, owned by this call
         if (origin !== null) {
             let ax = 0;
             let ay = 0;
@@ -49,7 +50,13 @@ class StrokeGenerator {
                 ay = 0;
             }
             if (ax !== 0 || ay !== 0) {
-                pathPolygons = pathPolygons.map(poly => poly.map(p => ({ x: p.x - ax, y: p.y - ay })));
+                for (let i = 0; i < pathPolygons.length; i++) {
+                    const poly = pathPolygons[i];
+                    for (let j = 0; j < poly.length; j++) {
+                        poly[j].x -= ax;
+                        poly[j].y -= ay;
+                    }
+                }
             }
             origin.x = ax;
             origin.y = ay;

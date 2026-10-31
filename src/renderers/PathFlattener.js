@@ -12,9 +12,10 @@
  */
 class PathFlattener {
     /**
-     * Flatten a Path2D into a list of polygons
+     * Flatten a Path2D into a list of polygons. Every point is a fresh object that appears once in
+     * the result, so the caller owns it and may modify it (StrokeGenerator shifts it in place).
      * @param {Path2D} path2d - Path to flatten
-     * @returns {Array<Array<Point>>} Array of polygons, each polygon is an array of Point objects
+     * @returns {Array<Array<{x: number, y: number}>>} Array of polygons, each an array of points
      */
     static flattenPath(path2d) {
         const polygons = [];

@@ -297,7 +297,7 @@ independently (so e.g. a gradient fill + solid stroke yields a generic fill and 
 | `strokeLine` | NONE — any CTM incl. shear (width via geometric-mean uniformScale) | Color, source-over, lineCap 'butt', `_noShadow` | non-Color · composite · round/square cap · shadow | generic via external `SWPath2D` (honours cap/dash; HTML5 anisotropic width under non-uniform CTM); alpha/CTM/clip never gate |
 | `fillText` | direct atlas blit iff `b=c=0, a=d=dpr`, integer e/f; else intermediate buffer + `drawImage` | none (no composite/shadow/alpha/clip gate — both arms honour them via `drawImage`) | `maxWidth` → throw · gradient/pattern → ⚠ silent BLACK substitution (console.warn) | both arms mark path-based |
 | `strokeText` | — | — | ALWAYS throws | — |
-| `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer). SAMPLING is its own two-arm dispatch: NEAREST-NEIGHBOR iff the draw does not resample — axis-aligned AND effective sample step = 1 (per-device-pixel source step `invA*xScale`/`invD*yScale`, where CTM scale and src/dst rect ratio COMPOSE) — else BILINEAR; `imageSmoothingEnabled=false` (per HTML5: boolean-coerced, save/restored, both API layers) forces NN for every draw. Both arms sample at the pixel centre (`Rasterizer.centreTranslation`), and the bilinear taps clamp to the image (HTML5 filtering rule) — the same decision (`Rasterizer.imageResamples`) and filter (`Rasterizer.filterBilinear`) as pattern paint |
+| `drawImage` | no direct path at all | — | always generic | rasterizer (internal source-over/opaque/1:1-scale micro-arms, same renderer). SAMPLING is its own two-arm dispatch: NEAREST-NEIGHBOR iff the draw does not resample — axis-aligned AND effective sample step = 1 (per-device-pixel source step `invA*xScale`/`invD*yScale`, where CTM scale and src/dst rect ratio COMPOSE) — else BILINEAR; `imageSmoothingEnabled=false` (per HTML5: boolean-coerced, save/restored, both API layers) forces NN for every draw. Both arms sample at the pixel centre (`Rasterizer.centreTranslation`), and the bilinear taps clamp to the image (HTML5 filtering rule) — the same decision (`Rasterizer.imageResamples`) and filter (the `FILTER_BILINEAR` inline template, expanded into the pixel loop) as pattern paint |
 
 Clip state is NOT a dispatch condition anywhere. With no clip, the renderers do raw fills. A
 clip rect means clamped extents where the rect is wired. `fillStrokeRect`, all `*_Rot_*` arms,
@@ -495,7 +495,7 @@ if (clipBuffer[byteIndex] === 0) {
 | Dual Edge Buffer    | RoundedRectOpsRot.stroke_Rot_Any (thick)   | Outer+inner perimeters, fill annulus   |
 | Span-based fill-first | RectOpsAA.fillStroke                  | Correct semi-transparent stroke blending |
 | 1px fast path         | RectOpsAA.fillStroke                  | No overlap for 1px: fill + 4-edge stroke |
-| Incremental DDA     | QuadScanOps.fillQuad                     | 4x faster scanline traversal (1 add vs 2 muls) |
+| Two-pass rows       | QuadScanOps.fillQuad                     | Every row's exact pixel-centre span into Int32Array scratch, then the span fills: the per-row divisions pipeline |
 | Edge-based DDA      | RectOpsRot._stroke_Rot_1px_DDA           | 1px rotated rect stroke aligned with fill |
 | Buffer pool         | RoundedRectOpsRot (all methods)          | Growth-only Int16Array pool eliminates per-call allocations |
 | Double-generation   | RoundedRectOpsRot._fillStroke_Rot_1px    | Generate perimeter twice instead of storing in Set |
@@ -1178,10 +1178,12 @@ current consumers:
      opposite corner, drawn unmirrored; a zero-size source rect paints nothing; a source rect
      reaching outside the image is clipped to it, and the destination in proportion; one wholly
      outside paints nothing. None of these throws.
-   - `Rasterizer.imageResamples` decides and `Rasterizer.filterBilinear` filters, for both: the
-     nearest texel iff the device→image mapping is axis-aligned with step exactly 1, else bilinear
-     at the pixel centre, premultiplied, unless `imageSmoothingEnabled` is false. The decision is
-     taken once per draw, or per fill transform.
+   - `Rasterizer.imageResamples` decides and the `FILTER_BILINEAR` inline template filters, for
+     both: the nearest texel iff the device→image mapping is axis-aligned with step exactly 1, else
+     bilinear at the pixel centre, premultiplied, unless `imageSmoothingEnabled` is false. The
+     decision is taken once per draw, or per fill transform. The filter is expanded into each
+     sampler at build time (`build-scripts/templates/sampling.js`): V8 does not inline a function
+     that size, and a call per pixel costs a fifth of a filtered draw.
    - Every pixel is decided at its centre: the pixel index goes through the inverse with the
      (0.5, 0.5) offset folded into the translation (`Rasterizer.centreTranslation`). Containment
      follows the fill rule and nearest-neighbour takes the texel under the centre, so a plain blit
@@ -1262,6 +1264,34 @@ current consumers:
    `tests/core/101`, and shown end to end by visual test 216 (`tight-curve-strokes-join-inner-side`):
    arc, ellipse, cubic and quadratic hairpins and an arcTo corner, stroked 30 px wide with round,
    miter and bevel joins side by side.
+34. **DONE (2026-10-31): the arc's speed, measured — three code costs taken back, the new work
+   kept.** Benchmarked interleaved (old, new, new, old) on a quiet machine on mains power, against
+   an A/A of the baseline with itself within 2.2%. Every family that moved was attributed to one
+   change by a per-change chain whose product reproduces the cumulative ratio, and its work was
+   counted, so a slowdown that paints more is told from slower code.
+   - Faster than before the arc for the same work: curves 0.37×, rotated corners 0.34×,
+     rounded-rect fills 0.43×, polylines 0.36–0.75×, gradients 0.59×, rotated rects 0.67×, affine
+     controls 0.58×; opaque circle fills 0.98×.
+   - Three families were slower for the same work; each is taken back without moving a pixel
+     (871 benchmark configurations, 37,680 frames, byte-identical surfaces):
+     - bilinear `drawImage` (+16–26%): the filter (entry 25) was a function V8 does not inline,
+       called once per pixel. It is the `FILTER_BILINEAR` inline template now. Bilinear draws
+       run 0.89–0.98× the time they took before the arc; smoothed patterns gain the same.
+     - thick diagonal `strokeLine` (+5–10%) and rotated-rect strokes (+3–4.5%): entry 20's exact
+       pixel-centre crossings. `QuadScanOps.fillQuad` computes every row's span into scratch
+       first and then fills the spans, and keeps no per-row array: thick lines run 0.41–0.49×,
+       thin translucent ones 0.56–0.65× and the thick rotated-rect strokes 0.44–0.47× the time
+       they took before the arc.
+     - polyline strokes (+4.5% over entry 32's own step): the anchor copied every flattened
+       point; it shifts them in place. Of what remains, round joins at large widths on short
+       segments cost +8–13% — the inner triangles of entry 33; with them switched off the same
+       configurations cost +1.4% — and every other configuration +1–2%, inside the noise. A
+       cheaper way to cover a round join's inner side is open (Fizzygum BACKLOG).
+   - Residual, accepted by the owner — each is work the old engine skipped: small
+     semi-transparent circles cost +7–26% (XXS–S; entry 22: it painted 58–91% of the true area);
+     a smoothed pattern costs 1.24–3.24× (entry 25: it always took the nearest texel); the fused
+     rounded-rect arm's left-edge configurations cost 2.7–3.9× (entry 19: it painted no pixel
+     there).
 
 ---
 

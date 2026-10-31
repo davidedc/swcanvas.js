@@ -7624,6 +7624,23 @@ class QuadScanOps {
         { x: 0, y: 0 }
     ];
 
+    // Per-row span scratch of fillQuad's two passes: grown on demand, never shrunk, shared by
+    // every call
+    static _spanStarts = new Int32Array(64);
+    static _spanEnds = new Int32Array(64);
+
+    /**
+     * Grow fillQuad's span scratch to hold at least `rows` rows.
+     * @param {number} rows - Rows needed
+     * @private
+     */
+    static _growSpanScratch(rows) {
+        let capacity = QuadScanOps._spanStarts.length * 2;
+        while (capacity < rows) capacity *= 2;
+        QuadScanOps._spanStarts = new Int32Array(capacity);
+        QuadScanOps._spanEnds = new Int32Array(capacity);
+    }
+
     /**
      * Convert a line segment to a quadrilateral by adding perpendicular thickness.
      *
@@ -7720,57 +7737,81 @@ class QuadScanOps {
             edge.dy = lower.y - upper.y;
         }
 
+        if (!(minY <= maxY)) return;
+        const edges = QuadScanOps._edges;
+        const edgeCount = QuadScanOps._edgeCount;
+
         // Determine rendering mode
         const usePerPixel = collectTo !== null || skipFrom !== null;
-        const intersections = [];
 
-        // Scanlines sampled at pixel centres (y + 0.5) with the half-open [upper, lower) edge
-        // test, each crossing interpolated from the edge's upper end: the quad paints exactly
-        // the pixels PolygonFiller paints for the same four corners (a stroke() of the line)
-        for (let y = minY; y <= maxY; y++) {
-            intersections.length = 0;
-            const sample = y - oy + 0.5;
-            for (let i = 0; i < QuadScanOps._edgeCount; i++) {
-                const edge = QuadScanOps._edges[i];
+        // Two passes. First every row's span into the int32 scratch - rows are independent, so
+        // their divisions pipeline, with no call between them - then the spans, row by row in
+        // the same order. Scanlines are sampled at pixel centres (y + 0.5) with the half-open
+        // [upper, lower) edge test, each crossing interpolated from the edge's upper end: the
+        // quad paints exactly the pixels PolygonFiller paints for the same four corners (a
+        // stroke() of the line). A row's span runs between its first two crossings in edge order.
+        const rows = maxY - minY + 1;
+        if (QuadScanOps._spanStarts.length < rows) QuadScanOps._growSpanScratch(rows);
+        const starts = QuadScanOps._spanStarts;
+        const ends = QuadScanOps._spanEnds;
+        for (let i = 0; i < rows; i++) {
+            const sample = minY + i - oy + 0.5;
+            let crossings = 0;
+            let x1i = 0;
+            let x2i = 0;
+            for (let e = 0; e < edgeCount; e++) {
+                const edge = edges[e];
                 if (sample >= edge.uy && sample < edge.ly) {
-                    intersections.push(edge.ux + ((sample - edge.uy) / edge.dy) * edge.dx);
+                    const x = edge.ux + ((sample - edge.uy) / edge.dy) * edge.dx;
+                    if (crossings === 0) x1i = x;
+                    else if (crossings === 1) x2i = x;
+                    crossings++;
                 }
             }
+            // Pixel-centre columns, as PolygonFiller: a column x is in the span [min, max) iff
+            // min <= x + 0.5 < max. A row with no column inside is stored as an empty span
+            // (start > end), which also keeps every stored bound inside the int32 range.
+            const leftX = Math.max(0, ox + Math.ceil(Math.min(x1i, x2i) - 0.5));
+            const rightX = Math.min(width - 1, ox + Math.ceil(Math.max(x1i, x2i) - 0.5) - 1);
+            if (crossings >= 2 && rightX >= leftX) {
+                starts[i] = leftX;
+                ends[i] = rightX;
+            } else {
+                starts[i] = 1;
+                ends[i] = 0;
+            }
+        }
 
-            if (intersections.length >= 2) {
-                // Two or more intersections - draw span between min and max
-                const x1i = intersections[0];
-                const x2i = intersections[1];
-                // Pixel-centre columns, as PolygonFiller: a column x is in the span
-                // [min, max) iff min <= x + 0.5 < max
-                const leftX = Math.max(0, ox + Math.ceil(Math.min(x1i, x2i) - 0.5));
-                const rightX = Math.min(width - 1, ox + Math.ceil(Math.max(x1i, x2i) - 0.5) - 1);
-                const spanLength = rightX - leftX + 1;
+        for (let i = 0; i < rows; i++) {
+            const leftX = starts[i];
+            const rightX = ends[i];
+            if (rightX < leftX) continue;
+            const y = minY + i;
+            const spanLength = rightX - leftX + 1;
 
-                if (spanLength > 0) {
-                    if (usePerPixel) {
-                        // Per-pixel mode for Set tracking
-                        for (let x = leftX; x <= rightX; x++) {
-                            const pixelIndex = y * width + x;
+            if (usePerPixel) {
+                // Per-pixel mode for Set tracking
+                for (let x = leftX; x <= rightX; x++) {
+                    const pixelIndex = y * width + x;
 
-                            // Skip if in skipFrom Set
-                            if (skipFrom && skipFrom.has(pixelIndex)) continue;
+                    // Skip if in skipFrom Set
+                    if (skipFrom && skipFrom.has(pixelIndex)) continue;
 
-                            // Add to collectTo Set
-                            if (collectTo) collectTo.add(pixelIndex);
+                    // Add to collectTo Set
+                    if (collectTo) collectTo.add(pixelIndex);
 
-                            // Check clipping
-                            if (clipBuffer) {
-                                const byteIndex = pixelIndex >> 3;
-                                const bitIndex = pixelIndex & 7;
-                                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
-                            }
+                    // Check clipping
+                    if (clipBuffer) {
+                        const byteIndex = pixelIndex >> 3;
+                        const bitIndex = pixelIndex & 7;
+                        if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
+                    }
 
-                            // Render pixel
-                            if (isOpaque) {
-                                data32[pixelIndex] = packedColor;
-                            } else {
-                                const __off = pixelIndex * 4;
+                    // Render pixel
+                    if (isOpaque) {
+                        data32[pixelIndex] = packedColor;
+                    } else {
+                        const __off = pixelIndex * 4;
 const __dstA = data[__off + 3] / 255;
 const __dstAScaled = __dstA * invAlpha;
 const __outA = effectiveAlpha + __dstAScaled;
@@ -7781,29 +7822,27 @@ if (__outA > 0) {
     data[__off + 2] = (b * effectiveAlpha + data[__off + 2] * __dstAScaled) * __blend;
     data[__off + 3] = __outA * 255;
 }
-                            }
-                        }
-                    } else {
-                        // Span mode using SpanOps (faster, no Set tracking)
-                        if (isOpaque) {
-                            SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
-                        } else {
-                            SpanOps.fill_Alpha(
-                                data,
-                                width,
-                                height,
-                                leftX,
-                                y,
-                                spanLength,
-                                r,
-                                g,
-                                b,
-                                effectiveAlpha,
-                                invAlpha,
-                                clipBuffer
-                            );
-                        }
                     }
+                }
+            } else {
+                // Span mode using SpanOps (faster, no Set tracking)
+                if (isOpaque) {
+                    SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
+                } else {
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        leftX,
+                        y,
+                        spanLength,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }
@@ -18701,9 +18740,10 @@ PngEncoder._FIXED_TABLES = PngEncoder._buildFixedTables();
  */
 class PathFlattener {
     /**
-     * Flatten a Path2D into a list of polygons
+     * Flatten a Path2D into a list of polygons. Every point is a fresh object that appears once in
+     * the result, so the caller owns it and may modify it (StrokeGenerator shifts it in place).
      * @param {Path2D} path2d - Path to flatten
-     * @returns {Array<Array<Point>>} Array of polygons, each polygon is an array of Point objects
+     * @returns {Array<Array<{x: number, y: number}>>} Array of polygons, each an array of points
      */
     static flattenPath(path2d) {
         const polygons = [];
@@ -20781,11 +20821,12 @@ class StrokeGenerator {
         if (validatedProps.lineWidth <= 0) return [];
 
         // Flatten path to get line segments
-        let pathPolygons = PathFlattener.flattenPath(path);
+        const pathPolygons = PathFlattener.flattenPath(path);
 
         // Relative to the floor of the first point, a path moved by whole units is stroked from the
         // same numbers wherever it lies: its dashes, corners and round parts round the same way,
-        // as they would not at the path's absolute magnitude
+        // as they would not at the path's absolute magnitude. Shifted in place: flattenPath returns
+        // fresh points, each in one polygon once, owned by this call
         if (origin !== null) {
             let ax = 0;
             let ay = 0;
@@ -20801,7 +20842,13 @@ class StrokeGenerator {
                 ay = 0;
             }
             if (ax !== 0 || ay !== 0) {
-                pathPolygons = pathPolygons.map(poly => poly.map(p => ({ x: p.x - ax, y: p.y - ay })));
+                for (let i = 0; i < pathPolygons.length; i++) {
+                    const poly = pathPolygons[i];
+                    for (let j = 0; j < poly.length; j++) {
+                        poly[j].x -= ax;
+                        poly[j].y -= ay;
+                    }
+                }
             }
             origin.x = ax;
             origin.y = ay;
@@ -24485,8 +24532,8 @@ class ConicGradient extends Gradient {
  *
  * A pattern samples its image by the same rule as drawImage: nearest-neighbour
  * when the device→image mapping does not resample (Rasterizer.imageResamples),
- * bilinear at the pixel centre (Rasterizer.filterBilinear) when it does and the
- * drawing context's imageSmoothingEnabled is true.
+ * bilinear at the pixel centre (drawImage's filter, the FILTER_BILINEAR inline
+ * template) when it does and the drawing context's imageSmoothingEnabled is true.
  */
 class Pattern {
     /**
@@ -24767,7 +24814,8 @@ class Pattern {
     /**
      * The bilinearly filtered paint of DEVICE pixel (x, y): its centre mapped
      * through the map from `centreMapForDevice`, the four texels
-     * around it filtered by Rasterizer.filterBilinear — drawImage's filter. The
+     * around it filtered by the FILTER_BILINEAR inline template
+     * (build-scripts/templates/sampling.js) — drawImage's filter. The
      * edge rule is the pattern's own: a tap on a repeating axis wraps to the
      * opposite edge of the image, and a tap beyond the image on a non-repeating
      * axis is transparent (where drawImage clamps to the edge texel), so a
@@ -24824,7 +24872,62 @@ class Pattern {
             ty1 = y0 + 1 < 0 ? 0 : y0 + 1 < height ? y0 + 1 : height - 1;
         }
 
-        return Rasterizer.filterBilinear(this._imageData.data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, out);
+        const data = this._imageData.data;
+        const __w00 = wx0 * wy0;
+const __w10 = wx1 * wy0;
+const __w01 = wx0 * wy1;
+const __w11 = wx1 * wy1;
+let __aSum = 0;
+let __rSum = 0;
+let __gSum = 0;
+let __bSum = 0;
+if (__w00 !== 0) {
+    const __o = (ty0 * width + tx0) * 4;
+    const __wa = __w00 * data[__o + 3];
+    if (__wa !== 0) {
+        __aSum += __wa;
+        __rSum += __wa * data[__o];
+        __gSum += __wa * data[__o + 1];
+        __bSum += __wa * data[__o + 2];
+    }
+}
+if (__w10 !== 0) {
+    const __o = (ty0 * width + tx1) * 4;
+    const __wa = __w10 * data[__o + 3];
+    if (__wa !== 0) {
+        __aSum += __wa;
+        __rSum += __wa * data[__o];
+        __gSum += __wa * data[__o + 1];
+        __bSum += __wa * data[__o + 2];
+    }
+}
+if (__w01 !== 0) {
+    const __o = (ty1 * width + tx0) * 4;
+    const __wa = __w01 * data[__o + 3];
+    if (__wa !== 0) {
+        __aSum += __wa;
+        __rSum += __wa * data[__o];
+        __gSum += __wa * data[__o + 1];
+        __bSum += __wa * data[__o + 2];
+    }
+}
+if (__w11 !== 0) {
+    const __o = (ty1 * width + tx1) * 4;
+    const __wa = __w11 * data[__o + 3];
+    if (__wa !== 0) {
+        __aSum += __wa;
+        __rSum += __wa * data[__o];
+        __gSum += __wa * data[__o + 1];
+        __bSum += __wa * data[__o + 2];
+    }
+}
+if (__aSum === 0) return false;
+// Un-premultiply back to straight RGBA (the alpha weights cancel out of the RGB average)
+out.r = Math.round(__rSum / __aSum);
+out.g = Math.round(__gSum / __aSum);
+out.b = Math.round(__bSum / __aSum);
+out.a = Math.round(__aSum);
+        return true;
     }
 
     /**
@@ -25393,17 +25496,15 @@ class Rasterizer {
 
         this._surface = surface;
         this._currentOp = null;
-        // Out-parameter of filterBilinear for drawImage's filtered taps, reused
-        // by every draw so the pixel loop allocates nothing.
-        this._texel = { r: 0, g: 0, b: 0, a: 0 };
     }
 
     /**
      * The ONE image-sampling decision, shared by drawImage and pattern paint:
      * does a draw RESAMPLE its image? It does not when the device→image mapping
      * is axis-aligned and steps exactly one texel per device pixel on both axes;
-     * every other mapping resamples. A resampling draw filters bilinearly
-     * (filterBilinear) unless imageSmoothingEnabled is false; a draw that does
+     * every other mapping resamples. A resampling draw filters bilinearly (the
+     * FILTER_BILINEAR inline template, build-scripts/templates/sampling.js)
+     * unless imageSmoothingEnabled is false; a draw that does
      * not resample takes the nearest texel, byte-for-byte. Callers decide once
      * per draw or per fill transform, never per pixel.
      * @param {number} b - Off-diagonal term of the mapping (zero in the forward
@@ -25432,95 +25533,6 @@ class Rasterizer {
      */
     static centreTranslation(a, c, e) {
         return e + (a + c) * 0.5;
-    }
-
-    /**
-     * Bilinear filter of the four texels around a sample point — the tap
-     * arithmetic of every filtered image draw (drawImage and pattern paint).
-     * Filtered PREMULTIPLIED: source texels are straight RGBA and fully
-     * transparent texels carry arbitrary RGB, so a straight-alpha lerp would
-     * bleed that RGB into edges (dark fringes). Each texel's RGB is weighted by
-     * its alpha, accumulated, and un-premultiplied at the end. Plain double
-     * arithmetic in a fixed accumulation order (00, 10, 01, 11) — byte-identical
-     * on V8 and JSC.
-     *
-     * The caller applies its edge rule through the arguments: it resolves the
-     * tap columns/rows (drawImage clamps to the edge texel, a pattern wraps a
-     * repeating axis), and passes the per-axis weights (1 - fx, fx, 1 - fy, fy),
-     * zeroing the weight of a tap that reads nothing (a pattern's non-repeating
-     * axis beyond the image). A zero-weight tap is never read.
-     * @param {Uint8ClampedArray} data - Straight RGBA texels
-     * @param {number} width - Image width in texels
-     * @param {number} tx0 - Column of the left taps
-     * @param {number} tx1 - Column of the right taps
-     * @param {number} ty0 - Row of the top taps
-     * @param {number} ty1 - Row of the bottom taps
-     * @param {number} wx0 - Weight of the left column
-     * @param {number} wx1 - Weight of the right column
-     * @param {number} wy0 - Weight of the top row
-     * @param {number} wy1 - Weight of the bottom row
-     * @param {{r: number, g: number, b: number, a: number}} out - Receives the
-     *   filtered straight RGBA
-     * @returns {boolean} false (out untouched) when every weighted tap is
-     *   transparent
-     */
-    static filterBilinear(data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, out) {
-        const w00 = wx0 * wy0;
-        const w10 = wx1 * wy0;
-        const w01 = wx0 * wy1;
-        const w11 = wx1 * wy1;
-        let aSum = 0;
-        let rSum = 0;
-        let gSum = 0;
-        let bSum = 0;
-        if (w00 !== 0) {
-            const o = (ty0 * width + tx0) * 4;
-            const wa = w00 * data[o + 3];
-            if (wa !== 0) {
-                aSum += wa;
-                rSum += wa * data[o];
-                gSum += wa * data[o + 1];
-                bSum += wa * data[o + 2];
-            }
-        }
-        if (w10 !== 0) {
-            const o = (ty0 * width + tx1) * 4;
-            const wa = w10 * data[o + 3];
-            if (wa !== 0) {
-                aSum += wa;
-                rSum += wa * data[o];
-                gSum += wa * data[o + 1];
-                bSum += wa * data[o + 2];
-            }
-        }
-        if (w01 !== 0) {
-            const o = (ty1 * width + tx0) * 4;
-            const wa = w01 * data[o + 3];
-            if (wa !== 0) {
-                aSum += wa;
-                rSum += wa * data[o];
-                gSum += wa * data[o + 1];
-                bSum += wa * data[o + 2];
-            }
-        }
-        if (w11 !== 0) {
-            const o = (ty1 * width + tx1) * 4;
-            const wa = w11 * data[o + 3];
-            if (wa !== 0) {
-                aSum += wa;
-                rSum += wa * data[o];
-                gSum += wa * data[o + 1];
-                bSum += wa * data[o + 2];
-            }
-        }
-        if (aSum === 0) return false; // all taps transparent
-        // Un-premultiply back to straight RGBA (the alpha weights cancel out of
-        // the RGB average).
-        out.r = Math.round(rSum / aSum);
-        out.g = Math.round(gSum / aSum);
-        out.b = Math.round(bSum / aSum);
-        out.a = Math.round(aSum);
-        return true;
     }
 
     /**
@@ -26384,7 +26396,6 @@ class Rasterizer {
         // sub-rect draws meet seamlessly.
         const lastTexelX = imgWidth - 1;
         const lastTexelY = imgHeight - 1;
-        const texel = this._texel;
 
         // Render each pixel in the bounding box
         for (let deviceY = minY; deviceY <= maxY; deviceY++) {
@@ -26455,31 +26466,70 @@ class Rasterizer {
                         srcB = imgData[sourceOffset + 2];
                         srcA = imgData[sourceOffset + 3];
                     } else {
-                        // Bilinear over the 4 neighboring texels (filterBilinear,
-                        // shared with pattern paint), clamped to the edge.
+                        // Bilinear over the 4 neighboring texels, clamped to the
+                        // edge: the FILTER_BILINEAR template, shared with pattern
+                        // paint (build-scripts/templates/sampling.js) and expanded
+                        // here at build time — a call per pixel is never inlined
+                        // and costs a fifth of a filtered draw. All taps
+                        // transparent: the pixel is left unchanged.
                         const tx1 = x0 + 1 > lastTexelX ? lastTexelX : x0 + 1 < 0 ? 0 : x0 + 1;
                         const ty1 = y0 + 1 > lastTexelY ? lastTexelY : y0 + 1 < 0 ? 0 : y0 + 1;
-                        if (
-                            !Rasterizer.filterBilinear(
-                                imgData,
-                                imgWidth,
-                                tx0,
-                                tx1,
-                                ty0,
-                                ty1,
-                                1 - fx,
-                                fx,
-                                1 - fy,
-                                fy,
-                                texel
-                            )
-                        ) {
-                            continue; // all taps transparent
-                        }
-                        srcR = texel.r;
-                        srcG = texel.g;
-                        srcB = texel.b;
-                        srcA = texel.a;
+                        const wx0 = 1 - fx;
+                        const wy0 = 1 - fy;
+                        const __w00 = wx0 * wy0;
+const __w10 = fx * wy0;
+const __w01 = wx0 * fy;
+const __w11 = fx * fy;
+let __aSum = 0;
+let __rSum = 0;
+let __gSum = 0;
+let __bSum = 0;
+if (__w00 !== 0) {
+    const __o = (ty0 * imgWidth + tx0) * 4;
+    const __wa = __w00 * imgData[__o + 3];
+    if (__wa !== 0) {
+        __aSum += __wa;
+        __rSum += __wa * imgData[__o];
+        __gSum += __wa * imgData[__o + 1];
+        __bSum += __wa * imgData[__o + 2];
+    }
+}
+if (__w10 !== 0) {
+    const __o = (ty0 * imgWidth + tx1) * 4;
+    const __wa = __w10 * imgData[__o + 3];
+    if (__wa !== 0) {
+        __aSum += __wa;
+        __rSum += __wa * imgData[__o];
+        __gSum += __wa * imgData[__o + 1];
+        __bSum += __wa * imgData[__o + 2];
+    }
+}
+if (__w01 !== 0) {
+    const __o = (ty1 * imgWidth + tx0) * 4;
+    const __wa = __w01 * imgData[__o + 3];
+    if (__wa !== 0) {
+        __aSum += __wa;
+        __rSum += __wa * imgData[__o];
+        __gSum += __wa * imgData[__o + 1];
+        __bSum += __wa * imgData[__o + 2];
+    }
+}
+if (__w11 !== 0) {
+    const __o = (ty1 * imgWidth + tx1) * 4;
+    const __wa = __w11 * imgData[__o + 3];
+    if (__wa !== 0) {
+        __aSum += __wa;
+        __rSum += __wa * imgData[__o];
+        __gSum += __wa * imgData[__o + 1];
+        __bSum += __wa * imgData[__o + 2];
+    }
+}
+if (__aSum === 0) continue;
+// Un-premultiply back to straight RGBA (the alpha weights cancel out of the RGB average)
+srcR = Math.round(__rSum / __aSum);
+srcG = Math.round(__gSum / __aSum);
+srcB = Math.round(__bSum / __aSum);
+srcA = Math.round(__aSum);
                     }
                 }
 

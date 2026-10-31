@@ -941,6 +941,7 @@ Level 1 (Clipped):  SET_OPAQUE_CLIPPED → SET_OPAQUE
                     BLEND_ALPHA_CLIPPED → BLEND_ALPHA
 Level 2 (Arc):      SET_OPAQUE_ARC_FAST_CLIPPED → SET_OPAQUE_CLIPPED
                     BLEND_ALPHA_ARC_FAST_CLIPPED → BLEND_ALPHA_CLIPPED
+Image sampling:     FILTER_BILINEAR (no chaining)
 ```
 
 This architecture reduces template code by ~50% while ensuring all derived templates stay synchronized with base template changes.
@@ -965,6 +966,7 @@ Arguments can be expressions (e.g., `pos * 4`, `idx/4`). Templates can contain n
 | `SET_OPAQUE_CLIPPED` | `data32, pixelIndex, packedColor, clipBuffer` | Opaque write with inline clipping |
 | `SET_OPAQUE_ARC_FAST_CLIPPED` | `data32, packedColor, clipBuffer, dx, dy, startCos, startSin, endCos, endSin, isLargeArc, px, py, width, height` | Opaque write with cross-product angle check + bounds + clipping for arcs |
 | `BLEND_ALPHA_ARC_FAST_CLIPPED` | `data, r, g, b, alpha, invAlpha, clipBuffer, dx, dy, startCos, startSin, endCos, endSin, isLargeArc, px, py, width, height` | Alpha blending with cross-product angle check + bounds + clipping for arcs |
+| `FILTER_BILINEAR` | `data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, outR, outG, outB, outA, onTransparent` | Premultiplied bilinear filter of four texels, for `drawImage` and pattern paint; the caller supplies its edge rule (tap positions and weights), the outputs, and the statement run when every tap is transparent |
 
 ### Clipping Contract
 
@@ -989,7 +991,7 @@ All contracts uphold the "Check Once, Check Correctly" invariant - clipping is c
 
 ### Template Definitions
 
-Templates are defined in `build-scripts/preprocess.js`. Local variables use `__` prefix to avoid conflicts with caller variables.
+Templates are defined in `build-scripts/templates/` (`base.js`, `clipped.js`, `arc.js`, `sampling.js`), registered by `templates/index.js` and expanded by `build-scripts/preprocess.js`. Local variables use `__` prefix to avoid conflicts with caller variables.
 
 Derived templates (Level 1+) use nested markers to reference base templates:
 ```javascript
@@ -1007,9 +1009,9 @@ The `preprocess()` function accepts an optional `maxDepth` parameter (default 10
 ### Build Integration
 
 The build process:
-1. Preprocesses source files containing markers to `.preprocessed/`
-2. Uses preprocessed versions during concatenation
-3. Final `dist/swcanvas.js` contains no markers (all expanded)
+1. Preprocesses the source files listed in `build.sh`'s `PREPROCESSED_FILES` to `.preprocessed/`
+2. Uses preprocessed versions during concatenation (`get_src`)
+3. Fails if `dist/swcanvas.js` still contains a marker (one in a file missing from the list would otherwise stay a comment, and its code would be absent)
 
 ### Example Expansion
 

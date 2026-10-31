@@ -9931,7 +9931,10 @@
         //      up-scale and a down-scale paints drawImage's bytes wherever every filter
         //      tap lies inside the image (at the image border the edge rules differ:
         //      drawImage clamps to the edge texel, a non-repeating pattern axis reads
-        //      transparent beyond the image);
+        //      transparent beyond the image) — also for an image of translucent and
+        //      fully transparent texels, whose RGB the premultiplied filter weighs by
+        //      alpha (the FILTER_BILINEAR template, expanded into each caller's own
+        //      edge rule and transparent-sample exit);
         //   2. a 'repeat' pattern's taps wrap: under rotation it paints what drawImage
         //      paints of a 3x3 mosaic of the tile (within one level: the mosaic's image
         //      coordinates are the pattern's shifted by a tile, which can round the
@@ -9965,6 +9968,22 @@
                 }
                 ctx.putImageData(id, 0, 0);
                 return { canvas, data: id.data };
+            }
+
+            // N x N image of translucent texels, every fifth one fully transparent with
+            // non-zero RGB (which a straight-alpha filter would bleed into its neighbours).
+            function makeTranslucentImage(n) {
+                const data = new Uint8ClampedArray(n * n * 4);
+                for (let y = 0; y < n; y++) {
+                    for (let x = 0; x < n; x++) {
+                        const o = (y * n + x) * 4;
+                        data[o] = 30 + ((x * 29) % 220);
+                        data[o + 1] = 20 + ((y * 31) % 230);
+                        data[o + 2] = (x * 7 + y * 13) % 256;
+                        data[o + 3] = (x + 2 * y) % 5 === 0 ? 0 : 40 + ((x * 23 + y * 41) % 216);
+                    }
+                }
+                return { canvas: { width: n, height: n, data }, data };
             }
 
             function render(m, smoothing, draw) {
@@ -10020,7 +10039,8 @@
             const cases = [
                 ['rotation + non-uniform scale', rotated, image8, 8],
                 ['fractional up-scale', [2.6, 0, 0, 3.1, 10.3, 7.7], image8, 8],
-                ['down-scale', [0.7, 0, 0, 0.6, 10.3, 7.7], makeImage(40), 40]
+                ['down-scale', [0.7, 0, 0, 0.6, 10.3, 7.7], makeImage(40), 40],
+                ['translucent texels, rotation + non-uniform scale', rotated, makeTranslucentImage(8), 8]
             ];
             for (const [label, m, image, n] of cases) {
                 const viaDrawImage = render(m, true, ctx => ctx.drawImage(image.canvas, 0, 0));

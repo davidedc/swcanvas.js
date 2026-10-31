@@ -16,6 +16,7 @@
  *   Level 0 (Base):     SET_OPAQUE, BLEND_ALPHA
  *   Level 1 (Clipped):  *_CLIPPED → references Level 0
  *   Level 2 (Arc):      *_ARC_FAST_CLIPPED → references Level 1
+ *   Image sampling:     FILTER_BILINEAR (no chaining; reads texels, writes no pixel)
  *
  * This architecture reduces template code by ~50% while maintaining identical output.
  *

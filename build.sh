@@ -23,6 +23,8 @@ PREPROCESSED_FILES=(
     "src/renderers/RoundedRectOpsRot.js"
     "src/renderers/QuadScanOps.js"
     "src/renderers/RectOpsAA.js"
+    "src/paint/Pattern.js"
+    "src/core/Rasterizer.js"
 )
 
 for file in "${PREPROCESSED_FILES[@]}"; do
@@ -249,7 +251,7 @@ echo "" >> dist/swcanvas.js
 # Phase 2.5: Paint sources (depend on foundation + ColorParser)
 cat src/paint/Gradient.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
-cat src/paint/Pattern.js >> dist/swcanvas.js
+cat "$(get_src src/paint/Pattern.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 
 # Phase 2.7: Text bridge (depends on vendored BitmapText + Color).
@@ -269,7 +271,7 @@ cat src/text/BootstrapText.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 
 # Phase 3: Core rendering classes (depend on services)
-cat src/core/Rasterizer.js >> dist/swcanvas.js
+cat "$(get_src src/core/Rasterizer.js)" >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
 cat src/core/Context2D.js >> dist/swcanvas.js
 echo "" >> dist/swcanvas.js
@@ -469,6 +471,14 @@ if (typeof globalThis !== 'undefined') {
 
 })();
 EOF
+
+# Every inline marker is expanded. A marker in a file missing from PREPROCESSED_FILES, or
+# concatenated without get_src, would stay a comment, and the code it stands for would be absent.
+if grep -n '/\*@inline:' dist/swcanvas.js; then
+    echo "ERROR: unexpanded inline marker in dist/swcanvas.js (above): list its source file in" \
+        "PREPROCESSED_FILES and concatenate it through get_src." >&2
+    exit 1
+fi
 
 echo "Build complete: dist/swcanvas.js"
 

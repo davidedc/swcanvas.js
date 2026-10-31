@@ -9,8 +9,8 @@
  *
  * A pattern samples its image by the same rule as drawImage: nearest-neighbour
  * when the device→image mapping does not resample (Rasterizer.imageResamples),
- * bilinear at the pixel centre (Rasterizer.filterBilinear) when it does and the
- * drawing context's imageSmoothingEnabled is true.
+ * bilinear at the pixel centre (drawImage's filter, the FILTER_BILINEAR inline
+ * template) when it does and the drawing context's imageSmoothingEnabled is true.
  */
 class Pattern {
     /**
@@ -291,7 +291,8 @@ class Pattern {
     /**
      * The bilinearly filtered paint of DEVICE pixel (x, y): its centre mapped
      * through the map from `centreMapForDevice`, the four texels
-     * around it filtered by Rasterizer.filterBilinear — drawImage's filter. The
+     * around it filtered by the FILTER_BILINEAR inline template
+     * (build-scripts/templates/sampling.js) — drawImage's filter. The
      * edge rule is the pattern's own: a tap on a repeating axis wraps to the
      * opposite edge of the image, and a tap beyond the image on a non-repeating
      * axis is transparent (where drawImage clamps to the edge texel), so a
@@ -348,7 +349,9 @@ class Pattern {
             ty1 = y0 + 1 < 0 ? 0 : y0 + 1 < height ? y0 + 1 : height - 1;
         }
 
-        return Rasterizer.filterBilinear(this._imageData.data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, out);
+        const data = this._imageData.data;
+        /*@inline:FILTER_BILINEAR(data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, out.r, out.g, out.b, out.a, return false)*/
+        return true;
     }
 
     /**

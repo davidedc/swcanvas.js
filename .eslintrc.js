@@ -20,6 +20,11 @@
  *
  * Note: Using ESLint 8.x (not 9.x) for stable .eslintrc.js config format.
  */
+// Class and constant names that are globals after build concatenation: each is declared in one file
+// and used from others, so no file reads its own declaration
+const EXPORTED_GLOBALS =
+    'Context2D|Surface|Transform2D|SWPath2D|Color|ClipMask|SourceMask|StateStack|Rasterizer|Point|Rectangle|BitBuffer|BoundsTracker|CompositeOperations|ImageProcessor|Validators|SpanOps|QuadScanOps|Triangle3DOps|DepthBuffer|Texture3D|RectOpsAA|RectOpsRot|CircleOps|StadiumOps|ArcOps|LineOps|RoundedRectOpsAA|RoundedRectOpsRot|RoundedRectUtils|PolygonFiller|PathFlattener|StrokeGenerator|Gradient|LinearGradient|RadialGradient|ConicGradient|Pattern|ColorParser|ShadowBuffer|BoxBlur|ShadowPipeline|BitmapEncoder|BitmapEncodingOptions|PngEncoder|PngEncodingOptions|CanvasCompatibleContext2D|SWCanvasElement|SWCanvasConstants|IS_DEBUG|assertDebug|debugLog|debugWarn|FLOAT_EPSILON|TRANSFORM_EPSILON|TAU|HALF_PI|THREE_HALF_PI|QUARTER_PI|DEG_TO_RAD|FILL_EPSILON|STROKE_1PX_TOLERANCE|QUADRANT_TRIG_EPSILON|ANGLE_TOLERANCE|ARC_FULLCIRCLE_TOLERANCE|MIN_EDGE_LENGTH|MIN_EDGE_LENGTH_SQUARED|PATH_FLATTENING_TOLERANCE|SEGMENT_COUNT_EPSILON|THIN_LINE_THRESHOLD|DEFAULT_MITER_LIMIT';
+
 module.exports = {
     parserOptions: {
         ecmaVersion: 2022,
@@ -187,7 +192,7 @@ module.exports = {
         'no-unused-vars': ['error', {
             args: 'none',
             ignoreRestSiblings: true,
-            varsIgnorePattern: '^(_|Context2D|Surface|Transform2D|SWPath2D|Color|ClipMask|SourceMask|StateStack|Rasterizer|Point|Rectangle|BitBuffer|BoundsTracker|CompositeOperations|ImageProcessor|Validators|SpanOps|QuadScanOps|Triangle3DOps|DepthBuffer|Texture3D|RectOpsAA|RectOpsRot|CircleOps|StadiumOps|ArcOps|LineOps|RoundedRectOpsAA|RoundedRectOpsRot|RoundedRectUtils|PolygonFiller|PathFlattener|StrokeGenerator|Gradient|LinearGradient|RadialGradient|ConicGradient|Pattern|ColorParser|ShadowBuffer|BoxBlur|ShadowPipeline|BitmapEncoder|BitmapEncodingOptions|PngEncoder|PngEncodingOptions|CanvasCompatibleContext2D|SWCanvasElement|SWCanvasConstants|IS_DEBUG|assertDebug|debugLog|debugWarn|FLOAT_EPSILON|TRANSFORM_EPSILON|TAU|HALF_PI|THREE_HALF_PI|QUARTER_PI|DEG_TO_RAD|FILL_EPSILON|STROKE_1PX_TOLERANCE|QUADRANT_TRIG_EPSILON|ANGLE_TOLERANCE|ARC_FULLCIRCLE_TOLERANCE|MIN_EDGE_LENGTH|MIN_EDGE_LENGTH_SQUARED|PATH_FLATTENING_TOLERANCE|SEGMENT_COUNT_EPSILON|THIN_LINE_THRESHOLD|DEFAULT_MITER_LIMIT)$'
+            varsIgnorePattern: `^(_|${EXPORTED_GLOBALS})$`
         }],
 
         // === STYLE (match existing) ===
@@ -254,6 +259,18 @@ module.exports = {
                 // Early returns before preprocessor markers appear "useless" to ESLint but are needed
                 // to skip pixel blending when clipping fails (the marker expands to real code)
                 'no-useless-return': 'off'
+            }
+        },
+        {
+            // drawImage and pattern paint expand /*@inline:FILTER_BILINEAR(...)*/: the image data and
+            // the tap columns, rows and weights they hand it are read only by the expanded code
+            files: ['src/core/Rasterizer.js', 'src/paint/Pattern.js'],
+            rules: {
+                'no-unused-vars': ['error', {
+                    args: 'none',
+                    ignoreRestSiblings: true,
+                    varsIgnorePattern: `^(_|${EXPORTED_GLOBALS}|data|tx0|tx1|ty0|ty1|wx0|wx1|wy0|wy1)$`
+                }]
             }
         }
     ]

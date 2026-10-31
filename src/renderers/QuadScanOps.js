@@ -33,6 +33,23 @@ class QuadScanOps {
         { x: 0, y: 0 }
     ];
 
+    // Per-row span scratch of fillQuad's two passes: grown on demand, never shrunk, shared by
+    // every call
+    static _spanStarts = new Int32Array(64);
+    static _spanEnds = new Int32Array(64);
+
+    /**
+     * Grow fillQuad's span scratch to hold at least `rows` rows.
+     * @param {number} rows - Rows needed
+     * @private
+     */
+    static _growSpanScratch(rows) {
+        let capacity = QuadScanOps._spanStarts.length * 2;
+        while (capacity < rows) capacity *= 2;
+        QuadScanOps._spanStarts = new Int32Array(capacity);
+        QuadScanOps._spanEnds = new Int32Array(capacity);
+    }
+
     /**
      * Convert a line segment to a quadrilateral by adding perpendicular thickness.
      *
@@ -129,80 +146,102 @@ class QuadScanOps {
             edge.dy = lower.y - upper.y;
         }
 
+        if (!(minY <= maxY)) return;
+        const edges = QuadScanOps._edges;
+        const edgeCount = QuadScanOps._edgeCount;
+
         // Determine rendering mode
         const usePerPixel = collectTo !== null || skipFrom !== null;
-        const intersections = [];
 
-        // Scanlines sampled at pixel centres (y + 0.5) with the half-open [upper, lower) edge
-        // test, each crossing interpolated from the edge's upper end: the quad paints exactly
-        // the pixels PolygonFiller paints for the same four corners (a stroke() of the line)
-        for (let y = minY; y <= maxY; y++) {
-            intersections.length = 0;
-            const sample = y - oy + 0.5;
-            for (let i = 0; i < QuadScanOps._edgeCount; i++) {
-                const edge = QuadScanOps._edges[i];
+        // Two passes. First every row's span into the int32 scratch - rows are independent, so
+        // their divisions pipeline, with no call between them - then the spans, row by row in
+        // the same order. Scanlines are sampled at pixel centres (y + 0.5) with the half-open
+        // [upper, lower) edge test, each crossing interpolated from the edge's upper end: the
+        // quad paints exactly the pixels PolygonFiller paints for the same four corners (a
+        // stroke() of the line). A row's span runs between its first two crossings in edge order.
+        const rows = maxY - minY + 1;
+        if (QuadScanOps._spanStarts.length < rows) QuadScanOps._growSpanScratch(rows);
+        const starts = QuadScanOps._spanStarts;
+        const ends = QuadScanOps._spanEnds;
+        for (let i = 0; i < rows; i++) {
+            const sample = minY + i - oy + 0.5;
+            let crossings = 0;
+            let x1i = 0;
+            let x2i = 0;
+            for (let e = 0; e < edgeCount; e++) {
+                const edge = edges[e];
                 if (sample >= edge.uy && sample < edge.ly) {
-                    intersections.push(edge.ux + ((sample - edge.uy) / edge.dy) * edge.dx);
+                    const x = edge.ux + ((sample - edge.uy) / edge.dy) * edge.dx;
+                    if (crossings === 0) x1i = x;
+                    else if (crossings === 1) x2i = x;
+                    crossings++;
                 }
             }
+            // Pixel-centre columns, as PolygonFiller: a column x is in the span [min, max) iff
+            // min <= x + 0.5 < max. A row with no column inside is stored as an empty span
+            // (start > end), which also keeps every stored bound inside the int32 range.
+            const leftX = Math.max(0, ox + Math.ceil(Math.min(x1i, x2i) - 0.5));
+            const rightX = Math.min(width - 1, ox + Math.ceil(Math.max(x1i, x2i) - 0.5) - 1);
+            if (crossings >= 2 && rightX >= leftX) {
+                starts[i] = leftX;
+                ends[i] = rightX;
+            } else {
+                starts[i] = 1;
+                ends[i] = 0;
+            }
+        }
 
-            if (intersections.length >= 2) {
-                // Two or more intersections - draw span between min and max
-                const x1i = intersections[0];
-                const x2i = intersections[1];
-                // Pixel-centre columns, as PolygonFiller: a column x is in the span
-                // [min, max) iff min <= x + 0.5 < max
-                const leftX = Math.max(0, ox + Math.ceil(Math.min(x1i, x2i) - 0.5));
-                const rightX = Math.min(width - 1, ox + Math.ceil(Math.max(x1i, x2i) - 0.5) - 1);
-                const spanLength = rightX - leftX + 1;
+        for (let i = 0; i < rows; i++) {
+            const leftX = starts[i];
+            const rightX = ends[i];
+            if (rightX < leftX) continue;
+            const y = minY + i;
+            const spanLength = rightX - leftX + 1;
 
-                if (spanLength > 0) {
-                    if (usePerPixel) {
-                        // Per-pixel mode for Set tracking
-                        for (let x = leftX; x <= rightX; x++) {
-                            const pixelIndex = y * width + x;
+            if (usePerPixel) {
+                // Per-pixel mode for Set tracking
+                for (let x = leftX; x <= rightX; x++) {
+                    const pixelIndex = y * width + x;
 
-                            // Skip if in skipFrom Set
-                            if (skipFrom && skipFrom.has(pixelIndex)) continue;
+                    // Skip if in skipFrom Set
+                    if (skipFrom && skipFrom.has(pixelIndex)) continue;
 
-                            // Add to collectTo Set
-                            if (collectTo) collectTo.add(pixelIndex);
+                    // Add to collectTo Set
+                    if (collectTo) collectTo.add(pixelIndex);
 
-                            // Check clipping
-                            if (clipBuffer) {
-                                const byteIndex = pixelIndex >> 3;
-                                const bitIndex = pixelIndex & 7;
-                                if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
-                            }
-
-                            // Render pixel
-                            if (isOpaque) {
-                                data32[pixelIndex] = packedColor;
-                            } else {
-                                /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
-                            }
-                        }
-                    } else {
-                        // Span mode using SpanOps (faster, no Set tracking)
-                        if (isOpaque) {
-                            SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
-                        } else {
-                            SpanOps.fill_Alpha(
-                                data,
-                                width,
-                                height,
-                                leftX,
-                                y,
-                                spanLength,
-                                r,
-                                g,
-                                b,
-                                effectiveAlpha,
-                                invAlpha,
-                                clipBuffer
-                            );
-                        }
+                    // Check clipping
+                    if (clipBuffer) {
+                        const byteIndex = pixelIndex >> 3;
+                        const bitIndex = pixelIndex & 7;
+                        if (!(clipBuffer[byteIndex] & (1 << bitIndex))) continue;
                     }
+
+                    // Render pixel
+                    if (isOpaque) {
+                        data32[pixelIndex] = packedColor;
+                    } else {
+                        /*@inline:BLEND_ALPHA(data, pixelIndex, r, g, b, effectiveAlpha, invAlpha)*/
+                    }
+                }
+            } else {
+                // Span mode using SpanOps (faster, no Set tracking)
+                if (isOpaque) {
+                    SpanOps.fill_Opaq(data32, width, height, leftX, y, spanLength, packedColor, clipBuffer);
+                } else {
+                    SpanOps.fill_Alpha(
+                        data,
+                        width,
+                        height,
+                        leftX,
+                        y,
+                        spanLength,
+                        r,
+                        g,
+                        b,
+                        effectiveAlpha,
+                        invAlpha,
+                        clipBuffer
+                    );
                 }
             }
         }

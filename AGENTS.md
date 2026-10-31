@@ -28,11 +28,11 @@ node tests/direct-rendering/verify-logs-and-bounds-snapshot.js        # Verify t
 - HTML5 facade:   `src/compat/CanvasCompatibleContext2D.js` (thin layer over Core)
 - Text engine:    vendored BitmapText.js under `vendor/bitmaptext/`; wiring in `src/text/{BootstrapText,CssFontParser,FillStyleToTextColor,TextRenderer,FontsNamespace}.js`. Slow path renders to an intermediate `SWCanvasElement` then `drawImage`s with the user transform.
 - Source layout:  `src/{core,renderers,utils,paint,filters,io,compat,text}` + `vendor/bitmaptext/`
-- Hot pixel loops: `src/renderers/*Ops.js`; preprocessor templates in `build-scripts/preprocess.js`
+- Hot pixel loops: `src/renderers/*Ops.js`, `drawImage` (`src/core/Rasterizer.js`), pattern sampling (`src/paint/Pattern.js`); inline templates in `build-scripts/templates/`, expanded by `build-scripts/preprocess.js`
 
 ## Critical invariants (not inferable from code — read these before editing)
 
-- **`npm run build` before every test run.** `build.sh` expands `/*@inline:TEMPLATE(...)*/` markers in hot loops into open-coded blend code. Skipping it leaves `dist/swcanvas.js` stale and tests run against old behaviour. See `build-scripts/README.md`.
+- **`npm run build` before every test run.** `build.sh` expands `/*@inline:TEMPLATE(...)*/` markers in hot loops into open-coded code (pixel blends, the bilinear filter). Skipping it leaves `dist/swcanvas.js` stale and tests run against old behaviour. See `build-scripts/README.md`.
 - **Dual-API parity.** Public-API changes must update **both** `src/core/Context2D.js` and `src/compat/CanvasCompatibleContext2D.js`. Visual tests run both paths against the same expected output — keep them in sync.
 - **Node ↔ browser parity.** The same core and visual test registries run in both: `npm test` in Node, `tests/browser/index.html` in the browser, both loading the same fonts through one preload (`tests/smoke-fonts.js`). `npm run test:browser -- --puppeteer-from <dir>/node_modules/puppeteer` (or `--playwright-from <dir>/node_modules/playwright [--browser=webkit]`) runs the page headless and fails unless every core test passes there and every visual render is byte-identical to Node's `tests/output` PNG; exit 2 means it could not run, never a pass. Never make a test change that only works in one environment. A core test of something only one environment has (a DOM element image source, or its absence) declares it with `testRequiring('dom' | 'no-dom', …)` and is listed as skipped, never passed, where it cannot run.
 - **`clearRect` deliberately bypasses the composite pipeline** (`Context2D._clearRectDirect`) to avoid global compositing affecting the whole canvas. Do not "fix" it back to the standard pipeline.

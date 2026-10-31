@@ -22,7 +22,11 @@ Templates can reference other templates. The preprocessor performs multi-pass ex
 Level 0 (Base):     SET_OPAQUE, BLEND_ALPHA
 Level 1 (Clipped):  *_CLIPPED → references Level 0
 Level 2 (Arc):      *_ARC_FAST_CLIPPED → references Level 1
+Image sampling:     FILTER_BILINEAR (no chaining)
 ```
+
+Templates live in `templates/` (`base.js`, `clipped.js`, `arc.js`, `sampling.js`), registered by
+`templates/index.js`.
 
 ### Available Templates
 
@@ -40,6 +44,13 @@ Level 2 (Arc):      *_ARC_FAST_CLIPPED → references Level 1
 
 Arc templates use fast cross-product angle checks (10-50x faster than atan2).
 
+**Image-Sampling Templates** (read texels, write no pixel):
+- `/*@inline:FILTER_BILINEAR(data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, outR, outG, outB, outA, onTransparent)*/`
+  - the premultiplied bilinear filter of every resampling image draw (`drawImage`, pattern paint). The caller
+    resolves its edge rule into the tap columns/rows and weights, names the four assignable outputs, and gives
+    the statement to run when every weighted tap is transparent (`continue` in a pixel loop, `return false` in
+    a sampler).
+
 ### Clipping Contract
 
 | Template Type | Clipping Responsibility |
@@ -47,6 +58,13 @@ Arc templates use fast cross-product angle checks (10-50x faster than atan2).
 | Standard | Caller checks clipBuffer BEFORE marker (span-based code via SpanOps) |
 | Clipped | Template includes check (per-pixel loops where hoisting not possible) |
 | Arc | Template includes angle range + clipping (arc-specific per-pixel loops) |
+
+### Which files are expanded
+
+`build.sh` expands the files listed in its `PREPROCESSED_FILES` and concatenates them through `get_src`. A
+marker anywhere else would stay a comment, so the build fails when `dist/swcanvas.js` still contains one. ESLint
+cannot see that a marker reads a variable: `.eslintrc.js` exempts the marker variables of `src/renderers/` and of
+the two `FILTER_BILINEAR` callers from `no-unused-vars`.
 
 ### Usage
 

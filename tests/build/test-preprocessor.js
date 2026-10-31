@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Unit tests for the build-time preprocessor (45 tests).
+ * Unit tests for the build-time preprocessor (48 tests).
  *
  * Tests cover:
  * - Argument parsing (5 tests)
  * - Single-level marker expansion (6 tests)
- * - Full preprocessing with chained expansion (10 tests)
- * - Template validation (14 tests)
+ * - Full preprocessing with chained expansion (11 tests)
+ * - Template validation (16 tests)
  * - Chained template expansion and depth protection (8 tests)
  * - Edge cases (2 tests)
  *
@@ -281,6 +281,50 @@ test('preprocess: BLEND_ALPHA_ARC_FAST_CLIPPED full expansion (chained)', () => 
     assert(result.includes('if (!mask ||'), 'Should have clip check');
     assert(result.includes('const __off = __pos * 4;'), 'Should have offset calculation');
     assert(!result.includes('/*@inline:'), 'No remaining markers');
+});
+
+test('TEMPLATES: FILTER_BILINEAR has correct params', () => {
+    assert.deepStrictEqual(TEMPLATES.FILTER_BILINEAR.params,
+        ['data', 'width', 'tx0', 'tx1', 'ty0', 'ty1', 'wx0', 'wx1', 'wy0', 'wy1', 'outR', 'outG', 'outB', 'outA', 'onTransparent']);
+});
+
+test('TEMPLATES: FILTER_BILINEAR code has all placeholders', () => {
+    const code = TEMPLATES.FILTER_BILINEAR.code;
+    for (const param of TEMPLATES.FILTER_BILINEAR.params) {
+        assert(code.includes(`{{${param}}}`), `Missing placeholder for ${param}`);
+    }
+});
+
+test('preprocess: FILTER_BILINEAR expansion filters premultiplied and runs the transparent exit', () => {
+    const input = 'function f(img, out, a0, a1, b0, b1) {\n' +
+        '    const data = img.data;\n' +
+        '    const w = img.width;\n' +
+        '    const tx0 = 0;\n' +
+        '    const tx1 = 1;\n' +
+        '    const ty0 = 0;\n' +
+        '    const ty1 = 1;\n' +
+        '    /*@inline:FILTER_BILINEAR(data, w, tx0, tx1, ty0, ty1, a0, a1, b0, b1, out.r, out.g, out.b, out.a, return false)*/\n' +
+        '    return true;\n' +
+        '}\n' +
+        'module.exports = f;';
+    const result = preprocess(input, 'test.js');
+    assert(!result.includes('/*@inline:'), 'No remaining markers');
+    const m = { exports: {} };
+    new Function('module', result)(m);
+    const f = m.exports;
+    // 2x2: opaque red, opaque blue, a transparent texel with green RGB, half-alpha white
+    const img = { width: 2, data: [255, 0, 0, 255, 0, 0, 255, 255, 0, 255, 0, 0, 255, 255, 255, 128] };
+    const out = { r: -1, g: -1, b: -1, a: -1 };
+    // Halfway between red and blue: the alpha-weighted mean, alpha the weighted sum
+    assert.strictEqual(f(img, out, 0.5, 0.5, 1, 0), true);
+    assert.deepStrictEqual(out, { r: 128, g: 0, b: 128, a: 255 });
+    // The transparent texel's green does not bleed into its half-alpha neighbour
+    assert.strictEqual(f(img, out, 0.5, 0.5, 0, 1), true);
+    assert.deepStrictEqual(out, { r: 255, g: 255, b: 255, a: 64 });
+    // Every weighted tap transparent: the exit runs and the outputs are untouched
+    const untouched = { r: 7, g: 7, b: 7, a: 7 };
+    assert.strictEqual(f(img, untouched, 1, 0, 0, 1), false);
+    assert.deepStrictEqual(untouched, { r: 7, g: 7, b: 7, a: 7 });
 });
 
 // ============================================================================

@@ -26,17 +26,15 @@ class Rasterizer {
 
         this._surface = surface;
         this._currentOp = null;
-        // Out-parameter of filterBilinear for drawImage's filtered taps, reused
-        // by every draw so the pixel loop allocates nothing.
-        this._texel = { r: 0, g: 0, b: 0, a: 0 };
     }
 
     /**
      * The ONE image-sampling decision, shared by drawImage and pattern paint:
      * does a draw RESAMPLE its image? It does not when the device→image mapping
      * is axis-aligned and steps exactly one texel per device pixel on both axes;
-     * every other mapping resamples. A resampling draw filters bilinearly
-     * (filterBilinear) unless imageSmoothingEnabled is false; a draw that does
+     * every other mapping resamples. A resampling draw filters bilinearly (the
+     * FILTER_BILINEAR inline template, build-scripts/templates/sampling.js)
+     * unless imageSmoothingEnabled is false; a draw that does
      * not resample takes the nearest texel, byte-for-byte. Callers decide once
      * per draw or per fill transform, never per pixel.
      * @param {number} b - Off-diagonal term of the mapping (zero in the forward
@@ -65,95 +63,6 @@ class Rasterizer {
      */
     static centreTranslation(a, c, e) {
         return e + (a + c) * 0.5;
-    }
-
-    /**
-     * Bilinear filter of the four texels around a sample point — the tap
-     * arithmetic of every filtered image draw (drawImage and pattern paint).
-     * Filtered PREMULTIPLIED: source texels are straight RGBA and fully
-     * transparent texels carry arbitrary RGB, so a straight-alpha lerp would
-     * bleed that RGB into edges (dark fringes). Each texel's RGB is weighted by
-     * its alpha, accumulated, and un-premultiplied at the end. Plain double
-     * arithmetic in a fixed accumulation order (00, 10, 01, 11) — byte-identical
-     * on V8 and JSC.
-     *
-     * The caller applies its edge rule through the arguments: it resolves the
-     * tap columns/rows (drawImage clamps to the edge texel, a pattern wraps a
-     * repeating axis), and passes the per-axis weights (1 - fx, fx, 1 - fy, fy),
-     * zeroing the weight of a tap that reads nothing (a pattern's non-repeating
-     * axis beyond the image). A zero-weight tap is never read.
-     * @param {Uint8ClampedArray} data - Straight RGBA texels
-     * @param {number} width - Image width in texels
-     * @param {number} tx0 - Column of the left taps
-     * @param {number} tx1 - Column of the right taps
-     * @param {number} ty0 - Row of the top taps
-     * @param {number} ty1 - Row of the bottom taps
-     * @param {number} wx0 - Weight of the left column
-     * @param {number} wx1 - Weight of the right column
-     * @param {number} wy0 - Weight of the top row
-     * @param {number} wy1 - Weight of the bottom row
-     * @param {{r: number, g: number, b: number, a: number}} out - Receives the
-     *   filtered straight RGBA
-     * @returns {boolean} false (out untouched) when every weighted tap is
-     *   transparent
-     */
-    static filterBilinear(data, width, tx0, tx1, ty0, ty1, wx0, wx1, wy0, wy1, out) {
-        const w00 = wx0 * wy0;
-        const w10 = wx1 * wy0;
-        const w01 = wx0 * wy1;
-        const w11 = wx1 * wy1;
-        let aSum = 0;
-        let rSum = 0;
-        let gSum = 0;
-        let bSum = 0;
-        if (w00 !== 0) {
-            const o = (ty0 * width + tx0) * 4;
-            const wa = w00 * data[o + 3];
-            if (wa !== 0) {
-                aSum += wa;
-                rSum += wa * data[o];
-                gSum += wa * data[o + 1];
-                bSum += wa * data[o + 2];
-            }
-        }
-        if (w10 !== 0) {
-            const o = (ty0 * width + tx1) * 4;
-            const wa = w10 * data[o + 3];
-            if (wa !== 0) {
-                aSum += wa;
-                rSum += wa * data[o];
-                gSum += wa * data[o + 1];
-                bSum += wa * data[o + 2];
-            }
-        }
-        if (w01 !== 0) {
-            const o = (ty1 * width + tx0) * 4;
-            const wa = w01 * data[o + 3];
-            if (wa !== 0) {
-                aSum += wa;
-                rSum += wa * data[o];
-                gSum += wa * data[o + 1];
-                bSum += wa * data[o + 2];
-            }
-        }
-        if (w11 !== 0) {
-            const o = (ty1 * width + tx1) * 4;
-            const wa = w11 * data[o + 3];
-            if (wa !== 0) {
-                aSum += wa;
-                rSum += wa * data[o];
-                gSum += wa * data[o + 1];
-                bSum += wa * data[o + 2];
-            }
-        }
-        if (aSum === 0) return false; // all taps transparent
-        // Un-premultiply back to straight RGBA (the alpha weights cancel out of
-        // the RGB average).
-        out.r = Math.round(rSum / aSum);
-        out.g = Math.round(gSum / aSum);
-        out.b = Math.round(bSum / aSum);
-        out.a = Math.round(aSum);
-        return true;
     }
 
     /**
@@ -1017,7 +926,6 @@ class Rasterizer {
         // sub-rect draws meet seamlessly.
         const lastTexelX = imgWidth - 1;
         const lastTexelY = imgHeight - 1;
-        const texel = this._texel;
 
         // Render each pixel in the bounding box
         for (let deviceY = minY; deviceY <= maxY; deviceY++) {
@@ -1088,31 +996,17 @@ class Rasterizer {
                         srcB = imgData[sourceOffset + 2];
                         srcA = imgData[sourceOffset + 3];
                     } else {
-                        // Bilinear over the 4 neighboring texels (filterBilinear,
-                        // shared with pattern paint), clamped to the edge.
+                        // Bilinear over the 4 neighboring texels, clamped to the
+                        // edge: the FILTER_BILINEAR template, shared with pattern
+                        // paint (build-scripts/templates/sampling.js) and expanded
+                        // here at build time — a call per pixel is never inlined
+                        // and costs a fifth of a filtered draw. All taps
+                        // transparent: the pixel is left unchanged.
                         const tx1 = x0 + 1 > lastTexelX ? lastTexelX : x0 + 1 < 0 ? 0 : x0 + 1;
                         const ty1 = y0 + 1 > lastTexelY ? lastTexelY : y0 + 1 < 0 ? 0 : y0 + 1;
-                        if (
-                            !Rasterizer.filterBilinear(
-                                imgData,
-                                imgWidth,
-                                tx0,
-                                tx1,
-                                ty0,
-                                ty1,
-                                1 - fx,
-                                fx,
-                                1 - fy,
-                                fy,
-                                texel
-                            )
-                        ) {
-                            continue; // all taps transparent
-                        }
-                        srcR = texel.r;
-                        srcG = texel.g;
-                        srcB = texel.b;
-                        srcA = texel.a;
+                        const wx0 = 1 - fx;
+                        const wy0 = 1 - fy;
+                        /*@inline:FILTER_BILINEAR(imgData, imgWidth, tx0, tx1, ty0, ty1, wx0, fx, wy0, fy, srcR, srcG, srcB, srcA, continue)*/
                     }
                 }
 
